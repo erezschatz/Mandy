@@ -550,7 +550,13 @@
        * Generate and download DOCX file
        */
       async function generateDOCX() {
-        console.log("[DOCX] Starting DOCX generation");
+        try {
+          await ensureDocx();
+        } catch (error) {
+          throw new Error(
+            "Could not load the DOCX library. Check your connection."
+          );
+        }
 
         // Pre-process mermaid diagrams to images
         await prepareMermaidForDocx();
@@ -620,12 +626,10 @@
         });
 
         const filename = generateDocxFilename();
-        console.log("[DOCX] Generating file:", filename);
 
         const blob = await docx.Packer.toBlob(doc);
         saveAs(blob, filename);
 
-        console.log("[DOCX] DOCX generated successfully");
         return { success: true, filename: filename };
       }
 

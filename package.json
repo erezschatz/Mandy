@@ -1,21 +1,16 @@
 {
-  "name": "marky-md-to-docx",
+  "name": "marky",
   "version": "1.0.0",
-  "description": "Convert Markdown files to DOCX format using markdown-it",
-  "main": "md-to-docx.js",
+  "description": "A WYSIWYG markdown editor that edits local files through its own file server",
   "type": "module",
   "scripts": {
-    "convert": "node md-to-docx.js",
-    "serve": "npx http-server -S -C certs/cert.pem -K certs/key.pem -p 8443 ."
-  },
-  "dependencies": {
-    "markdown-it": "^13.0.1",
-    "html-to-docx": "^1.8.0"
+    "serve": "cd server && deno task start",
+    "dev": "cd server && deno task dev"
   },
   "keywords": [
     "markdown",
-    "docx",
-    "converter"
+    "editor",
+    "wysiwyg"
   ],
   "license": "MIT"
 }

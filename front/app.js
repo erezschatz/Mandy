@@ -20,6 +20,8 @@ turndownService.addRule("mermaid", {
 });
 
 const editor = document.getElementById("editor");
+// downloadBtn/uploadBtn/fileInput only exist in exported HTML files, which have
+// no server behind them; the app itself uses the file API instead.
 const downloadBtn = document.getElementById("downloadBtn");
 const exportBtn = document.getElementById("exportBtn");
 const pdfBtn = document.getElementById("pdfBtn");
@@ -29,9 +31,6 @@ const clearBtn = document.getElementById("clearBtn");
 const copyBtn = document.getElementById("copyBtn");
 const fileInput = document.getElementById("fileInput");
 const formatBar = document.getElementById("formatBar");
-
-let initialContent = editor.innerHTML;
-let currentSelection = null;
 
 function htmlToMarkdown(html) {
   return turndownService.turndown(html);
@@ -43,24 +42,28 @@ function markdownToHtml(markdown) {
 
 // ── Button handlers ──────────────────────────────────────────────────────────
 
-downloadBtn.addEventListener("click", () => {
-  const html = editor.innerHTML;
-  const markdown = htmlToMarkdown(html);
+if (downloadBtn) {
+  downloadBtn.addEventListener("click", () => {
+    const html = editor.innerHTML;
+    const markdown = htmlToMarkdown(html);
 
-  const blob = new Blob([markdown], { type: "text/markdown" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "document.md";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-});
+    const blob = new Blob([markdown], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "document.md";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+}
 
-uploadBtn.addEventListener("click", () => {
-  fileInput.click();
-});
+if (uploadBtn) {
+  uploadBtn.addEventListener("click", () => {
+    fileInput.click();
+  });
+}
 
 copyBtn.addEventListener("click", async () => {
   const html = editor.innerHTML;
@@ -90,22 +93,6 @@ clearBtn.addEventListener("click", () => {
     editor.innerHTML = "<p><br></p>";
     localStorage.removeItem("markdownContent");
 
-    // Debug logging
-    console.log("=== MARKY CLEAR DEBUG ===");
-    console.log(
-      JSON.stringify(
-        {
-          timestamp: new Date().toISOString(),
-          action: "Clear button clicked",
-          editorContent: editor.innerHTML,
-          localStorageRemoved: true,
-          remainingKeys: Object.keys(localStorage),
-        },
-        null,
-        2,
-      ),
-    );
-
     editor.focus();
     const range = document.createRange();
     const sel = window.getSelection();
@@ -131,22 +118,24 @@ pasteBtn.addEventListener("click", async () => {
   }
 });
 
-fileInput.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+if (fileInput) {
+  fileInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = async (event) => {
-    const markdown = event.target.result;
-    const html = markdownToHtml(markdown);
-    editor.innerHTML = html;
-    await renderMermaidDiagrams(editor);
-    await renderLatex(editor);
-    localStorage.setItem("markdownContent", editor.innerHTML);
-  };
-  reader.readAsText(file);
-  fileInput.value = "";
-});
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const markdown = event.target.result;
+      const html = markdownToHtml(markdown);
+      editor.innerHTML = html;
+      await renderMermaidDiagrams(editor);
+      await renderLatex(editor);
+      localStorage.setItem("markdownContent", editor.innerHTML);
+    };
+    reader.readAsText(file);
+    fileInput.value = "";
+  });
+}
 
 editor.addEventListener("paste", (e) => {
   e.preventDefault();
@@ -195,21 +184,15 @@ window.addEventListener("load", () => {
   if (isExported) {
     // Exported HTML file: keep the embedded content, ignore localStorage
     editor.removeAttribute("data-exported");
-    console.log("✓ Keeping embedded content (exported HTML file)");
   } else if (saved && !isEmptyContent) {
     // Load from localStorage if we have valid saved content
     editor.innerHTML = saved;
-    console.log("✓ Loaded saved content from localStorage");
   } else if (isCurrentContentDefault || isCurrentContentEmpty) {
     // Only load default content if current content is the default or empty
     editor.innerHTML = defaultContent;
-    console.log("✓ Loaded default welcome content");
     if (saved) {
       localStorage.removeItem("markdownContent");
-      console.log("✓ Removed empty content from localStorage");
     }
-  } else {
-    console.log("✓ Keeping existing editor content");
   }
 
   (async () => {
@@ -235,48 +218,21 @@ window.addEventListener("beforeunload", () => {
     currentContent !== "<p></p>" &&
     currentContent !== "";
 
-  // Debug logging
-  console.log("=== MARKY BEFOREUNLOAD DEBUG ===");
-  console.log(
-    JSON.stringify(
-      {
-        timestamp: new Date().toISOString(),
-        editorContent: {
-          raw: currentContent.substring(0, 100) + "...",
-          length: currentContent.length,
-          trimmedLength: currentContent.trim().length,
-          isEmpty: currentContent === "<p><br></p>",
-          isEmptyOrWhitespace: !currentContent || currentContent.trim() === "",
-        },
-        decision: {
-          willSave: willSave,
-          reason: willSave
-            ? "Content is not empty"
-            : "Content is empty - not saving",
-        },
-      },
-      null,
-      2,
-    ),
-  );
-
   // Only save if content is not essentially empty
   if (willSave) {
     localStorage.setItem("markdownContent", editor.innerHTML);
-    console.log("✓ Saved content to localStorage on beforeunload");
-  } else {
-    console.log("✗ Skipped saving empty content on beforeunload");
   }
 });
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 
 document.addEventListener("keydown", (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+  // In the app itself these are handled by file-api.js (save/open via server).
+  if ((e.ctrlKey || e.metaKey) && e.key === "s" && downloadBtn) {
     e.preventDefault();
     downloadBtn.click();
   }
-  if ((e.ctrlKey || e.metaKey) && e.key === "o") {
+  if ((e.ctrlKey || e.metaKey) && e.key === "o" && uploadBtn) {
     e.preventDefault();
     uploadBtn.click();
   }

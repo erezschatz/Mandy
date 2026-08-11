@@ -1,3 +1,41 @@
+// These are built as plain strings rather than inline in the template literal.
+// Escaping a closing script tag as "<\\/script>" inside a ${...} expression is
+// evaluated as JS, so it emits a literal backslash — invalid HTML that leaves
+// the script element unclosed and swallows the rest of the document. This file
+// is loaded externally and is not bundled into the export, so a plain closing
+// tag is correct here.
+const CLOSE = "</" + "script>";
+
+const MERMAID_TAG =
+  '<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js">' +
+  CLOSE;
+
+// Exported documents follow the reader's OS preference. Deliberately no
+// localStorage and no toggle: this is a document, not the app, and the
+// recipient should not inherit the author's stored preference. Runs before the
+// stylesheet so there is no flash of the wrong theme.
+const THEME_SCRIPT =
+  "<script>document.documentElement.setAttribute('data-theme'," +
+  "window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)')" +
+  ".matches?'dark':'light');" +
+  CLOSE;
+
+// Diagrams are exported as SVG with the light Mermaid palette baked in, so a
+// dark-mode reader would otherwise get a dark page with light diagrams.
+const MERMAID_RETHEME_SCRIPT =
+  "<script>if(document.documentElement.getAttribute('data-theme')==='dark'" +
+  "&&typeof reRenderMermaidWithTheme==='function'){reRenderMermaidWithTheme('dark');}" +
+  CLOSE;
+
+const MATHJAX_TAGS =
+  "<script>window.MathJax={tex:{inlineMath:[['$','$'],['\\\\(','\\\\)']]," +
+  "displayMath:[['$$','$$'],['\\\\[','\\\\]']]},options:{skipHtmlTags:" +
+  "['script','noscript','style','textarea','pre','code']," +
+  'ignoreHtmlClass:"mermaid-wrapper"}};' +
+  CLOSE +
+  '<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">' +
+  CLOSE;
+
 exportBtn.addEventListener("click", async () => {
   const currentContent = editor.innerHTML;
   const currentText = editor.textContent || "";
@@ -9,40 +47,47 @@ exportBtn.addEventListener("click", async () => {
     currentContent.includes("mjx-container") ||
     currentContent.includes("MJX-CHTML");
 
+  // Note: html-export.js is deliberately NOT bundled and the exported file has
+  // no Export HTML button. These assets only resolve on the origin serving the
+  // app, so an export-of-an-export would inline 404 pages as its CSS and JS.
+  const ASSETS = [
+    "/app.css",
+    "/lazy-load.js",
+    "/default-content.js",
+    "/app.js",
+    "/renderers.js",
+    "/pdf-export.js",
+    "/format-bar.js",
+  ];
+
   let cssContent = "";
   let jsContent = "";
 
   try {
-    // Fetch CSS and all split JS files in load order
-    const [
-      cssRes,
-      defaultContentRes,
-      appRes,
-      renderersRes,
-      pdfRes,
-      formatBarRes,
-      htmlExportRes,
-    ] = await Promise.all([
-      fetch("/app.css"),
-      fetch("/default-content.js"),
-      fetch("/app.js"),
-      fetch("/renderers.js"),
-      fetch("/pdf-export.js"),
-      fetch("/format-bar.js"),
-      fetch("/html-export.js"),
-    ]);
-    cssContent = await cssRes.text();
-    // Concatenate in correct dependency order: default-content first, then app.js (defines globals), then features
-    jsContent = [
-      await defaultContentRes.text(),
-      await appRes.text(),
-      await renderersRes.text(),
-      await pdfRes.text(),
-      await formatBarRes.text(),
-      await htmlExportRes.text(),
-    ].join("\n\n");
+    const responses = await Promise.all(ASSETS.map((url) => fetch(url)));
+
+    // fetch() resolves on 404, so verify rather than trust: a bad response here
+    // would otherwise be silently inlined as the document's stylesheet.
+    const failed = responses.filter((res) => !res.ok);
+    if (failed.length) {
+      throw new Error(
+        `could not read ${failed.map((res) => new URL(res.url).pathname).join(", ")}`,
+      );
+    }
+
+    const [css, ...scripts] = await Promise.all(
+      responses.map((res) => res.text()),
+    );
+    cssContent = css;
+    // Dependency order: lazy-load and default-content first, then app.js
+    // (which defines the shared globals), then the feature modules.
+    jsContent = scripts.join("\n\n");
   } catch (err) {
-    console.warn("[Export] Could not fetch external files:", err);
+    console.error("[Export] Could not fetch external files:", err);
+    alert(
+      `Export failed: ${err.message}.\n\nExporting only works from the running Marky app.`,
+    );
+    return;
   }
 
   const htmlContent = `<!DOCTYPE html>
@@ -51,6 +96,7 @@ exportBtn.addEventListener("click", async () => {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Markdown Editor</title>
+    ${THEME_SCRIPT}
     <style>
 ${cssContent}
     </style>
@@ -74,15 +120,6 @@ ${cssContent}
                         <line x1="12" y1="3" x2="12" y2="15"></line>
                     </svg>
                     Upload MD
-                </button>
-                <button id="exportBtn" title="Export as HTML file">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="12" y1="18" x2="12" y2="12"></line>
-                        <line x1="9" y1="15" x2="15" y2="15"></line>
-                    </svg>
-                    Export HTML
                 </button>
                 <button id="pdfBtn" title="Export as PDF file" aria-label="Export document as PDF">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -184,12 +221,12 @@ ${cssContent}
     
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"><\/script>
     <script src="https://cdn.jsdelivr.net/npm/turndown@7.1.2/dist/turndown.min.js"><\/script>
-    ${needsMermaid ? '<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"><\\/script>' : ""}
-    ${needsMathJax ? '<script>window.MathJax={tex:{inlineMath:[["$","$"],["\\\\(","\\\\)"]],displayMath:[["$$","$$"],["\\\\[","\\\\]"]]},options:{skipHtmlTags:["script","noscript","style","textarea","pre","code"],ignoreHtmlClass:"mermaid-wrapper"}};<\\/script><script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"><\\/script>' : ""}
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"><\/script>
+    ${needsMermaid ? MERMAID_TAG : ""}
+    ${needsMathJax ? MATHJAX_TAGS : ""}
     <script id="app-script">
 ${jsContent}
     <\/script>
+    ${needsMermaid ? MERMAID_RETHEME_SCRIPT : ""}
 </body>
 </html>`;
 

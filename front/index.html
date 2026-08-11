@@ -3,21 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>
-      Marky - Free Online Markdown Editor | WYSIWYG, Privacy-Focused & No
-      Sign-Up
-    </title>
+    <title>Marky - Markdown Editor</title>
     <meta
       name="description"
-      content="Marky is a powerful, privacy-focused WYSIWYG markdown editor that runs entirely in your browser. Perfect for spec-driven AI development workflows. No installation, no sign-up, 100% free - edit markdown files instantly!"
+      content="A WYSIWYG markdown editor that edits local files through its own file server."
     />
-    <meta
-      name="keywords"
-      content="markdown editor, WYSIWYG markdown, online markdown editor, free markdown editor, privacy markdown, markdown to HTML, AI development workflow, spec-driven development, markdown converter, browser markdown editor"
-    />
-    <meta name="author" content="Marky" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://marky-md.web.app/" />
+    <meta name="theme-color" content="#2c3e50" />
 
     <!-- Favicons -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -29,73 +20,17 @@
       href="/favicon-192x192.png"
     />
     <link rel="apple-touch-icon" sizes="192x192" href="/favicon-192x192.png" />
+
+    <!-- Installable app -->
     <link rel="manifest" href="/manifest.json" />
-
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://marky-md.web.app/" />
-    <meta
-      property="og:title"
-      content="Marky - Free Online Markdown Editor | WYSIWYG & Privacy-Focused"
-    />
-    <meta
-      property="og:description"
-      content="A powerful, privacy-focused WYSIWYG markdown editor that runs entirely in your browser. Perfect for spec-driven AI development workflows. No installation, no sign-up required!"
-    />
-    <meta property="og:site_name" content="Marky Markdown Editor" />
-
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:url" content="https://marky-md.web.app/" />
-    <meta
-      name="twitter:title"
-      content="Marky - Free Online Markdown Editor | WYSIWYG & Privacy-Focused"
-    />
-    <meta
-      name="twitter:description"
-      content="A powerful, privacy-focused WYSIWYG markdown editor that runs entirely in your browser. Perfect for spec-driven AI development workflows. No installation, no sign-up required!"
-    />
-
-    <!-- Additional SEO -->
-    <meta name="theme-color" content="#2c3e50" />
     <meta name="application-name" content="Marky" />
-    <meta name="apple-mobile-web-app-title" content="Marky" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Marky" />
     <meta
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"
     />
-
-    <!-- Structured Data (JSON-LD) -->
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "Marky Markdown Editor",
-        "description": "A powerful, privacy-focused WYSIWYG markdown editor that runs entirely in your browser. No installation, no sign-up, no data sent to servers.",
-        "url": "https://marky-md.web.app/",
-        "applicationCategory": "DeveloperApplication",
-        "operatingSystem": "Web Browser",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD"
-        },
-        "featureList": [
-          "WYSIWYG Markdown Editing",
-          "100% Privacy - All Local Processing",
-          "No Account Required",
-          "Works Offline",
-          "Export to HTML and Markdown",
-          "Clipboard Integration",
-          "Auto-Save Functionality",
-          "Spec-Driven AI Development Support"
-        ],
-        "browserRequirements": "Requires JavaScript. Requires HTML5.",
-        "softwareVersion": "1.0",
-        "permissions": "clipboard-read, clipboard-write"
-      }
-    </script>
 
     <!-- CRITICAL: Theme initialization BEFORE styles load to prevent FOUC -->
     <script>
@@ -121,7 +56,10 @@
   <body>
     <div class="container">
       <div class="toolbar">
-        <h1>Marky Markdown Editor</h1>
+        <div class="toolbar-title">
+          <h1>Marky Markdown Editor</h1>
+          <span id="currentFile" class="current-file"></span>
+        </div>
         <div class="buttons">
           <button id="pasteBtn" title="Paste from clipboard">
             <svg
@@ -140,8 +78,8 @@
             Paste MD
           </button>
           <button
-            id="uploadBtn"
-            title="Upload markdown file (Ctrl+O)"
+            id="openBtn"
+            title="Open markdown file (Ctrl+O)"
             style="margin-right: 1rem"
           >
             <svg
@@ -152,11 +90,11 @@
               stroke="currentColor"
               stroke-width="2"
             >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
+              <path
+                d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+              ></path>
             </svg>
-            Upload MD
+            Open
           </button>
           <button id="exportBtn" title="Export as HTML file">
             <svg
@@ -222,7 +160,10 @@
             <span class="docx-btn-text">DOCX</span>
             <span class="docx-loading-indicator" style="display: none">⏳</span>
           </button>
-          <button id="downloadBtn" title="Download as markdown (Ctrl+S)">
+          <button
+            id="saveBtn"
+            title="Save markdown file (Ctrl+S, Ctrl+Shift+S to save as)"
+          >
             <svg
               width="20"
               height="20"
@@ -231,11 +172,13 @@
               stroke="currentColor"
               stroke-width="2"
             >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
+              <path
+                d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
+              ></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
             </svg>
-            Download MD
+            Save
           </button>
           <button
             id="copyBtn"
@@ -411,10 +354,10 @@
             <strong>Select text</strong> to see formatting options appear above
           </li>
           <li><strong>Paste MD</strong> - Load markdown from your clipboard</li>
-          <li><strong>Upload MD</strong> - Import existing markdown files</li>
+          <li><strong>Open</strong> - Open a markdown file from your computer</li>
           <li>
-            <strong>Download MD</strong> - Save your work (or press
-            <strong>Ctrl+S</strong>)
+            <strong>Save</strong> - Write your work straight back to that file
+            (or press <strong>Ctrl+S</strong>)
           </li>
           <li><strong>Copy MD</strong> - Copy to clipboard instantly</li>
           <li>
@@ -424,8 +367,9 @@
         </ul>
         <h2>⌨️ Keyboard Shortcuts</h2>
         <ul>
-          <li><strong>Ctrl+S</strong> (Cmd+S on Mac) - Download markdown</li>
-          <li><strong>Ctrl+O</strong> (Cmd+O on Mac) - Upload file</li>
+          <li><strong>Ctrl+S</strong> (Cmd+S on Mac) - Save</li>
+          <li><strong>Ctrl+Shift+S</strong> (Cmd+Shift+S on Mac) - Save as</li>
+          <li><strong>Ctrl+O</strong> (Cmd+O on Mac) - Open file</li>
           <li><strong>Ctrl+Z</strong> (Cmd+Z on Mac) - Undo</li>
           <li>
             <strong>Ctrl+Y</strong> or
@@ -446,81 +390,56 @@
       </div>
     </div>
 
-    <input
-      type="file"
-      id="fileInput"
-      accept=".md,.markdown,.txt"
-      style="display: none"
-    />
+    <div id="fileDialog" class="file-dialog">
+      <div class="file-dialog-content">
+        <div class="file-dialog-header">
+          <h2 id="dialogTitle">Open file</h2>
+          <button id="dialogClose" class="file-dialog-close" title="Close">
+            &times;
+          </button>
+        </div>
+        <div id="dialogPathBar" class="file-dialog-path"></div>
+        <div id="dialogEntries" class="file-dialog-entries"></div>
+        <div id="dialogSaveRow" class="file-dialog-save-row">
+          <input
+            type="text"
+            id="dialogFilename"
+            placeholder="filename.md"
+            spellcheck="false"
+          />
+          <button id="dialogSaveConfirm">Save</button>
+        </div>
+      </div>
+    </div>
 
+    <!-- Always needed: markdown parsing and HTML→markdown conversion.
+         Mermaid, MathJax and html2pdf are loaded on demand by lazy-load.js. -->
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/turndown@7.1.2/dist/turndown.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-    <script>
-      window.MathJax = {
-        tex: {
-          inlineMath: [
-            ["$", "$"],
-            ["\\(", "\\)"],
-          ],
-          displayMath: [
-            ["$$", "$$"],
-            ["\\[", "\\]"],
-          ],
-        },
-        options: {
-          skipHtmlTags: [
-            "script",
-            "noscript",
-            "style",
-            "textarea",
-            "pre",
-            "code",
-          ],
-          ignoreHtmlClass: "mermaid-wrapper",
-        },
-      };
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
-    <script type="module">
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-      import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js";
-
-      const firebaseConfig = {
-        apiKey: "AIzaSyCyOHh6FOPfP4kqZaJbMdi4s4xRMxlGvyY",
-        authDomain: "marky-md.firebaseapp.com",
-        projectId: "marky-md",
-        storageBucket: "marky-md.firebasestorage.app",
-        messagingSenderId: "1054837711553",
-        appId: "1:1054837711553:web:4b2b66b43f809cf1ccea40",
-        measurementId: "G-LKKJ3L4DH4",
-      };
-
-      const app = initializeApp(firebaseConfig);
-      const analytics = getAnalytics(app);
-    </script>
+    <script src="/lazy-load.js"></script>
     <script src="/default-content.js"></script>
     <script src="/app.js"></script>
     <script src="/renderers.js"></script>
     <script src="/pdf-export.js"></script>
     <script src="/format-bar.js"></script>
     <script src="/html-export.js"></script>
+    <script src="/file-api.js"></script>
 
     <script src="/theme-manager.js"></script>
 
-    <!-- PDF Export Library -->
-    <script
-      src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"
-      integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg=="
-      crossorigin="anonymous"
-      referrerpolicy="no-referrer"
-    ></script>
-
-    <!-- DOCX Export Libraries -->
-    <script src="https://unpkg.com/docx@7.1.0/build/index.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-
     <script src="/docx-export.js"></script>
+
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("/sw.js")
+            .catch((error) =>
+              console.warn("[SW] Registration failed:", error),
+            );
+        });
+      }
+    </script>
   </body>
 </html>

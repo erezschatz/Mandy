@@ -113,6 +113,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: 1rem;
         box-shadow: 0 2px 5px var(--shadow-light);
         z-index: 100;
       }
@@ -122,8 +123,14 @@
         font-weight: 500;
       }
 
+      /* Wraps rather than overflowing: the full button row needs ~900px, so
+         between the 768px breakpoint and a wide window it used to spill out of
+         the toolbar and sit on top of the title. */
       .buttons {
         display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        align-items: center;
         gap: 0.5rem;
       }
 
@@ -638,5 +645,172 @@
 
         #editor th {
           background: #f5f5f5 !important;
+        }
+      }
+
+      /* ========================================
+         Current File Label
+         ======================================== */
+      .toolbar-title {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        min-width: 0;
+      }
+
+      .current-file {
+        color: var(--text-toolbar);
+        opacity: 0.7;
+        font-size: 0.85rem;
+        font-style: italic;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* ========================================
+         File Dialog
+         ======================================== */
+      .file-dialog {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .file-dialog-content {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border-radius: 8px;
+        box-shadow: 0 8px 30px var(--shadow-medium);
+        width: min(560px, 92vw);
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .file-dialog-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.25rem;
+        background: var(--bg-toolbar);
+        color: var(--text-toolbar);
+      }
+
+      .file-dialog-header h2 {
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
+
+      .file-dialog-close {
+        background: none;
+        border: none;
+        color: var(--text-toolbar);
+        font-size: 1.5rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0 0.25rem;
+      }
+
+      .file-dialog-path {
+        padding: 0.6rem 1.25rem;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-primary);
+        font-family: "Courier New", Courier, monospace;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        direction: rtl;
+        text-align: left;
+      }
+
+      .file-dialog-entries {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 240px;
+      }
+
+      .dialog-entry {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.5rem 1.25rem;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border-heading);
+        transition: background var(--transition-speed);
+      }
+
+      .dialog-entry:hover {
+        background: var(--bg-secondary);
+      }
+
+      .dialog-entry.is-dir .dialog-entry-name,
+      .dialog-entry.is-up {
+        font-weight: 600;
+        color: var(--accent-blue);
+      }
+
+      .dialog-entry-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .dialog-entry-modified {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        flex-shrink: 0;
+      }
+
+      .dialog-empty {
+        padding: 1.25rem;
+        color: var(--text-secondary);
+        text-align: center;
+      }
+
+      .file-dialog-save-row {
+        display: none;
+        gap: 0.5rem;
+        padding: 0.85rem 1.25rem;
+        border-top: 1px solid var(--border-primary);
+        background: var(--bg-secondary);
+      }
+
+      .file-dialog-save-row input {
+        flex: 1;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid var(--border-secondary);
+        border-radius: 4px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 0.95rem;
+      }
+
+      .file-dialog-save-row input:focus {
+        outline: none;
+        border-color: var(--accent-blue);
+      }
+
+      .file-dialog-save-row button {
+        background: var(--accent-blue);
+        color: #ffffff;
+      }
+
+      .file-dialog-save-row button:hover {
+        background: var(--accent-blue-hover);
+      }
+
+      @media print {
+        .file-dialog,
+        .current-file {
+          display: none !important;
         }
       }

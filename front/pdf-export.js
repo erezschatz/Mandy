@@ -36,12 +36,6 @@ async function compressImage(imgElement, maxSizeBytes = 1048576) {
     const originalSize = imgElement.src.length;
     const compressedSize = compressedDataUrl.length;
 
-    console.log(
-      `[PDF] Image compressed: ${(originalSize / 1024).toFixed(2)}KB → ${(
-        compressedSize / 1024
-      ).toFixed(2)}KB (quality: ${quality.toFixed(2)})`,
-    );
-
     return {
       dataUrl: compressedDataUrl,
       originalSize: originalSize,
@@ -89,11 +83,10 @@ async function processImages(element) {
 }
 
 async function generatePDF() {
-  console.log("[PDF] Starting PDF generation");
-
-  if (typeof html2pdf === "undefined") {
-    console.error("[PDF] html2pdf library not loaded");
-    throw new Error("PDF library not loaded. Please refresh the page.");
+  try {
+    await ensureHtml2Pdf();
+  } catch (error) {
+    throw new Error("Could not load the PDF library. Check your connection.");
   }
 
   const element = editor.cloneNode(true);
@@ -190,13 +183,6 @@ async function generatePDF() {
     // Give browser time to compute styles and layout
     await new Promise((resolve) => setTimeout(resolve, 200));
 
-    console.log("[PDF] Element dimensions:", {
-      width: element.offsetWidth,
-      height: element.offsetHeight,
-      scrollWidth: element.scrollWidth,
-      scrollHeight: element.scrollHeight,
-    });
-
     const warnings = await processImages(element);
 
     const options = {
@@ -209,7 +195,6 @@ async function generatePDF() {
         scrollX: 0,
         scrollY: 0,
         backgroundColor: "#ffffff",
-        logging: true,
         letterRendering: true,
         allowTaint: false,
         removeContainer: false,
@@ -217,13 +202,7 @@ async function generatePDF() {
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
     };
 
-    console.log("[PDF] Generating PDF with options:", options);
-    if (warnings.length > 0) {
-      console.log("[PDF] Warnings:", warnings);
-    }
-
     await html2pdf().set(options).from(element).save();
-    console.log("[PDF] PDF generated successfully:", filename);
     return { success: true, filename: filename, warnings: warnings };
   } catch (error) {
     console.error("[PDF] PDF generation failed:", error);

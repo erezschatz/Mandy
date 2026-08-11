@@ -1,26 +1,25 @@
-// Initialize Mermaid with theme support
-const currentTheme =
-  document.documentElement.getAttribute("data-theme") || "light";
-if (window.mermaid) {
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: currentTheme === "dark" ? "dark" : "default",
-    securityLevel: "loose",
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
-  });
-}
-
 // Mermaid diagram counter for unique IDs
 let mermaidCounter = 0;
+
+function activeTheme() {
+  return document.documentElement.getAttribute("data-theme") || "light";
+}
 
 /**
  * Render all mermaid code blocks in the given container
  * Converts <pre><code class="language-mermaid"> to rendered SVG diagrams
+ * Mermaid itself is only downloaded if the document actually has a diagram.
  */
 async function renderMermaidDiagrams(container) {
-  if (!window.mermaid) return;
   const mermaidBlocks = container.querySelectorAll("pre code.language-mermaid");
+  if (!mermaidBlocks.length) return;
+
+  try {
+    await ensureMermaid(activeTheme());
+  } catch (error) {
+    console.error("[Mermaid] Failed to load library:", error);
+    return;
+  }
 
   for (const codeBlock of mermaidBlocks) {
     const pre = codeBlock.parentElement;
@@ -73,6 +72,7 @@ async function renderMermaidDiagrams(container) {
  * Re-render all mermaid diagrams with new theme
  */
 async function reRenderMermaidWithTheme(theme) {
+  // Nothing to re-theme if the library was never needed in the first place.
   if (!window.mermaid) return;
   mermaid.initialize({
     startOnLoad: false,
@@ -107,13 +107,13 @@ function containsLatex(text) {
   );
 }
 
+// MathJax is only downloaded once the document actually contains maths.
 async function renderLatex(container) {
-  if (!window.MathJax || typeof window.MathJax.typesetPromise !== "function")
-    return;
   if (!containsLatex(container.textContent)) return;
 
   try {
-    await window.MathJax.typesetPromise([container]);
+    const mathJax = await ensureMathJax();
+    await mathJax.typesetPromise([container]);
   } catch (error) {
     console.error("[MathJax] Render error:", error);
   }

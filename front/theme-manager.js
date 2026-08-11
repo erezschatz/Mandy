@@ -56,17 +56,6 @@
           updateToggleButton(theme);
         }
 
-        function clearPreference() {
-          try {
-            localStorage.removeItem(STORAGE_KEY);
-          } catch (e) {
-            // localStorage unavailable
-          }
-          const systemTheme = getSystemPreference();
-          applyTheme(systemTheme);
-          updateToggleButton(systemTheme);
-        }
-
         function toggle() {
           const current = getCurrentTheme();
           const newTheme = current === LIGHT ? DARK : LIGHT;
@@ -132,18 +121,9 @@
           }
         }
 
-        return {
-          init,
-          toggle,
-          getCurrentTheme,
-          applyTheme,
-          setTheme,
-          hasExplicitPreference,
-          clearPreference,
-          getSystemPreference,
-          watchSystemChanges,
-          updateToggleButton,
-        };
+        // Everything else in here is internal; only these two are ever called
+        // from outside the module.
+        return { init, toggle };
       })();
 
       if (document.readyState === "loading") {
