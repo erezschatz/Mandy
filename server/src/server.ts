@@ -1,0 +1,146 @@
+import { type Context, Hono } from 'hono';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+
+const SERVER_DIR = import.meta.dirname!;
+const FRONT_DIR = path.resolve(SERVER_DIR, '../../front');
+const HOME_DIR = os.homedir();
+
+const MARKDOWN_EXTENSIONS = ['.md', '.markdown', '.txt'];
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+};
+
+function isMarkdownFile(filePath: string): boolean {
+  return MARKDOWN_EXTENSIONS.includes(path.extname(filePath).toLowerCase());
+}
+
+export const router = new Hono();
+
+// ── File API ─────────────────────────────────────────────────────────────────
+
+router.get('/api/home', (c: Context) => c.json({ home: HOME_DIR }));
+
+// Lists directories plus markdown files, so the dialog can walk anywhere the
+// user can while still only offering files Marky can actually open.
+router.get('/api/browse', async (c: Context) => {
+  const requestedPath = c.req.query('path') || HOME_DIR;
+  const resolvedPath = path.resolve(requestedPath);
+
+  try {
+    const dirEntries = await fs.readdir(resolvedPath, { withFileTypes: true });
+    const entries: { name: string; isDir: boolean; modified?: string }[] = [];
+
+    for (const entry of dirEntries) {
+      if (entry.name.startsWith('.')) {
+        continue;
+      }
+
+      if (entry.isDirectory()) {
+        entries.push({ name: entry.name, isDir: true });
+      } else if (entry.isFile() && isMarkdownFile(entry.name)) {
+        try {
+          const stats = await fs.stat(path.join(resolvedPath, entry.name));
+          entries.push({ name: entry.name, isDir: false, modified: stats.mtime.toISOString() });
+        } catch {
+          entries.push({ name: entry.name, isDir: false });
+        }
+      }
+    }
+
+    entries.sort((a, b) => {
+      if (a.isDir !== b.isDir) {
+        return a.isDir ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    const parsedRoot = path.parse(resolvedPath);
+    const parent = resolvedPath !== parsedRoot.root ? path.dirname(resolvedPath) : null;
+    return c.json({ path: resolvedPath, parent, entries });
+  } catch (error) {
+    return c.json({ error: 'Cannot read directory: ' + (error as Error).message }, 400);
+  }
+});
+
+router.get('/api/file', async (c: Context) => {
+  const filePath = c.req.query('path');
+  if (!filePath) {
+    return c.json({ error: 'Path is required' }, 400);
+  }
+
+  const resolvedPath = path.resolve(filePath);
+  if (!isMarkdownFile(resolvedPath)) {
+    return c.json({ error: `File must be one of: ${MARKDOWN_EXTENSIONS.join(', ')}` }, 400);
+  }
+
+  try {
+    const content = await fs.readFile(resolvedPath, 'utf-8');
+    return c.json({ path: resolvedPath, name: path.basename(resolvedPath), content });
+  } catch (error) {
+    if ((error as { code?: string }).code === 'ENOENT') {
+      return c.json({ error: 'File not found' }, 404);
+    }
+    return c.json({ error: 'Failed to read file: ' + (error as Error).message }, 500);
+  }
+});
+
+router.post('/api/file', async (c: Context) => {
+  let body: { path?: string; content?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const { path: filePath, content } = body;
+  if (!filePath) {
+    return c.json({ error: 'Path is required' }, 400);
+  }
+  if (typeof content !== 'string') {
+    return c.json({ error: 'Content is required' }, 400);
+  }
+
+  const resolvedPath = path.resolve(filePath);
+  if (!isMarkdownFile(resolvedPath)) {
+    return c.json({ error: `File must be one of: ${MARKDOWN_EXTENSIONS.join(', ')}` }, 400);
+  }
+
+  try {
+    await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+    await fs.writeFile(resolvedPath, content, 'utf-8');
+    return c.json({ path: resolvedPath, name: path.basename(resolvedPath) });
+  } catch (error) {
+    return c.json({ error: 'Failed to save file: ' + (error as Error).message }, 500);
+  }
+});
+
+// ── Static frontend ──────────────────────────────────────────────────────────
+
+router.get('/*', async (c: Context) => {
+  const requested = decodeURIComponent(new URL(c.req.url).pathname);
+  const relative = requested === '/' ? 'index.html' : requested.replace(/^\/+/, '');
+
+  // Resolve inside FRONT_DIR and verify: a crafted path must not escape it.
+  const resolvedPath = path.resolve(FRONT_DIR, relative);
+  if (resolvedPath !== FRONT_DIR && !resolvedPath.startsWith(FRONT_DIR + path.sep)) {
+    return c.text('Not found', 404);
+  }
+
+  try {
+    const file = await Deno.readFile(resolvedPath);
+    const contentType = MIME_TYPES[path.extname(resolvedPath).toLowerCase()] ??
+      'application/octet-stream';
+    return new Response(file, { headers: { 'Content-Type': contentType } });
+  } catch {
+    return c.text('Not found', 404);
+  }
+});

@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "check": "deno check src/main.ts",
+    "start": "deno run --allow-read --allow-write --allow-net --allow-sys=homedir --allow-env=MARKY_PORT src/main.ts",
+    "dev": "deno run --allow-read --allow-write --allow-net --allow-sys=homedir --allow-env=MARKY_PORT --watch src/main.ts"
+  },
+  "imports": {
+    "hono": "npm:hono@^4.12.23"
+  }
+}
