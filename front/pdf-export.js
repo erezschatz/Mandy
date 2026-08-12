@@ -215,7 +215,7 @@ async function generatePDF() {
   }
 }
 
-pdfBtn.addEventListener("click", async () => {
+onToolbarAction("export-pdf", async (pdfBtn) => {
   const loadingIndicator = pdfBtn.querySelector(".loading-indicator");
   const btnText = pdfBtn.querySelector(".btn-text");
 

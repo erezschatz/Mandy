@@ -36,7 +36,7 @@ const MATHJAX_TAGS =
   '<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">' +
   CLOSE;
 
-exportBtn.addEventListener("click", async () => {
+onToolbarAction("export-editable", async () => {
   const currentContent = editor.innerHTML;
   const currentText = editor.textContent || "";
   const needsMermaid =
@@ -47,47 +47,66 @@ exportBtn.addEventListener("click", async () => {
     currentContent.includes("mjx-container") ||
     currentContent.includes("MJX-CHTML");
 
-  // Note: html-export.js is deliberately NOT bundled and the exported file has
-  // no Export HTML button. These assets only resolve on the origin serving the
-  // app, so an export-of-an-export would inline 404 pages as its CSS and JS.
+  // file-api.js is the one module deliberately left out: it drives the
+  // server-backed Open/Save, and an exported document has no server. app.js
+  // falls back to blob download instead, which is why it guards downloadBtn /
+  // uploadBtn / fileInput with existence checks.
+  //
+  // Dependency order is load-bearing: toolbar.js first because the rest bind to
+  // elements it creates, then lazy-load, then app.js (which defines the shared
+  // globals), then the feature modules. They are concatenated into one inline
+  // script, so they run in exactly this order.
   const ASSETS = [
     "/app.css",
+    "/toolbar.js",
     "/lazy-load.js",
-    "/default-content.js",
     "/app.js",
     "/renderers.js",
     "/pdf-export.js",
     "/format-bar.js",
+    "/static-export.js",
+    "/html-export.js",
+    "/docx-export.js",
   ];
 
   let cssContent = "";
   let jsContent = "";
 
-  try {
-    const responses = await Promise.all(ASSETS.map((url) => fetch(url)));
+  // Re-exporting from an exported document: there is no origin to fetch from,
+  // but everything the new file needs is already inline in this one. Reading it
+  // back out is what keeps exports self-reproducing rather than degrading to a
+  // dead end after one hop.
+  const inlinedStyle = document.getElementById("app-style");
+  const inlinedScript = document.getElementById("app-script");
 
-    // fetch() resolves on 404, so verify rather than trust: a bad response here
-    // would otherwise be silently inlined as the document's stylesheet.
-    const failed = responses.filter((res) => !res.ok);
-    if (failed.length) {
-      throw new Error(
-        `could not read ${failed.map((res) => new URL(res.url).pathname).join(", ")}`,
+  if (inlinedStyle && inlinedScript) {
+    cssContent = inlinedStyle.textContent;
+    jsContent = inlinedScript.textContent;
+  } else {
+    try {
+      const responses = await Promise.all(ASSETS.map((url) => fetch(url)));
+
+      // fetch() resolves on 404, so verify rather than trust: a bad response
+      // here would otherwise be silently inlined as the document's stylesheet.
+      const failed = responses.filter((res) => !res.ok);
+      if (failed.length) {
+        throw new Error(
+          `could not read ${failed.map((res) => new URL(res.url).pathname).join(", ")}`,
+        );
+      }
+
+      const [css, ...scripts] = await Promise.all(
+        responses.map((res) => res.text()),
       );
+      cssContent = css;
+      jsContent = scripts.join("\n\n");
+    } catch (err) {
+      console.error("[Export] Could not fetch external files:", err);
+      alert(
+        `Export failed: ${err.message}.\n\nExporting only works from the running Marky app.`,
+      );
+      return;
     }
-
-    const [css, ...scripts] = await Promise.all(
-      responses.map((res) => res.text()),
-    );
-    cssContent = css;
-    // Dependency order: lazy-load and default-content first, then app.js
-    // (which defines the shared globals), then the feature modules.
-    jsContent = scripts.join("\n\n");
-  } catch (err) {
-    console.error("[Export] Could not fetch external files:", err);
-    alert(
-      `Export failed: ${err.message}.\n\nExporting only works from the running Marky app.`,
-    );
-    return;
   }
 
   const htmlContent = `<!DOCTYPE html>
@@ -97,73 +116,14 @@ exportBtn.addEventListener("click", async () => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Markdown Editor</title>
     ${THEME_SCRIPT}
-    <style>
+    <style id="app-style">
 ${cssContent}
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="toolbar">
-            <h1>Markdown Editor</h1>
-            <div class="buttons">
-                <button id="pasteBtn" title="Paste from clipboard">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
-                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
-                    </svg>
-                    Paste
-                </button>
-                <button id="uploadBtn" title="Upload markdown file (Ctrl+O)" style="margin-right: 1rem;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="17 8 12 3 7 8"></polyline>
-                        <line x1="12" y1="3" x2="12" y2="15"></line>
-                    </svg>
-                    Upload MD
-                </button>
-                <button id="pdfBtn" title="Export as PDF file" aria-label="Export document as PDF">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="16" y1="13" x2="8" y2="13"></line>
-                        <line x1="16" y1="17" x2="8" y2="17"></line>
-                        <polyline points="10 9 9 9 8 9"></polyline>
-                    </svg>
-                    <span class="btn-text">PDF</span>
-                    <span class="loading-indicator" style="display:none">⏳</span>
-                </button>
-                <button id="downloadBtn" title="Download as markdown (Ctrl+S)">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                    Download MD
-                </button>
-                <button id="copyBtn" title="Copy markdown to clipboard" style="margin-right: 1rem;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                    Copy
-                </button>
-                <button id="clearBtn" title="Clear document">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        <line x1="10" y1="11" x2="10" y2="17"></line>
-                        <line x1="14" y1="11" x2="14" y2="17"></line>
-                    </svg>
-                    Clear
-                </button>
-                <a href="https://github.com/Tommertom/marky" target="_blank" rel="noopener noreferrer" id="githubBtn" title="View on GitHub">
-                    <svg height="32" viewBox="0 0 24 24" version="1.1" width="32" fill="white">
-                        <path d="M12 1C5.923 1 1 5.923 1 12c0 4.867 3.149 8.979 7.521 10.436.55.096.756-.233.756-.522 0-.262-.013-1.128-.013-2.049-2.764.509-3.479-.674-3.699-1.292-.124-.317-.66-1.293-1.127-1.554-.385-.207-.936-.715-.014-.729.866-.014 1.485.797 1.691 1.128.99 1.663 2.571 1.196 3.204.907.096-.715.385-1.196.701-1.471-2.448-.275-5.005-1.224-5.005-5.432 0-1.196.426-2.186 1.128-2.956-.111-.275-.496-1.402.11-2.915 0 0 .921-.288 3.024 1.128a10.193 10.193 0 0 1 2.75-.371c.936 0 1.871.123 2.75.371 2.104-1.43 3.025-1.128 3.025-1.128.605 1.513.221 2.64.111 2.915.701.77 1.127 1.747 1.127 2.956 0 4.222-2.571 5.157-5.019 5.432.399.344.743 1.004.743 2.035 0 1.471-.014 2.654-.014 3.025 0 .289.206.632.756.522C19.851 20.979 23 16.854 23 12c0-6.077-4.922-11-11-11Z"></path>
-                    </svg>
-                </a>
-            </div>
-        </div>
-        
+        <div class="toolbar"><!-- built by toolbar.js --></div>
+
         <div id="formatBar" class="format-bar">
             <button class="format-btn" data-format="p" title="Paragraph">P</button>
             <button class="format-btn" data-format="h1" title="Heading 1">H1</button>

@@ -1,8 +1,6 @@
 // Server-backed open/save. Only loaded by the app itself — exported HTML files
 // have no server behind them and keep their own blob download instead.
 
-const openBtn = document.getElementById("openBtn");
-const saveBtn = document.getElementById("saveBtn");
 const currentFileLabel = document.getElementById("currentFile");
 
 const fileDialog = document.getElementById("fileDialog");
@@ -14,17 +12,56 @@ const dialogSaveRow = document.getElementById("dialogSaveRow");
 const dialogFilename = document.getElementById("dialogFilename");
 const dialogSaveConfirm = document.getElementById("dialogSaveConfirm");
 
+const FILE_PATH_KEY = "marky-current-file";
+const LAST_DIR_KEY = "marky-last-dir";
+
 let currentFilePath = null;
 let dialogMode = "open";
-let dialogDir = null; // last visited directory, reused between openings
+// Last visited directory, reused between openings and across reloads — walking
+// back to the same folder every session is the kind of friction you only notice
+// by having to do it.
+let dialogDir = localStorage.getItem(LAST_DIR_KEY);
 let saveResolver = null;
 
+// Persisted alongside the content so a reload keeps saving to the same file
+// rather than silently reverting to "untitled" and prompting again.
 function setCurrentFile(filePath) {
   currentFilePath = filePath;
+  if (filePath) {
+    localStorage.setItem(FILE_PATH_KEY, filePath);
+  } else {
+    localStorage.removeItem(FILE_PATH_KEY);
+  }
   if (currentFileLabel) {
     currentFileLabel.textContent = filePath ? filePath.split("/").pop() : "";
     currentFileLabel.title = filePath || "";
   }
+}
+
+// Only restore the path if the content is being restored too. When app.js is
+// about to fall back to welcome.md there is no file behind what you see, and
+// showing one would point Ctrl+S at a document you are not looking at.
+(function restoreCurrentFile() {
+  const savedContent = localStorage.getItem("markdownContent");
+  if (savedContent && !isBlankContent(savedContent)) {
+    setCurrentFile(localStorage.getItem(FILE_PATH_KEY));
+  } else {
+    localStorage.removeItem(FILE_PATH_KEY);
+  }
+})();
+
+// Clearing the document drops the file association: app.js has already emptied
+// the editor and the autosave, and without this a reload would show a filename
+// with no content behind it, one Ctrl+S away from truncating the real file.
+// app.js registers its handler first, so a cancelled confirm leaves content in
+// place and this correctly does nothing.
+onToolbarAction("clear", () => {
+  if (isBlankContent(editor.innerHTML)) setCurrentFile(null);
+});
+
+function parentDir(filePath) {
+  const parent = filePath.split("/").slice(0, -1).join("/");
+  return parent || null;
 }
 
 function joinPath(dir, name) {
@@ -66,6 +103,7 @@ async function loadDir(dirPath) {
   }
 
   dialogDir = data.path;
+  localStorage.setItem(LAST_DIR_KEY, data.path);
   // The path bar clips from the left (direction: rtl) to keep the tail of deep
   // paths visible; the inner LTR span keeps the path itself rendering normally.
   dialogPathBar.innerHTML = "";
@@ -137,7 +175,10 @@ function showSaveDialog() {
       ? currentFilePath.split("/").pop()
       : "document.md";
     fileDialog.style.display = "flex";
-    loadDir(currentFilePath ? null : dialogDir).then(() => {
+    // Save-as starts beside the file you are editing, and otherwise wherever
+    // you last browsed. Passing null here would fall back to the server's home
+    // directory, which is neither.
+    loadDir(currentFilePath ? parentDir(currentFilePath) : dialogDir).then(() => {
       dialogFilename.focus();
       dialogFilename.select();
     });
@@ -199,18 +240,22 @@ async function saveFile(filePath) {
   return true;
 }
 
-async function saveCurrentOrPrompt() {
+// `button` comes from the delegated click; the keyboard path looks it up.
+async function saveCurrentOrPrompt(button) {
   const target = currentFilePath || (await showSaveDialog());
   if (!target) return;
 
   if (await saveFile(target)) {
-    flashButton(
-      saveBtn,
-      `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    const saveBtn = button || toolbarButton("save-file");
+    if (saveBtn) {
+      flashButton(
+        saveBtn,
+        `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="20 6 9 17 4 12"></polyline>
       </svg>
       Saved!`,
-    );
+      );
+    }
   }
 }
 
@@ -234,7 +279,9 @@ async function saveFileAs() {
     const data = await res.json();
     if (typeof data.home !== "string") throw new Error("Not the Marky server");
   } catch {
-    for (const btn of [openBtn, saveBtn]) {
+    for (const action of ["open-file", "save-file"]) {
+      const btn = toolbarButton(action);
+      if (!btn) continue;
       btn.disabled = true;
       btn.style.opacity = "0.5";
       btn.style.cursor = "not-allowed";
@@ -243,8 +290,8 @@ async function saveFileAs() {
   }
 })();
 
-openBtn.addEventListener("click", showOpenDialog);
-saveBtn.addEventListener("click", saveCurrentOrPrompt);
+onToolbarAction("open-file", showOpenDialog);
+onToolbarAction("save-file", saveCurrentOrPrompt);
 dialogClose.addEventListener("click", closeDialog);
 dialogSaveConfirm.addEventListener("click", confirmSaveName);
 

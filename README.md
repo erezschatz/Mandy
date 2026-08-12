@@ -26,7 +26,8 @@ Marky runs on your own machine and edits your own files. See
 ### 💾 Export Your Work
 - **Save to Disk** - Write your work straight back to the file you opened, no download dance
 - **Copy to Clipboard** - Instantly copy all your markdown with one click
-- **Export as HTML** - Generate standalone, **fully editable** HTML files that recipients can modify and send back. Perfect for collaborative workflows - they can edit the HTML directly in their browser, make changes, and return it to you as markdown!
+- **Export as HTML** - Generate a standalone, self-contained HTML page of the document alone - the same kind of deliverable as PDF or DOCX, for sharing something to be read
+- **Export as Editable** - Generate an HTML file with the editor bundled in, so recipients can modify it directly in their browser and send it back to you. Perfect for collaborative workflows - no markdown knowledge required at their end! The file they receive is fully capable: they can export it to markdown, PDF, DOCX or HTML, and re-export another editable copy to pass along, all without Marky installed
 - **Export as PDF** - Generate professional, print-ready PDF documents with one click. Images are automatically optimized to ensure reasonable file sizes while maintaining quality
 - **Export as DOCX** - Generate a Word document with headings, tables and formatting intact. Mermaid diagrams are embedded as images; LaTeX comes through as plain text rather than rendered maths
 
@@ -116,7 +117,7 @@ Unlike other markdown editors:
 - Your work auto-saves to localStorage - but download important files as a backup
 - Click "Clear" to start fresh with a new document
 - Toggle dark mode in the toolbar or let it automatically match your system theme
-- **Collaborative HTML Workflow**: Export as HTML and share with colleagues. They can open it in any browser, edit the content directly, save their changes, and send the modified HTML back to you. You can then extract their changes as markdown!
+- **Collaborative HTML Workflow**: Use **Editable** (not **HTML**, which is read-only) and share the result with colleagues. They can open it in any browser, edit the content directly, save their changes, and send the modified HTML back to you. Open their file in a browser and hit **Copy MD** to get their changes back as markdown - Marky's Open dialog only accepts `.md`, `.markdown` and `.txt`, so it cannot open the returned HTML directly.
 
 ## 🤝 For Developers
 

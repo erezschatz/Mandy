@@ -20,15 +20,8 @@ turndownService.addRule("mermaid", {
 });
 
 const editor = document.getElementById("editor");
-// downloadBtn/uploadBtn/fileInput only exist in exported HTML files, which have
-// no server behind them; the app itself uses the file API instead.
-const downloadBtn = document.getElementById("downloadBtn");
-const exportBtn = document.getElementById("exportBtn");
-const pdfBtn = document.getElementById("pdfBtn");
-const uploadBtn = document.getElementById("uploadBtn");
-const pasteBtn = document.getElementById("pasteBtn");
-const clearBtn = document.getElementById("clearBtn");
-const copyBtn = document.getElementById("copyBtn");
+// fileInput only exists in exported HTML files, which have no server behind
+// them; the app itself uses the file API instead.
 const fileInput = document.getElementById("fileInput");
 const formatBar = document.getElementById("formatBar");
 
@@ -42,49 +35,46 @@ function markdownToHtml(markdown) {
 
 // ── Button handlers ──────────────────────────────────────────────────────────
 
-if (downloadBtn) {
-  downloadBtn.addEventListener("click", () => {
-    const html = editor.innerHTML;
-    const markdown = htmlToMarkdown(html);
+// Registered by action name, not bound to an element: download and upload only
+// exist in exported documents, and registering an action nothing renders is
+// harmless.
+onToolbarAction("download-md", () => {
+  const markdown = htmlToMarkdown(editor.innerHTML);
 
-    const blob = new Blob([markdown], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "document.md";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  });
-}
+  const blob = new Blob([markdown], { type: "text/markdown" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "document.md";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
 
-if (uploadBtn) {
-  uploadBtn.addEventListener("click", () => {
-    fileInput.click();
-  });
-}
+onToolbarAction("upload-md", () => {
+  if (fileInput) fileInput.click();
+});
 
-copyBtn.addEventListener("click", async () => {
-  const html = editor.innerHTML;
-  const markdown = htmlToMarkdown(html);
+onToolbarAction("copy-md", async (button) => {
+  const markdown = htmlToMarkdown(editor.innerHTML);
 
   try {
     await navigator.clipboard.writeText(markdown);
-    const originalText = copyBtn.innerHTML;
-    copyBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    const originalText = button.innerHTML;
+    button.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="20 6 9 17 4 12"></polyline>
         </svg>
         Copied!`;
     setTimeout(() => {
-      copyBtn.innerHTML = originalText;
+      button.innerHTML = originalText;
     }, 2000);
   } catch (err) {
     alert("Unable to copy to clipboard. Please grant clipboard permissions.");
   }
 });
 
-clearBtn.addEventListener("click", () => {
+onToolbarAction("clear", () => {
   if (
     confirm(
       "Are you sure you want to clear the document? This will remove all content and auto-saved data.",
@@ -103,7 +93,7 @@ clearBtn.addEventListener("click", () => {
   }
 });
 
-pasteBtn.addEventListener("click", async () => {
+onToolbarAction("paste-md", async () => {
   try {
     const clipboardText = await navigator.clipboard.readText();
     if (clipboardText && clipboardText.trim()) {
@@ -158,44 +148,42 @@ editor.addEventListener("input", () => {
   }, 1000);
 });
 
+function isBlankContent(html) {
+  const trimmed = (html || "").trim();
+  return trimmed === "" || trimmed === "<p><br></p>" || trimmed === "<p></p>";
+}
+
+// The welcome document is markdown like any other, not markup baked into the
+// page. Returns false if it cannot be fetched so startup can carry on with an
+// empty editor rather than dying on the welcome text.
+async function loadWelcomeDocument() {
+  try {
+    const res = await fetch("/welcome.md");
+    if (!res.ok) throw new Error(res.statusText);
+    editor.innerHTML = markdownToHtml(await res.text());
+    return true;
+  } catch (error) {
+    console.error("[Welcome] Could not load welcome.md:", error);
+    editor.innerHTML = "<p><br></p>";
+    return false;
+  }
+}
+
 window.addEventListener("load", () => {
   const saved = localStorage.getItem("markdownContent");
-  const theme = localStorage.getItem("marky-theme");
   const isExported = editor.hasAttribute("data-exported");
 
-  // Check if saved content is essentially empty
-  const savedTrimmed = saved ? saved.trim() : "";
-  const isEmptyContent =
-    !saved ||
-    savedTrimmed === "" ||
-    savedTrimmed === "<p><br></p>" ||
-    savedTrimmed === "<p></p>";
-
-  // Check if current editor content is the default welcome message
-  const currentContent = editor.innerHTML.trim();
-  const isCurrentContentDefault =
-    currentContent.includes("👋 Welcome to Marky") &&
-    currentContent.includes("Quick Start");
-  const isCurrentContentEmpty =
-    !currentContent ||
-    currentContent === "<p><br></p>" ||
-    currentContent === "<p></p>";
-
-  if (isExported) {
-    // Exported HTML file: keep the embedded content, ignore localStorage
-    editor.removeAttribute("data-exported");
-  } else if (saved && !isEmptyContent) {
-    // Load from localStorage if we have valid saved content
-    editor.innerHTML = saved;
-  } else if (isCurrentContentDefault || isCurrentContentEmpty) {
-    // Only load default content if current content is the default or empty
-    editor.innerHTML = defaultContent;
-    if (saved) {
-      localStorage.removeItem("markdownContent");
-    }
-  }
-
   (async () => {
+    if (isExported) {
+      // Exported HTML file: keep the embedded content, ignore localStorage
+      editor.removeAttribute("data-exported");
+    } else if (saved && !isBlankContent(saved)) {
+      editor.innerHTML = saved;
+    } else {
+      if (saved) localStorage.removeItem("markdownContent");
+      await loadWelcomeDocument();
+    }
+
     try {
       await renderMermaidDiagrams(editor);
     } catch (error) {
@@ -227,18 +215,20 @@ window.addEventListener("beforeunload", () => {
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 
 document.addEventListener("keydown", (e) => {
-  // In the app itself these are handled by file-api.js (save/open via server).
-  if ((e.ctrlKey || e.metaKey) && e.key === "s" && downloadBtn) {
+  // Save/open bind to the blob fallbacks only where those buttons are rendered,
+  // i.e. in exported documents. In the app itself file-api.js owns Ctrl+S and
+  // Ctrl+O, and talks to the server instead.
+  if ((e.ctrlKey || e.metaKey) && e.key === "s" && toolbarButton("download-md")) {
     e.preventDefault();
-    downloadBtn.click();
+    runToolbarAction("download-md");
   }
-  if ((e.ctrlKey || e.metaKey) && e.key === "o" && uploadBtn) {
+  if ((e.ctrlKey || e.metaKey) && e.key === "o" && toolbarButton("upload-md")) {
     e.preventDefault();
-    uploadBtn.click();
+    runToolbarAction("upload-md");
   }
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "P") {
     e.preventDefault();
-    pdfBtn.click();
+    runToolbarAction("export-pdf");
   }
   if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
     e.preventDefault();

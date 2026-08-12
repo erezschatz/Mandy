@@ -1,5 +1,4 @@
       // DOCX Export Functionality
-      const docxBtn = document.getElementById("docxBtn");
 
       /**
        * Extract title from editor content (first H1)
@@ -634,7 +633,7 @@
       }
 
       // DOCX Button Event Handler
-      docxBtn.addEventListener("click", async () => {
+      onToolbarAction("export-docx", async (docxBtn) => {
         const loadingIndicator = docxBtn.querySelector(
           ".docx-loading-indicator"
         );

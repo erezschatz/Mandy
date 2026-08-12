@@ -107,6 +107,9 @@
       .toolbar {
         position: sticky;
         top: 0;
+        /* toolbar.js fills this in, so reserve the height it will occupy and
+           the page below does not jump once the script runs. */
+        min-height: 69px;
         background: var(--bg-toolbar);
         color: var(--text-toolbar);
         padding: 1rem 2rem;
@@ -121,6 +124,9 @@
       .toolbar h1 {
         font-size: 1.5rem;
         font-weight: 500;
+        /* One line: the buttons take the slack and wrap instead. Released at
+           the narrowest breakpoint, where there genuinely is not room. */
+        white-space: nowrap;
       }
 
       /* Wraps rather than overflowing: the full button row needs ~900px, so
@@ -130,6 +136,20 @@
         display: flex;
         flex-wrap: wrap;
         justify-content: flex-end;
+        align-items: center;
+        gap: 0.5rem 1rem;
+        /* Takes the slack so the buttons stay right-aligned against the
+           toggle, whatever the title's width. */
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      /* The wrap unit. .buttons wraps groups, never the buttons inside one, so
+         file/clipboard/export stay together and relocate as blocks instead of
+         reshuffling individually as the window narrows. */
+      .button-group {
+        display: flex;
+        flex-wrap: nowrap;
         align-items: center;
         gap: 0.5rem;
       }
@@ -201,11 +221,15 @@
         opacity: 0.8;
       }
 
+      /* A toolbar region in its own right, not a trailing member of .buttons —
+         it sits outside that wrap container so it never reflows with the
+         buttons and stays pinned to the right edge at every width. */
       .theme-toggle-container {
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 0.25rem;
+        flex: 0 0 auto;
       }
 
       .theme-toggle {
@@ -466,21 +490,35 @@
           box-shadow: none;
         }
 
+        /* Wraps rather than stacking as a column, so the title and the
+           toggle keep sharing the first row and the buttons drop to their
+           own row beneath — the toggle stays rightmost instead of becoming
+           a third full-width row. */
         .toolbar {
           padding: 0.75rem 1rem;
-          flex-direction: column;
+          flex-wrap: wrap;
           gap: 0.75rem;
-          align-items: stretch;
         }
 
         .toolbar h1 {
           font-size: 1.25rem;
-          text-align: center;
+        }
+
+        /* Ordered, not reordered in the DOM: the buttons come second in
+           source but must render on the row below the toggle. */
+        .theme-toggle-container {
+          order: 2;
         }
 
         .buttons {
+          order: 3;
+          flex: 1 1 100%;
           flex-wrap: wrap;
           justify-content: center;
+          gap: 0.4rem 0.8rem;
+        }
+
+        .button-group {
           gap: 0.4rem;
         }
 
@@ -550,6 +588,8 @@
       @media (max-width: 480px) {
         .toolbar h1 {
           font-size: 1.1rem;
+          /* Narrowest screens: let it break rather than push the toggle off. */
+          white-space: normal;
         }
 
         button {
@@ -655,10 +695,14 @@
         display: flex;
         flex-direction: column;
         gap: 0.15rem;
-        min-width: 0;
+        /* Does not shrink: .buttons is the flexible one, so the title keeps
+           its single line and the buttons wrap around it. */
+        flex-shrink: 0;
       }
 
       .current-file {
+        /* Capped so a deep path cannot stretch the now-unshrinkable title. */
+        max-width: 32ch;
         color: var(--text-toolbar);
         opacity: 0.7;
         font-size: 0.85rem;
