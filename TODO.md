@@ -51,6 +51,53 @@
     through htmlToMarkdown → markdownToHtml before inserting, so only
     markdown-expressible structure gets in.
 
+## Save fidelity
+
+Three ways the bytes on disk differ from what was opened. All verified by
+round-tripping real files through the running app.
+
+*   **UNDECIDED: bug or documented behaviour?** Saving reflows hard-wrapped
+    markdown into one long line per paragraph. Turndown emits a paragraph as a
+    single line and nothing re-wraps it, so opening a file wrapped at 80 columns
+    and saving it back rewrites every prose line in the file. The content is
+    unchanged — round-tripping TODO.md gives 1423 of 1423 tokens identical — but
+    the git diff is the whole file.
+
+    The case for calling it a bug: it makes Marky unusable on a repo whose
+    markdown is hard-wrapped, which is most of them, including this one.
+
+    The case for calling it documented behaviour: re-wrapping imposes a house
+    style on every file saved. For a file written one-sentence-per-line, or
+    deliberately unwrapped, forcing 80 columns is its own kind of damage, and
+    Marky cannot tell which convention a file follows unless it is told.
+
+    A 29-line reflow pass was prototyped and gets TODO.md down to 33 changed
+    lines, all of them just different break positions. It needs three guards to
+    be safe, two of which were confirmed broken without them: table rows must be
+    skipped (a wrapped `|` row stops being a table), fenced code must be skipped,
+    and a break must never land immediately before `#`, `-`, `1.` or `>`, which
+    turns the continuation line into a heading, bullet or quote — reproduced at
+    widths 30–32.
+
+    If it is a bug, the fix worth having is probably not a global width but
+    matching each file: measure the longest prose line on open, and re-wrap on
+    save only if the file was already wrapped, at roughly its own width.
+    Otherwise, say plainly in the README that Marky normalises wrapping.
+
+*   Saving strips the trailing newline. Turndown's output does not end in one and
+    nothing adds it back, so every save leaves a file git reports as "\ No newline
+    at end of file". One line to fix in `saveFile` (file-api.js); left alone only
+    because it is the same "what may Marky change about a file it did not write"
+    question as the wrapping above, and the two want deciding together.
+
+*   markdown-it eats LaTeX brace escapes before MathJax sees them. `\{` and `\}`
+    inside `$$…$$` are resolved as markdown escapes during `markdownToHtml`, so
+    `$$\mathbb{N} = \{ a \}$$` reaches MathJax as `\mathbb{N} = { a }` and
+    renders without the visible braces — wrong on screen, and then saved that way.
+    Unrelated to the `data-tex` round trip, which faithfully preserves whatever
+    MathJax was actually given; this one is upstream of it. Wants markdown-it
+    configured to leave `$$…$$` spans alone, or a math-aware plugin.
+
 ## Format bar
 
 *   The inline toolbar doesn't stay within the app. `showFormatBar` sets `left`

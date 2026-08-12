@@ -107,6 +107,36 @@ function containsLatex(text) {
   );
 }
 
+// MathJax renders the `$$…$$` source away: by the time Turndown runs there is
+// nothing left in the DOM but glyphs, so a save writes `\frac{a}{b}` back out as
+// "ab". MathJax does keep the original TeX — in the math list it builds while
+// typesetting — so stamp it onto each container while the two are still
+// associated. The "mathjax" Turndown rule in app.js reads it back.
+//
+// Same trick as `.mermaid-source`, one level down: there the source survives as
+// a hidden element, here as an attribute. Both have to survive an export, which
+// is why neither lives anywhere but the document itself.
+function stampLatexSource(container) {
+  const mathDocument = window.MathJax && MathJax.startup && MathJax.startup.document;
+  if (!mathDocument) return;
+
+  for (const item of mathDocument.math) {
+    const root = item.typesetRoot;
+    // The list accumulates across typesets and outlives the nodes it describes,
+    // so only stamp roots still standing in this container.
+    if (!root || !container.contains(root)) continue;
+    if (root.hasAttribute("data-tex")) continue;
+    // A container inside another container is not authored maths. Loading an
+    // exported document makes MathJax re-typeset its own assistive MathML and
+    // nest a second container inside the first, and that pass reports MathML
+    // rather than TeX — stamping it would write a `<math>` element into
+    // data-tex and carry it through every later save and export.
+    if (root.parentElement && root.parentElement.closest("mjx-container")) continue;
+    root.setAttribute("data-tex", item.math);
+    root.setAttribute("data-display", item.display ? "block" : "inline");
+  }
+}
+
 // MathJax is only downloaded once the document actually contains maths.
 async function renderLatex(container) {
   if (!containsLatex(container.textContent)) return;
@@ -114,6 +144,7 @@ async function renderLatex(container) {
   try {
     const mathJax = await ensureMathJax();
     await mathJax.typesetPromise([container]);
+    stampLatexSource(container);
   } catch (error) {
     console.error("[MathJax] Render error:", error);
   }

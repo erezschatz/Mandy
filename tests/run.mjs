@@ -7,6 +7,7 @@ const SUITES = [
   ["static-export", "./static-export.test.mjs"],
   ["self-reproduce", "./self-reproduce.test.mjs"],
   ["file-path", "./file-path.test.mjs"],
+  ["latex", "./latex.test.mjs"],
 ];
 
 let passed = 0;

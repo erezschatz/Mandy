@@ -19,6 +19,24 @@ turndownService.addRule("mermaid", {
   },
 });
 
+// The LaTeX counterpart of the mermaid rule above. MathJax renders the source
+// away, so without this a save writes the rendered glyphs back to the file:
+// $$\frac{a}{b}$$ returns as "ab", and there is no getting it back.
+// renderers.js stamps data-tex while the TeX is still recoverable.
+turndownService.addRule("mathjax", {
+  filter: function (node) {
+    return node.nodeName === "MJX-CONTAINER" && node.hasAttribute("data-tex");
+  },
+  // No surrounding newlines for display maths: an equation that was its own
+  // paragraph is the only child of its <p>, so Turndown's own block handling
+  // gives it the blank lines. Forcing them here would instead split a sentence
+  // that happened to contain $$…$$ into three paragraphs.
+  replacement: function (content, node) {
+    const delimiter = node.getAttribute("data-display") === "block" ? "$$" : "$";
+    return delimiter + node.getAttribute("data-tex") + delimiter;
+  },
+});
+
 // One slug for every export filename. Kept here rather than in any one export
 // module because app.js loads before all three of them, in index.html and in
 // the editable export's bundle alike.

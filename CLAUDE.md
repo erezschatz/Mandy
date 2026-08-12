@@ -93,11 +93,28 @@ there is no non-blank `localStorage["markdownContent"]` to restore. Edit the
 markdown, not the markup — and note `welcome.md` is a shell asset, so it needs
 its `sw.js` entry to survive offline.
 
-Mermaid blocks are the exception worth knowing: `renderers.js` replaces the
-`<pre><code class="language-mermaid">` with a `.mermaid-wrapper` holding both the
-rendered SVG and a hidden `.mermaid-source` element. A custom Turndown rule in
-`app.js` reads that hidden source to reconstruct the fenced block. Break the
-wrapper structure and diagrams round-trip to nothing.
+Mermaid and LaTeX are the two exceptions worth knowing, and they are the same
+problem solved twice: both renderers destroy the source they render from, so
+each has to stash it somewhere Turndown can find it again. Break either and the
+content round-trips to nothing — silently, because the document still looks
+right on screen.
+
+- **Mermaid** — `renderers.js` replaces the `<pre><code class="language-mermaid">`
+  with a `.mermaid-wrapper` holding both the rendered SVG and a hidden
+  `.mermaid-source` element. A Turndown rule in `app.js` reads that hidden
+  source to reconstruct the fenced block.
+- **LaTeX** — MathJax leaves nothing but glyphs behind, so `stampLatexSource`
+  in `renderers.js` copies the original TeX onto each `<mjx-container>` as
+  `data-tex` / `data-display`, reading it out of `MathJax.startup.document.math`
+  while the two are still associated. The `mathjax` Turndown rule in `app.js`
+  turns those attributes back into `$…$` / `$$…$$`. The stamp is an attribute
+  rather than an element so it survives being written into an exported file and
+  parsed back; an existing stamp is never overwritten, because MathJax
+  re-typesets already-rendered maths on load and reports MathML the second time.
+
+Note the loss that is *not* fixed: markdown-it resolves `\{` and `\}` as
+markdown escapes on the way in, before MathJax ever sees them, so those survive
+neither rendering nor saving. That is an input-side bug, upstream of both rules.
 
 Autosave writes `editor.innerHTML` to `localStorage["markdownContent"]` on a 1s
 debounce — separate from, and unaware of, the file on disk.
@@ -131,11 +148,16 @@ from `<style id="app-style">` + `<script id="app-script">`, falling back to
 `fetch` only when those are absent (i.e. when running in the app). Rename either
 id and re-export silently degrades to a fetch of nothing.
 
-The one module deliberately excluded is `file-api.js`: it drives the
-server-backed open/save, and an exported document has no server. It falls back
-to blob download instead — which is why `app.js` guards `downloadBtn` /
-`uploadBtn` / `fileInput` with existence checks, and why those two buttons are
-the only real split in the toolbar spec.
+Two modules are deliberately excluded from `ASSETS`, both because the thing they
+drive does not exist in an exported document:
+
+- `file-api.js` — it drives the server-backed open/save, and an exported
+  document has no server. It falls back to blob download instead, which is why
+  `app.js` guards `downloadBtn` / `uploadBtn` / `fileInput` with existence
+  checks, and why those two buttons are the only real split in the toolbar spec.
+- `theme-manager.js` — it binds the theme toggle, which `toolbar.js` only
+  renders for the `app` variant. Exported documents follow the reader's OS
+  preference via the inline `THEME_SCRIPT` instead.
 
 Both files build `</script>` from a constant rather than writing it literally,
 for the reason documented at the top of `html-export.js`. They use *different*
