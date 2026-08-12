@@ -1,8 +1,8 @@
 # 📝 Marky - Simple & Free Markdown Editor
 
-A powerful WYSIWYG markdown editor that runs entirely in your browser. No installation, no sign-up required!
+A WYSIWYG markdown editor that runs on your own machine and edits your own markdown files.
 
-**The ultimate tool for collaborative document workflows.** Marky lets you create markdown documents and export them as **fully editable HTML files** that anyone can modify and return to you. Perfect for spec-driven AI development, stakeholder reviews, and collaborative editing - share HTML exports with colleagues who can edit and send back their changes as markdown.
+Marky allows you to create markdown documents and export them as **fully editable HTML files** that anyone can modify and return to you. Perfect for spec-driven AI development and stakeholder reviews.
 
 ## 🚀 Get Started
 
@@ -27,7 +27,7 @@ Marky runs on your own machine and edits your own files. See
 - **Save to Disk** - Write your work straight back to the file you opened, no download dance
 - **Copy to Clipboard** - Instantly copy all your markdown with one click
 - **Export as HTML** - Generate a standalone, self-contained HTML page of the document alone - the same kind of deliverable as PDF or DOCX, for sharing something to be read
-- **Export as Editable** - Generate an HTML file with the editor bundled in, so recipients can modify it directly in their browser and send it back to you. Perfect for collaborative workflows - no markdown knowledge required at their end! The file they receive is fully capable: they can export it to markdown, PDF, DOCX or HTML, and re-export another editable copy to pass along, all without Marky installed
+- **Export as Editable** - Generate an HTML file with the editor bundled in, so recipients can modify it directly in their browser and send it back to you. No markdown knowledge required at their end. The file is completely self-contained - one HTML file that runs entirely in the browser, with nothing to install and no sign-up - and fully capable: they can export it to markdown, PDF, DOCX or HTML, and re-export another editable copy to pass along
 - **Export as PDF** - Generate professional, print-ready PDF documents with one click. Images are automatically optimized to ensure reasonable file sizes while maintaining quality
 - **Export as DOCX** - Generate a Word document with headings, tables and formatting intact. Mermaid diagrams are embedded as images; LaTeX comes through as plain text rather than rendered maths
 
@@ -77,18 +77,14 @@ Make your workflow even faster:
 - ✍️ Drafting blog posts in markdown
 - 📊 Creating technical documentation
 - 🎓 Academic writing and research notes
-- 🤖 **Collaborative Workflows** - Export as editable HTML, share with colleagues who can make changes directly in their browser, then receive their edits back as markdown
-- 🔄 **Spec-Driven AI Development** - Create specs, export as editable HTML for stakeholder review and editing, receive their modified versions back, and seamlessly continue your AI development workflow
+- 🤖 **Share & Receive** - Export as editable HTML, share with colleagues who can make changes directly in their browser, then receive their edits back as markdown
+- 🔄 **Spec-Driven AI Development** - Create specs, export as editable HTML for stakeholder review and editing, receive their modified versions back, and continue your AI development workflow
 
 ## ✨ Features
 
-- ✅ **Editable HTML Exports** - Recipients can edit exported HTML files and send changes back
-- ✅ **No Account Required** - Start using immediately
-- ✅ **Installable** - Ships a web app manifest and a service worker, so you can install it and it keeps working offline once its libraries have been cached
-- ✅ **No Data Sent to Servers** - No analytics, no telemetry; the only server involved is the one running on your own machine
-- ✅ **Free Forever** - No subscriptions, no hidden fees
-- ✅ **Open Source** - Transparent and community-driven
-- ✅ **Dark Mode** - Automatic theme switching based on system preference, with manual override
+- **Editable HTML Exports** - Recipients can edit exported HTML files and send changes back
+- **Export to HTML, PDF and DOCX** - A standalone HTML page, a print-ready PDF, or a Word document with headings, tables and formatting intact
+- **Dark Mode** - Automatic theme switching based on system preference, with manual override
 
 ## 🛠️ Quick Start Guide
 
@@ -106,8 +102,6 @@ Unlike other markdown editors:
 - **Editable HTML exports** - Share documents that recipients can modify and return
 - No complicated split-pane views - just pure WYSIWYG
 - No account creation or login required
-- Completely self-contained - one HTML file does it all
-- Lightning fast - no server roundtrips
 - Your markdown data never leaves your device
 
 ## 💡 Pro Tips
