@@ -1,7 +1,7 @@
 // The HTML export is the document alone: no editor, no scripts beyond the
 // theme sniffer, and self-contained enough to open from a mail attachment.
 
-import { loadSource } from "./dom.mjs";
+import { loadApp, loadSource } from "./dom.mjs";
 
 const DOC_HTML = `<h1>Quarterly Report</h1>
 <p>Body text with <strong>bold</strong>.</p>
@@ -41,7 +41,12 @@ export default async function run(check) {
   let downloadName = null;
   let handler = null;
 
+  // The real one from app.js, not a stub: the leading-hyphen bug lived in this
+  // slug, and a stub here would have hidden it.
+  const { slugifyTitle } = loadApp();
+
   loadSource("static-export.js", {
+    slugifyTitle,
     document: {
       getElementById: () => null,
       querySelectorAll: () => [
@@ -74,6 +79,17 @@ export default async function run(check) {
   check("starts with a doctype", written.startsWith("<!doctype html>"));
   check("title comes from the first h1", written.includes("<title>Quarterly Report</title>"));
   check("filename is slugged from the title", /^quarterly-report-\d+\.html$/.test(downloadName));
+
+  // An emoji-led title ("👋 Welcome to Marky") strips to a leading space, which
+  // used to survive as a leading hyphen: "-welcome-to-marky-1234.html".
+  check("emoji-led titles do not leave a leading hyphen",
+    slugifyTitle("👋 Welcome to Marky", "document") === "welcome-to-marky");
+  check("trailing punctuation does not leave a trailing hyphen",
+    slugifyTitle("Report — Q4!", "document") === "report-q4");
+  check("runs of separators collapse",
+    slugifyTitle("A   ///   B", "document") === "a-b");
+  check("a title with nothing slugworthy falls back",
+    slugifyTitle("🎉🎉🎉", "document") === "document");
   check("app.css is inlined", written.includes("#editor h1 { font-size: 2rem; }"));
   check("MathJax runtime styles are copied", written.includes("mjx-container{display:inline}"));
   check("non-MathJax styles are excluded", !written.includes("SHOULD-NOT-APPEAR"));

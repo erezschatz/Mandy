@@ -1,18 +1,7 @@
 function generatePDFFilename() {
   const firstHeading = editor.querySelector("h1");
-  let title = "marky";
-
-  if (firstHeading && firstHeading.textContent.trim()) {
-    title = firstHeading.textContent
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, "")
-      .replace(/\s+/g, "-")
-      .substring(0, 50);
-  }
-
-  const timestamp = Date.now();
-  return `${title}-${timestamp}.pdf`;
+  const title = slugifyTitle(firstHeading && firstHeading.textContent, "marky");
+  return `${title}-${Date.now()}.pdf`;
 }
 
 async function compressImage(imgElement, maxSizeBytes = 1048576) {

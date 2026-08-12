@@ -125,3 +125,48 @@ export function loadSource(files, globals, tail = "") {
     ...names.map((n) => globals[n]),
   );
 }
+
+// app.js defines globals the later modules use — `slugifyTitle` for every
+// export filename, and the Turndown rules. Loading it for real rather than
+// stubbing those keeps a test honest when app.js changes underneath it.
+// TurndownService is a recorder here: no suite needs conversion, only the rules.
+export function loadApp() {
+  const noop = () => {};
+  const el = () => makeEl("div");
+  const rules = {};
+
+  return loadSource(
+    "app.js",
+    {
+      window: {
+        markdownit: () => ({ render: (s) => s }),
+        addEventListener: noop,
+        matchMedia: () => ({ matches: false }),
+      },
+      TurndownService: class {
+        addRule(name, rule) {
+          rules[name] = rule;
+        }
+        turndown(html) {
+          return html;
+        }
+      },
+      document: {
+        getElementById: () => el(),
+        createElement: el,
+        addEventListener: noop,
+        body: { appendChild: noop, removeChild: noop },
+      },
+      localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+      navigator: { clipboard: {} },
+      onToolbarAction: noop,
+      toolbarButton: () => null,
+      runToolbarAction: noop,
+      setTimeout: noop,
+      clearTimeout: noop,
+      console,
+      __rules: rules,
+    },
+    "; return { rules: __rules, slugifyTitle, isBlankContent };",
+  );
+}

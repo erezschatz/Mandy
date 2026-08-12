@@ -54,12 +54,7 @@ function documentTitle() {
 }
 
 function documentFilename() {
-  const slug = documentTitle()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .substring(0, 50);
-  return `${slug || "document"}-${Date.now()}.html`;
+  return `${slugifyTitle(documentTitle(), "document")}-${Date.now()}.html`;
 }
 
 // MathJax renders maths to CHTML, which is inert without the stylesheet MathJax

@@ -15,12 +15,7 @@
        * Generate filename for DOCX
        */
       function generateDocxFilename() {
-        const title = extractDocxTitle();
-        const sanitized = title
-          .toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, "")
-          .replace(/\s+/g, "-")
-          .substring(0, 50);
+        const sanitized = slugifyTitle(extractDocxTitle(), "document");
         const timestamp = Date.now();
         return `${sanitized}-${timestamp}.docx`;
       }

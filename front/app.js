@@ -19,6 +19,25 @@ turndownService.addRule("mermaid", {
   },
 });
 
+// One slug for every export filename. Kept here rather than in any one export
+// module because app.js loads before all three of them, in index.html and in
+// the editable export's bundle alike.
+//
+// The trims are load-bearing, not tidiness: a title starting with an emoji
+// ("👋 Welcome to Marky") strips to a leading space, which then becomes a
+// leading hyphen in the filename.
+function slugifyTitle(text, fallback) {
+  const slug = (text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .substring(0, 50)
+    .replace(/^-+|-+$/g, "");
+  return slug || fallback;
+}
+
 const editor = document.getElementById("editor");
 // fileInput only exists in exported HTML files, which have no server behind
 // them; the app itself uses the file API instead.
