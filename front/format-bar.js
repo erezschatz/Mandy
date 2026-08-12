@@ -13,7 +13,6 @@ function showFormatBar() {
     return;
   }
 
-  const editorRect = editor.getBoundingClientRect();
   const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
 
   formatBar.style.left = `${
@@ -32,6 +31,7 @@ function updateActiveButtons() {
   if (!selection.rangeCount) return;
 
   let node = selection.anchorNode;
+  if (!node) return;
   if (node.nodeType === Node.TEXT_NODE) {
     node = node.parentElement;
   }
@@ -67,93 +67,99 @@ function updateActiveButtons() {
   }
 }
 
+const BLOCK_TAGS = ["P", "H1", "H2", "H3", "LI", "PRE"];
+
+// Never returns #editor. Formatting must not target the editable root: swapping
+// it out detaches the document, so the `#editor` CSS stops matching, the
+// contenteditable attribute goes with it, and every module is left holding a
+// reference to a node that is no longer in the page. That produced an editor
+// that looked unstyled, refused input, and only recovered on reload.
+function blockAncestor(node) {
+  let element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  while (
+    element &&
+    element !== editor &&
+    !BLOCK_TAGS.includes(element.tagName)
+  ) {
+    element = element.parentElement;
+  }
+  return element && element !== editor ? element : null;
+}
+
+// Top-level blocks the selection touches, for the one format with no
+// execCommand equivalent.
+function blocksInRange(range) {
+  return Array.from(editor.children).filter((child) =>
+    range.intersectsNode(child),
+  );
+}
+
+function saveSoon() {
+  setTimeout(() => {
+    localStorage.setItem("markdownContent", editor.innerHTML);
+  }, 100);
+}
+
+// Hand-rolled because there is no execCommand for code blocks. Multiple
+// selected blocks collapse into one fenced block, joined by newlines.
+function toggleCodeBlock(range) {
+  const block = blockAncestor(range.commonAncestorContainer);
+  const pre = block && block.closest("pre");
+
+  if (pre && editor.contains(pre)) {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = pre.textContent;
+    pre.parentNode.replaceChild(paragraph, pre);
+    return;
+  }
+
+  const blocks = blocksInRange(range);
+  if (!blocks.length) return;
+
+  const preElement = document.createElement("pre");
+  const codeElement = document.createElement("code");
+  codeElement.textContent = blocks.map((b) => b.textContent).join("\n");
+  preElement.appendChild(codeElement);
+
+  blocks[0].parentNode.replaceChild(preElement, blocks[0]);
+  for (const extra of blocks.slice(1)) extra.remove();
+}
+
 function applyFormat(format) {
   const selection = window.getSelection();
   if (!selection.rangeCount) return;
 
   const range = selection.getRangeAt(0);
-  let container = range.commonAncestorContainer;
+  if (!editor.contains(range.commonAncestorContainer)) return;
 
-  if (container.nodeType === Node.TEXT_NODE) {
-    container = container.parentElement;
+  switch (format) {
+    case "bold":
+      document.execCommand("bold", false, null);
+      break;
+    case "italic":
+      document.execCommand("italic", false, null);
+      break;
+    // The list commands toggle: run inside an existing list, they unwrap it.
+    case "ul":
+      document.execCommand("insertUnorderedList", false, null);
+      break;
+    case "ol":
+      document.execCommand("insertOrderedList", false, null);
+      break;
+    case "code":
+      toggleCodeBlock(range);
+      break;
+    // p, h1, h2, h3. formatBlock spans a multi-block selection natively and
+    // works inside the editable root rather than on it.
+    default:
+      document.execCommand("formatBlock", false, `<${format}>`);
   }
 
-  if (format === "bold") {
-    document.execCommand("bold", false, null);
-    setTimeout(() => {
-      localStorage.setItem("markdownContent", editor.innerHTML);
-    }, 100);
-    return;
+  // Bold and italic leave the bar up so they can be combined on one selection.
+  if (format !== "bold" && format !== "italic") {
+    formatBar.classList.remove("visible");
   }
-
-  if (format === "italic") {
-    document.execCommand("italic", false, null);
-    setTimeout(() => {
-      localStorage.setItem("markdownContent", editor.innerHTML);
-    }, 100);
-    return;
-  }
-
-  let targetElement = container;
-  while (
-    targetElement &&
-    targetElement !== editor &&
-    !["P", "H1", "H2", "H3", "LI", "PRE"].includes(targetElement.tagName)
-  ) {
-    targetElement = targetElement.parentElement;
-  }
-
-  if (!targetElement || targetElement === editor) {
-    targetElement = container;
-  }
-
-  if (format === "ul" || format === "ol") {
-    const listParent = targetElement.closest("ul, ol");
-
-    if (listParent) {
-      const li = targetElement.closest("li");
-      if (li) {
-        const p = document.createElement("p");
-        p.innerHTML = li.innerHTML;
-        listParent.parentNode.insertBefore(p, listParent);
-        li.remove();
-        if (listParent.children.length === 0) {
-          listParent.remove();
-        }
-      }
-    } else {
-      const content = targetElement.innerHTML;
-      const list = document.createElement(format);
-      const li = document.createElement("li");
-      li.innerHTML = content;
-      list.appendChild(li);
-      targetElement.parentNode.replaceChild(list, targetElement);
-    }
-  } else if (format === "code") {
-    const pre = targetElement.closest("pre");
-
-    if (pre) {
-      const p = document.createElement("p");
-      p.textContent = pre.textContent;
-      pre.parentNode.replaceChild(p, pre);
-    } else {
-      const content = targetElement.textContent;
-      const preElement = document.createElement("pre");
-      const codeElement = document.createElement("code");
-      codeElement.textContent = content;
-      preElement.appendChild(codeElement);
-      targetElement.parentNode.replaceChild(preElement, targetElement);
-    }
-  } else {
-    const newElement = document.createElement(format);
-    newElement.innerHTML = targetElement.innerHTML;
-    targetElement.parentNode.replaceChild(newElement, targetElement);
-  }
-
-  formatBar.classList.remove("visible");
-  setTimeout(() => {
-    localStorage.setItem("markdownContent", editor.innerHTML);
-  }, 100);
+  saveSoon();
 }
 
 document.addEventListener("selectionchange", () => {
