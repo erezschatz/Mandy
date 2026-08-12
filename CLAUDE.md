@@ -7,14 +7,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run serve   # deno task start — server on http://localhost:9130
 npm run dev     # same, with --watch auto-restart
+npm test        # deno run --allow-read tests/run.mjs
 ```
 
 Type-check the server: `cd server && deno task check`.
 `MARKY_PORT` overrides the port. `pm2 start ecosystem.config.cjs` runs it supervised.
 
-There are no tests, no linter, and no build step. There are also no installable
-dependencies — `package.json` exists only to hold the two scripts, and Deno
-fetches Hono itself. Flag it before adding any dependency, npm or Deno.
+There is no linter and no build step, and no installable dependencies —
+`package.json` exists only to hold the scripts, and Deno fetches Hono itself.
+Flag it before adding any dependency, npm or Deno.
+
+### Tests
+
+[tests/](tests/) has no framework and no dependencies. Each suite loads the real
+`front/` sources into a scope with a hand-rolled DOM stub ([tests/dom.mjs](tests/dom.mjs))
+and drives them, so a suite breaks when the source it names changes. Run one
+suite by importing it directly; `tests/run.mjs` runs all five.
+
+They cover the invariants that fail *silently* rather than loudly:
+
+- **toolbar** — every button a variant renders has a handler in a script that
+  variant's bundle ships. Both bundle lists are parsed out of `index.html` and
+  `html-export.js`, so the test cannot drift from the real ones.
+- **format-bar** — formatting never replaces `#editor`. Regression cover for a
+  bug that detached the editable root and left the app looking unstyled and
+  dead until reload.
+- **self-reproduce** — an exported document re-exports without touching the
+  network, and hands its successor byte-identical CSS and JS.
+- **static-export** / **file-path** — the document-only export's contents, and
+  the persistence of the open file and last browsed directory.
 
 ## Architecture
 

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "serve": "cd server && deno task start",
-    "dev": "cd server && deno task dev"
+    "dev": "cd server && deno task dev",
+    "test": "deno run --allow-read tests/run.mjs"
   },
   "keywords": [
     "markdown",
