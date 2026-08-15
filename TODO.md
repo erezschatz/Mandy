@@ -63,6 +63,29 @@
     Reload control, and probably a warning when the file on disk is newer than
     what was loaded. `GET /api/browse` already returns mtime per entry, but
     `GET /api/file` does not, so the read endpoint would need to return it too.
+*   Nothing guards unsaved work. The toolbar now says `(edited)` when the
+    document has diverged from the file, but nothing acts on it — every way out
+    of a dirty document throws it away without asking:
+
+    - **Open** replaces the document outright. `openFile` in file-api.js
+      assigns `editor.innerHTML` and overwrites the autosave with no check at
+      all, so opening a second file silently discards unsaved edits to the
+      first.
+    - **Clear** does confirm, but the wording predates the file API — "remove
+      all content and auto-saved data" — and never mentions the file or whether
+      anything is unsaved. It reads identical whether you are about to lose an
+      untouched welcome document or an hour of work.
+    - **Closing the tab** does not warn. There is a `beforeunload` handler in
+      app.js, but it only flushes the autosave; it never sets `returnValue`, so
+      the browser shows nothing. Autosave means the work is usually still there
+      on reopen, which is *why* nobody notices this until the one time it is
+      not — a cleared cache, a different browser, a private window.
+
+    All three want the same thing: consult the dirty flag, and offer Save /
+    Discard / Cancel rather than a bare yes-no. Note the flag lives in
+    file-api.js, which the editable export does not ship, so the exported
+    document needs its own answer or an honest absence of one.
+
 *   Ghost lines. Pasted text brings in empty lines — roughly 1px tall, enough to
     space bullets unevenly. Not yet reproduced deliberately. Prime suspect is
     the paste handler (app.js), which feeds clipboard HTML straight into
@@ -223,6 +246,33 @@ round-tripping real files through the running app.
 
 ## Interface
 
+*   Replace `alert()` and `confirm()` with in-app notifications. There are nine
+    alerts across six files — file-api.js (browse, open, save failures), app.js
+    (clipboard, twice), pdf-export.js, docx-export.js, html-export.js,
+    static-export.js — plus the one `confirm()` behind Clear. Four problems with
+    them, in rough order of how much they matter:
+
+    - They are modal and block the page, which for an export failure is
+      backwards: the error interrupts, and then the document is fine.
+    - They are unstyled OS chrome, so they ignore the theme and look like a
+      browser malfunction rather than part of the app.
+    - They cannot express anything but OK / Cancel, which is why the unsaved-work
+      guards above cannot be built on `confirm()` — those want Save / Discard /
+      Cancel.
+    - Chrome and Firefox both let a user tick "prevent this page from creating
+      additional dialogs", after which every one of them silently does nothing.
+      A save failure would then be completely invisible. Reasonable of the
+      browsers — the mechanism exists because the dialogs were abused — but it
+      means a page cannot rely on `alert` reaching anyone, which together with
+      being unstyleable is why the platform has effectively retired them.
+
+    Wants one small toast/banner module — a message, a severity, an optional set
+    of actions — and every call site converted. Worth doing before the guards
+    above, since those need the three-way choice. It is a new `front/` file, so
+    it needs all three registries (script tag, `SHELL_ASSETS`, and `ASSETS` if
+    exported documents are to report their own export failures — they raise most
+    of these same alerts).
+
 *   A menu instead of a button row. The toolbar is full: three button groups
     plus the theme toggle, already wrapping onto a second row below roughly
     900px, and every new export or formatting control makes it worse. A menu bar
@@ -237,7 +287,10 @@ round-tripping real files through the running app.
     file-api.js tracks a single `currentFilePath`. All three become per-document,
     plus somewhere to persist the open set across reloads. Worth deciding early
     whether a tab is just a path plus content, or carries its own undo history,
-    scroll position and selection. (If what was meant is edit/preview/source
+    scroll position and selection. The dirty flag becomes per-tab too, and
+    should switch presentation with it: the "(edited)" suffix file-api.js writes
+    today reads fine on a single filename, but the convention on a row of tabs
+    is a red `*` against each unsaved one. (If what was meant is edit/preview/source
     tabs rather than multiple files, that is the source-view item above.)
 
 ## Architecture

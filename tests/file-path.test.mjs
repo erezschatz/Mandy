@@ -14,11 +14,12 @@ const DIALOG_IDS = [
   "dialogSaveConfirm",
 ];
 
-function boot({ savedContent, savedPath, savedDir }) {
+function boot({ savedContent, savedPath, savedDir, savedDirty }) {
   const store = new Map();
   if (savedContent !== undefined) store.set("markdownContent", savedContent);
   if (savedPath !== undefined) store.set("marky-current-file", savedPath);
   if (savedDir !== undefined) store.set("marky-last-dir", savedDir);
+  if (savedDirty !== undefined) store.set("marky-dirty", savedDirty);
 
   const toolbar = makeEl();
   toolbar.className = "toolbar";
@@ -62,8 +63,15 @@ function boot({ savedContent, savedPath, savedDir }) {
         getSelection: () => ({ removeAllRanges() {}, addRange() {} }),
       },
       navigator: { clipboard: {} },
-      fetch: async () => ({
-        ok: true, json: async () => ({ home: "/home/x" }), text: async () => "",
+      // /api/home on boot; a save echoes back the path it was given, which is
+      // what the real endpoint does and what setCurrentFile reads.
+      fetch: async (url, opts) => ({
+        ok: true,
+        json: async () =>
+          opts && opts.method === "POST"
+            ? { path: JSON.parse(opts.body).path }
+            : { home: "/home/x" },
+        text: async () => "",
       }),
       TurndownService: class { addRule() {} turndown(h) { return h; } },
       alert() {},
@@ -75,13 +83,22 @@ function boot({ savedContent, savedPath, savedDir }) {
       Blob: class {},
       Date,
     },
-    "; return { path: currentFilePath, label: currentFileLabel.textContent, dir: dialogDir };",
+    "; return { path: currentFilePath, label: currentFileLabel.textContent," +
+      " dir: dialogDir, labelEl: currentFileLabel, saveFile };",
   );
 
   const editorEl = extra.get("editor");
   return {
     ...api,
     store,
+    // What the toolbar reads right now, as opposed to `label` — the snapshot
+    // taken while the scripts were still loading.
+    labelNow: () => api.labelEl.textContent,
+    // Typing, and anything else that goes through execCommand: file-api.js
+    // hangs the dirty flag off the editor's own input event.
+    type: () => {
+      for (const fn of editorEl.listeners.input || []) fn();
+    },
     clear: () => {
       editorEl.innerHTML = "<p><br></p>"; // app.js's handler has already run
       toolbar.listeners.click[0]({
@@ -91,7 +108,7 @@ function boot({ savedContent, savedPath, savedDir }) {
   };
 }
 
-export default function run(check) {
+export default async function run(check) {
   let r = boot({ savedContent: "<h1>Real work</h1>", savedPath: "/home/erez/notes/plan.md" });
   check("path restored alongside content", r.path === "/home/erez/notes/plan.md");
   check("label shows the basename", r.label === "plan.md");
@@ -126,4 +143,46 @@ export default function run(check) {
   check("clear drops the persisted path", !r.store.has("marky-current-file"));
   check("clear keeps the last directory",
     r.store.get("marky-last-dir") === "/home/erez/projects/docs");
+
+  // --- edited marker -------------------------------------------------------
+  //
+  // Autosave writes to localStorage on a debounce and knows nothing about the
+  // file on disk, so a filename in the toolbar says nothing about whether the
+  // two still match. Every check below is a way that lie can creep back.
+
+  r = boot({ savedContent: "<h1>Real work</h1>", savedPath: "/home/erez/notes/plan.md" });
+  check("a freshly restored document is not marked edited",
+    r.labelNow() === "plan.md");
+
+  r.type();
+  check("typing marks the document edited", r.labelNow() === "plan.md (edited)");
+  check("and the full path stays in the tooltip",
+    r.labelEl.title === "/home/erez/notes/plan.md");
+
+  // Autosave survives a reload, so the flag has to as well — otherwise the
+  // toolbar reopens showing a clean filename over unsaved edits.
+  check("the edited flag is persisted", r.store.get("marky-dirty") === "1");
+
+  r = boot({
+    savedContent: "<h1>Real work</h1>",
+    savedPath: "/home/erez/notes/plan.md",
+    savedDirty: "1",
+  });
+  check("the edited marker survives a reload", r.labelNow() === "plan.md (edited)");
+
+  await r.saveFile("/home/erez/notes/plan.md");
+  check("saving clears the marker", r.labelNow() === "plan.md");
+  check("and drops the persisted flag", !r.store.has("marky-dirty"));
+
+  r = boot({ savedContent: "<h1>Real work</h1>", savedPath: "/home/erez/notes/plan.md" });
+  r.type();
+  r.clear();
+  check("clear drops the marker with the path", r.labelNow() === "");
+  check("clear drops the persisted flag", !r.store.has("marky-dirty"));
+
+  // Nothing to be out of step with when no file is open, so the marker would
+  // be a bare "(edited)" hanging next to the app title.
+  r = boot({ savedContent: "<h1>Real work</h1>" });
+  r.type();
+  check("no marker without a file open", r.labelNow() === "");
 }

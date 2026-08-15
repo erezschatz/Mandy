@@ -14,14 +14,45 @@ const dialogSaveConfirm = document.getElementById("dialogSaveConfirm");
 
 const FILE_PATH_KEY = "marky-current-file";
 const LAST_DIR_KEY = "marky-last-dir";
+const DIRTY_KEY = "marky-dirty";
 
 let currentFilePath = null;
+// Edited since the last open or save. Autosave is unaware of the file on disk,
+// so without this the toolbar shows a filename that may be nothing like the
+// bytes it names.
+let isDirty = false;
 let dialogMode = "open";
 // Last visited directory, reused between openings and across reloads — walking
 // back to the same folder every session is the kind of friction you only notice
 // by having to do it.
 let dialogDir = localStorage.getItem(LAST_DIR_KEY);
 let saveResolver = null;
+
+function renderCurrentFile() {
+  if (!currentFileLabel) return;
+
+  const name = currentFilePath ? currentFilePath.split("/").pop() : "";
+  // Only meaningful against a file on disk: with no file open there is nothing
+  // the document could be out of step with.
+  currentFileLabel.textContent = name && isDirty ? `${name} (edited)` : name;
+  currentFileLabel.title = currentFilePath || "";
+}
+
+// Persisted for the same reason the path is: autosave keeps unsaved edits
+// across a reload, so a flag that reset on load would show a clean filename
+// over a document that does not match the file — the one lie this indicator
+// exists to prevent.
+function setDirty(dirty) {
+  if (isDirty === dirty) return;
+  isDirty = dirty;
+
+  if (dirty) {
+    localStorage.setItem(DIRTY_KEY, "1");
+  } else {
+    localStorage.removeItem(DIRTY_KEY);
+  }
+  renderCurrentFile();
+}
 
 // Persisted alongside the content so a reload keeps saving to the same file
 // rather than silently reverting to "untitled" and prompting again.
@@ -32,10 +63,7 @@ function setCurrentFile(filePath) {
   } else {
     localStorage.removeItem(FILE_PATH_KEY);
   }
-  if (currentFileLabel) {
-    currentFileLabel.textContent = filePath ? filePath.split("/").pop() : "";
-    currentFileLabel.title = filePath || "";
-  }
+  renderCurrentFile();
 }
 
 // Only restore the path if the content is being restored too. When app.js is
@@ -44,11 +72,19 @@ function setCurrentFile(filePath) {
 (function restoreCurrentFile() {
   const savedContent = localStorage.getItem("markdownContent");
   if (savedContent && !isBlankContent(savedContent)) {
+    isDirty = localStorage.getItem(DIRTY_KEY) === "1";
     setCurrentFile(localStorage.getItem(FILE_PATH_KEY));
   } else {
     localStorage.removeItem(FILE_PATH_KEY);
+    localStorage.removeItem(DIRTY_KEY);
   }
 })();
+
+// Typing, formatting and paste all land here: execCommand fires input too, so
+// the format bar marks the document edited without needing its own hook.
+// Assigning editor.innerHTML does not, which is why opening a file and clearing
+// do not trip this.
+editor.addEventListener("input", () => setDirty(true));
 
 // Clearing the document drops the file association: app.js has already emptied
 // the editor and the autosave, and without this a reload would show a filename
@@ -56,7 +92,10 @@ function setCurrentFile(filePath) {
 // app.js registers its handler first, so a cancelled confirm leaves content in
 // place and this correctly does nothing.
 onToolbarAction("clear", () => {
-  if (isBlankContent(editor.innerHTML)) setCurrentFile(null);
+  if (isBlankContent(editor.innerHTML)) {
+    setDirty(false);
+    setCurrentFile(null);
+  }
 });
 
 function parentDir(filePath) {
@@ -216,6 +255,7 @@ async function openFile(filePath) {
   await renderMermaidDiagrams(editor);
   await renderLatex(editor);
   localStorage.setItem("markdownContent", editor.innerHTML);
+  setDirty(false);
   setCurrentFile(data.path);
 }
 
@@ -236,6 +276,7 @@ async function saveFile(filePath) {
     return false;
   }
 
+  setDirty(false);
   setCurrentFile(data.path);
   return true;
 }
