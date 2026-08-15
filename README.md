@@ -161,11 +161,67 @@ If `pm2 startup` launches it at boot and it cannot find `deno`, give `script` an
 absolute path (`which deno`) — the boot environment has a narrower `PATH` than
 your shell.
 
+### Tests
+
+```bash
+npm test
+```
+
+No framework and nothing to install — the suites load the real `front/` sources
+into a scope with a hand-rolled DOM stub ([tests/dom.mjs](tests/dom.mjs)) and
+drive them, so a suite breaks when the code it names changes. `tests/run.mjs`
+runs all eight and exits non-zero on failure; import a suite directly to run
+just that one.
+
+They deliberately cover the things that fail **silently** — where the document
+still looks right on screen and only the file on disk, or an export nobody
+opened yet, is wrong:
+
+| Suite | Holds |
+| --- | --- |
+| `toolbar` | Every button a variant renders has a handler in a script that variant ships, so no control is dead. |
+| `format-bar` | Formatting never replaces `#editor` — the bug that left the app looking unstyled and dead until reload. |
+| `latex` | The `data-tex` round trip, without which MathJax's rendered glyphs get saved over your equations. |
+| `save-fidelity` | Horizontal rules stay `---` and saved files end in exactly one newline. |
+| `links` | Anchor slugs, the scheme allowlist, and the Ctrl+Click hint staying out of the markdown. |
+| `static-export` | What the document-only export contains, including heading anchor ids. |
+| `self-reproduce` | An exported document re-exports offline, handing its successor byte-identical CSS and JS. |
+| `file-path` | The open file, the last browsed directory, and the `(edited)` marker surviving a reload. |
+
+Type-check the server separately with `cd server && deno task check`.
+
 ### Dependencies
 
-There are none to install. The frontend is vanilla JavaScript, the server uses
-Deno (which fetches its own imports), and `package.json` exists only to hold the
-`serve` and `dev` scripts.
+There is nothing to `npm install` — which is not the same as there being no
+dependencies. There is no `node_modules`, no lockfile to maintain and no build
+step; `package.json` exists only to hold the `serve`, `dev` and `test` scripts.
+What Marky actually depends on is fetched at runtime instead:
+
+**Server** — [Hono](https://hono.dev/), pinned in
+[server/deno.json](server/deno.json) as `npm:hono@^4.12.23`. Deno resolves and
+caches it on first run, so the first `npm run serve` on a new machine needs
+network access; after that it runs from Deno's cache. Everything else the server
+uses is `node:fs`, `node:path` and `node:os`.
+
+**Frontend** — no framework, but six libraries from CDN, version-pinned:
+
+| Library | Loaded | For |
+| --- | --- | --- |
+| markdown-it 13 | eagerly | parsing markdown on the way in |
+| Turndown 7 | eagerly | serialising back to markdown on the way out |
+| Mermaid 11 | on first diagram | rendering fenced `mermaid` blocks |
+| MathJax 3 | on first equation | rendering `$…$` / `$$…$$` |
+| html2pdf 0.10 | on first PDF export | PDF |
+| FileSaver 2 | on first DOCX export | DOCX |
+
+The four lazy ones load through the `ensure*` loaders in
+[front/lazy-load.js](front/lazy-load.js) — Mermaid alone is 3.4 MB, so none of
+them are paid for unless used. The service worker caches cross-origin URLs
+cache-first (they are immutable at those versions), so after one visit the
+editor boots offline; a *first* visit still needs the network.
+
+Adding a dependency, npm or Deno, is a decision worth flagging rather than a
+routine one.
 
 Built with vanilla JavaScript and modern web standards. Check out the [GitHub repository](https://github.com/Tommertom/marky) to:
 - Report bugs or issues
