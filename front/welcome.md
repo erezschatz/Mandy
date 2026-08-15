@@ -22,6 +22,9 @@ and see your formatted text in real-time!
 - **Ctrl+Shift+P** (Cmd+Shift+P on Mac) — Export as PDF
 - **Ctrl+Z** (Cmd+Z on Mac) — Undo
 - **Ctrl+Y** or **Ctrl+Shift+Z** (Cmd+Shift+Z on Mac) — Redo
+- **Ctrl+Click** (Cmd+Click on Mac) — Follow a link, or jump to a heading it
+  points at. A plain click still puts the caret in the text, so link text stays
+  editable.
 
 ## 🔄 Two Kinds of HTML Export
 

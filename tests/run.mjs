@@ -8,6 +8,8 @@ const SUITES = [
   ["self-reproduce", "./self-reproduce.test.mjs"],
   ["file-path", "./file-path.test.mjs"],
   ["latex", "./latex.test.mjs"],
+  ["save-fidelity", "./save-fidelity.test.mjs"],
+  ["links", "./links.test.mjs"],
 ];
 
 let passed = 0;

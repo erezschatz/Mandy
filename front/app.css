@@ -16,6 +16,7 @@
         --bg-editor-focus: #fafafa;
         --bg-format-bar: #ffffff;
         --bg-code-block: #f4f4f4;
+        --bg-tooltip: #2c3e50;
 
         /* Text Colors */
         --text-primary: #333333;
@@ -23,6 +24,7 @@
         --text-heading: #2c3e50;
         --text-heading-secondary: #34495e;
         --text-toolbar: #ffffff;
+        --text-tooltip: #ffffff;
 
         /* Borders */
         --border-primary: #e0e0e0;
@@ -55,6 +57,7 @@
         --bg-editor-focus: #222222;
         --bg-format-bar: #2d2d2d;
         --bg-code-block: #2a2a2a;
+        --bg-tooltip: #3d4d5c;
 
         /* Text Colors */
         --text-primary: #e0e0e0;
@@ -62,6 +65,7 @@
         --text-heading: #f0f0f0;
         --text-heading-secondary: #e8e8e8;
         --text-toolbar: #e0e0e0;
+        --text-tooltip: #f0f0f0;
 
         /* Borders */
         --border-primary: #404040;
@@ -358,6 +362,40 @@
 
       #editor a:hover {
         text-decoration: underline;
+      }
+
+      /* Everything below is scoped to the editable document on purpose. The
+         static HTML export drops contenteditable, and there links are ordinary
+         links that need no modifier — telling that reader to Ctrl+Click would
+         be wrong. app.js sets --link-hint to the right word for the platform.
+
+         A pseudo-element rather than a title attribute: Turndown serialises a
+         link title into the markdown as [text](href "title"), so a stamped
+         tooltip would end up written into the user's file. Generated content
+         is never in the DOM, so nothing can serialise it. */
+      #editor[contenteditable="true"] a {
+        cursor: pointer;
+        position: relative;
+      }
+
+      #editor[contenteditable="true"] a:hover::after {
+        content: var(--link-hint, "Ctrl+Click to open link");
+        position: absolute;
+        bottom: 100%;
+        left: 0;
+        margin-bottom: 0.35rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        background: var(--bg-tooltip);
+        color: var(--text-tooltip);
+        font-size: 0.75rem;
+        font-style: normal;
+        font-weight: normal;
+        white-space: nowrap;
+        text-decoration: none;
+        /* The caret still belongs to the text underneath. */
+        pointer-events: none;
+        z-index: 10;
       }
 
       #editor img {

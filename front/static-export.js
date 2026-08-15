@@ -75,6 +75,12 @@ function documentBody() {
   clone.removeAttribute("spellcheck");
   clone.removeAttribute("data-exported");
 
+  // The editor resolves #anchors live on click, but this file ships no JS at
+  // all, so a table of contents only works here if the ids are real. Stamped on
+  // the clone rather than on the document, so nothing lands in the editor and
+  // nothing can reach Turndown.
+  headingAnchors(clone, true);
+
   for (const source of clone.querySelectorAll(".mermaid-source")) {
     source.remove();
   }

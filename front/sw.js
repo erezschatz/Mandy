@@ -8,7 +8,7 @@
 //                  and they are the heavy ones worth never re-fetching.
 //   /api/*       → never touched. Those are live file reads and writes.
 
-const VERSION = "v1.9";
+const VERSION = "v1.10";
 const SHELL_CACHE = `marky-shell-${VERSION}`;
 const RUNTIME_CACHE = `marky-runtime-${VERSION}`;
 

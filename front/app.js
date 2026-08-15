@@ -2,6 +2,13 @@ const md = window.markdownit();
 const turndownService = new TurndownService({
   headingStyle: "atx",
   codeBlockStyle: "fenced",
+  // Turndown's default is "* * *", which almost nobody writes by hand, so every
+  // file with a horizontal rule came back with a changed line for no reason.
+  // This is still a fixed house style rather than one matched to the file --
+  // see the style question in TODO.md -- but "---" is the convention that loses
+  // the fewest diffs. Safe against setext: Turndown always surrounds the rule
+  // with blank lines, so "---" can never attach to a paragraph as an underline.
+  hr: "---",
 });
 
 // Turndown rule to convert mermaid wrappers back to markdown code blocks
@@ -62,8 +69,12 @@ const editor = document.getElementById("editor");
 const fileInput = document.getElementById("fileInput");
 const formatBar = document.getElementById("formatBar");
 
+// Turndown's output never ends in a newline, so every saved file was one git
+// reports as "\ No newline at end of file". Normalised here rather than in
+// saveFile because Download MD writes a file too, and a copied document that
+// ends in a newline is what the clipboard's consumers expect anyway.
 function htmlToMarkdown(html) {
-  return turndownService.turndown(html);
+  return turndownService.turndown(html).replace(/\n*$/, "\n");
 }
 
 function markdownToHtml(markdown) {
@@ -163,6 +174,132 @@ if (fileInput) {
     fileInput.value = "";
   });
 }
+
+// --- Links -----------------------------------------------------------------
+//
+// Two problems, and the anchors are the bigger one. Inside a contenteditable
+// the browser treats a link as text to put the caret in and will not navigate
+// on a modifier either, so nothing here is free. And markdown-it does not slug
+// headings — heading ids are GitHub's extension, not part of the spec — so a
+// table of contents arrives with every link pointing at an element that does
+// not exist. Making the destination exist is most of the work.
+
+// Deliberately NOT slugifyTitle: that one strips non-ASCII (so "Ünïcode
+// Heading" becomes "ncode-heading" while the href markdown-it wrote is
+// "#ünïcode-heading") and truncates at 50 characters, and it is shared by all
+// four export filenames, so it must not be bent to fit this.
+function anchorSlug(text) {
+  return (text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/\s+/g, "-");
+}
+
+// Slugs are resolved against the live document on every click rather than
+// stamped onto the headings once, because an id assigned at render time goes
+// stale the moment someone edits the heading. `stamp` is for the static export,
+// which has no JS to resolve anything and needs real id attributes.
+//
+// Duplicate headings get GitHub's -1, -2 suffixes, so a document with two
+// "Notes" sections still addresses both.
+function headingAnchors(root, stamp = false) {
+  const counts = new Map();
+  const anchors = new Map();
+
+  for (const heading of root.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+    const base = anchorSlug(heading.textContent);
+    if (!base) continue;
+
+    const seen = counts.get(base) || 0;
+    counts.set(base, seen + 1);
+    const slug = seen ? `${base}-${seen}` : base;
+
+    anchors.set(slug, heading);
+    if (stamp) heading.id = slug;
+  }
+
+  return anchors;
+}
+
+// An href out of a document Marky did not write — a file off disk, or an
+// editable export that arrived by mail. `javascript:` through window.open would
+// run in the app's own origin, next to the file API, so this is an allowlist
+// rather than a blocklist.
+const LINK_SCHEMES = ["http:", "https:", "mailto:"];
+
+// scrollIntoView would park the heading under the toolbar, which is sticky at
+// top: 0 — so the jump lands on a heading the reader cannot see. Measured from
+// the live element rather than repeating the 69px min-height from app.css,
+// which is a magic number already and wrong once the toolbar wraps to two rows.
+function scrollToAnchor(target) {
+  const toolbar = document.querySelector(".toolbar");
+  const clearance = toolbar ? toolbar.getBoundingClientRect().height + 12 : 0;
+  const top = target.getBoundingClientRect().top + window.scrollY - clearance;
+
+  window.scrollTo({
+    top: Math.max(top, 0),
+    // Setting location.hash instead would pile up history entries and, in an
+    // exported file opened from file://, rewrite the URL for no benefit.
+    behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth",
+  });
+}
+
+function openExternalLink(href) {
+  let url;
+  try {
+    // No base, so a relative href throws and is left inert. That is the
+    // documented first cut: resolving ./notes.md against the origin just 404s
+    // off the static handler, and opening it in Marky is a bigger feature. See
+    // TODO.md before making relative links do something.
+    url = new URL(href);
+  } catch {
+    return;
+  }
+
+  if (!LINK_SCHEMES.includes(url.protocol)) return;
+  window.open(url.href, "_blank", "noopener");
+}
+
+editor.addEventListener("click", (e) => {
+  // Plain click has to keep placing the caret, or link text becomes uneditable.
+  if (!e.metaKey && !e.ctrlKey) return;
+
+  const link = e.target.closest && e.target.closest("a");
+  const href = link && link.getAttribute("href");
+  if (!href) return;
+
+  e.preventDefault();
+
+  if (href.startsWith("#")) {
+    // markdown-it percent-encodes non-ASCII in the attribute, so decode before
+    // matching against a slug that kept its unicode.
+    let wanted = href.slice(1);
+    try {
+      wanted = decodeURIComponent(wanted);
+    } catch {
+      // A malformed escape is not worth failing over; match it raw.
+    }
+    const target = headingAnchors(editor).get(wanted);
+    if (target) scrollToAnchor(target);
+    return;
+  }
+
+  openExternalLink(href);
+});
+
+// The hint is a CSS variable rather than a title attribute on each link:
+// Turndown serialises a title into the markdown as [text](href "title"), so
+// stamping one would write the tooltip into the user's file. app.css draws it
+// from a :hover pseudo-element, which never enters the DOM at all.
+document.documentElement.style.setProperty(
+  "--link-hint",
+  /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+    ? '"Cmd+Click to open link"'
+    : '"Ctrl+Click to open link"',
+);
 
 editor.addEventListener("paste", (e) => {
   e.preventDefault();

@@ -116,6 +116,37 @@ Note the loss that is *not* fixed: markdown-it resolves `\{` and `\}` as
 markdown escapes on the way in, before MathJax ever sees them, so those survive
 neither rendering nor saving. That is an input-side bug, upstream of both rules.
 
+### Links and heading anchors
+
+markdown-it does not slug headings — that is GitHub's extension, not CommonMark
+— so `[x](#section)` arrives pointing at an element that does not exist. Two
+different mechanisms fix that, because the two outputs have different powers:
+
+- **In the editor** (and the editable export), `headingAnchors(root)` in
+  `app.js` resolves slugs against the live DOM on every Ctrl/Cmd+click. Nothing
+  is stamped, so an id cannot go stale when a heading is edited.
+- **In the static export**, there is no JS at all, so `documentBody()` in
+  `static-export.js` calls `headingAnchors(clone, true)` to write real `id`
+  attributes into the markup. It stamps the *clone*, never the editor, so
+  nothing reaches Turndown.
+
+That is a second cross-file dependency on `app.js` alongside `slugifyTitle` —
+`static-export.js` must stay after `app.js` in both `index.html` and `ASSETS`.
+
+Two traps here, both of which write into the user's file if you get them wrong:
+
+- **`anchorSlug` is not `slugifyTitle`.** The filename slug strips non-ASCII and
+  truncates at 50 characters, so it would slug `## Ünïcode Heading` to
+  `ncode-heading` and never match the `#ünïcode-heading` link markdown-it wrote.
+  They look interchangeable and are not.
+- **The Ctrl+Click hint is a CSS variable, never a `title` attribute.** Turndown
+  serialises a link title into the markdown as `[text](href "title")`, so
+  stamping tooltips onto links would write them into the document on save.
+  `app.js` sets `--link-hint` on `documentElement` and `app.css` draws it with a
+  `:hover::after`, which never enters the DOM. The rule is scoped to
+  `#editor[contenteditable="true"]` so the static export — where links are
+  ordinary links needing no modifier — does not advertise a shortcut.
+
 Autosave writes `editor.innerHTML` to `localStorage["markdownContent"]` on a 1s
 debounce — separate from, and unaware of, the file on disk.
 

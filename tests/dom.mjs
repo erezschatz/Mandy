@@ -27,7 +27,13 @@ export function makeEl(tag = "div", { parent = null, text = "" } = {}) {
     rel: "",
     value: "",
     disabled: false,
-    style: {},
+    // setProperty writes into the same bag as `style.color = ...`, so a test
+    // can read a custom property back the way it reads any other.
+    style: {
+      setProperty(name, value) {
+        this[name] = value;
+      },
+    },
     children: [],
     attrs: {},
     listeners: {},
@@ -57,6 +63,9 @@ export function makeEl(tag = "div", { parent = null, text = "" } = {}) {
 
     setAttribute(name, value) {
       node.attrs[name] = value;
+    },
+    getAttribute(name) {
+      return name in node.attrs ? node.attrs[name] : null;
     },
     removeAttribute(name) {
       delete node.attrs[name];
@@ -134,6 +143,24 @@ export function loadApp() {
   const noop = () => {};
   const el = () => makeEl("div");
   const rules = {};
+  const opts = {};
+  const opened = [];
+  const scrolled = [];
+  const root = makeEl("html");
+
+  // The toolbar is sticky at top: 0, so an anchor jump has to clear it. Given a
+  // height here so a suite can check the arithmetic rather than just the call.
+  const toolbar = makeEl("div");
+  toolbar.className = "toolbar";
+  toolbar.getBoundingClientRect = () => ({ left: 0, top: 0, width: 0, height: 69 });
+
+  // Memoised per id, so a suite can reach the same #editor app.js bound its
+  // listeners to rather than a fresh element each lookup.
+  const byId = new Map();
+  const getElementById = (id) => {
+    if (!byId.has(id)) byId.set(id, makeEl("div"));
+    return byId.get(id);
+  };
 
   return loadSource(
     "app.js",
@@ -142,8 +169,16 @@ export function loadApp() {
         markdownit: () => ({ render: (s) => s }),
         addEventListener: noop,
         matchMedia: () => ({ matches: false }),
+        open: (url, target, features) => opened.push({ url, target, features }),
+        scrollTo: (opts) => scrolled.push(opts),
+        scrollY: 0,
       },
       TurndownService: class {
+        // Options are recorded, not honoured: the serialiser is a pass-through
+        // here, so a suite can only assert what app.js asked for.
+        constructor(options) {
+          Object.assign(opts, options);
+        }
         addRule(name, rule) {
           rules[name] = rule;
         }
@@ -152,13 +187,15 @@ export function loadApp() {
         }
       },
       document: {
-        getElementById: () => el(),
+        getElementById,
         createElement: el,
         addEventListener: noop,
+        documentElement: root,
+        querySelector: (sel) => (sel === ".toolbar" ? toolbar : null),
         body: { appendChild: noop, removeChild: noop },
       },
       localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
-      navigator: { clipboard: {} },
+      navigator: { clipboard: {}, platform: "MacIntel" },
       onToolbarAction: noop,
       toolbarButton: () => null,
       runToolbarAction: noop,
@@ -166,7 +203,15 @@ export function loadApp() {
       clearTimeout: noop,
       console,
       __rules: rules,
+      __opts: opts,
+      __opened: opened,
+      __scrolled: scrolled,
+      __root: root,
+      __byId: byId,
     },
-    "; return { rules: __rules, slugifyTitle, isBlankContent };",
+    "; return { rules: __rules, options: __opts, opened: __opened," +
+      " scrolled: __scrolled, documentElement: __root, byId: __byId," +
+      " htmlToMarkdown, anchorSlug, headingAnchors, openExternalLink," +
+      " slugifyTitle, isBlankContent };",
   );
 }

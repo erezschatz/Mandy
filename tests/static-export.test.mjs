@@ -20,6 +20,22 @@ function makeNode(html) {
       return m ? { textContent: m[1] } : null;
     },
     querySelectorAll(sel) {
+      // Headings, for the anchor ids. Setting `id` rewrites the markup, which
+      // is what the export actually ships and what the assertions read back.
+      if (sel.startsWith("h1")) {
+        const self = this;
+        const found = [...this.innerHTML.matchAll(/<(h[1-6])>(.*?)<\/\1>/g)];
+        return found.map((m) => ({
+          textContent: m[2],
+          set id(value) {
+            self.innerHTML = self.innerHTML.replace(
+              m[0],
+              `<${m[1]} id="${value}">${m[2]}</${m[1]}>`,
+            );
+          },
+        }));
+      }
+
       const cls = sel.replace(".", "");
       const count = (this.innerHTML.match(new RegExp(`class="${cls}"`, "g")) || []).length;
       return Array.from({ length: count }, () => ({
@@ -43,10 +59,11 @@ export default async function run(check) {
 
   // The real one from app.js, not a stub: the leading-hyphen bug lived in this
   // slug, and a stub here would have hidden it.
-  const { slugifyTitle } = loadApp();
+  const { slugifyTitle, headingAnchors } = loadApp();
 
   loadSource("static-export.js", {
     slugifyTitle,
+    headingAnchors,
     document: {
       getElementById: () => null,
       querySelectorAll: () => [
@@ -90,6 +107,12 @@ export default async function run(check) {
     slugifyTitle("A   ///   B", "document") === "a-b");
   check("a title with nothing slugworthy falls back",
     slugifyTitle("🎉🎉🎉", "document") === "document");
+  // This file ships no JS, so an in-document link only works if the id is in
+  // the markup. Without it a table of contents exports as a page of dead links,
+  // and nothing about the document looks wrong until someone clicks one.
+  check("headings carry anchor ids",
+    written.includes('<h1 id="quarterly-report">'));
+
   check("app.css is inlined", written.includes("#editor h1 { font-size: 2rem; }"));
   check("MathJax runtime styles are copied", written.includes("mjx-container{display:inline}"));
   check("non-MathJax styles are excluded", !written.includes("SHOULD-NOT-APPEAR"));

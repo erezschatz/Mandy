@@ -28,82 +28,28 @@
     ol, code. Missing: links, images, tables, blockquotes, h4-h6, strikethrough,
     inline code, horizontal rules. They render when imported; there is just no
     way to author them.
-*   **A table of contents does not work, in any output Marky produces.** This is
-    two bugs stacked, and the second is the one that matters.
+*   Links are done except for three loose ends. Ctrl/Cmd+click follows a link
+    and jumps to `#anchor` headings, `anchorSlug` / `headingAnchors` in app.js
+    resolve slugs live, and `static-export.js` stamps real ids into the exported
+    markup. What is still open:
 
-    First: inside a `contenteditable` the browser treats a link as text to put
-    the caret in, and does not fall back to navigating on a modifier — verified
-    in Chrome, Ctrl/Cmd+click on an `<a href>` in a contenteditable div does
-    nothing at all, no navigation and no new tab.
+    - **Relative links are inert on purpose.** `[notes](./notes.md)` is parsed,
+      rendered and then ignored: `openExternalLink` builds a `URL` with no base,
+      so a relative href throws and is dropped. Resolving it against the origin
+      would just 404 off the static handler. The behaviour that would make a
+      linked set of markdown files navigable is opening it in Marky through the
+      file API, resolved against the directory of the open file — a good deal
+      more work than a `window.open`, and it wants the reload/mtime item above
+      decided alongside it, since following a link means replacing the open
+      document.
+    - **Touch devices have no modifier**, so there is no way to follow a link on
+      one, and the hover tooltip never shows either. Wants its own affordance —
+      a long-press, or the chip Google Docs shows.
+    - **PDF still has no live links at all**, internal or external. html2pdf
+      rasterises through html2canvas, so pdf-export.js only restyles `A` to
+      blue and nothing survives as a clickable annotation. Heading ids do not
+      help; it needs a different PDF path.
 
-    Second, and worse: **the anchors point at nothing.** markdown-it does not
-    slug headings. Verified — `- [First Section](#first-section)` plus a
-    `## First Section` renders as `<a href="#first-section">` and a bare
-    `<h2>` with no `id` anywhere in the document. Adding heading ids is
-    GitHub's extension, not part of the spec, which is why a TOC that works on
-    GitHub arrives here dead. So this is not a click-handling gap that a
-    listener fixes; the destination has to be made to exist first.
-
-    That second half is not confined to the editor. The static HTML export
-    clones the same DOM, so a TOC is dead there too — and that export is the
-    artifact you hand someone, with no editor JS to paper over it. It cannot be
-    fixed by a click handler at all: it needs real `id` attributes in the
-    markup. (PDF is a separate story and further away: html2pdf rasterises
-    through html2canvas, so pdf-export.js only restyles `A` to blue and no link
-    survives as a clickable annotation, internal or external. Heading ids alone
-    will not fix that one.)
-
-    Shape of the fix:
-
-    - A `slugifyHeadings(root)` pass that stamps `id` on every heading, run
-      after `markdownToHtml` and again before each export. Turndown drops the
-      ids on the way out (a heading serialises as `## Text`), so nothing reaches
-      the file on disk and there is no save-fidelity cost.
-    - **Do not reuse `slugifyTitle`** from app.js. It strips non-ASCII, so
-      `Ünïcode Heading` becomes `ncode-heading`, while the href markdown-it
-      wrote is `#ünïcode-heading` (percent-encoded in the attribute) — every
-      non-English heading would silently miss. It also truncates at 50 chars and
-      is shared by all four export filenames, so it must not be bent to fit
-      this. Anchors want GitHub's algorithm: lowercase, strip punctuation,
-      spaces to hyphens, keep unicode, and a `-1`/`-2` suffix for duplicates.
-    - Stamped ids go stale the moment someone edits a heading, since they are
-      only assigned at render time. Cheapest answer is to have the click handler
-      resolve live — scan the headings in the DOM and slug them on the spot —
-      and treat the stamped ids as an export concern rather than a runtime one.
-    - Jumping should be `scrollIntoView({ behavior: "smooth" })`, not a hash
-      change: setting `location.hash` inside the app piles up history entries
-      and, in an exported file opened from `file://`, rewrites the URL for no
-      benefit. In the static export, native anchor navigation handles it with no
-      JS at all once the ids exist.
-
-    External links then fall out of the same handler: a delegated `click` on
-    `#editor` that, when `e.metaKey || e.ctrlKey`, walks up to the nearest
-    `a[href]` and either scrolls to the local target or opens the URL in a new
-    tab. Plain click must keep placing the caret — that is how VS Code and
-    every other editor behaves, and it is the only way to edit link text.
-
-    - **Tooltip on hover: "Ctrl+Click to open link"**, `Cmd` on Mac —
-      `welcome.md` already writes shortcuts as "Ctrl+S (Cmd+S on Mac)", so
-      match that. Plus `cursor: pointer`. A modifier nobody is told about is not
-      a feature. A touch device has no modifier at all and needs its own
-      affordance — a long-press, or the hover chip Google Docs shows.
-    - The href comes from a document Marky did not write — a file on disk or an
-      editable export that arrived by mail — so opening it blind is a hole.
-      Allow `http:`, `https:` and `mailto:` and drop the rest; `javascript:`
-      through `window.open` would run in the app's own origin, next to the file
-      API. Pass `noopener` too.
-    - The handler belongs in a module the editable export ships (app.js is in
-      `ASSETS`), because that export is contenteditable too and has the same
-      dead links.
-
-    Open question worth deciding before building it: what a *relative* link
-    should do. `[notes](./notes.md)` resolving against `localhost:9130` hits the
-    static handler and 404s, which is useless. Opening it in Marky through the
-    file API — resolved against the directory of the currently open file — is
-    the behaviour that makes a linked set of markdown files navigable, and it is
-    also a good deal more work than a `window.open`. Shipping the absolute-URL
-    case first and leaving relative links inert is a reasonable first cut,
-    provided it is a decision rather than an oversight.
 *   No source view, editable or otherwise. The document lives as HTML in
     `editor.innerHTML` and markdown exists only at the boundaries — markdown-it
     parses on the way in, Turndown serialises on the way out. Copy MD, Download
@@ -141,7 +87,7 @@ round-tripping real files through the running app.
 
     | Opened as | Saved as |
     | --- | --- |
-    | `---`, `***`, `___` | `* * *` |
+    | ~~`---`, `***`, `___`~~ | ~~`* * *`~~ — **fixed**, `hr: "---"` in app.js |
     | `-`, `*`, `+` bullets | `*` with a three-space pad (`*   one`) |
     | `1.` `1.` `1.` | renumbered `1.` `2.` `3.` |
     | `1)` | `1.` |
@@ -185,10 +131,19 @@ round-tripping real files through the running app.
         mapping from source lines to DOM nodes to preserve. It needs the source
         view in Editing above, or something like it, first.
 
-    Route 2's cheap first slice is worth noting because it covers most of the
-    visible annoyance for very little: four Turndown options plus a sniffer
-    would hold `---`, the bullet marker, the emphasis delimiters and the
-    trailing newline steady, leaving only renumbering and wrapping.
+    Two rows of that table are already gone, taken as a down payment on route 2
+    without settling it: `hr: "---"` is set in app.js, and `htmlToMarkdown` now
+    normalises the output to exactly one trailing newline. Both are *fixed*
+    house style, not style matched to the file, so they only reduce the odds of
+    a diff rather than removing the question. `tests/save-fidelity.test.mjs`
+    holds them.
+
+    What is left of route 2's cheap slice: the bullet marker and the emphasis
+    delimiters are two more Turndown options, but unlike the rule they have no
+    clear majority convention to default to, so they are the point where a
+    sniffer stops being avoidable. Renumbering, the three-space list pad, `1)`
+    and autolinks need rule overrides whatever is decided; wrapping is its own
+    item below.
 
 *   **UNDECIDED: bug or documented behaviour?** Saving reflows hard-wrapped
     markdown into one long line per paragraph. Turndown emits a paragraph as a
@@ -238,12 +193,6 @@ round-tripping real files through the running app.
     one guard the prototype does not have: re-wrapping inside a blockquote has
     to re-apply the `> ` prefix to each continuation line, or the tail of the
     quote falls out of it.
-
-*   Saving strips the trailing newline. Turndown's output does not end in one and
-    nothing adds it back, so every save leaves a file git reports as "\ No newline
-    at end of file". One line to fix in `saveFile` (file-api.js); left alone only
-    because it is an instance of the style question at the top of this section,
-    and all three want deciding together.
 
 *   markdown-it eats LaTeX brace escapes before MathJax sees them. `\{` and `\}`
     inside `$$…$$` are resolved as markdown escapes during `markdownToHtml`, so
