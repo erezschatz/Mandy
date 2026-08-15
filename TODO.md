@@ -28,6 +28,82 @@
     ol, code. Missing: links, images, tables, blockquotes, h4-h6, strikethrough,
     inline code, horizontal rules. They render when imported; there is just no
     way to author them.
+*   **A table of contents does not work, in any output Marky produces.** This is
+    two bugs stacked, and the second is the one that matters.
+
+    First: inside a `contenteditable` the browser treats a link as text to put
+    the caret in, and does not fall back to navigating on a modifier — verified
+    in Chrome, Ctrl/Cmd+click on an `<a href>` in a contenteditable div does
+    nothing at all, no navigation and no new tab.
+
+    Second, and worse: **the anchors point at nothing.** markdown-it does not
+    slug headings. Verified — `- [First Section](#first-section)` plus a
+    `## First Section` renders as `<a href="#first-section">` and a bare
+    `<h2>` with no `id` anywhere in the document. Adding heading ids is
+    GitHub's extension, not part of the spec, which is why a TOC that works on
+    GitHub arrives here dead. So this is not a click-handling gap that a
+    listener fixes; the destination has to be made to exist first.
+
+    That second half is not confined to the editor. The static HTML export
+    clones the same DOM, so a TOC is dead there too — and that export is the
+    artifact you hand someone, with no editor JS to paper over it. It cannot be
+    fixed by a click handler at all: it needs real `id` attributes in the
+    markup. (PDF is a separate story and further away: html2pdf rasterises
+    through html2canvas, so pdf-export.js only restyles `A` to blue and no link
+    survives as a clickable annotation, internal or external. Heading ids alone
+    will not fix that one.)
+
+    Shape of the fix:
+
+    - A `slugifyHeadings(root)` pass that stamps `id` on every heading, run
+      after `markdownToHtml` and again before each export. Turndown drops the
+      ids on the way out (a heading serialises as `## Text`), so nothing reaches
+      the file on disk and there is no save-fidelity cost.
+    - **Do not reuse `slugifyTitle`** from app.js. It strips non-ASCII, so
+      `Ünïcode Heading` becomes `ncode-heading`, while the href markdown-it
+      wrote is `#ünïcode-heading` (percent-encoded in the attribute) — every
+      non-English heading would silently miss. It also truncates at 50 chars and
+      is shared by all four export filenames, so it must not be bent to fit
+      this. Anchors want GitHub's algorithm: lowercase, strip punctuation,
+      spaces to hyphens, keep unicode, and a `-1`/`-2` suffix for duplicates.
+    - Stamped ids go stale the moment someone edits a heading, since they are
+      only assigned at render time. Cheapest answer is to have the click handler
+      resolve live — scan the headings in the DOM and slug them on the spot —
+      and treat the stamped ids as an export concern rather than a runtime one.
+    - Jumping should be `scrollIntoView({ behavior: "smooth" })`, not a hash
+      change: setting `location.hash` inside the app piles up history entries
+      and, in an exported file opened from `file://`, rewrites the URL for no
+      benefit. In the static export, native anchor navigation handles it with no
+      JS at all once the ids exist.
+
+    External links then fall out of the same handler: a delegated `click` on
+    `#editor` that, when `e.metaKey || e.ctrlKey`, walks up to the nearest
+    `a[href]` and either scrolls to the local target or opens the URL in a new
+    tab. Plain click must keep placing the caret — that is how VS Code and
+    every other editor behaves, and it is the only way to edit link text.
+
+    - **Tooltip on hover: "Ctrl+Click to open link"**, `Cmd` on Mac —
+      `welcome.md` already writes shortcuts as "Ctrl+S (Cmd+S on Mac)", so
+      match that. Plus `cursor: pointer`. A modifier nobody is told about is not
+      a feature. A touch device has no modifier at all and needs its own
+      affordance — a long-press, or the hover chip Google Docs shows.
+    - The href comes from a document Marky did not write — a file on disk or an
+      editable export that arrived by mail — so opening it blind is a hole.
+      Allow `http:`, `https:` and `mailto:` and drop the rest; `javascript:`
+      through `window.open` would run in the app's own origin, next to the file
+      API. Pass `noopener` too.
+    - The handler belongs in a module the editable export ships (app.js is in
+      `ASSETS`), because that export is contenteditable too and has the same
+      dead links.
+
+    Open question worth deciding before building it: what a *relative* link
+    should do. `[notes](./notes.md)` resolving against `localhost:9130` hits the
+    static handler and 404s, which is useless. Opening it in Marky through the
+    file API — resolved against the directory of the currently open file — is
+    the behaviour that makes a linked set of markdown files navigable, and it is
+    also a good deal more work than a `window.open`. Shipping the absolute-URL
+    case first and leaving relative links inert is a reasonable first cut,
+    provided it is a decision rather than an oversight.
 *   No source view, editable or otherwise. The document lives as HTML in
     `editor.innerHTML` and markdown exists only at the boundaries — markdown-it
     parses on the way in, Turndown serialises on the way out. Copy MD, Download
@@ -53,8 +129,66 @@
 
 ## Save fidelity
 
-Three ways the bytes on disk differ from what was opened. All verified by
+Ways the bytes on disk differ from what was opened. All verified by
 round-tripping real files through the running app.
+
+*   **UNDECIDED, and it governs the two items below: is the file's own markdown
+    style Marky's to change?** Every item in this section is one answer to the
+    same question — does Marky owe the file the bytes it arrived with, or only a
+    document that means the same thing? Turndown answers "means the same thing"
+    by default, and the results are correct markdown that no human wrote.
+    Verified by round-tripping through the running app:
+
+    | Opened as | Saved as |
+    | --- | --- |
+    | `---`, `***`, `___` | `* * *` |
+    | `-`, `*`, `+` bullets | `*` with a three-space pad (`*   one`) |
+    | `1.` `1.` `1.` | renumbered `1.` `2.` `3.` |
+    | `1)` | `1.` |
+    | `*emph*` | `_emph_` |
+    | `__bold__` | `**bold**` |
+    | Setext `===` / `---` headings | `#` / `##` (deliberate: `headingStyle: "atx"`) |
+    | `~~~` fences | ` ``` ` |
+    | Indented code | fenced (deliberate: `codeBlockStyle: "fenced"`) |
+    | `[x][1]` + a definition block | inlined `[x](http://example.com)` |
+    | `<http://example.com>` | `[http://example.com](http://example.com)` |
+
+    Every one of these is spec-legal on both sides, so nothing is *wrong* in the
+    file. The damage is entirely in the diff: open a document, change one word,
+    and the commit touches every list, rule and emphasis in it. On a shared repo
+    that is unmergeable.
+
+    One of them is not merely cosmetic and should be judged separately:
+    inlining reference links deletes the definition block. A document that
+    cites the same URL in twenty places arrives with one definition and leaves
+    with twenty copies, and there is no way back. That is a change in the shape
+    of the source, not its punctuation.
+
+    Three routes:
+
+    1.  **Keep semantic fidelity and say so.** No code; the README states that
+        Marky normalises markdown style, and it is the author's job to know
+        that. Honest, and fine for a scratch editor. It does concede that Marky
+        cannot be used on a repo it does not own, which is most of them.
+    2.  **Match the file.** Sniff the dominant style on open and configure the
+        serialiser per document. Turndown options cover most of it directly —
+        `hr`, `bulletListMarker`, `emDelimiter`, `strongDelimiter`,
+        `linkStyle`/`linkReferenceStyle`, `fence`. Ordered-list renumbering,
+        `1)`, the three-space list pad and autolinks are not options and would
+        need rule overrides. Each sniff is a heuristic and a mixed-style file
+        has to pick a winner, but it is the only route that scales to the wrap
+        width and trailing newline below, which are the same problem.
+    3.  **Only reserialise what changed.** The real fix and the expensive one:
+        leave untouched regions byte-identical and serialise only edited
+        blocks. Marky has nowhere to put this today — the document lives as
+        HTML in `editor.innerHTML` and no markdown copy is kept, so there is no
+        mapping from source lines to DOM nodes to preserve. It needs the source
+        view in Editing above, or something like it, first.
+
+    Route 2's cheap first slice is worth noting because it covers most of the
+    visible annoyance for very little: four Turndown options plus a sniffer
+    would hold `---`, the bullet marker, the emphasis delimiters and the
+    trailing newline steady, leaving only renumbering and wrapping.
 
 *   **UNDECIDED: bug or documented behaviour?** Saving reflows hard-wrapped
     markdown into one long line per paragraph. Turndown emits a paragraph as a
@@ -84,11 +218,32 @@ round-tripping real files through the running app.
     save only if the file was already wrapped, at roughly its own width.
     Otherwise, say plainly in the README that Marky normalises wrapping.
 
+*   Blockquotes make the reflow above visible on screen, not just in the diff,
+    and get mistaken for a rendering bug. `>` is a container, not a per-line
+    marker: consecutive `>` lines are one paragraph inside one blockquote, so
+    the newline between them is a soft break and renders as a space. Verified
+    against the running app — `> one\n> two` renders as a single line and saves
+    back as `> one two`, while `>` on its own line (two paragraphs), a trailing
+    double space (`<br>`) and a blank line (two separate blockquotes) all behave
+    as CommonMark says.
+
+    **DECIDED: rendering stays standard.** `markdownit()` in app.js keeps its
+    default `breaks: false`. The expectation that each `>` line is its own line
+    comes from GitHub's comment boxes, which set `breaks: true`; that is an
+    extension, and adopting it would turn every newline in every paragraph into
+    a `<br>`, so the first save of any hard-wrapped file would append two spaces
+    to every line in it. Not worth it to match one vendor's chat widget.
+
+    The save-side collapse is still the reflow bug and wants the same fix, with
+    one guard the prototype does not have: re-wrapping inside a blockquote has
+    to re-apply the `> ` prefix to each continuation line, or the tail of the
+    quote falls out of it.
+
 *   Saving strips the trailing newline. Turndown's output does not end in one and
     nothing adds it back, so every save leaves a file git reports as "\ No newline
     at end of file". One line to fix in `saveFile` (file-api.js); left alone only
-    because it is the same "what may Marky change about a file it did not write"
-    question as the wrapping above, and the two want deciding together.
+    because it is an instance of the style question at the top of this section,
+    and all three want deciding together.
 
 *   markdown-it eats LaTeX brace escapes before MathJax sees them. `\{` and `\}`
     inside `$$…$$` are resolved as markdown escapes during `markdownToHtml`, so
