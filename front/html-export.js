@@ -36,6 +36,16 @@ const MATHJAX_TAGS =
   '<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">' +
   CLOSE;
 
+// Same shape as the other three exports, each of which slugs the document's own
+// h1 through slugifyTitle in app.js. The "-editable" is this one's own: the
+// static export produces a filename of exactly the same form, and a recipient
+// with both in their downloads has nothing else to tell them apart by.
+function editableFilename() {
+  const heading = editor.querySelector("h1");
+  const slug = slugifyTitle(heading && heading.textContent, "document");
+  return `${slug}-editable-${Date.now()}.html`;
+}
+
 onToolbarAction("export-editable", async () => {
   const currentContent = editor.innerHTML;
   const currentText = editor.textContent || "";
@@ -194,7 +204,7 @@ ${jsContent}
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${Date.now()}.html`;
+  a.download = editableFilename();
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

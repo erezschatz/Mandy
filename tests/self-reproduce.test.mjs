@@ -5,7 +5,12 @@
 // The property under test is a fixpoint: what generation N+1 hands its
 // successor must be byte-identical to what generation N handed it.
 
-import { loadSource, readFront } from "./dom.mjs";
+import { loadApp, loadSource, readFront } from "./dom.mjs";
+
+// The real one out of app.js, not a stand-in: the filename is the one thing an
+// export hands to the recipient's filesystem, and a slug that disagrees with
+// the app's own would be invisible from in here.
+const { slugifyTitle } = loadApp();
 
 const INLINE_CSS = "#editor h1 { font-size: 2rem; } /* gen-N css */";
 const INLINE_JS = [
@@ -14,6 +19,7 @@ const INLINE_JS = [
 
 function runExport({ inlined }) {
   let written = null;
+  let downloaded = null;
   let fetchCalls = 0;
   let handler = null;
 
@@ -25,10 +31,21 @@ function runExport({ inlined }) {
   loadSource("html-export.js", {
     document: {
       getElementById: (id) => byId[id] ?? null,
-      createElement: () => ({ click() {}, set href(_v) {}, set download(_v) {} }),
+      createElement: () => ({
+        click() {},
+        set href(_v) {},
+        set download(v) {
+          downloaded = v;
+        },
+      }),
       body: { appendChild() {}, removeChild() {} },
     },
-    editor: { innerHTML: "<h1>Doc</h1><p>body</p>", textContent: "Doc body" },
+    editor: {
+      innerHTML: "<h1>Doc</h1><p>body</p>",
+      textContent: "Doc body",
+      querySelector: (sel) => (sel === "h1" ? { textContent: "Doc" } : null),
+    },
+    slugifyTitle,
     fetch: async (url) => {
       fetchCalls++;
       return { ok: true, statusText: "OK", url: "http://x" + url, text: async () => `/* ${url} */` };
@@ -44,7 +61,12 @@ function runExport({ inlined }) {
     onToolbarAction: (action, fn) => { if (action === "export-editable") handler = fn; },
   });
 
-  return { handler, output: () => written, fetches: () => fetchCalls };
+  return {
+    handler,
+    output: () => written,
+    filename: () => downloaded,
+    fetches: () => fetchCalls,
+  };
 }
 
 export default async function run(check) {
@@ -85,4 +107,14 @@ export default async function run(check) {
   check("app export bundles static-export.js", genOne.includes("/static-export.js"));
   check("app export bundles html-export.js", genOne.includes("/html-export.js"));
   check("app export omits file-api.js", !genOne.includes("/file-api.js"));
+
+  // The filename is the only thing a recipient sees before opening the file.
+  // It used to be a bare timestamp, which named the document nothing at all and
+  // was the one export inconsistent with the other three.
+  const name = firstExport.filename();
+  check("the editable export is named after the document",
+    /^doc-editable-\d+\.html$/.test(name));
+  check("and says which of the two HTML exports it is", name.includes("-editable-"));
+  check("and a re-export names itself the same way",
+    /^doc-editable-\d+\.html$/.test(reExport.filename()));
 }

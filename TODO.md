@@ -303,10 +303,6 @@ round-tripping real files through the running app.
     defines `onToolbarAction`, which every other module calls at load. Click
     delegation removed the silent bound-to-null failure, not the ordering
     requirement.
-*   The Editable export still names its output `${Date.now()}.html`, with no
-    slug, inconsistent with the other three exports. (The slug itself is no
-    longer duplicated: `generatePDFFilename`, `generateDocxFilename` and
-    `documentFilename` now share `slugifyTitle` in app.js.)
 *   `min-height: 69px` on `.toolbar` is a magic number derived from current
     button padding and font size, holding the layout still while toolbar.js
     builds. It will be silently wrong if either changes.
