@@ -36,6 +36,9 @@ They cover the invariants that fail *silently* rather than loudly:
   network, and hands its successor byte-identical CSS and JS.
 - **static-export** / **file-path** — the document-only export's contents, and
   the persistence of the open file and last browsed directory.
+- **save-fidelity** — the serialiser options app.js asks for, and then
+  `markdown-style.js` directly: the sniffers, and every guard in the re-wrapper.
+  That second half is the one that writes into the user's file.
 
 ## Architecture
 
@@ -55,7 +58,10 @@ are no imports. Consequences that bite:
   top level. Toolbar *buttons* no longer need to exist by then — clicks are
   delegated (see below) — but non-toolbar elements are still grabbed at load,
   so `#editor`, `#formatBar` and the file dialog must be in the markup.
-  After that: `app.js` defines `editor`, `markdownToHtml`, `htmlToMarkdown`;
+  After that: `markdown-style.js` defines `sniffMarkdownStyle`,
+  `reflowMarkdown`, `indexMarkdownBlocks` and `restoreSourceWrapping`, which
+  `app.js` calls at top level and on every save;
+  `app.js` defines `editor`, `markdownToHtml`, `htmlToMarkdown`;
   `renderers.js` defines `renderMermaidDiagrams` / `renderLatex`;
   `lazy-load.js` defines the `ensure*` loaders. Later files call these freely.
 - **Global-name collisions are real bugs, not hypotheticals.** `file-api.js`
@@ -149,6 +155,69 @@ Two traps here, both of which write into the user's file if you get them wrong:
 
 Autosave writes `editor.innerHTML` to `localStorage["markdownContent"]` on a 1s
 debounce — separate from, and unaware of, the file on disk.
+
+### Save fidelity
+
+Turndown serialises to its own house style, so a save used to rewrite every
+list, rule, emphasis and line break in the file — spec-legal on both sides, and
+an unmergeable diff. [markdown-style.js](front/markdown-style.js) answers that
+from the source rather than from a house style, in three layers, cheapest last:
+
+1.  **Sniff.** `sniffMarkdownStyle` reads the incoming markdown for the
+    conventions it already follows — rule character, bullet marker and pad (per
+    nesting depth, since alternating by level is common), emphasis delimiters,
+    ordered-list delimiter and whether it was numbered all-`1.`, autolinks, and
+    the wrap width. `adoptMarkdownStyle` in `app.js` pushes the Turndown-option
+    subset onto the live options object; the rest is read by the `listItem` and
+    `autolink` rules. Every default is Turndown's own, so a document that sniffs
+    to nothing behaves exactly as it did before any of this.
+2.  **Re-wrap.** `reflowMarkdown` breaks the serialiser's one-line paragraphs
+    back to the sniffed width. Four guards, each of which silently corrupts the
+    file if dropped: fenced code and table rows are never touched, and a break
+    never strands a `#`, `-`, `1.`, `>` or `---` at the start of a line, where
+    it reparses as a block marker. A blockquote's `> ` chain and a list item's
+    content indent are re-applied to every continuation line.
+3.  **Restore.** The one that actually does the work. Re-wrapping only ever
+    guesses at how the author broke their lines, and measured against this
+    repo's own files it guesses badly — they break after a sentence, or let a
+    line run long rather than split a link. So `indexMarkdownBlocks` indexes
+    every segment of the opened file under a whitespace-insensitive key, and
+    `restoreSourceWrapping` gives back the original bytes for any segment whose
+    text still matches. An edited segment misses and falls through to layer 2.
+
+The index is keyed on **content, not position**, and that is the whole trick.
+A source map into the DOM would have to survive contenteditable splitting a node
+on Enter, merging two on Backspace and restoring stale markup on undo; a content
+key cannot go stale, because a segment that changed is exactly the segment that
+should miss. Segments are consumed as matched, so a repeated paragraph gets each
+original back in turn.
+
+The segment boundaries in `markdownSegments` are load-bearing and non-obvious:
+they split on list markers, headings and fences as well as blank lines, because
+the two sides disagree about blank lines. A tight list whose items contain
+sub-paragraphs is *loose* by CommonMark's definition, so markdown-it wraps each
+item in `<p>` and Turndown puts a blank line back between items the author wrote
+flush. Match whole blank-line-separated blocks and every such list fails to
+match — which in this repo's own `TODO.md` is most of the file. Each segment
+also carries the separator that followed it, so a restored run comes back tight
+or loose the way the author had it.
+
+CLAUDE.md, README.md and welcome.md all round-trip byte-identical. Editing one
+word in CLAUDE.md changes exactly the paragraph it was in.
+
+Two Turndown rules in `app.js` exist for the same reason. **`table`** (with
+`tableCell` / `tableRow` / `tableSection`) is not an optimisation: Turndown 7
+ships no table rule at all — GFM tables live in `turndown-plugin-gfm`, which
+this project does not carry — so a `<table>` fell through to the default and
+every cell came back as its own paragraph. Opening a file with a table and
+saving it destroyed the table, unrecoverably, with nothing wrong on screen
+either side of the save. **`listItem`** overrides a core rule to make the pad and
+the numbering come from the document instead of Turndown's hardcoded `*   one` /
+`1.  one`.
+
+`autolink` is the one rule gated on a sniff, and it needs the scheme check it
+carries: `[notes](notes.md)` also has matching text and href, and `<notes.md>`
+is not an autolink — CommonMark renders it as literal text.
 
 ### Lazy loading
 

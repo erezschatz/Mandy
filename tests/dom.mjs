@@ -172,7 +172,7 @@ export function loadApp() {
   };
 
   return loadSource(
-    "app.js",
+    ["markdown-style.js", "app.js"],
     {
       window: {
         markdownit: () => ({ render: (s) => s }),
@@ -226,6 +226,7 @@ export function loadApp() {
       " scrolled: __scrolled, commands: __commands, selection: __selection," +
       " documentElement: __root, byId: __byId," +
       " htmlToMarkdown, anchorSlug, headingAnchors, openExternalLink," +
-      " slugifyTitle, isBlankContent };",
+      " slugifyTitle, isBlankContent, sniffMarkdownStyle, reflowMarkdown," +
+      " adoptMarkdownStyle };",
   );
 }

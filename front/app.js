@@ -1,15 +1,50 @@
 const md = window.markdownit();
+
+// The conventions of the document currently open. Replaced wholesale every time
+// a document arrives with markdown to read; until then these are Turndown's own
+// defaults, so a session that never opens a file serialises exactly as it did
+// before markdown-style.js existed.
+let markdownStyle = Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
+
+// The blocks of the document as it arrived, so an untouched one can be saved
+// back as the bytes it came in as rather than as Turndown's rendering of it.
+let markdownSource = new Map();
+
 const turndownService = new TurndownService({
   headingStyle: "atx",
   codeBlockStyle: "fenced",
-  // Turndown's default is "* * *", which almost nobody writes by hand, so every
-  // file with a horizontal rule came back with a changed line for no reason.
-  // This is still a fixed house style rather than one matched to the file --
-  // see the style question in TODO.md -- but "---" is the convention that loses
-  // the fewest diffs. Safe against setext: Turndown always surrounds the rule
-  // with blank lines, so "---" can never attach to a paragraph as an underline.
-  hr: "---",
+  hr: markdownStyle.hr,
+  bulletListMarker: markdownStyle.bulletListMarker,
+  emDelimiter: markdownStyle.emDelimiter,
+  strongDelimiter: markdownStyle.strongDelimiter,
 });
+
+// Turndown reads its options object on each replacement rather than closing
+// over it, so the serialiser can be re-styled in place. It has to be: the rules
+// below are registered against this instance, and rebuilding it to change an
+// option would drop them.
+// Persisted next to the autosave because the autosave is HTML: a reload
+// restores the document but carries no markdown to re-read, so without this the
+// style and the source index are gone and the first save after any reload
+// rewrites the whole file in the defaults. Stored as the source rather than as
+// the derived style so both come back from one string.
+function adoptMarkdownStyle(markdown, remember = true) {
+  markdownStyle = sniffMarkdownStyle(markdown);
+  markdownSource = indexMarkdownBlocks(markdown);
+  if (remember) {
+    try {
+      localStorage.setItem("markdownSource", markdown);
+    } catch (error) {
+      // A document too big for the quota still edits and saves; it just loses
+      // byte fidelity across a reload.
+      console.warn("[Style] Could not persist the source document:", error);
+    }
+  }
+  turndownService.options.hr = markdownStyle.hr;
+  turndownService.options.bulletListMarker = markdownStyle.bulletListMarker;
+  turndownService.options.emDelimiter = markdownStyle.emDelimiter;
+  turndownService.options.strongDelimiter = markdownStyle.strongDelimiter;
+}
 
 // Turndown rule to convert mermaid wrappers back to markdown code blocks
 turndownService.addRule("mermaid", {
@@ -44,6 +79,130 @@ turndownService.addRule("mathjax", {
   },
 });
 
+// Turndown 7 ships no table rule -- GFM tables live in turndown-plugin-gfm,
+// which this project does not carry -- so a <table> fell through to the default
+// and every cell came back as its own paragraph. Opening a document containing
+// a table and saving it destroyed the table outright, unrecoverably, and the
+// editor showed nothing wrong either side of the save. markdown-it parses pipe
+// tables on the way in, so they have to come back out.
+function tableCellContent(content) {
+  // A newline inside a cell ends the row, and a bare pipe starts a new cell.
+  return content.trim().replace(/\s*\n\s*/g, " ").replace(/\|/g, "\\|");
+}
+
+// Read off the style attribute rather than cell.style, which the exported
+// document and the test stub do not both implement the same way. markdown-it
+// writes alignment there and nowhere else.
+function tableColumnRule(cell) {
+  const style = cell.getAttribute("style") || "";
+  const align = (cell.getAttribute("align") || "").toLowerCase() ||
+    (style.match(/text-align:\s*(left|center|right)/) || [])[1] ||
+    "";
+  if (align === "center") return ":-:";
+  if (align === "right") return "--:";
+  if (align === "left") return ":--";
+  return "---";
+}
+
+// GFM has no table without a delimiter row, so whichever row comes first is the
+// header whether or not it is made of <th> -- pasted HTML often is not.
+function isFirstTableRow(node) {
+  if (node.previousElementSibling) return false;
+  const section = node.parentNode;
+  if (!section || section.nodeName === "TABLE") return true;
+  return !section.previousElementSibling;
+}
+
+turndownService.addRule("tableCell", {
+  filter: ["th", "td"],
+  replacement: function (content) {
+    return " " + tableCellContent(content) + " |";
+  },
+});
+
+turndownService.addRule("tableRow", {
+  filter: "tr",
+  replacement: function (content, node) {
+    const row = "|" + content;
+    if (!isFirstTableRow(node)) return "\n" + row;
+    const rule = Array.prototype.map
+      .call(node.children, (cell) => " " + tableColumnRule(cell) + " |")
+      .join("");
+    return "\n" + row + "\n|" + rule;
+  },
+});
+
+turndownService.addRule("tableSection", {
+  filter: ["thead", "tbody", "tfoot"],
+  replacement: function (content) {
+    return content;
+  },
+});
+
+turndownService.addRule("table", {
+  filter: "table",
+  replacement: function (content) {
+    return "\n\n" + content.trim() + "\n\n";
+  },
+});
+
+// Turndown has no autolink output, so `<http://example.com>` came back as the
+// four-times-longer [http://example.com](http://example.com). Only offered to
+// documents that already write them, since the expansion is otherwise the form
+// the author chose.
+turndownService.addRule("autolink", {
+  filter: function (node) {
+    if (!markdownStyle.autolinks || node.nodeName !== "A") return false;
+    const href = node.getAttribute("href");
+    // A scheme is what makes an autolink an autolink. Without this check
+    // [notes](notes.md) -- whose text and href also match -- becomes
+    // <notes.md>, which CommonMark renders as literal text, not a link.
+    if (!href || !/^[a-z][a-z0-9+.-]*:/i.test(href)) return false;
+    return href === node.textContent && !node.getAttribute("title");
+  },
+  replacement: function (content, node) {
+    return "<" + node.getAttribute("href") + ">";
+  },
+});
+
+// Turndown hardcodes "*   one" and "1.  one" -- marker plus three or two spaces
+// -- which is legal, uncommon, and enough on its own to touch every list line
+// in the file. The pad and the numbering come from the document instead.
+turndownService.addRule("listItem", {
+  filter: "li",
+  replacement: function (content, node, options) {
+    const parent = node.parentNode;
+    let marker;
+    if (parent.nodeName === "OL") {
+      const start = parent.getAttribute("start");
+      const index = Array.prototype.indexOf.call(parent.children, node);
+      const number = markdownStyle.orderedAllOnes
+        ? 1
+        : start
+          ? Number(start) + index
+          : index + 1;
+      marker = number + markdownStyle.orderedDelimiter + " ".repeat(markdownStyle.orderedPad);
+    } else {
+      let depth = -1;
+      for (let up = node; up; up = up.parentNode) {
+        if (up.nodeName === "UL" || up.nodeName === "OL") depth++;
+      }
+      const level = markdownStyle.bulletsByDepth[depth];
+      marker = (level ? level.marker : options.bulletListMarker) +
+        " ".repeat(level ? level.pad : markdownStyle.bulletPad);
+    }
+
+    // Continuations align with the content, not the marker, or a nested block
+    // falls out of its item.
+    const body = content
+      .replace(/^\n+/, "")
+      .replace(/\n+$/, "\n")
+      .replace(/\n/gm, "\n" + " ".repeat(marker.length));
+
+    return marker + body + (node.nextSibling && !/\n$/.test(body) ? "\n" : "");
+  },
+});
+
 // One slug for every export filename. Kept here rather than in any one export
 // module because app.js loads before all three of them, in index.html and in
 // the editable export's bundle alike.
@@ -74,10 +233,18 @@ const formatBar = document.getElementById("formatBar");
 // saveFile because Download MD writes a file too, and a copied document that
 // ends in a newline is what the clipboard's consumers expect anyway.
 function htmlToMarkdown(html) {
-  return turndownService.turndown(html).replace(/\n*$/, "\n");
+  const markdown = turndownService.turndown(html).replace(/\n*$/, "\n");
+  // Re-wrap first, restore second: restoring puts back original bytes, and the
+  // re-wrap must not then take a hand-broken line back apart.
+  const wrapped = reflowMarkdown(markdown, markdownStyle.wrapWidth);
+  return restoreSourceWrapping(wrapped, markdownSource);
 }
 
+// The only place markdown enters the document, which is why the sniff lives
+// here rather than at the four call sites -- open, upload, paste and the
+// welcome document all route through it, and a fifth would be easy to forget.
 function markdownToHtml(markdown) {
+  adoptMarkdownStyle(markdown);
   return md.render(markdown);
 }
 
@@ -130,6 +297,10 @@ onToolbarAction("clear", () => {
   ) {
     editor.innerHTML = "<p><br></p>";
     localStorage.removeItem("markdownContent");
+    localStorage.removeItem("markdownSource");
+    // Or a block of the cleared document could come back on the next save.
+    markdownStyle = Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
+    markdownSource = new Map();
 
     editor.focus();
     const range = document.createRange();
@@ -353,8 +524,13 @@ window.addEventListener("load", () => {
       editor.removeAttribute("data-exported");
     } else if (saved && !isBlankContent(saved)) {
       editor.innerHTML = saved;
+      // Re-adopt rather than re-render: the document is already restored, and
+      // this only needs the style and the block index the markdown carries.
+      const source = localStorage.getItem("markdownSource");
+      if (source) adoptMarkdownStyle(source, false);
     } else {
       if (saved) localStorage.removeItem("markdownContent");
+      localStorage.removeItem("markdownSource");
       await loadWelcomeDocument();
     }
 

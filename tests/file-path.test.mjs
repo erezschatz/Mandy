@@ -51,7 +51,7 @@ function boot({ savedContent, savedPath, savedDir, savedDirty, realDirs }) {
   };
 
   const api = loadSource(
-    ["toolbar.js", "app.js", "file-api.js"],
+    ["toolbar.js", "markdown-style.js", "app.js", "file-api.js"],
     {
       document,
       localStorage: {

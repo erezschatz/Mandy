@@ -25,7 +25,13 @@
     ol, code. Missing: links, images, tables, blockquotes, h4-h6, strikethrough,
     inline code, horizontal rules, and indent/outdent — that last one is bound to
     Tab but has no control, so on touch there is no way to nest a bullet at all.
-    They render when imported; there is just no way to author them.
+    They render when imported; there is just no way to author them. Tables are
+    worse than the others in that list: it's not just that there's no control to
+    insert one, an *existing* table — already in the document, already
+    rendered — cannot be edited either. No way to add or remove a row or column
+    once markdown-it has rendered the `<table>`. Confirmed by hand: editing this
+    very file after `hr: "---"` landed, trying to delete the now-obsolete row it
+    made fixed above.
 *   Links are done except for three loose ends. Ctrl/Cmd+click follows a link
     and jumps to `#anchor` headings, `anchorSlug` / `headingAnchors` in app.js
     resolve slugs live, and `static-export.js` stamps real ids into the exported
@@ -99,109 +105,78 @@
 Ways the bytes on disk differ from what was opened. All verified by
 round-tripping real files through the running app.
 
-*   **UNDECIDED, and it governs the two items below: is the file's own markdown
-    style Marky's to change?** Every item in this section is one answer to the
-    same question — does Marky owe the file the bytes it arrived with, or only a
-    document that means the same thing? Turndown answers "means the same thing"
-    by default, and the results are correct markdown that no human wrote.
-    Verified by round-tripping through the running app:
+**DECIDED, and largely done: Marky owes the file the bytes it arrived with.**
+The governing question here — does Marky owe the file its bytes, or only a
+document that means the same thing? — is settled in favour of the bytes, and
+[front/markdown-style.js](front/markdown-style.js) implements it. See the save
+fidelity section in CLAUDE.md for how the three layers fit together.
 
-    | Opened as | Saved as |
-    | --- | --- |
-    | ~~`---`, `***`, `___`~~ | ~~`* * *`~~ — **fixed**, `hr: "---"` in app.js |
-    | `-`, `*`, `+` bullets | `*` with a three-space pad (`*   one`) |
-    | `1.` `1.` `1.` | renumbered `1.` `2.` `3.` |
-    | `1)` | `1.` |
-    | `*emph*` | `_emph_` |
-    | `__bold__` | `**bold**` |
-    | Setext `===` / `---` headings | `#` / `##` (deliberate: `headingStyle: "atx"`) |
-    | `~~~` fences | ` ``` ` |
-    | Indented code | fenced (deliberate: `codeBlockStyle: "fenced"`) |
-    | `[x][1]` + a definition block | inlined `[x](http://example.com)` |
-    | `<http://example.com>` | `[http://example.com](http://example.com)` |
+Measured on this repo's own files, opened and saved through the real
+markdown-it and Turndown: CLAUDE.md, README.md and welcome.md now round-trip
+**byte-identical**, and TODO.md to a single character (below). Editing one word
+in CLAUDE.md changes exactly the paragraph it was in. Before this, every one of
+them came back with the whole file rewritten.
 
-    Every one of these is spec-legal on both sides, so nothing is *wrong* in the
-    file. The damage is entirely in the diff: open a document, change one word,
-    and the commit touches every list, rule and emphasis in it. On a shared repo
-    that is unmergeable.
+That retires most of this section. What the old table listed, and where each
+row landed:
 
-    One of them is not merely cosmetic and should be judged separately:
-    inlining reference links deletes the definition block. A document that
-    cites the same URL in twenty places arrives with one definition and leaves
-    with twenty copies, and there is no way back. That is a change in the shape
-    of the source, not its punctuation.
+| Opened as | Saved as now |
+| --- | --- |
+| `---`, `***`, `___` | preserved — sniffed |
+| `-`, `*`, `+` bullets, and their pad | preserved — sniffed per nesting depth |
+| `1.` `1.` `1.` | preserved — sniffed |
+| `1)` | preserved — sniffed |
+| `*emph*` / `_emph_`, `**bold**` / `__bold__` | preserved — sniffed |
+| `<http://example.com>` | preserved — sniffed, scheme-gated |
+| Hard-wrapped prose | preserved — restored verbatim, or re-wrapped if edited |
+| Setext `===` / `---` headings | still `#` / `##` (deliberate: `headingStyle: "atx"`) |
+| `~~~` fences | still ` ``` ` |
+| Indented code | still fenced (deliberate: `codeBlockStyle: "fenced"`) |
+| `[x][1]` + a definition block | still inlined `[x](http://example.com)` |
 
-    Three routes:
+The last four are unchanged, and the first three of those are deliberate. Only
+one is a real loss, and it is the one the old note already singled out:
 
-    1.  **Keep semantic fidelity and say so.** No code; the README states that
-        Marky normalises markdown style, and it is the author's job to know
-        that. Honest, and fine for a scratch editor. It does concede that Marky
-        cannot be used on a repo it does not own, which is most of them.
-    2.  **Match the file.** Sniff the dominant style on open and configure the
-        serialiser per document. Turndown options cover most of it directly —
-        `hr`, `bulletListMarker`, `emDelimiter`, `strongDelimiter`,
-        `linkStyle`/`linkReferenceStyle`, `fence`. Ordered-list renumbering,
-        `1)`, the three-space list pad and autolinks are not options and would
-        need rule overrides. Each sniff is a heuristic and a mixed-style file
-        has to pick a winner, but it is the only route that scales to the wrap
-        width and trailing newline below, which are the same problem.
-    3.  **Only reserialise what changed.** The real fix and the expensive one:
-        leave untouched regions byte-identical and serialise only edited
-        blocks. Marky has nowhere to put this today — the document lives as
-        HTML in `editor.innerHTML` and no markdown copy is kept, so there is no
-        mapping from source lines to DOM nodes to preserve. It needs the source
-        view in Editing above, or something like it, first.
+*   **Reference links are still inlined, and the definition block is still
+    deleted.** A document that cites the same URL in twenty places arrives with
+    one definition and leaves with twenty copies. Unlike everything above this
+    is a change in the shape of the source, not its punctuation, and the
+    restore does not save it: inlining changes the text of the block, so the
+    block stops matching itself and never comes back. Turndown's
+    `linkReferenceStyle` is not the fix — it would convert *every* link to a
+    reference, which is the same rewrite in the other direction. Wants a rule
+    that emits a reference only for links the source already had a definition
+    for, plus somewhere to re-emit the definition block.
 
-    Two rows of that table are already gone, taken as a down payment on route 2
-    without settling it: `hr: "---"` is set in app.js, and `htmlToMarkdown` now
-    normalises the output to exactly one trailing newline. Both are *fixed*
-    house style, not style matched to the file, so they only reduce the odds of
-    a diff rather than removing the question. `tests/save-fidelity.test.mjs`
-    holds them.
+Smaller things left, in rough order of how much they matter:
 
-    What is left of route 2's cheap slice: the bullet marker and the emphasis
-    delimiters are two more Turndown options, but unlike the rule they have no
-    clear majority convention to default to, so they are the point where a
-    sniffer stops being avoidable. Renumbering, the three-space list pad, `1)`
-    and autolinks need rule overrides whatever is decided; wrapping is its own
-    item below.
+*   Inline code loses a trailing space: `` `> ` `` is saved as `` `>` ``. It is
+    the only thing standing between CLAUDE.md and a byte-identical round trip —
+    one character in 300-odd lines, and the restore cannot cover it because the
+    block no longer matches itself. Turndown's `code` rule trims the content,
+    and CommonMark's own escape hatch is the padded form `` ` > ` ``. A rule
+    override could emit that, at the cost of a form most authors do not write.
+*   The source is persisted as a second copy of the document. `adoptMarkdownStyle`
+    writes the incoming markdown to `localStorage["markdownSource"]`, because the
+    autosave is HTML and carries no markdown to re-sniff on reload. It roughly
+    doubles what Marky stores, and a document that blows the quota keeps editing
+    and saving but loses byte fidelity across a reload — a `console.warn` and
+    nothing else. Storing the derived style plus block hashes instead of the
+    whole source would be smaller, and could not reconstruct the bytes.
+*   The wrap width is a 95th percentile of prose line lengths, which is a
+    heuristic. It is only consulted for blocks that actually changed, so a bad
+    guess costs at most a re-wrapped paragraph, but a file with no clear width
+    (mixed one-sentence-per-line and wrapped prose) gets whichever wins.
+*   `markdownSegments` splits on blank lines, list markers, headings and
+    fences. A change anywhere in a fenced block, a table or a multi-line
+    paragraph re-serialises the whole segment. Finer granularity would need to
+    match at line level, which is a different and much less safe algorithm.
 
-*   **UNDECIDED: bug or documented behaviour?** Saving reflows hard-wrapped
-    markdown into one long line per paragraph. Turndown emits a paragraph as a
-    single line and nothing re-wraps it, so opening a file wrapped at 80 columns
-    and saving it back rewrites every prose line in the file. The content is
-    unchanged — round-tripping TODO.md gives 1423 of 1423 tokens identical — but
-    the git diff is the whole file.
-
-    The case for calling it a bug: it makes Marky unusable on a repo whose
-    markdown is hard-wrapped, which is most of them, including this one.
-
-    The case for calling it documented behaviour: re-wrapping imposes a house
-    style on every file saved. For a file written one-sentence-per-line, or
-    deliberately unwrapped, forcing 80 columns is its own kind of damage, and
-    Marky cannot tell which convention a file follows unless it is told.
-
-    A 29-line reflow pass was prototyped and gets TODO.md down to 33 changed
-    lines, all of them just different break positions. It needs three guards to
-    be safe, two of which were confirmed broken without them: table rows must be
-    skipped (a wrapped `|` row stops being a table), fenced code must be skipped,
-    and a break must never land immediately before `#`, `-`, `1.` or `>`, which
-    turns the continuation line into a heading, bullet or quote — reproduced at
-    widths 30–32.
-
-    If it is a bug, the fix worth having is probably not a global width but
-    matching each file: measure the longest prose line on open, and re-wrap on
-    save only if the file was already wrapped, at roughly its own width.
-    Otherwise, say plainly in the README that Marky normalises wrapping.
-
-*   Blockquotes make the reflow above visible on screen, not just in the diff,
-    and get mistaken for a rendering bug. `>` is a container, not a per-line
-    marker: consecutive `>` lines are one paragraph inside one blockquote, so
-    the newline between them is a soft break and renders as a space. Verified
-    against the running app — `> one\n> two` renders as a single line and saves
-    back as `> one two`, while `>` on its own line (two paragraphs), a trailing
-    double space (`<br>`) and a blank line (two separate blockquotes) all behave
-    as CommonMark says.
+*   Blockquotes: `>` is a container, not a per-line marker, so consecutive `>`
+    lines are one paragraph inside one blockquote and the newline between them
+    renders as a space. Verified against the running app — `> one\n> two`
+    renders as a single line, and now saves back as `> one\n> two` because the
+    restore returns the original bytes.
 
     **DECIDED: rendering stays standard.** `markdownit()` in app.js keeps its
     default `breaks: false`. The expectation that each `>` line is its own line
@@ -210,10 +185,6 @@ round-tripping real files through the running app.
     a `<br>`, so the first save of any hard-wrapped file would append two spaces
     to every line in it. Not worth it to match one vendor's chat widget.
 
-    The save-side collapse is still the reflow bug and wants the same fix, with
-    one guard the prototype does not have: re-wrapping inside a blockquote has
-    to re-apply the `> ` prefix to each continuation line, or the tail of the
-    quote falls out of it.
 
 *   markdown-it eats LaTeX brace escapes before MathJax sees them. `\{` and `\}`
     inside `$$…$$` are resolved as markdown escapes during `markdownToHtml`, so

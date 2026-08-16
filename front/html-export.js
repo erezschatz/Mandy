@@ -70,6 +70,7 @@ onToolbarAction("export-editable", async () => {
     "/app.css",
     "/toolbar.js",
     "/lazy-load.js",
+    "/markdown-style.js",
     "/app.js",
     "/renderers.js",
     "/pdf-export.js",
