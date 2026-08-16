@@ -241,6 +241,12 @@ Two security properties to preserve:
   gated on extension (`.md`, `.markdown`, `.txt`) instead, which is the point of
   the tool.
 
+`POST /api/file` writes only into a directory that already exists — it does not
+`mkdir -p` its way there. The editor's remembered file path outlives the folder
+it names, so creating the parent would rebuild a tree the user moved or deleted
+and file the document somewhere they would never look. The dialog can only pick
+directories it browsed, so the check costs nothing on the normal path.
+
 `FRONT_DIR` resolves relative to `import.meta.dirname`, so cwd doesn't matter.
 The service worker never touches `/api/*` — those are live reads and writes.
 

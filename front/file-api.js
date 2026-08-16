@@ -137,6 +137,15 @@ async function loadDir(dirPath) {
     data = await res.json();
     if (!res.ok) throw new Error(data.error || res.statusText);
   } catch (err) {
+    // A remembered directory outlives the folder it names: move or delete it
+    // between sessions and every Open lands on an error about a path the user
+    // has no way to correct from inside the dialog. Forget it and start from
+    // home instead. Only one retry — the second call passes no path, so a
+    // failure there is the server, not the folder.
+    if (dirPath) {
+      localStorage.removeItem(LAST_DIR_KEY);
+      return loadDir(null);
+    }
     alert("Failed to browse directory: " + err.message);
     return;
   }

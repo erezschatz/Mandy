@@ -8,14 +8,17 @@
 
 import { loadSource, makeEl, walk } from "./dom.mjs";
 
+const HOME = "/home/x";
+
 const DIALOG_IDS = [
   "formatBar", "fileInput", "fileDialog", "dialogTitle", "dialogClose",
   "dialogPathBar", "dialogEntries", "dialogSaveRow", "dialogFilename",
   "dialogSaveConfirm",
 ];
 
-function boot({ savedContent, savedPath, savedDir, savedDirty }) {
+function boot({ savedContent, savedPath, savedDir, savedDirty, realDirs }) {
   const store = new Map();
+  const browsed = [];
   if (savedContent !== undefined) store.set("markdownContent", savedContent);
   if (savedPath !== undefined) store.set("marky-current-file", savedPath);
   if (savedDir !== undefined) store.set("marky-last-dir", savedDir);
@@ -64,15 +67,26 @@ function boot({ savedContent, savedPath, savedDir, savedDirty }) {
       },
       navigator: { clipboard: {} },
       // /api/home on boot; a save echoes back the path it was given, which is
-      // what the real endpoint does and what setCurrentFile reads.
-      fetch: async (url, opts) => ({
-        ok: true,
-        json: async () =>
-          opts && opts.method === "POST"
-            ? { path: JSON.parse(opts.body).path }
-            : { home: "/home/x" },
-        text: async () => "",
-      }),
+      // what the real endpoint does and what setCurrentFile reads. /api/browse
+      // answers 400 for anything outside `realDirs`, the way the server does
+      // for a folder that has been moved or deleted.
+      fetch: async (url, opts) => {
+        if (opts && opts.method === "POST") {
+          return { ok: true, json: async () => ({ path: JSON.parse(opts.body).path }) };
+        }
+        if (url.startsWith("/api/browse")) {
+          const query = url.split("?path=")[1];
+          const path = query ? decodeURIComponent(query) : HOME;
+          browsed.push(query ? path : null);
+          return realDirs && !realDirs.includes(path)
+            ? { ok: false, json: async () => ({ error: "Cannot read directory" }) }
+            : {
+              ok: true,
+              json: async () => ({ path, parent: "/home", entries: [] }),
+            };
+        }
+        return { ok: true, json: async () => ({ home: HOME }), text: async () => "" };
+      },
       TurndownService: class { addRule() {} turndown(h) { return h; } },
       alert() {},
       confirm: () => true,
@@ -84,13 +98,15 @@ function boot({ savedContent, savedPath, savedDir, savedDirty }) {
       Date,
     },
     "; return { path: currentFilePath, label: currentFileLabel.textContent," +
-      " dir: dialogDir, labelEl: currentFileLabel, saveFile };",
+      " dir: dialogDir, labelEl: currentFileLabel, saveFile, showOpenDialog," +
+      " dirNow: () => dialogDir };",
   );
 
   const editorEl = extra.get("editor");
   return {
     ...api,
     store,
+    browsed,
     // What the toolbar reads right now, as opposed to `label` — the snapshot
     // taken while the scripts were still loading.
     labelNow: () => api.labelEl.textContent,
@@ -143,6 +159,25 @@ export default async function run(check) {
   check("clear drops the persisted path", !r.store.has("marky-current-file"));
   check("clear keeps the last directory",
     r.store.get("marky-last-dir") === "/home/erez/projects/docs");
+
+  // --- a remembered directory that no longer exists ------------------------
+  //
+  // The last directory outlives the folder it names. Rename or move it and the
+  // dialog opens on a path the server cannot read, with no way to get out of it
+  // from inside the dialog.
+
+  r = boot({ savedDir: "/home/erez/gone", realDirs: [HOME] });
+  await r.showOpenDialog();
+  check("a missing directory falls back to home",
+    r.browsed.join() === "/home/erez/gone,");
+  check("and the dialog lands on home", r.dirNow() === HOME);
+  check("and the stale directory is forgotten",
+    r.store.get("marky-last-dir") === HOME);
+
+  r = boot({ savedDir: "/home/erez/notes", realDirs: [HOME, "/home/erez/notes"] });
+  await r.showOpenDialog();
+  check("a directory that still exists is not second-guessed",
+    r.browsed.join() === "/home/erez/notes");
 
   // --- edited marker -------------------------------------------------------
   //

@@ -115,8 +115,17 @@ router.post('/api/file', async (c: Context) => {
     return c.json({ error: `File must be one of: ${MARKDOWN_EXTENSIONS.join(', ')}` }, 400);
   }
 
+  // A save never conjures directories. The open file's path outlives the folder
+  // it names — move or delete that folder and the editor still holds the old
+  // path — so creating it would silently rebuild a tree the user got rid of,
+  // and drop the document somewhere they would not think to look for it.
+  const parent = path.dirname(resolvedPath);
+  const parentStats = await fs.stat(parent).catch(() => null);
+  if (!parentStats?.isDirectory()) {
+    return c.json({ error: `Folder no longer exists: ${parent}` }, 400);
+  }
+
   try {
-    await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
     await fs.writeFile(resolvedPath, content, 'utf-8');
     return c.json({ path: resolvedPath, name: path.basename(resolvedPath) });
   } catch (error) {
