@@ -1,3 +1,14 @@
+const BAR_GAP = 10; // between the bar and the selection
+const BAR_EDGE = 8; // between the bar and the edge of the window
+
+// The toolbar is sticky at top: 0, so the usable area starts under it rather
+// than at the top of the viewport. Measured live for the reason scrollToAnchor
+// measures it: app.css's 69px is a magic number and wrong once it wraps.
+function toolbarClearance() {
+  const toolbar = document.querySelector(".toolbar");
+  return toolbar ? toolbar.getBoundingClientRect().height : 0;
+}
+
 function showFormatBar() {
   const selection = window.getSelection();
   if (!selection.rangeCount || selection.isCollapsed) {
@@ -15,13 +26,33 @@ function showFormatBar() {
 
   const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
 
-  formatBar.style.left = `${
-    rect.left + rect.width / 2 - formatBar.offsetWidth / 2
-  }px`;
-  formatBar.style.top = `${
-    rect.top + scrollTop - formatBar.offsetHeight - 10
-  }px`;
+  // Shown before it is measured: the bar is display: none until .visible lands,
+  // and a hidden element measures 0×0. Measuring first left it with no height
+  // to sit above — so it covered the text — and no width to centre or clamp,
+  // which is why it ran off the right edge and then snapped into place on the
+  // next selectionchange. Nothing paints between here and the writes below.
   formatBar.classList.add("visible");
+  const barWidth = formatBar.offsetWidth;
+  const barHeight = formatBar.offsetHeight;
+
+  // Above the selection by default. Near the first line of the document there
+  // is no room for it there — it would sit off the top of the page, or behind
+  // the sticky toolbar — so it flips below rather than going out of reach.
+  const ceiling = scrollTop + toolbarClearance() + BAR_EDGE;
+  const above = rect.top + scrollTop - barHeight - BAR_GAP;
+  const top = above >= ceiling ? above : rect.bottom + scrollTop + BAR_GAP;
+
+  // Centred on the selection, but never past either edge: a selection at the
+  // right margin used to push half the bar out of the window. The second
+  // Math.max keeps the clamp sane if the bar is wider than the window.
+  const rightmost = document.documentElement.clientWidth - barWidth - BAR_EDGE;
+  const left = Math.min(
+    Math.max(rect.left + rect.width / 2 - barWidth / 2, BAR_EDGE),
+    Math.max(rightmost, BAR_EDGE),
+  );
+
+  formatBar.style.left = `${left}px`;
+  formatBar.style.top = `${top}px`;
 
   updateActiveButtons();
 }

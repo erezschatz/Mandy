@@ -20,14 +20,12 @@
     the items together. (format-bar.js, `blocksInRange`)
 *   Hybrid mode is not supported: typing `#` at the start of a line should turn
     that line into a heading, and the same for `-`, `>`, ``` and so on.
-*   No way to indent bullets. There is no Tab handling in the editor and no
-    indent/outdent control in the format bar. `execCommand("indent"/"outdent")`
-    exists and would cover it.
 *   The UI only supports some of the markup MD offers, and not even all of what
     the README advertises. The format bar has p, h1, h2, h3, bold, italic, ul,
     ol, code. Missing: links, images, tables, blockquotes, h4-h6, strikethrough,
-    inline code, horizontal rules. They render when imported; there is just no
-    way to author them.
+    inline code, horizontal rules, and indent/outdent — that last one is bound to
+    Tab but has no control, so on touch there is no way to nest a bullet at all.
+    They render when imported; there is just no way to author them.
 *   Links are done except for three loose ends. Ctrl/Cmd+click follows a link
     and jumps to `#anchor` headings, `anchorSlug` / `headingAnchors` in app.js
     resolve slugs live, and `static-export.js` stamps real ids into the exported
@@ -227,12 +225,6 @@ round-tripping real files through the running app.
 
 ## Format bar
 
-*   The inline toolbar doesn't stay within the app. `showFormatBar` sets `left`
-    and `top` straight from the selection rect with no clamping at all, so it
-    goes off the top near the first line and off the right edge on selections
-    near the right margin. (An `editorRect` variable sat there unused, clearly
-    an abandoned attempt at exactly this; it was removed as dead code and will
-    want to come back.)
 *   The inline toolbar is too jittery. It repositions on every `selectionchange`
     on the document, which fires constantly while dragging a selection. Needs
     debouncing, or to only reposition when the selection rect actually moves.

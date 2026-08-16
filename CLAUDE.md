@@ -22,7 +22,7 @@ Flag it before adding any dependency, npm or Deno.
 [tests/](tests/) has no framework and no dependencies. Each suite loads the real
 `front/` sources into a scope with a hand-rolled DOM stub ([tests/dom.mjs](tests/dom.mjs))
 and drives them, so a suite breaks when the source it names changes. Run one
-suite by importing it directly; `tests/run.mjs` runs all five.
+suite by importing it directly; `tests/run.mjs` runs them all.
 
 They cover the invariants that fail *silently* rather than loudly:
 

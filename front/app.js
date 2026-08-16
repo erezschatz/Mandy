@@ -388,6 +388,48 @@ window.addEventListener("beforeunload", () => {
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 
+// Returns the <li> the caret is in, or null. Scoped to the editor: a selection
+// in a list somewhere else on the page is not ours to indent.
+function listItemAtCaret() {
+  const anchor = window.getSelection().anchorNode;
+  const element = anchor && (anchor.closest ? anchor : anchor.parentElement);
+  const item = element && element.closest && element.closest("li");
+  return item && editor.contains(item) ? item : null;
+}
+
+// Chrome's execCommand puts the nested list beside the item it belongs to
+// rather than inside it, so the parent list is one hop further up than the
+// spec shape suggests. Look for either.
+function isNested(item) {
+  const list = item.parentElement;
+  return !!(list && list.parentElement && list.parentElement.closest("ul, ol"));
+}
+
+// Tab indents a bullet instead of moving focus — but only inside a list, and
+// only where the nesting is expressible: markdown cannot write a first item
+// nested under nothing, and Turndown would emit an indent that parses back as
+// a code block. Shift+Tab only unnests; plain outdent turns a top-level item
+// into a paragraph, which is a formatting change, not an indent. Everywhere
+// else Tab keeps its default job of leaving the editor, which is a keyboard
+// user's only way out.
+editor.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const item = listItemAtCaret();
+  if (!item) return;
+
+  if (e.shiftKey) {
+    if (!isNested(item)) return;
+    e.preventDefault();
+    document.execCommand("outdent");
+    return;
+  }
+
+  if (!item.previousElementSibling) return;
+  e.preventDefault();
+  document.execCommand("indent");
+});
+
 document.addEventListener("keydown", (e) => {
   // Save/open bind to the blob fallbacks only where those buttons are rendered,
   // i.e. in exported documents. In the app itself file-api.js owns Ctrl+S and

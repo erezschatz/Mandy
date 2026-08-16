@@ -10,6 +10,7 @@ const SUITES = [
   ["latex", "./latex.test.mjs"],
   ["save-fidelity", "./save-fidelity.test.mjs"],
   ["links", "./links.test.mjs"],
+  ["list-indent", "./list-indent.test.mjs"],
 ];
 
 let passed = 0;
