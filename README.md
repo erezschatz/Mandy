@@ -14,6 +14,7 @@ Marky runs on your own machine and edits your own files. See
 ### 📋 Import Your Content
 - **Paste from Clipboard** - Click "Paste MD" to load markdown directly from your clipboard
 - **Open Local Files** - Browse your computer and open any `.md`, `.markdown`, or `.txt` file directly (requires the local server, see [For Developers](#-for-developers))
+- **Reload from Disk** - The caret beside "Open" re-reads the file, picking up anything another tool, script or agent wrote to it - and it is also how you throw local changes away. Marky checks the file whenever you come back to the window, and marks the filename `(disk changed)` when it no longer matches what you have open
 
 ### ✏️ Edit with Ease
 - **WYSIWYG Editing** - See your formatted text as you type, no preview pane needed
@@ -24,7 +25,7 @@ Marky runs on your own machine and edits your own files. See
 - **Clear Document** - Start fresh with a single click
 
 ### 💾 Export Your Work
-- **Save to Disk** - Write your work straight back to the file you opened, no download dance
+- **Save to Disk** - Write your work straight back to the file you opened, no download dance. The caret beside "Save" offers Save As. If the file changed underneath you since you opened it, Marky asks before overwriting it
 - **Copy to Clipboard** - Instantly copy all your markdown with one click
 - **Export as HTML** - Generate a standalone, self-contained HTML page of the document alone - the same kind of deliverable as PDF or DOCX, for sharing something to be read
 - **Export as Editable** - Generate an HTML file with the editor bundled in, so recipients can modify it directly in their browser and send it back to you. No markdown knowledge required at their end. The file is completely self-contained - one HTML file that runs entirely in the browser, with nothing to install and no sign-up - and fully capable: they can export it to markdown, PDF, DOCX or HTML, and re-export another editable copy to pass along
@@ -138,8 +139,8 @@ changes, or set `MARKY_PORT` to pick another port. The server binds to
 or `.txt` file your user account can reach.
 
 If the server is not running the editor still loads — the service worker serves
-it from cache — but Open and Save disable themselves, since there is nothing to
-read or write through. The clipboard and the HTML/PDF/DOCX exports keep working.
+it from cache — but Open and Save disable themselves, carets included, since
+there is nothing to read or write through. The clipboard and the HTML/PDF/DOCX exports keep working.
 
 ### Running it permanently with pm2
 
@@ -186,7 +187,7 @@ opened yet, is wrong:
 | `links` | Anchor slugs, the scheme allowlist, and the Ctrl+Click hint staying out of the markdown. |
 | `static-export` | What the document-only export contains, including heading anchor ids. |
 | `self-reproduce` | An exported document re-exports offline, handing its successor byte-identical CSS and JS. |
-| `file-path` | The open file, the last browsed directory, and the `(edited)` marker surviving a reload. |
+| `file-path` | The open file, the last browsed directory, the `(edited)` marker surviving a reload, and Reload / the disk-changed marker against a fake disk. |
 
 Type-check the server separately with `cd server && deno task check`.
 

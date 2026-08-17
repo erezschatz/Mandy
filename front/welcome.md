@@ -6,8 +6,11 @@ and see your formatted text in real-time!
 ## ✨ Quick Start
 
 - **Select text** to see formatting options appear above
-- **Open** — Open a markdown file from your computer
-- **Save** — Write your work straight back to that file
+- **Open** — Open a markdown file from your computer. The caret beside it also
+  offers **Reload from disk**, for when something else has changed the file —
+  or when you want your own changes thrown away
+- **Save** — Write your work straight back to that file. The caret beside it
+  offers **Save As**
 - **Clear** — Start fresh with a blank document
 - **Copy MD** / **Paste MD** — Move markdown through the clipboard
 - **HTML**, **PDF**, **DOCX** — Export the document to share it

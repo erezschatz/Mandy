@@ -179,6 +179,81 @@
         transform: translateY(1px);
       }
 
+      /* Split button: one control with two halves — the primary action, and a
+         caret for the alternatives. The wrapper is the positioning context, so
+         an open menu is out of flow and never reflows the toolbar around it. */
+      .split-button {
+        position: relative;
+        display: flex;
+        align-items: stretch;
+      }
+
+      /* The seam. Only the outer corners round, so the two buttons read as one
+         control rather than two that happen to be touching. */
+      .split-button > button:first-child {
+        border-radius: 4px 0 0 4px;
+      }
+
+      .split-caret {
+        border-radius: 0 4px 4px 0;
+        border-left: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 0.5rem 0.35rem;
+        /* Overrides the responsive clamps on `button`, which would otherwise
+           pad a 14px chevron out to the width of a labelled button. */
+        min-width: 0;
+        max-width: none;
+        flex: 0 0 auto;
+      }
+
+      .split-menu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 0.25rem);
+        left: 0;
+        flex-direction: column;
+        min-width: 100%;
+        padding: 0.25rem;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-secondary);
+        border-radius: 4px;
+        box-shadow: 0 4px 12px var(--shadow-medium);
+        /* Above the sticky toolbar's own stacking context. */
+        z-index: 200;
+      }
+
+      .split-button[data-open] .split-menu {
+        display: flex;
+      }
+
+      /* Not a toolbar button: it sits on the document background, and the
+         font-size and width clamps the responsive rules put on `button` would
+         shrink these labels to nothing. The class outranks them — which is also
+         why this block has to follow `button:hover`, the one rule it ties with. */
+      .split-menu-item {
+        background: transparent;
+        color: var(--text-primary);
+        justify-content: flex-start;
+        text-align: left;
+        white-space: nowrap;
+        font-size: 0.9rem;
+        padding: 0.4rem 0.75rem;
+        border-radius: 3px;
+        min-width: max-content;
+        max-width: none;
+        height: auto;
+        flex: 0 0 auto;
+      }
+
+      .split-menu-item:hover {
+        background: var(--bg-secondary);
+      }
+
+      .split-menu-item:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        background: transparent;
+      }
+
       /* PDF Button Styles */
       #pdfBtn:disabled {
         background: #95a5a6;

@@ -72,6 +72,10 @@ router.get('/api/browse', async (c: Context) => {
   }
 });
 
+// `modified` is what lets the editor notice the file changing underneath it —
+// another tool, a script, an agent. `stat=1` answers with that alone: the editor
+// asks on every window focus while a file is open, and re-reading the whole
+// document each time to look at one field would be the wrong trade.
 router.get('/api/file', async (c: Context) => {
   const filePath = c.req.query('path');
   if (!filePath) {
@@ -84,8 +88,14 @@ router.get('/api/file', async (c: Context) => {
   }
 
   try {
+    const stats = await fs.stat(resolvedPath);
+    const modified = stats.mtime.toISOString();
+    const base = { path: resolvedPath, name: path.basename(resolvedPath), modified };
+    if (c.req.query('stat')) {
+      return c.json(base);
+    }
     const content = await fs.readFile(resolvedPath, 'utf-8');
-    return c.json({ path: resolvedPath, name: path.basename(resolvedPath), content });
+    return c.json({ ...base, content });
   } catch (error) {
     if ((error as { code?: string }).code === 'ENOENT') {
       return c.json({ error: 'File not found' }, 404);
@@ -127,7 +137,15 @@ router.post('/api/file', async (c: Context) => {
 
   try {
     await fs.writeFile(resolvedPath, content, 'utf-8');
-    return c.json({ path: resolvedPath, name: path.basename(resolvedPath) });
+    // The mtime of what we just wrote, so the editor can re-baseline from the
+    // reply. Without it the next focus check reads its own save as an outside
+    // edit and reports the document stale against itself.
+    const stats = await fs.stat(resolvedPath).catch(() => null);
+    return c.json({
+      path: resolvedPath,
+      name: path.basename(resolvedPath),
+      modified: stats?.mtime.toISOString(),
+    });
   } catch (error) {
     return c.json({ error: 'Failed to save file: ' + (error as Error).message }, 500);
   }

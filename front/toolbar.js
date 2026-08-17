@@ -51,6 +51,7 @@ const TOOLBAR_ICONS = {
   editable:
     '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
     '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"></path>',
+  caret: '<polyline points="6 9 12 15 18 9"></polyline>',
   github:
     '<path d="M12 1C5.923 1 1 5.923 1 12c0 4.867 3.149 8.979 7.521 10.436.55.096.756-.233.756-.522 0-.262-.013-1.128-.013-2.049-2.764.509-3.479-.674-3.699-1.292-.124-.317-.66-1.293-1.127-1.554-.385-.207-.936-.715-.014-.729.866-.014 1.485.797 1.691 1.128.99 1.663 2.571 1.196 3.204.907.096-.715.385-1.196.701-1.471-2.448-.275-5.005-1.224-5.005-5.432 0-1.196.426-2.186 1.128-2.956-.111-.275-.496-1.402.11-2.915 0 0 .921-.288 3.024 1.128a10.193 10.193 0 0 1 2.75-.371c.936 0 1.871.123 2.75.371 2.104-1.43 3.025-1.128 3.025-1.128.605 1.513.221 2.64.111 2.915.701.77 1.127 1.747 1.127 2.956 0 4.222-2.571 5.157-5.019 5.432.399.344.743 1.004.743 2.035 0 1.471-.014 2.654-.014 3.025 0 .289.206.632.756.522C19.851 20.979 23 16.854 23 12c0-6.077-4.922-11-11-11Z"></path>',
 };
@@ -64,11 +65,19 @@ const TOOLBAR_ICONS = {
 const TOOLBAR_GROUPS = [
   [
     { id: "openBtn", action: "open-file", label: "Open", icon: "open", variants: ["app"],
-      title: "Open markdown file (Ctrl+O)" },
+      title: "Open markdown file (Ctrl+O)",
+      menu: [
+        { action: "open-file", label: "Open…" },
+        { action: "reload-file", label: "Reload from disk" },
+      ] },
     { id: "uploadBtn", action: "upload-md", label: "Upload MD", icon: "upload", variants: ["export"],
       title: "Upload markdown file (Ctrl+O)" },
     { id: "saveBtn", action: "save-file", label: "Save", icon: "save", variants: ["app"],
-      title: "Save markdown file (Ctrl+S, Ctrl+Shift+S to save as)" },
+      title: "Save markdown file (Ctrl+S, Ctrl+Shift+S to save as)",
+      menu: [
+        { action: "save-file", label: "Save" },
+        { action: "save-as-file", label: "Save As…" },
+      ] },
     { id: "downloadBtn", action: "download-md", label: "Download MD", icon: "download", variants: ["export"],
       title: "Download as markdown (Ctrl+S)" },
     { id: "clearBtn", action: "clear", label: "Clear", icon: "clear", variants: ["app", "export"],
@@ -134,17 +143,86 @@ function toolbarVariant() {
   return editorEl && editorEl.hasAttribute("data-exported") ? "export" : "app";
 }
 
+function iconSvg(name, size) {
+  return (
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" ` +
+    `stroke="currentColor" stroke-width="2">${TOOLBAR_ICONS[name]}</svg>`
+  );
+}
+
 function buildToolbarButton(spec) {
   const button = document.createElement("button");
   button.id = spec.id;
   button.title = spec.title;
   button.setAttribute("data-action", spec.action);
   if (spec.ariaLabel) button.setAttribute("aria-label", spec.ariaLabel);
-  button.innerHTML =
-    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" ' +
-    `stroke="currentColor" stroke-width="2">${TOOLBAR_ICONS[spec.icon]}</svg>` +
-    (spec.labelHtml || spec.label);
+  button.innerHTML = iconSvg(spec.icon, 20) + (spec.labelHtml || spec.label);
   return button;
+}
+
+// A split button: the primary action is still a plain click, and a caret beside
+// it offers the alternatives. The menu is built inside the wrapper, and so
+// inside `.toolbar` — which is the whole point. Its items are ordinary
+// [data-action] buttons, so the one delegated listener dispatches them already
+// and a menu entry needs no wiring beyond the `onToolbarAction` its module
+// registers anyway.
+//
+// The caret carries `data-menu`, not `data-action`, because it is not an action:
+// it belongs to the mechanism here rather than to any module. Keeping it out of
+// the action namespace is what keeps "every rendered action has a handler in
+// this variant's bundle" a true statement.
+function buildSplitButton(spec) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "split-button";
+  wrapper.appendChild(buildToolbarButton(spec));
+
+  const caret = document.createElement("button");
+  caret.id = spec.id + "Menu";
+  caret.className = "split-caret";
+  caret.title = `More ${spec.label} options`;
+  caret.setAttribute("data-menu", spec.action);
+  caret.setAttribute("aria-haspopup", "true");
+  caret.setAttribute("aria-expanded", "false");
+  caret.setAttribute("aria-label", `More ${spec.label} options`);
+  caret.innerHTML = iconSvg("caret", 14);
+  wrapper.appendChild(caret);
+
+  const menu = document.createElement("div");
+  menu.className = "split-menu";
+  menu.setAttribute("role", "menu");
+  for (const item of spec.menu) {
+    const entry = document.createElement("button");
+    entry.className = "split-menu-item";
+    entry.setAttribute("data-action", item.action);
+    entry.setAttribute("role", "menuitem");
+    entry.textContent = item.label;
+    menu.appendChild(entry);
+  }
+  wrapper.appendChild(menu);
+
+  return wrapper;
+}
+
+// At most one menu is ever open, so the caret and its wrapper are held here
+// rather than looked up again — nothing else needs to know a menu exists.
+let openSplit = null;
+
+function closeSplitMenu() {
+  if (!openSplit) return;
+  openSplit.wrapper.removeAttribute("data-open");
+  openSplit.caret.setAttribute("aria-expanded", "false");
+  openSplit = null;
+}
+
+function toggleSplitMenu(caret) {
+  const wrapper = caret.parentElement;
+  const wasOpen = openSplit && openSplit.wrapper === wrapper;
+  closeSplitMenu();
+  if (wasOpen) return;
+
+  wrapper.setAttribute("data-open", "true");
+  caret.setAttribute("aria-expanded", "true");
+  openSplit = { wrapper, caret };
 }
 
 function buildToolbarTitle(variant) {
@@ -213,7 +291,11 @@ function buildToolbar(variant) {
 
     const groupEl = document.createElement("div");
     groupEl.className = "button-group";
-    for (const spec of included) groupEl.appendChild(buildToolbarButton(spec));
+    for (const spec of included) {
+      groupEl.appendChild(
+        spec.menu ? buildSplitButton(spec) : buildToolbarButton(spec),
+      );
+    }
     buttons.appendChild(groupEl);
   }
 
@@ -223,11 +305,30 @@ function buildToolbar(variant) {
 
   // The click target is usually the <svg> inside the button, hence closest().
   toolbar.addEventListener("click", (event) => {
+    const caret = event.target.closest("[data-menu]");
+    if (caret) {
+      toggleSplitMenu(caret);
+      return;
+    }
+
     const button = event.target.closest("[data-action]");
     if (!button) return;
+    // Covers choosing an item as well as clicking elsewhere in the toolbar: the
+    // item is itself a [data-action] button, so this is the same code path.
+    closeSplitMenu();
     for (const handler of toolbarActions.get(button.dataset.action) || []) {
       handler(button, event);
     }
+  });
+
+  // Anything outside the open menu dismisses it. The caret's own click is
+  // already handled above and bubbles to here afterwards, which is why this
+  // tests containment rather than closing unconditionally.
+  document.addEventListener("click", (event) => {
+    if (openSplit && !openSplit.wrapper.contains(event.target)) closeSplitMenu();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeSplitMenu();
   });
 }
 

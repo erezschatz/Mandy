@@ -13,14 +13,26 @@ function render(variant, probe = "") {
   const editorEl = makeEl();
   if (variant === "export") editorEl.setAttribute("data-exported", "true");
 
+  // The split menus dismiss on a click or Escape anywhere, so toolbar.js binds
+  // to the document as well as to .toolbar.
+  const listeners = {};
   const document = {
     createElement: (t) => makeEl(t),
     querySelector: (s) => (s === ".toolbar" ? toolbar : null),
     getElementById: (id) => (id === "editor" ? editorEl : null),
+    addEventListener: (event, fn) => ((listeners[event] ||= []).push(fn), undefined),
   };
   const hits = [];
   new Function("document", "hits", TOOLBAR_SRC + "\n" + probe)(document, hits);
-  return { toolbar, hits };
+  return { toolbar, hits, listeners };
+}
+
+// A split button is a wrapper holding the primary button, its caret and the
+// menu. Menu items are buttons too, and deliberately: they ride the same
+// delegated dispatch, so they are held to the same handler-exists rule.
+function splitParts(node) {
+  const [primary, caret, menu] = node.children;
+  return { primary, caret, menu, items: menu ? menu.children : [] };
 }
 
 // Read the bundles from source so these lists cannot drift from the real ones.
@@ -49,24 +61,63 @@ export default function run(check) {
     const { toolbar } = render(variant);
     const nodes = walk(toolbar);
     const buttons = nodes.filter((n) => n.tagName === "BUTTON");
+    const carets = buttons.filter((b) => b.attrs["data-menu"]);
+    const items = buttons.filter((b) => b.className === "split-menu-item");
+    // Everything that dispatches an action and is not a menu entry: the ones
+    // that carry an icon and a tooltip.
+    const primary = buttons.filter((b) => !carets.includes(b) && !items.includes(b));
     const handled = handlersIn(bundle.filter((f) => f !== "toolbar.js"));
 
-    for (const button of buttons) {
+    for (const button of [...primary, ...items]) {
       const action = button.attrs["data-action"];
       check(`${variant}: "${action}" has a handler in this bundle`, handled.has(action));
     }
 
     check(
-      `${variant}: every button carries a data-action`,
-      buttons.every((b) => b.attrs["data-action"]),
+      `${variant}: every button carries an action or opens a menu`,
+      buttons.every((b) => b.attrs["data-action"] || b.attrs["data-menu"]),
     );
     check(
-      `${variant}: every button has id, title and a resolved icon`,
-      buttons.every(
+      `${variant}: every action button has id, title and a resolved icon`,
+      primary.every(
         (b) =>
           b.id && b.title && b.innerHTML.includes("<svg") &&
           !b.innerHTML.includes("undefined"),
       ),
+    );
+    // A caret is the mechanism, not an action: it must stay out of the action
+    // namespace, or the handler-exists rule above quietly stops holding.
+    check(
+      `${variant}: carets carry no data-action`,
+      carets.every((b) => !b.attrs["data-action"] && b.id && b.title),
+    );
+    check(
+      `${variant}: every menu item has a label and no icon`,
+      items.every((b) => b.textContent && !b.innerHTML),
+    );
+    const splits = nodes.filter((n) => n.className === "split-button");
+    check(
+      `${variant}: every split button is primary + caret + menu`,
+      splits.every((s) => {
+        const { primary, caret, menu, items } = splitParts(s);
+        return (
+          primary.tagName === "BUTTON" &&
+          caret.attrs["data-menu"] === primary.attrs["data-action"] &&
+          menu.className === "split-menu" &&
+          items.length > 1 &&
+          // The default belongs in its own menu: a menu that omitted it would
+          // make the button's own action the one choice you cannot read.
+          items.some((i) => i.attrs["data-action"] === primary.attrs["data-action"])
+        );
+      }),
+    );
+    check(`${variant}: a caret exists only where a menu does`, carets.length === splits.length);
+    // Both split buttons are file-server controls, which an exported document
+    // has none of — so the export variant renders neither, and nothing there
+    // can open a menu of actions its bundle cannot perform.
+    check(
+      `${variant}: split buttons ${variant === "app" ? "present" : "absent"}`,
+      splits.length > 0 === (variant === "app"),
     );
     check(
       `${variant}: three button groups`,
@@ -109,4 +160,70 @@ export default function run(check) {
   hits.length = 0;
   toolbar.listeners.click[0]({ target: makeEl() });
   check("click outside any action is ignored", hits.length === 0);
+
+  // --- split menus ---------------------------------------------------------
+  //
+  // The menu's whole justification is that it needs no dispatch of its own: its
+  // items are [data-action] buttons inside .toolbar, so they ride the listener
+  // above. These drive it the way a browser would — toolbar listener first, then
+  // the document's, as the event bubbles.
+
+  const app = render(
+    "app",
+    `onToolbarAction("reload-file", () => hits.push("reload"));`,
+  );
+  const splits = walk(app.toolbar).filter((n) => n.className === "split-button");
+  const openSplit = splits.find((s) => splitParts(s).primary.id === "openBtn");
+  const saveSplit = splits.find((s) => splitParts(s).primary.id === "saveBtn");
+  const openParts = splitParts(openSplit);
+
+  const click = (target) => {
+    app.toolbar.listeners.click[0]({ target });
+    for (const fn of app.listeners.click || []) fn({ target });
+  };
+  const escape = () => {
+    for (const fn of app.listeners.keydown || []) fn({ key: "Escape" });
+  };
+  const isOpen = (split) => split.hasAttribute("data-open");
+
+  click(openParts.caret);
+  check("the caret opens its menu", isOpen(openSplit));
+  check(
+    "and says so for assistive tech",
+    openParts.caret.attrs["aria-expanded"] === "true",
+  );
+
+  click(openParts.caret);
+  check("the same caret closes it again", !isOpen(openSplit));
+  check(
+    "and takes the aria state back",
+    openParts.caret.attrs["aria-expanded"] === "false",
+  );
+
+  // A real click lands on the chevron, the same way it lands on a button's icon.
+  click(openParts.caret.appendChild(makeEl("svg")));
+  check("a click on the chevron itself opens the menu", isOpen(openSplit));
+
+  click(splitParts(saveSplit).caret);
+  check(
+    "opening one menu closes the other",
+    !isOpen(openSplit) && isOpen(saveSplit),
+  );
+
+  click(openParts.caret);
+  click(openParts.items.find((i) => i.attrs["data-action"] === "reload-file"));
+  check("a menu item dispatches its action", app.hits.join() === "reload");
+  check("and the menu closes behind it", !isOpen(openSplit));
+
+  click(openParts.caret);
+  click(makeEl());
+  check("a click anywhere else dismisses the menu", !isOpen(openSplit));
+
+  click(openParts.caret);
+  escape();
+  check("Escape dismisses the menu", !isOpen(openSplit));
+
+  click(openParts.caret);
+  click(openParts.primary);
+  check("the primary action dismisses it too", !isOpen(openSplit));
 }

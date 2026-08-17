@@ -15,12 +15,18 @@ const dialogSaveConfirm = document.getElementById("dialogSaveConfirm");
 const FILE_PATH_KEY = "marky-current-file";
 const LAST_DIR_KEY = "marky-last-dir";
 const DIRTY_KEY = "marky-dirty";
+const MTIME_KEY = "marky-file-mtime";
 
 let currentFilePath = null;
 // Edited since the last open or save. Autosave is unaware of the file on disk,
 // so without this the toolbar shows a filename that may be nothing like the
 // bytes it names.
 let isDirty = false;
+// The file's mtime as we last read or wrote it — the baseline every staleness
+// check measures against. The document diverging from disk is the mirror image
+// of `isDirty`: that one is our edits, this one is everybody else's.
+let fileMtime = null;
+let diskChanged = false;
 let dialogMode = "open";
 // Last visited directory, reused between openings and across reloads — walking
 // back to the same folder every session is the kind of friction you only notice
@@ -32,9 +38,15 @@ function renderCurrentFile() {
   if (!currentFileLabel) return;
 
   const name = currentFilePath ? currentFilePath.split("/").pop() : "";
-  // Only meaningful against a file on disk: with no file open there is nothing
-  // the document could be out of step with.
-  currentFileLabel.textContent = name && isDirty ? `${name} (edited)` : name;
+  // Both marks are only meaningful against a file on disk: with no file open
+  // there is nothing the document could be out of step with. They are also not
+  // exclusive — edit a file an agent has since rewritten and both are true, and
+  // that is exactly the case worth being loud about.
+  const marks = [];
+  if (name && isDirty) marks.push("edited");
+  if (name && diskChanged) marks.push("disk changed");
+
+  currentFileLabel.textContent = marks.length ? `${name} (${marks.join(", ")})` : name;
   currentFileLabel.title = currentFilePath || "";
 }
 
@@ -52,6 +64,29 @@ function setDirty(dirty) {
     localStorage.removeItem(DIRTY_KEY);
   }
   renderCurrentFile();
+}
+
+function setDiskChanged(changed) {
+  if (diskChanged === changed) return;
+  diskChanged = changed;
+  renderCurrentFile();
+}
+
+// Persisted for the same reason the dirty flag is: autosave restores the
+// document across a browser reload, and a baseline that reset to null would make
+// the first check report a file nobody has touched as changed.
+//
+// Setting a new baseline always clears the flag, because the three callers —
+// open, reload, save — are exactly the moments the document and the file are
+// back in step.
+function setFileMtime(modified) {
+  fileMtime = modified || null;
+  if (fileMtime) {
+    localStorage.setItem(MTIME_KEY, fileMtime);
+  } else {
+    localStorage.removeItem(MTIME_KEY);
+  }
+  setDiskChanged(false);
 }
 
 // Persisted alongside the content so a reload keeps saving to the same file
@@ -73,10 +108,12 @@ function setCurrentFile(filePath) {
   const savedContent = localStorage.getItem("markdownContent");
   if (savedContent && !isBlankContent(savedContent)) {
     isDirty = localStorage.getItem(DIRTY_KEY) === "1";
+    fileMtime = localStorage.getItem(MTIME_KEY);
     setCurrentFile(localStorage.getItem(FILE_PATH_KEY));
   } else {
     localStorage.removeItem(FILE_PATH_KEY);
     localStorage.removeItem(DIRTY_KEY);
+    localStorage.removeItem(MTIME_KEY);
   }
 })();
 
@@ -94,6 +131,7 @@ editor.addEventListener("input", () => setDirty(true));
 onToolbarAction("clear", () => {
   if (isBlankContent(editor.innerHTML)) {
     setDirty(false);
+    setFileMtime(null);
     setCurrentFile(null);
   }
 });
@@ -107,6 +145,11 @@ function joinPath(dir, name) {
   if (!dir) return name;
   return dir.endsWith("/") ? dir + name : `${dir}/${name}`;
 }
+
+const CHECK_ICON =
+  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" ' +
+  'stroke="currentColor" stroke-width="2">' +
+  '<polyline points="20 6 9 17 4 12"></polyline></svg>';
 
 function flashButton(button, label) {
   const original = button.innerHTML;
@@ -257,7 +300,7 @@ async function openFile(filePath) {
     if (!res.ok) throw new Error(data.error || res.statusText);
   } catch (err) {
     alert("Failed to open file: " + err.message);
-    return;
+    return false;
   }
 
   editor.innerHTML = markdownToHtml(data.content);
@@ -265,10 +308,85 @@ async function openFile(filePath) {
   await renderLatex(editor);
   localStorage.setItem("markdownContent", editor.innerHTML);
   setDirty(false);
+  setFileMtime(data.modified);
   setCurrentFile(data.path);
+  return true;
+}
+
+// Re-reads the open file, discarding whatever the editor holds — which is the
+// point of it, since this is also the only way to throw local changes away. So
+// it asks when there are edits to lose.
+async function reloadFile() {
+  if (!currentFilePath) {
+    alert("No file is open to reload.");
+    return;
+  }
+
+  const name = currentFilePath.split("/").pop();
+  if (isDirty && !confirm(`Reload ${name} from disk? Unsaved edits will be lost.`)) {
+    return;
+  }
+
+  // A reload of an unchanged file changes nothing on screen, so without the
+  // flash there is no way to tell it happened — and it must be gated on the read
+  // actually succeeding, or a file that has since been deleted reports
+  // "Reloaded!" over the document it failed to replace.
+  if (!(await openFile(currentFilePath))) return;
+  const openBtn = toolbarButton("open-file");
+  if (openBtn) flashButton(openBtn, `${CHECK_ICON} Reloaded!`);
+}
+
+async function statFile(filePath) {
+  const res = await fetch(
+    `/api/file?path=${encodeURIComponent(filePath)}&stat=1`,
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+// Nothing here recovers, merges or reloads on its own — it only stops the
+// toolbar claiming a file matches a document it no longer matches. What to do
+// about it is the user's call: Reload takes the file, Save takes the document.
+let checkingDisk = false;
+
+async function checkDiskChanged() {
+  if (!currentFilePath || !fileMtime || checkingDisk) return;
+  checkingDisk = true;
+  try {
+    const { modified } = await statFile(currentFilePath);
+    setDiskChanged(Boolean(modified) && modified !== fileMtime);
+  } catch {
+    // A file that has been deleted or renamed under us is a different problem,
+    // and an alert on every window focus would be no way to raise it.
+  } finally {
+    checkingDisk = false;
+  }
+}
+
+// The one place the flag has teeth. Writing over a file that changed after we
+// read it destroys those changes, and Marky has no merge to offer — so this is
+// the last point at which the choice is still the user's.
+async function confirmOverwrite(filePath) {
+  if (filePath !== currentFilePath || !fileMtime) return true;
+
+  let modified;
+  try {
+    ({ modified } = await statFile(filePath));
+  } catch {
+    // Cannot tell. The save itself is about to report anything really wrong.
+    return true;
+  }
+  if (!modified || modified === fileMtime) return true;
+
+  setDiskChanged(true);
+  const name = filePath.split("/").pop();
+  return confirm(`${name} changed on disk since you opened it. Overwrite it?`);
 }
 
 async function saveFile(filePath) {
+  if (!(await confirmOverwrite(filePath))) return false;
+
   const markdown = htmlToMarkdown(editor.innerHTML);
 
   let data;
@@ -286,26 +404,22 @@ async function saveFile(filePath) {
   }
 
   setDirty(false);
+  setFileMtime(data.modified);
   setCurrentFile(data.path);
   return true;
 }
 
-// `button` comes from the delegated click; the keyboard path looks it up.
-async function saveCurrentOrPrompt(button) {
+// The flash always lands on the toolbar's own Save button, never on whatever was
+// clicked: choosing "Save" from the split menu closes the menu behind it, so
+// flashing the clicked element would hide "Saved!" inside a menu nobody is
+// looking at — and leave it there for the next person who opens it.
+async function saveCurrentOrPrompt() {
   const target = currentFilePath || (await showSaveDialog());
   if (!target) return;
 
   if (await saveFile(target)) {
-    const saveBtn = button || toolbarButton("save-file");
-    if (saveBtn) {
-      flashButton(
-        saveBtn,
-        `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="20 6 9 17 4 12"></polyline>
-      </svg>
-      Saved!`,
-      );
-    }
+    const saveBtn = toolbarButton("save-file");
+    if (saveBtn) flashButton(saveBtn, `${CHECK_ICON} Saved!`);
   }
 }
 
@@ -319,7 +433,8 @@ async function saveFileAs() {
 // ── Wiring ───────────────────────────────────────────────────────────────────
 
 // Without the file server (e.g. the statically hosted build) there is nothing
-// to open or save into, so say so up front instead of failing on click.
+// to open or save into, so say so up front instead of failing on click. The
+// carets go with them: a live menu over two dead buttons is worse than either.
 (async () => {
   try {
     const res = await fetch("/api/home");
@@ -329,19 +444,43 @@ async function saveFileAs() {
     const data = await res.json();
     if (typeof data.home !== "string") throw new Error("Not the Marky server");
   } catch {
-    for (const action of ["open-file", "save-file"]) {
-      const btn = toolbarButton(action);
+    const dead = [
+      ...["open-file", "save-file", "reload-file", "save-as-file"].map((a) =>
+        document.querySelector(`.toolbar [data-action="${a}"]`)
+      ),
+      ...["open-file", "save-file"].map((a) =>
+        document.querySelector(`.toolbar [data-menu="${a}"]`)
+      ),
+    ];
+    for (const btn of dead) {
       if (!btn) continue;
       btn.disabled = true;
       btn.style.opacity = "0.5";
       btn.style.cursor = "not-allowed";
       btn.title = "Unavailable: the Marky file server is not running";
     }
+    return;
   }
+
+  // A page load restores the document from autosave without going near the
+  // file, so the very first thing worth knowing is whether the two still agree.
+  // `focus` never fires for the tab that already has it.
+  checkDiskChanged();
 })();
 
 onToolbarAction("open-file", showOpenDialog);
+onToolbarAction("reload-file", reloadFile);
 onToolbarAction("save-file", saveCurrentOrPrompt);
+onToolbarAction("save-as-file", saveFileAs);
+
+// Coming back to the window is when an outside edit is most likely to have
+// happened and cheapest to report. Both events are needed — switching tabs
+// within a window fires only `visibilitychange`, alt-tabbing back to the browser
+// only `focus` — and checkDiskChanged drops the overlap when both fire.
+window.addEventListener("focus", checkDiskChanged);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) checkDiskChanged();
+});
 dialogClose.addEventListener("click", closeDialog);
 dialogSaveConfirm.addEventListener("click", confirmSaveName);
 

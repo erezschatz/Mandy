@@ -16,13 +16,37 @@ const DIALOG_IDS = [
   "dialogSaveConfirm",
 ];
 
-function boot({ savedContent, savedPath, savedDir, savedDirty, realDirs }) {
+// Lets a test park the answer the next confirm() gives, and read back what it
+// was asked. Reload and overwrite both hinge on it.
+let confirmAnswer = true;
+
+// Every disk check is fired and not awaited — a page load fires one, and so does
+// the visibilitychange handler. One turn of the timer queue drains them, since
+// the promises behind them are all microtasks.
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function boot({
+  savedContent,
+  savedPath,
+  savedDir,
+  savedDirty,
+  savedMtime,
+  realDirs,
+  disk = new Map(),
+}) {
   const store = new Map();
   const browsed = [];
+  const reads = [];
+  const writes = [];
+  const asked = [];
+  // One bag for both targets: file-api.js binds `focus` on window and
+  // `visibilitychange` on document, and no name is claimed by both.
+  const listeners = {};
   if (savedContent !== undefined) store.set("markdownContent", savedContent);
   if (savedPath !== undefined) store.set("marky-current-file", savedPath);
   if (savedDir !== undefined) store.set("marky-last-dir", savedDir);
   if (savedDirty !== undefined) store.set("marky-dirty", savedDirty);
+  if (savedMtime !== undefined) store.set("marky-file-mtime", savedMtime);
 
   const toolbar = makeEl();
   toolbar.className = "toolbar";
@@ -37,12 +61,15 @@ function boot({ savedContent, savedPath, savedDir, savedDirty, realDirs }) {
       extra.get(id) ?? walk(toolbar).find((n) => n.id === id) ?? null,
     querySelector: (sel) => {
       if (sel === ".toolbar") return toolbar;
-      const m = sel.match(/\[data-action="([a-z-]+)"\]/);
+      const m = sel.match(/\[data-(action|menu)="([a-z-]+)"\]/);
       return m
-        ? walk(toolbar).find((n) => n.attrs["data-action"] === m[1]) ?? null
+        ? walk(toolbar).find((n) => n.attrs[`data-${m[1]}`] === m[2]) ?? null
         : null;
     },
-    addEventListener() {},
+    hidden: false,
+    addEventListener(event, fn) {
+      (listeners[event] ||= []).push(fn);
+    },
     body: makeEl(),
     head: makeEl(),
     documentElement: makeEl(),
@@ -60,19 +87,46 @@ function boot({ savedContent, savedPath, savedDir, savedDirty, realDirs }) {
         removeItem: (k) => store.delete(k),
       },
       window: {
-        addEventListener() {},
+        addEventListener(event, fn) {
+          (listeners[event] ||= []).push(fn);
+        },
         matchMedia: () => ({ matches: false }),
         markdownit: () => ({ render: (s) => s }),
         getSelection: () => ({ removeAllRanges() {}, addRange() {} }),
       },
       navigator: { clipboard: {} },
+      // Loaded by renderers.js in the app, which this suite does not need — but
+      // openFile calls both on every read, reload included.
+      renderMermaidDiagrams: async () => {},
+      renderLatex: async () => {},
       // /api/home on boot; a save echoes back the path it was given, which is
       // what the real endpoint does and what setCurrentFile reads. /api/browse
       // answers 400 for anything outside `realDirs`, the way the server does
       // for a folder that has been moved or deleted.
       fetch: async (url, opts) => {
         if (opts && opts.method === "POST") {
-          return { ok: true, json: async () => ({ path: JSON.parse(opts.body).path }) };
+          // A write moves the file's mtime, the way the real one does — which is
+          // what stops the next disk check reading our own save as an outside
+          // edit. The path is echoed back because setCurrentFile reads it.
+          const body = JSON.parse(opts.body);
+          const modified = `2026-08-17T10:0${writes.length + 5}:00.000Z`;
+          disk.set(body.path, { content: body.content, modified });
+          writes.push(body.path);
+          return { ok: true, json: async () => ({ path: body.path, modified }) };
+        }
+        if (url.startsWith("/api/file")) {
+          const filePath = decodeURIComponent(url.match(/path=([^&]*)/)[1]);
+          const stat = url.includes("stat=1");
+          reads.push(`${stat ? "stat" : "read"}:${filePath}`);
+          const file = disk.get(filePath);
+          if (!file) {
+            return { ok: false, json: async () => ({ error: "File not found" }) };
+          }
+          const base = { path: filePath, name: filePath.split("/").pop(), modified: file.modified };
+          return {
+            ok: true,
+            json: async () => (stat ? base : { ...base, content: file.content }),
+          };
         }
         if (url.startsWith("/api/browse")) {
           const query = url.split("?path=")[1];
@@ -87,9 +141,20 @@ function boot({ savedContent, savedPath, savedDir, savedDirty, realDirs }) {
         }
         return { ok: true, json: async () => ({ home: HOME }), text: async () => "" };
       },
-      TurndownService: class { addRule() {} turndown(h) { return h; } },
+      // `options` is the real one's own bag, and reading a file writes the
+      // sniffed style into it — so a stub without it throws on the first open.
+      TurndownService: class {
+        options = {};
+        addRule() {}
+        turndown(h) {
+          return h;
+        }
+      },
       alert() {},
-      confirm: () => true,
+      confirm: (message) => {
+        asked.push(message);
+        return confirmAnswer;
+      },
       console,
       setTimeout,
       clearTimeout,
@@ -99,7 +164,8 @@ function boot({ savedContent, savedPath, savedDir, savedDirty, realDirs }) {
     },
     "; return { path: currentFilePath, label: currentFileLabel.textContent," +
       " dir: dialogDir, labelEl: currentFileLabel, saveFile, showOpenDialog," +
-      " dirNow: () => dialogDir };",
+      " openFile, reloadFile, dirNow: () => dialogDir," +
+      " pathNow: () => currentFilePath, mtimeNow: () => fileMtime };",
   );
 
   const editorEl = extra.get("editor");
@@ -107,9 +173,25 @@ function boot({ savedContent, savedPath, savedDir, savedDirty, realDirs }) {
     ...api,
     store,
     browsed,
+    reads,
+    writes,
+    asked,
+    disk,
+    // Coming back to the window, both ways a browser reports it. Fired and then
+    // settled rather than awaited, because a browser does not await them either.
+    focus: async () => {
+      for (const fn of listeners.focus || []) fn();
+      await settle();
+    },
+    reveal: async () => {
+      for (const fn of listeners.visibilitychange || []) fn();
+      await settle();
+    },
     // What the toolbar reads right now, as opposed to `label` — the snapshot
     // taken while the scripts were still loading.
     labelNow: () => api.labelEl.textContent,
+    // markdownit is a pass-through here, so this is the markdown a read put in.
+    html: () => editorEl.innerHTML,
     // Typing, and anything else that goes through execCommand: file-api.js
     // hangs the dirty flag off the editor's own input event.
     type: () => {
@@ -120,6 +202,17 @@ function boot({ savedContent, savedPath, savedDir, savedDirty, realDirs }) {
       toolbar.listeners.click[0]({
         target: document.querySelector('[data-action="clear"]'),
       });
+    },
+    // Two elements carry the same action once a button has a split menu — the
+    // button and the menu entry — so a test has to be able to say which.
+    find: (action, fromMenu = false) => {
+      const matches = walk(toolbar).filter(
+        (n) => n.attrs["data-action"] === action,
+      );
+      return fromMenu ? matches.at(-1) : matches[0];
+    },
+    clickAction(action, fromMenu = false) {
+      toolbar.listeners.click[0]({ target: this.find(action, fromMenu) });
     },
   };
 }
@@ -220,4 +313,160 @@ export default async function run(check) {
   r = boot({ savedContent: "<h1>Real work</h1>" });
   r.type();
   check("no marker without a file open", r.labelNow() === "");
+
+  // --- reload, and the file changing underneath ----------------------------
+  //
+  // A page load restores the document from autosave, never from the file, so
+  // until Reload existed nothing in the app could see an edit made anywhere
+  // else — and re-Opening was the only way to discard local changes.
+
+  const OPEN = "/home/erez/notes/plan.md";
+  const T1 = "2026-08-17T09:00:00.000Z";
+  const T2 = "2026-08-17T09:30:00.000Z";
+
+  // Restored from autosave against a file that has since moved on: the case the
+  // whole feature exists for.
+  const changedUnderneath = (extra) =>
+    boot({
+      savedContent: "<h1>Stale</h1>",
+      savedPath: OPEN,
+      savedMtime: T1,
+      disk: new Map([[OPEN, { content: "# Fresh", modified: T2 }]]),
+      ...extra,
+    });
+
+  const inStep = (extra) =>
+    boot({
+      savedContent: "<h1>Same</h1>",
+      savedPath: OPEN,
+      savedMtime: T1,
+      disk: new Map([[OPEN, { content: "# Same", modified: T1 }]]),
+      ...extra,
+    });
+
+  confirmAnswer = true;
+  r = changedUnderneath();
+  await r.reloadFile();
+  check("reload re-reads the open file", r.reads.includes(`read:${OPEN}`));
+  check("and the document comes from disk", r.html() === "# Fresh");
+  check("and the file's mtime becomes the new baseline", r.mtimeNow() === T2);
+  check("which is persisted like the path", r.store.get("marky-file-mtime") === T2);
+  check("and the marker clears", r.labelNow() === "plan.md");
+
+  r = boot({ savedContent: "<h1>Real work</h1>" });
+  await r.reloadFile();
+  check("reload with no file open reads nothing", !r.reads.length);
+
+  // Reload is destructive by definition — it is the discard path as much as the
+  // refresh one — so it is the one place that has to ask.
+  r = changedUnderneath();
+  await settle();
+  r.type();
+  confirmAnswer = false;
+  await r.reloadFile();
+  check("reload asks before discarding edits", /Unsaved edits/.test(r.asked.at(-1) || ""));
+  check("and cancelling reads nothing", !r.reads.some((s) => s.startsWith("read:")));
+  check("and leaves the edits in place", r.labelNow() === "plan.md (edited, disk changed)");
+
+  confirmAnswer = true;
+  await r.reloadFile();
+  check("confirming discards them", r.labelNow() === "plan.md");
+
+  r = changedUnderneath({ disk: new Map() });
+  await r.reloadFile();
+  check("reloading a file that is gone keeps the open path", r.pathNow() === OPEN);
+  check("and does not move the baseline", r.mtimeNow() === T1);
+  check(
+    "and does not claim to have reloaded",
+    !r.find("open-file").innerHTML.includes("Reloaded!"),
+  );
+
+  r = changedUnderneath();
+  await settle();
+  check(
+    "a page load checks the file behind the document it restored",
+    r.labelNow() === "plan.md (disk changed)",
+  );
+  check("with a stat, not a re-read", r.reads.join() === `stat:${OPEN}`);
+
+  r = changedUnderneath({ savedDirty: "1" });
+  await settle();
+  check(
+    "our edits and everybody else's are both reported",
+    r.labelNow() === "plan.md (edited, disk changed)",
+  );
+
+  r = inStep();
+  await settle();
+  check("a file nobody touched is not flagged", r.labelNow() === "plan.md");
+  r.disk.set(OPEN, { content: "# Changed", modified: T2 });
+  await r.focus();
+  check("coming back to the window notices the change", r.labelNow() === "plan.md (disk changed)");
+
+  r = inStep();
+  await settle();
+  r.disk.set(OPEN, { content: "# Changed", modified: T2 });
+  await r.reveal();
+  check("so does switching back to the tab", r.labelNow() === "plan.md (disk changed)");
+
+  // A document restored from before any of this shipped has no baseline, and
+  // there is no honest way to invent one: we do not know when it was read.
+  r = boot({ savedContent: "<h1>x</h1>", savedPath: OPEN, disk: new Map() });
+  await r.focus();
+  check("no baseline, no disk check", !r.reads.length);
+
+  r = changedUnderneath();
+  await settle();
+  r.clear();
+  check("clear drops the persisted baseline", !r.store.has("marky-file-mtime"));
+
+  r = boot({ savedContent: "<p><br></p>", savedPath: OPEN, savedMtime: T1 });
+  check("and a blank document never restores one", !r.store.has("marky-file-mtime"));
+
+  // The flag with teeth: a save over a file that moved on destroys whatever
+  // moved it, and there is no merge on offer.
+  r = changedUnderneath();
+  await settle();
+  confirmAnswer = false;
+  let saved = await r.saveFile(OPEN);
+  check("a save over a changed file asks first", /changed on disk/.test(r.asked.at(-1) || ""));
+  check("and declining writes nothing", saved === false && !r.writes.length);
+
+  confirmAnswer = true;
+  saved = await r.saveFile(OPEN);
+  check("confirming writes", saved === true && r.writes.join() === OPEN);
+  check("and the write re-baselines", r.mtimeNow() === r.disk.get(OPEN).modified);
+  check("so the next check is quiet", (await r.focus(), r.labelNow() === "plan.md"));
+
+  r = inStep();
+  await settle();
+  confirmAnswer = false;
+  saved = await r.saveFile(OPEN);
+  check("an untouched file saves without asking", saved === true && !r.asked.length);
+
+  // Both the button and its menu entry carry "save-file", and the menu closes
+  // itself on the way through — so a flash on the clicked element would land
+  // inside a menu nobody is looking at, and still be there next time it opens.
+  r = inStep();
+  await settle();
+  r.clickAction("save-file", true);
+  await settle();
+  check(
+    "saving from the menu flashes the toolbar button",
+    r.find("save-file").innerHTML.includes("Saved!"),
+  );
+  check(
+    "and leaves the menu entry alone",
+    r.find("save-file", true).innerHTML === "",
+  );
+
+  // Save As writes somewhere the baseline says nothing about, so it is not the
+  // open file's staleness that should stand in its way.
+  r = changedUnderneath();
+  await settle();
+  confirmAnswer = false;
+  saved = await r.saveFile("/home/erez/notes/copy.md");
+  check("saving elsewhere is not blocked by the open file's baseline", saved === true);
+  check("and the copy becomes the open file", r.pathNow() === "/home/erez/notes/copy.md");
+  confirmAnswer = true;
 }

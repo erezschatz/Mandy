@@ -43,9 +43,9 @@
       would just 404 off the static handler. The behaviour that would make a
       linked set of markdown files navigable is opening it in Marky through the
       file API, resolved against the directory of the open file — a good deal
-      more work than a `window.open`, and it wants the reload/mtime item above
-      decided alongside it, since following a link means replacing the open
-      document.
+      more work than a `window.open`. Following a link means replacing the open
+      document, so it now has `openFile` and the dirty/mtime tracking to build
+      on; what it still lacks is the unsaved-work guard on that path.
     - **Touch devices have no modifier**, so there is no way to follow a link on
       one, and the hover tooltip never shows either. Wants its own affordance —
       a long-press, or the chip Google Docs shows.
@@ -59,22 +59,16 @@
     parses on the way in, Turndown serialises on the way out. Copy MD, Download
     MD and Save all emit markdown, so it is reachable, but there is no way to
     see or edit the markdown inside the app.
-*   No way to reload the open file from disk. On load the editor restores from
-    `localStorage["markdownContent"]`, not from the file, and autosave is
-    unaware of the file on disk — so if the file changes underneath Marky
-    (edited in another tool, rewritten by a script or an agent) nothing picks it
-    up, and re-Opening it is also the only way to discard local changes. Wants a
-    Reload control, and probably a warning when the file on disk is newer than
-    what was loaded. `GET /api/browse` already returns mtime per entry, but
-    `GET /api/file` does not, so the read endpoint would need to return it too.
-*   Nothing guards unsaved work. The toolbar now says `(edited)` when the
-    document has diverged from the file, but nothing acts on it — every way out
-    of a dirty document throws it away without asking:
+*   Nothing guards unsaved work. The toolbar says `(edited)` when the document
+    has diverged from the file, and Reload and an overwriting Save both act on
+    it now — but the other three ways out of a dirty document still throw it
+    away without asking:
 
     - **Open** replaces the document outright. `openFile` in file-api.js
       assigns `editor.innerHTML` and overwrites the autosave with no check at
       all, so opening a second file silently discards unsaved edits to the
-      first.
+      first. Note `reloadFile` guards the same call and Open does not, which is
+      the inconsistency to fix rather than a design.
     - **Clear** does confirm, but the wording predates the file API — "remove
       all content and auto-saved data" — and never mentions the file or whether
       anything is unsaved. It reads identical whether you are about to lose an
@@ -86,9 +80,16 @@
       not — a cleared cache, a different browser, a private window.
 
     All three want the same thing: consult the dirty flag, and offer Save /
-    Discard / Cancel rather than a bare yes-no. Note the flag lives in
+    Discard / Cancel rather than a bare yes-no — which is also what Reload's
+    plain `confirm` should become once that exists. Note the flag lives in
     file-api.js, which the editable export does not ship, so the exported
     document needs its own answer or an honest absence of one.
+*   Only two toolbar controls do double duty. Open/Reload and Save/Save As are
+    split buttons; everything else is still one button per action. The mechanism
+    is general (`menu` on a `TOOLBAR_GROUPS` spec, see CLAUDE.md), so more can
+    be folded in — but the real answer is a menubar, and once there is one most
+    of these buttons will need to double up anyway. Worth deciding that shape
+    before adding a third caret.
 
 *   Ghost lines. Pasted text brings in empty lines — roughly 1px tall, enough to
     space bullets unevenly. Not yet reproduced deliberately. Prime suspect is

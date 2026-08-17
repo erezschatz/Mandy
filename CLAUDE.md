@@ -27,15 +27,20 @@ suite by importing it directly; `tests/run.mjs` runs them all.
 They cover the invariants that fail *silently* rather than loudly:
 
 - **toolbar** — every button a variant renders has a handler in a script that
-  variant's bundle ships. Both bundle lists are parsed out of `index.html` and
-  `html-export.js`, so the test cannot drift from the real ones.
+  variant's bundle ships, menu items included. Both bundle lists are parsed out
+  of `index.html` and `html-export.js`, so the test cannot drift from the real
+  ones. Also drives the split menus the way a browser would — toolbar listener
+  first, then the document's, as the event bubbles.
 - **format-bar** — formatting never replaces `#editor`. Regression cover for a
   bug that detached the editable root and left the app looking unstyled and
   dead until reload.
 - **self-reproduce** — an exported document re-exports without touching the
   network, and hands its successor byte-identical CSS and JS.
 - **static-export** / **file-path** — the document-only export's contents, and
-  the persistence of the open file and last browsed directory.
+  everything the app remembers about the file it has open: the path, the last
+  browsed directory, the edited marker, and the mtime baseline that Reload and
+  the disk-changed marker measure against. It drives a fake disk, so a reload,
+  an outside edit and a save over one all have a real file to disagree with.
 - **save-fidelity** — the serialiser options app.js asks for, and then
   `markdown-style.js` directly: the sniffers, and every guard in the re-wrapper.
   That second half is the one that writes into the user's file.
@@ -155,6 +160,39 @@ Two traps here, both of which write into the user's file if you get them wrong:
 
 Autosave writes `editor.innerHTML` to `localStorage["markdownContent"]` on a 1s
 debounce — separate from, and unaware of, the file on disk.
+
+### The document versus the file
+
+A page load restores the document from autosave, never by re-reading the file,
+so the two can drift apart from either end. `file-api.js` tracks both directions
+and reports them in the same toolbar label: `plan.md (edited, disk changed)`.
+
+- **Our edits** are `isDirty`, set from the editor's own `input` event.
+- **Everybody else's** are `fileMtime`, the mtime the file had when we last read
+  or wrote it. `GET /api/file` returns it; `?stat=1` returns *only* it, which is
+  the call `checkDiskChanged` makes on window `focus`, on `visibilitychange`, and
+  once at startup — a page load has already missed the `focus` event for the tab
+  it loads into.
+
+Both flags are persisted (`marky-dirty`, `marky-file-mtime`) and restored only
+alongside the content, for the same reason the path is: autosave carries unsaved
+edits across a browser reload, and a baseline that reset to null would make the
+first check call a file nobody has touched changed.
+
+Setting a new baseline always clears the changed flag, because `openFile`,
+`reloadFile` and `saveFile` are exactly the three moments the document and the
+file are back in step. A document restored from before this shipped has no
+baseline, and `checkDiskChanged` stays silent rather than inventing one — we do
+not know when that document was read.
+
+The flag has teeth in one place: `confirmOverwrite` re-stats before a save that
+would write over the open file, because overwriting a file that moved on destroys
+whatever moved it and Marky has no merge to offer. A Save As to any *other* path
+is not gated on it — the baseline says nothing about a file we never read.
+
+`reloadFile` is the discard path as much as the refresh one, so it is the one
+action that confirms when there are edits to lose. It has no keyboard shortcut:
+Ctrl+R, Ctrl+Shift+R and F5 all belong to the browser.
 
 ### Save fidelity
 
@@ -295,11 +333,39 @@ includes the script that binds it**, or it renders as a dead control. The
 editable export's `ASSETS` decide that, and `toolbar.js` must stay first in
 that list for the same reason it is first in `index.html`.
 
+#### Split buttons
+
+A spec with a `menu` renders as a `.split-button`: the primary button, a caret
+beside it, and the menu itself — Open/Reload and Save/Save As so far. The menu is
+built *inside* the wrapper, and therefore inside `.toolbar`, which is the whole
+point: its items are ordinary `[data-action]` buttons, so the one delegated
+listener already dispatches them and a menu entry needs no wiring beyond the
+`onToolbarAction` its module registers anyway. The same rule as above holds over
+menu items, and the toolbar test enforces it over both.
+
+The caret carries **`data-menu`, not `data-action`**, because it is not an
+action: it belongs to the mechanism in `toolbar.js` rather than to any module.
+Give it an action and "every rendered action has a handler in this variant's
+bundle" stops being true — the caret's handler lives in `toolbar.js`, which that
+check deliberately excludes.
+
+Open state is one attribute, `data-open` on the wrapper, with CSS doing the rest;
+`toolbar.js` holds the single open menu in `openSplit` rather than querying for
+it. Dismissal is on the document, so a click or Escape anywhere closes it — the
+first time `toolbar.js` binds outside `.toolbar`.
+
 ### Server
 
 [server/src/server.ts](server/src/server.ts) is the whole thing. Routes:
 `/api/home`, `GET /api/browse`, `GET|POST /api/file`, then a catch-all static
 handler for `front/`.
+
+Both `/api/file` methods report the file's mtime, which is what lets the editor
+notice a file changing underneath it. `GET` with `stat=1` answers with that
+alone and never reads the file: the editor asks on every window focus while a
+file is open. `POST` returns the mtime of what it just wrote, so a save
+re-baselines from the reply — without it the next check reads our own save as
+somebody else's edit.
 
 Two security properties to preserve:
 
