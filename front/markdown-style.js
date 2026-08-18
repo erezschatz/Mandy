@@ -373,11 +373,36 @@ function markdownSegments(markdown) {
   return segments;
 }
 
+// Only spaces, pipes, colons and dashes, and at least one of each of the last
+// two: a table cannot have a delimiter row without a pipe, and `---` on its own
+// is a rule or a setext underline.
+function isTableDelimiterRow(line) {
+  return /^[\s|:-]*$/.test(line) && line.includes("|") && line.includes("-");
+}
+
+// A pipe table is the one construct whose spacing is not the author's to keep:
+// the `table` rule in app.js writes its own cell padding and its own three-dash
+// delimiter, so `|---|---|` and `| --- | --- |` are the same table and never the
+// same key. Normalising both sides to one shape is what lets a table the author
+// did not touch restore like every other block.
+function normaliseTableRows(block) {
+  const lines = block.split("\n");
+  if (!lines.some(isTableDelimiterRow)) return block;
+  return lines
+    .map((line) => {
+      const row = line.trim().replace(/\s*\|\s*/g, "|");
+      // The dash run is a width, not a meaning -- only the colons around it say
+      // anything -- and ours is always three however wide the author's was.
+      return isTableDelimiterRow(row) ? row.replace(/-+/g, "-") : row;
+    })
+    .join("\n");
+}
+
 // Turndown escapes punctuation that could reparse as markup ("1\." mid
 // sentence), so the key has to ignore that too or a block that changed in no
 // other way stops matching itself.
 function markdownBlockKey(block) {
-  return block
+  return normaliseTableRows(block)
     .replace(/\\([^\w\s])/g, "$1")
     .replace(/\s+/g, " ")
     .trim();

@@ -159,4 +159,33 @@ function styleChecks(check) {
     "turndown's escaping does not defeat the match",
     restore("a 1\\. b\n", index("a 1. b\n")) === "a 1. b\n",
   );
+
+  // Cell padding and delimiter width are the table rule's own, and neither is
+  // the author's to lose: a table that keys on them never matches itself.
+  const compact = "|a|b|\n|---|---|\n|1|2|\n";
+  check(
+    "a compact table survives the rule's padding",
+    restore("| a | b |\n| --- | --- |\n| 1 | 2 |\n", index(compact)) === compact,
+  );
+  const aligned = "| a | b |\n|:------|------:|\n| 1 | 2 |\n";
+  check(
+    "a wide delimiter row survives being narrowed to three dashes",
+    restore("| a | b |\n| :-- | --: |\n| 1 | 2 |\n", index(aligned)) === aligned,
+  );
+  check(
+    "an edited cell still misses",
+    restore("| a | b |\n| --- | --- |\n| 1 | 3 |\n", index(compact)) ===
+      "| a | b |\n| --- | --- |\n| 1 | 3 |\n",
+  );
+
+  // The normalisation is scoped to blocks holding a delimiter row, so a rule
+  // and a paragraph that happens to contain a pipe both stay literal.
+  check(
+    "a horizontal rule is not read as a delimiter row",
+    restore("a\n\n---\n\nb\n", index("a\n\n-----\n\nb\n")) === "a\n\n---\n\nb\n",
+  );
+  check(
+    "a pipe in prose does not make a table of the paragraph",
+    restore("use a | b here\n", index("use  a | b  here\n")) === "use  a | b  here\n",
+  );
 }

@@ -240,6 +240,13 @@ match — which in this repo's own `TODO.md` is most of the file. Each segment
 also carries the separator that followed it, so a restored run comes back tight
 or loose the way the author had it.
 
+The key ignores whitespace, but a pipe table needs more than that: the `table`
+rule writes its own cell padding and its own three-dash delimiter, so `|---|---|`
+and `| --- | --- |` are the same table and would never be the same key.
+`normaliseTableRows` collapses padding around pipes and the delimiter row's dash
+runs before the key is taken — but only in a block that holds a delimiter row, so
+a `---` rule and a paragraph containing a pipe both stay literal.
+
 CLAUDE.md, README.md and welcome.md all round-trip byte-identical. Editing one
 word in CLAUDE.md changes exactly the paragraph it was in.
 
