@@ -1,5 +1,85 @@
 const md = window.markdownit();
 
+// markdown-it has never heard of maths. `$…$` reaches MathJax only because it
+// passes through as text, which means every inline rule runs *inside* the
+// equation on the way past. CommonMark's backslash escapes are the ones that
+// bite: `$$\mathbb{N} = \{ a \}$$` arrives as `\mathbb{N} = { a }`, renders
+// without the braces and is then saved that way. Emphasis and links do it too,
+// verified against markdown-it 13: `$x = a*b*c$` loses both asterisks and
+// italicises `b`, and `$[x](y)$` becomes a link. Spacing decides it, which is
+// why this looks intermittent — `$a * b * c$` survives untouched.
+//
+// So claim the span before any other rule can see it. `mathSpan` finds the
+// delimiters, a rule ahead of `escape` consumes them, and the renderer writes
+// the source back out verbatim. Nothing downstream moves: the document still
+// carries `$…$` as text for MathJax to typeset, `containsLatex` still matches
+// it, and `data-tex` still carries the TeX back through a save.
+//
+// Display maths broken across a blank line is not handled and does not need to
+// be — a blank line inside `$$…$$` is an error in TeX itself, and markdown-it
+// has split the paragraph in two long before any inline rule runs.
+
+// The maths span opening at `start`, or null. Apart from the markdown-it
+// plumbing below because the delimiters are the part with judgement in them:
+// this is what tells an equation from a price, and it is testable on its own.
+function mathSpan(src, start) {
+  if (src[start] !== "$") return null;
+
+  const display = src[start + 1] === "$";
+  let pos = start + (display ? 2 : 1);
+
+  // `$5 and $10` is prose. Two rules keep it prose: an opening delimiter is
+  // never followed by whitespace, and a closing one is never followed by a
+  // digit. Display maths needs neither -- `$$` does not occur in prices.
+  if (!display && (pos >= src.length || /\s/.test(src[pos]))) return null;
+
+  while (pos < src.length) {
+    if (src[pos] === "\\") {
+      pos += 2; // `\$` is a literal dollar and does not close the span
+      continue;
+    }
+    if (src[pos] !== "$") {
+      pos++;
+      continue;
+    }
+    if (display) {
+      if (src[pos + 1] === "$") {
+        return { content: src.slice(start + 2, pos), end: pos + 2, display: true };
+      }
+      pos++; // a lone `$` inside display maths
+      continue;
+    }
+    if (/\d/.test(src[pos + 1] || "")) {
+      pos++;
+      continue;
+    }
+    if (pos === start + 1) return null; // `$$` is not an empty inline equation
+    return { content: src.slice(start + 1, pos), end: pos + 1, display: false };
+  }
+  return null; // unterminated: leave it as the prose it probably is
+}
+
+function mathRule(state, silent) {
+  if (state.src[state.pos] !== "$") return false;
+
+  const span = mathSpan(state.src, state.pos);
+  if (!span) return false;
+
+  if (!silent) {
+    const token = state.push("math", "", 0);
+    token.markup = span.display ? "$$" : "$";
+    token.content = span.content;
+  }
+  state.pos = span.end;
+  return true;
+}
+
+md.inline.ruler.before("escape", "math", mathRule);
+md.renderer.rules.math = function (tokens, idx) {
+  const token = tokens[idx];
+  return token.markup + md.utils.escapeHtml(token.content) + token.markup;
+};
+
 // The conventions of the document currently open. Replaced wholesale every time
 // a document arrives with markdown to read; until then these are Turndown's own
 // defaults, so a session that never opens a file serialises exactly as it did

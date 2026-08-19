@@ -172,14 +172,15 @@ deliberate rather than bugs. In rough order of how much they matter:
     paragraph re-serialises the whole segment. Finer granularity would need to
     match at line level, which is a different and much less safe algorithm.
 
-*   **2.8** markdown-it eats LaTeX brace escapes before MathJax sees them. `\{`
-    and `\}` inside `$$…$$` are resolved as markdown escapes during
-    `markdownToHtml`, so `$$\mathbb{N} = \{ a \}$$` reaches MathJax as
-    `\mathbb{N} = { a }` and renders without the visible braces — wrong on
-    screen, and then saved that way. Unrelated to the `data-tex` round trip,
-    which faithfully preserves whatever MathJax was actually given; this one is
-    upstream of it. Wants markdown-it configured to leave `$$…$$` spans alone,
-    or a math-aware plugin.
+*   **2.8** *(fixed, unverified)* markdown-it used to eat LaTeX escapes before
+    MathJax saw them: `\{` and `\}` inside `$$…$$` resolved as markdown escapes
+    during `markdownToHtml`, so `$$\mathbb{N} = \{ a \}$$` reached MathJax as
+    `\mathbb{N} = { a }` and rendered without the braces — wrong on screen, then
+    saved that way. `mathSpan` and the `math` rule in app.js now claim the span
+    ahead of markdown-it's `escape` rule, and `hasMathSpan` keeps the re-wrapper
+    out of it. Verified against markdown-it 13 outside the app, and by the latex
+    and save-fidelity suites; nobody has opened a document with maths in it in a
+    browser since. Left to do: that.
 
 ## 3. Format bar
 

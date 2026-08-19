@@ -123,9 +123,23 @@ right on screen.
   parsed back; an existing stamp is never overwritten, because MathJax
   re-typesets already-rendered maths on load and reports MathML the second time.
 
-Note the loss that is *not* fixed: markdown-it resolves `\{` and `\}` as
-markdown escapes on the way in, before MathJax ever sees them, so those survive
-neither rendering nor saving. That is an input-side bug, upstream of both rules.
+There is a third rule, and it is on the way *in* rather than the way out.
+markdown-it has no notion of maths, so `$…$` used to reach MathJax only by
+passing through as text — with every inline rule applied to it en route.
+`\{` and `\}` resolved as markdown escapes before MathJax ever saw them, and
+`$x = a*b*c$` came back italicised with the asterisks gone. `mathSpan` and the
+`math` rule in `app.js` claim the span ahead of markdown-it's `escape` rule and
+re-emit the source verbatim, so the parser now hands MathJax what the author
+wrote. Two things follow from where it sits: the rule runs before `backticks`
+in the chain but positionally after it, so `` `$HOME` `` is still code, not
+maths; and it decides equation-versus-price on two heuristics — an opening `$`
+is never followed by whitespace, a closing one never by a digit — which
+`hasMathSpan` in `markdown-style.js` deliberately repeats, so the re-wrapper
+and the parser cannot disagree about what is an equation.
+
+Display maths broken across a blank line is still not handled. It does not need
+to be: a blank line inside `$$…$$` is an error in TeX itself, and markdown-it
+has split the paragraph in two before any inline rule runs.
 
 ### Links and heading anchors
 
@@ -212,10 +226,11 @@ not cover):
     `autolink` rules. Every default is Turndown's own, so a document that sniffs
     to nothing behaves exactly as it did before any of this.
 2.  **Re-wrap.** `reflowMarkdown` breaks the serialiser's one-line paragraphs
-    back to the sniffed width. Four guards, each of which silently corrupts the
-    file if dropped: fenced code and table rows are never touched, and a break
-    never strands a `#`, `-`, `1.`, `>` or `---` at the start of a line, where
-    it reparses as a block marker. A blockquote's `> ` chain and a list item's
+    back to the sniffed width. Five guards, each of which silently corrupts the
+    file if dropped: fenced code, table rows and maths — a `$$` display block,
+    read as fence-like state, and any line carrying a `$…$` span — are never
+    touched, and a break never strands a `#`, `-`, `1.`, `>` or `---` at the
+    start of a line, where it reparses as a block marker. A blockquote's `> ` chain and a list item's
     content indent are re-applied to every continuation line.
 
     The width itself is measured rather than assumed, and has to be exact:

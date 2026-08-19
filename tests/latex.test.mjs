@@ -142,4 +142,71 @@ export default async function run(check) {
     "the rendered glyphs are discarded",
     !rule.replacement("ab", blockNode).includes("ab"),
   );
+
+  // ── app.js: the markdown-it rule on the way in ────────────────────────────
+  // The other end of the same loss. markdown-it applies its inline rules inside
+  // an equation unless something claims the span first, so `\{` arrives as `{`,
+  // renders without the brace and is saved that way -- damage done before
+  // MathJax, and before any of the round trip above can help.
+  const { inlineRules, renderRules, mathSpan } = loadApp();
+  const registered = inlineRules.find((r) => r.name === "math");
+
+  check("app.js registers a math rule", !!registered);
+  check(
+    "the math rule runs before markdown's escapes",
+    registered && registered.anchor === "escape",
+  );
+
+  const span = (src, start = 0) => mathSpan(src, start);
+
+  check("display maths is found", span("$$\\frac{a}{b}$$").display === true);
+  check(
+    "display maths keeps its backslashes",
+    span("$$\\mathbb{N} = \\{ a \\}$$").content === "\\mathbb{N} = \\{ a \\}",
+  );
+  check("inline maths is found", span("$a^2$").display === false);
+  check("inline maths keeps its content", span("$a^2$").content === "a^2");
+  check(
+    "the span ends at its closing delimiter",
+    span("inline $x$ after", 7).end === 10,
+  );
+
+  // A dollar in prose must stay prose. Both heuristics matter: an opening
+  // delimiter is never followed by a space, a closing one never by a digit.
+  check("a price is not an equation", span("$5 and $10", 0) === null);
+  check("a lone dollar is not an equation", span("$ sign", 0) === null);
+  check("an unterminated dollar is not an equation", span("$foo bar", 0) === null);
+  check("$$ alone is not an empty equation", span("$$", 0) === null);
+  check("a maths span may cross a newline", span("$x +\ny$").content === "x +\ny");
+  check(
+    "an escaped dollar does not close a span",
+    span("$a \\$ b$").content === "a \\$ b",
+  );
+
+  // The rule's whole job: consume the span and hand the source on untouched.
+  const state = {
+    src: "$$\\{a\\}$$",
+    pos: 0,
+    tokens: [],
+    push(type) {
+      const token = { type, markup: "", content: "" };
+      this.tokens.push(token);
+      return token;
+    },
+  };
+  check("the rule claims the span", registered.rule(state, false) === true);
+  check("the source survives the rule", state.tokens[0].content === "\\{a\\}");
+  check("the rule consumes the delimiters", state.pos === state.src.length);
+  check(
+    "prose is left for the other rules",
+    registered.rule({ src: "cost $5", pos: 5 }, false) === false,
+  );
+
+  // MathJax reads the text back out of the DOM, so the delimiters have to be
+  // written back with it -- and the TeX escaped, or `$a < b$` is a stray tag.
+  const written = renderRules.math(
+    [{ markup: "$", content: "a < b & c" }],
+    0,
+  );
+  check("the delimiters are written back", written === "$a &lt; b &amp; c$");
 }

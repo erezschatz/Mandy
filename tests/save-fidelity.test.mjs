@@ -136,6 +136,30 @@ function styleChecks(check) {
   const table = "| a very long header | another very long header |\n";
   check("table rows are never re-wrapped", reflow(table, 20) === table);
 
+  // Maths is not prose either, and a break inside it lands wherever the width
+  // says -- between \frac and its arguments, or after a lone backslash.
+  const equation = "$$\\frac{a}{b} = \\sum_{i=0}^{n} x_i + y_i - z_i$$\n";
+  check("a display equation is never re-wrapped", reflow(equation, 20) === equation);
+  const inlineMaths = "the value $a^2 + b^2 = c^2$ holds for every right triangle\n";
+  check("a line carrying maths is left alone", reflow(inlineMaths, 20) === inlineMaths);
+  const mathsBlock = "$$\n\\alpha + \\beta = \\gamma \\text{ for all of these values}\n$$\n";
+  check("the body of a display block is left alone", reflow(mathsBlock, 20) === mathsBlock);
+
+  // The guard is a state machine like the fence one, so the two must not read
+  // each other's delimiters: prose after either has to wrap again.
+  const afterMaths = mathsBlock + "alpha beta gamma delta epsilon zeta eta\n";
+  check(
+    "prose after a display block still wraps",
+    reflow(afterMaths, 20).trimEnd().split("\n").length > mathsBlock.split("\n").length,
+  );
+  const fencedMaths = "```\n$$\n```\nalpha beta gamma delta epsilon zeta eta theta\n";
+  check(
+    "a $$ inside a fence does not open a display block",
+    reflow(fencedMaths, 20).split("\n").length > fencedMaths.split("\n").length,
+  );
+  check("a price is not maths", reflow("it cost $5 and then $10 in total today\n", 20) !==
+    "it cost $5 and then $10 in total today\n");
+
   // The restore is what makes an untouched paragraph come back byte-identical
   // however the author happened to break it.
   const source = "one two three\nfour five six\n\n- item one\n- item two\n";

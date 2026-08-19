@@ -6,7 +6,7 @@
 // toolbar.js, app.js and file-api.js load concatenated into one scope, the way
 // the page (and the export bundle) actually runs them.
 
-import { loadSource, makeEl, walk } from "./dom.mjs";
+import { loadSource, makeEl, markdownitStub, walk } from "./dom.mjs";
 
 const HOME = "/home/x";
 
@@ -91,7 +91,7 @@ function boot({
           (listeners[event] ||= []).push(fn);
         },
         matchMedia: () => ({ matches: false }),
-        markdownit: () => ({ render: (s) => s }),
+        markdownit: markdownitStub(),
         getSelection: () => ({ removeAllRanges() {}, addRange() {} }),
       },
       navigator: { clipboard: {} },

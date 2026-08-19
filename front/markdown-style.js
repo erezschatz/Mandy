@@ -454,6 +454,21 @@ function restoreSourceWrapping(markdown, index) {
   return out + trailing;
 }
 
+// A line carrying maths. Breaking inside `$...$` does not always damage it --
+// markdown-it reads a span across a newline within one paragraph -- but the
+// break lands wherever the width says, which in TeX means between `\frac` and
+// its arguments or after a lone `\`, and the other guards only know about
+// markdown's own block markers. An equation is one token to the eye anyway.
+//
+// The two heuristics are `mathSpan`'s in app.js, deliberately: an opening `$`
+// is never followed by whitespace and a closing one never by a digit, so
+// `it cost $5 and then $10` stays the prose the parser also reads it as. The
+// duplication buys markdown-style.js its independence -- it loads before app.js
+// and its suite drives it with nothing else present.
+function hasMathSpan(line) {
+  return line.includes("$$") || /\$[^\s$][^$]*\$(?!\d)/.test(line);
+}
+
 // Turndown emits each paragraph, list item and blockquote line as a single
 // line however long it is, so this never has to join anything -- only break.
 function reflowMarkdown(markdown, width) {
@@ -461,6 +476,7 @@ function reflowMarkdown(markdown, width) {
 
   const out = [];
   let fence = null;
+  let displayMath = false;
 
   for (const line of markdown.split("\n")) {
     const match = line.match(/^\s{0,3}(`{3,}|~{3,})/);
@@ -477,12 +493,26 @@ function reflowMarkdown(markdown, width) {
       continue;
     }
 
+    // A `$$` alone on its line opens or closes a display block, and everything
+    // between the two is TeX rather than prose whatever it looks like. After
+    // the fence check, so `$$` inside a code block is just code.
+    if (line.trim() === "$$") {
+      displayMath = !displayMath;
+      out.push(line);
+      continue;
+    }
+    if (displayMath) {
+      out.push(line);
+      continue;
+    }
+
     // A wrapped `|` row stops being a table, and a wrapped heading turns its
     // own tail into a paragraph. Both are silent -- the file still parses.
     if (
       line.length <= width ||
       !line.trim() ||
       /^\s*[|#]/.test(line) ||
+      hasMathSpan(line) ||
       isHorizontalRule(line, "")
     ) {
       out.push(line);

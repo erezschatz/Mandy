@@ -141,6 +141,27 @@ export function loadSource(files, globals, tail = "") {
   );
 }
 
+// app.js configures the parser as well as rendering through it -- it registers
+// the maths rule that keeps markdown-it's escapes out of an equation -- so a
+// stub that is only a render function makes app.js throw on load. Shared rather
+// than written twice: two suites load app.js, and only one of them cares what
+// was registered.
+export function markdownitStub(inlineRules = [], renderRules = {}) {
+  return () => ({
+    render: (s) => s,
+    inline: {
+      ruler: {
+        before: (anchor, name, rule) => inlineRules.push({ anchor, name, rule }),
+      },
+    },
+    renderer: { rules: renderRules },
+    utils: {
+      escapeHtml: (s) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+    },
+  });
+}
+
 // app.js defines globals the later modules use — `slugifyTitle` for every
 // export filename, and the Turndown rules. Loading it for real rather than
 // stubbing those keeps a test honest when app.js changes underneath it.
@@ -154,6 +175,9 @@ export function loadApp() {
   const scrolled = [];
   const commands = [];
   const root = makeEl("html");
+
+  const inlineRules = [];
+  const renderRules = {};
   // Mutable: a suite parks the caret somewhere before driving a handler.
   const selection = { anchorNode: null };
 
@@ -175,7 +199,7 @@ export function loadApp() {
     ["markdown-style.js", "app.js"],
     {
       window: {
-        markdownit: () => ({ render: (s) => s }),
+        markdownit: markdownitStub(inlineRules, renderRules),
         addEventListener: noop,
         matchMedia: () => ({ matches: false }),
         open: (url, target, features) => opened.push({ url, target, features }),
@@ -214,6 +238,8 @@ export function loadApp() {
       clearTimeout: noop,
       console,
       __rules: rules,
+      __inlineRules: inlineRules,
+      __renderRules: renderRules,
       __opts: opts,
       __opened: opened,
       __scrolled: scrolled,
@@ -222,7 +248,8 @@ export function loadApp() {
       __root: root,
       __byId: byId,
     },
-    "; return { rules: __rules, options: __opts, opened: __opened," +
+    "; return { rules: __rules, inlineRules: __inlineRules," +
+      " renderRules: __renderRules, mathSpan, options: __opts, opened: __opened," +
       " scrolled: __scrolled, commands: __commands, selection: __selection," +
       " documentElement: __root, byId: __byId," +
       " htmlToMarkdown, anchorSlug, headingAnchors, openExternalLink," +
