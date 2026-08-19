@@ -1,22 +1,19 @@
-# 📝 Marky - Simple & Free Markdown Editor
+# Marky - Simple & Free Markdown Editor
 
 A WYSIWYG markdown editor that runs on your own machine and edits your own markdown files.
 
 Marky allows you to create markdown documents and export them as **fully editable HTML files** that anyone can modify and return to you. Perfect for spec-driven AI development and stakeholder reviews.
 
-## 🚀 Get Started
+## What You Can Do
 
-Marky runs on your own machine and edits your own files. See
-[For Developers](#-for-developers) for the one command that starts it.
+### Import Your Content
 
-## ✨ What You Can Do
-
-### 📋 Import Your Content
 - **Paste from Clipboard** - Click "Paste MD" to load markdown directly from your clipboard
 - **Open Local Files** - Browse your computer and open any `.md`, `.markdown`, or `.txt` file directly (requires the local server, see [For Developers](#-for-developers))
 - **Reload from Disk** - The caret beside "Open" re-reads the file, picking up anything another tool, script or agent wrote to it - and it is also how you throw local changes away. Marky checks the file whenever you come back to the window, and marks the filename `(disk changed)` when it no longer matches what you have open
 
-### ✏️ Edit with Ease
+### Edit with Ease
+
 - **WYSIWYG Editing** - See your formatted text as you type, no preview pane needed
 - **Formatting Toolbar** - Select any text to reveal formatting options (headings, bold, italic, lists, code blocks)
 - **Live Updates** - Changes appear instantly as you type
@@ -24,15 +21,20 @@ Marky runs on your own machine and edits your own files. See
 - **Dark Mode** - Toggle between light and dark themes, or let it follow your system preference
 - **Clear Document** - Start fresh with a single click
 
-### 💾 Export Your Work
-- **Save to Disk** - Write your work straight back to the file you opened, no download dance. The caret beside "Save" offers Save As. If the file changed underneath you since you opened it, Marky asks before overwriting it
-- **Copy to Clipboard** - Instantly copy all your markdown with one click
-- **Export as HTML** - Generate a standalone, self-contained HTML page of the document alone - the same kind of deliverable as PDF or DOCX, for sharing something to be read
+### Export Your Work
+
+- **Save to Disk** - Write your work straight back to the file you opened. The caret beside "Save"
+  offers Save As. If the file changed underneath you since you opened it, Marky asks before
+  overwriting it
+- **Copy to Clipboard** - Copy the rendered content as plain-text markdown with one click
+- **Export as HTML** - Generate a standalone, self-contained HTML page of the document alone
 - **Export as Editable** - Generate an HTML file with the editor bundled in, so recipients can modify it directly in their browser and send it back to you. No markdown knowledge required at their end. The file is completely self-contained - one HTML file that runs entirely in the browser, with nothing to install and no sign-up - and fully capable: they can export it to markdown, PDF, DOCX or HTML, and re-export another editable copy to pass along
 - **Export as PDF** - Generate professional, print-ready PDF documents with one click. Images are automatically optimized to ensure reasonable file sizes while maintaining quality
-- **Export as DOCX** - Generate a Word document with headings, tables and formatting intact. Mermaid diagrams are embedded as images; LaTeX comes through as plain text rather than rendered maths
+- **Export as DOCX** - Generate a Word document with headings, tables and formatting intact. Mermaid
+  diagrams are embedded as images; LaTeX comes through as plain text rather than rendered math
 
-### 🎨 What You Can Format
+### What You Can Format
+
 - **Headings** (H1, H2, H3) - Organize your content with hierarchy
 - **Bold & Italic** - Emphasize important text
 - **Lists** - Create bullet points or numbered lists
@@ -40,10 +42,11 @@ Marky runs on your own machine and edits your own files. See
 - **Tables** - Organize data in structured tables
 - **Links & Images** - Add hyperlinks and embed images
 - **Blockquotes** - Highlight quotes or important notes
-- Mermaid diagrams
-- Latex math formulas
+- **Mermaid** diagrams
+- **Latex** math formulas
 
-### Mermain examples
+### Mermaid examples
+
 ```mermaid
   graph TD;
       A-->B;
@@ -59,7 +62,7 @@ $$\mathbb{N} = \{ a \in \mathbb{Z} : a > 0 \}$$
 
 $$\mathbb{N} = \{ a \in \mathbb{Z} : a > 0 \}$$
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
 Make your workflow even faster:
 
@@ -70,24 +73,16 @@ Make your workflow even faster:
 - **Ctrl+Z** (Cmd+Z on Mac) - Undo
 - **Ctrl+Y** or **Ctrl+Shift+Z** (Cmd+Shift+Z on Mac) - Redo
 
-## 🎯 Perfect For
+## Perfect For
 
-- 📚 Writing README files for GitHub projects
-- 📖 Creating documentation and guides
-- 📝 Taking notes and writing articles
-- ✍️ Drafting blog posts in markdown
-- 📊 Creating technical documentation
-- 🎓 Academic writing and research notes
-- 🤖 **Share & Receive** - Export as editable HTML, share with colleagues who can make changes directly in their browser, then receive their edits back as markdown
-- 🔄 **Spec-Driven AI Development** - Create specs, export as editable HTML for stakeholder review and editing, receive their modified versions back, and continue your AI development workflow
+- Writing README files for GitHub projects
+- Creating documentation and guides
+- Taking notes and writing articles
+- Drafting blog posts in markdown
+- Creating technical documentation
+- Academic writing and research notes
 
-## ✨ Features
-
-- **Editable HTML Exports** - Recipients can edit exported HTML files and send changes back
-- **Export to HTML, PDF and DOCX** - A standalone HTML page, a print-ready PDF, or a Word document with headings, tables and formatting intact
-- **Dark Mode** - Automatic theme switching based on system preference, with manual override
-
-## 🛠️ Quick Start Guide
+## Quick Start Guide
 
 1. **Start the server** - `npm run serve`, then open <http://localhost:9130>
 2. **Open a file** - Click "Open" and pick any markdown file on your machine
@@ -97,7 +92,7 @@ Make your workflow even faster:
 
 That's it! No tutorials needed.
 
-## 🌟 Why Marky?
+## Why Marky?
 
 Unlike other markdown editors:
 - **Editable HTML exports** - Share documents that recipients can modify and return
@@ -105,7 +100,7 @@ Unlike other markdown editors:
 - No account creation or login required
 - Your markdown data never leaves your device
 
-## 💡 Pro Tips
+## Pro Tips
 
 - Select any text to see the formatting toolbar appear above it
 - Use the "Paste MD" button to quickly load markdown from anywhere
@@ -114,7 +109,7 @@ Unlike other markdown editors:
 - Toggle dark mode in the toolbar or let it automatically match your system theme
 - **Collaborative HTML Workflow**: Use **Editable** (not **HTML**, which is read-only) and share the result with colleagues. They can open it in any browser, edit the content directly, save their changes, and send the modified HTML back to you. Open their file in a browser and hit **Copy MD** to get their changes back as markdown - Marky's Open dialog only accepts `.md`, `.markdown` and `.txt`, so it cannot open the returned HTML directly.
 
-## 🤝 For Developers
+## For Developers
 
 ### Project layout
 
