@@ -4,7 +4,11 @@ Items are numbered `section.item` so they can point at each other. The numbers
 are labels, not an order and not a priority. An italic *(needs 4.1)* means that
 one has to land first, *(best after …)* is a preference rather than a blocker,
 and *(unblocks …)* marks an item others are waiting on — those are the ones to
-start from. Retire a number when its item goes rather than renumbering, which
+start from. Two more say what kind of item it is: *(undecided)* is a suggestion
+nobody has ruled on yet, so it wants a decision before it wants code — settled
+ones move to [DECISIONS.md](DECISIONS.md) — and *(fixed, unverified)* means the
+work landed but nobody has watched it happen in a browser, so what is left is
+the checking. Retire a number when its item goes rather than renumbering, which
 would break every reference to it.
 
 ## 1. Editing
@@ -25,9 +29,12 @@ would break every reference to it.
 *   **1.3** `toggleCodeBlock` operates on top-level editor children, so a
     selection inside a bullet replaces the entire `<ul>` with one `<pre>` and
     runs all the items together. (format-bar.js, `blocksInRange`)
-*   **1.4** *(needs 1.1)* Hybrid mode is not supported: typing `#` at the start
-    of a line should turn that line into a heading, and the same for `-`, `>`,
-    ``` and so on.
+*   **1.4** *(undecided; needs 1.1)* Hybrid mode: typing `#` at the start of
+    a line turns that line into a heading, and the same for `-`, `>` and a
+    ` ``` ` fence. Suggested, not agreed — it commits the editor to reading
+    keystrokes as markdown everywhere, which is a different product from a
+    WYSIWYG surface with a format bar, and it needs an escape hatch for
+    someone who wants a literal `#`.
 *   **1.5** *(needs 4.2; tables also need 1.1 and 2.5, or 1.7 instead of both)*
     The UI only supports some of the markup MD offers, and not even all of what
     the README advertises. The format bar has p, h1, h2, h3, bold, italic, ul,
@@ -64,11 +71,14 @@ would break every reference to it.
       blue and nothing survives as a clickable annotation. Heading ids do not
       help; it needs a different PDF path.
 
-*   **1.7** *(unblocks 1.5 cheaply)* No source view, editable or otherwise. The
-    document lives as HTML in `editor.innerHTML` and markdown exists only at
-    the boundaries — markdown-it parses on the way in, Turndown serialises on
-    the way out. Copy MD, Download MD and Save all emit markdown, so it is
-    reachable, but there is no way to see or edit the markdown inside the app.
+*   **1.7** *(undecided; would unblock 1.5 cheaply)* A source view — see and
+    edit the markdown inside the app. Today the document lives as HTML in
+    `editor.innerHTML` and markdown exists only at the boundaries: markdown-it
+    parses on the way in, Turndown serialises on the way out. Copy MD, Download
+    MD and Save all emit it, so it is reachable, just not visible. Suggested,
+    not agreed — an editable source view makes markdown a second seat of truth
+    and raises which one wins, and where it lives (a tab, a split pane, a mode)
+    is the same question 4.3 asks about tabs.
 *   **1.8** *(needs 4.1)* Nothing guards unsaved work. The toolbar says
     `(edited)` when the document has diverged from the file, and Reload and an
     overwriting Save both act on it now — but the other three ways out of a
@@ -114,57 +124,23 @@ would break every reference to it.
 
 ## 2. Save fidelity
 
-Ways the bytes on disk differ from what was opened. All verified by
+Ways the bytes on disk still differ from what was opened, all verified by
 round-tripping real files through the running app.
+[front/markdown-style.js](front/markdown-style.js) is what preserves them; D1
+in [DECISIONS.md](DECISIONS.md) is why, and lists the differences that are
+deliberate rather than bugs. In rough order of how much they matter:
 
-**DECIDED, and largely done: Marky owes the file the bytes it arrived with.**
-The governing question here — does Marky owe the file its bytes, or only a
-document that means the same thing? — is settled in favour of the bytes, and
-[front/markdown-style.js](front/markdown-style.js) implements it. See the save
-fidelity section in CLAUDE.md for how the three layers fit together.
-
-Measured on this repo's own files, opened and saved through the real
-markdown-it and Turndown: CLAUDE.md, README.md and welcome.md now round-trip
-**byte-identical**, and TODO.md to a single character (below). Editing one word
-in CLAUDE.md changes exactly the paragraph it was in. Before this, every one of
-them came back with the whole file rewritten.
-
-That retires most of this section. What the old table listed, and where each
-row landed:
-
-| Opened as | Saved as now |
-| --- | --- |
-| `---`, `***`, `___` | preserved — sniffed |
-| `-`, `*`, `+` bullets, and their pad | preserved — sniffed per nesting depth |
-| `1.` `1.` `1.` | preserved — sniffed |
-| `1)` | preserved — sniffed |
-| `*emph*` / `_emph_`, `**bold**` / `__bold__` | preserved — sniffed |
-| `<http://example.com>` | preserved — sniffed, scheme-gated |
-| Hard-wrapped prose | preserved — restored verbatim, or re-wrapped if edited |
-| Setext `===` / `---` headings | still `#` / `##` (deliberate: `headingStyle: "atx"`) |
-| `~~~` fences | still ` ``` ` |
-| Indented code | still fenced (deliberate: `codeBlockStyle: "fenced"`) |
-| `[x][1]` + a definition block | still inlined `[x](http://example.com)` |
-
-The last four are unchanged, and the first three of those are deliberate. Only
-one is a real loss, and it is the one the old note already singled out:
-
-*   **2.1** **Reference links are still inlined, and the definition block is
-    still deleted.** A document that cites the same URL in twenty places
-    arrives with one definition and leaves with twenty copies. Unlike
-    everything above this is a change in the shape of the source, not its
-    punctuation, and the restore does not save it: inlining changes the text of
-    the block, so the block stops matching itself and never comes back.
-    Turndown's `linkReferenceStyle` is not the fix — it would convert *every*
-    link to a reference, which is the same rewrite in the other direction.
-    Wants a rule that emits a reference only for links the source already had a
-    definition for, plus somewhere to re-emit the definition block.
-
-Smaller things left, in rough order of how much they matter:
-
+*   **2.1** **Reference links are inlined and the definition block deleted.** A
+    document that cites the same URL in twenty places arrives with one
+    definition and leaves with twenty copies. The restore cannot cover it:
+    inlining changes the text of the block, so the block stops matching itself.
+    Turndown's `linkReferenceStyle` is not the fix — it converts *every* link
+    to a reference, the same rewrite in the other direction. Wants a rule that
+    emits a reference only where the source already had a definition, plus
+    somewhere to re-emit the definition block.
 *   **2.2** Inline code loses a trailing space: `` `> ` `` is saved as
-    `` `>` ``. It is the only thing standing between CLAUDE.md and a
-    byte-identical round trip — one character in 300-odd lines, and the restore
+    `` `>` ``. It is the only thing standing between CLAUDE.md and TODO.md and
+    a byte-identical round trip — they hold one such span each, and the restore
     cannot cover it because the block no longer matches itself. Turndown's
     `code` rule trims the content, and CommonMark's own escape hatch is the
     padded form `` ` > ` ``. A rule override could emit that, at the cost of a
@@ -177,10 +153,6 @@ Smaller things left, in rough order of how much they matter:
     fidelity across a reload — a `console.warn` and nothing else. Storing the
     derived style plus block hashes instead of the whole source would be
     smaller, and could not reconstruct the bytes.
-*   **2.4** The wrap width is a 95th percentile of prose line lengths, which is
-    a heuristic. It is only consulted for blocks that actually changed, so a
-    bad guess costs at most a re-wrapped paragraph, but a file with no clear
-    width (mixed one-sentence-per-line and wrapped prose) gets whichever wins.
 *   **2.5** *(wanted by 1.5)* An edited table is re-emitted in the `table`
     rule's house style. An untouched one now restores byte-for-byte —
     `normaliseTableRows` takes the rule's cell padding and its fixed three-dash
@@ -200,20 +172,6 @@ Smaller things left, in rough order of how much they matter:
     paragraph re-serialises the whole segment. Finer granularity would need to
     match at line level, which is a different and much less safe algorithm.
 
-*   **2.7** Blockquotes: `>` is a container, not a per-line marker, so
-    consecutive `>` lines are one paragraph inside one blockquote and the
-    newline between them renders as a space. Verified against the running app —
-    `> one\n> two` renders as a single line, and now saves back as
-    `> one\n> two` because the restore returns the original bytes.
-
-    **DECIDED: rendering stays standard.** `markdownit()` in app.js keeps its
-    default `breaks: false`. The expectation that each `>` line is its own line
-    comes from GitHub's comment boxes, which set `breaks: true`; that is an
-    extension, and adopting it would turn every newline in every paragraph into
-    a `<br>`, so the first save of any hard-wrapped file would append two spaces
-    to every line in it. Not worth it to match one vendor's chat widget.
-
-
 *   **2.8** markdown-it eats LaTeX brace escapes before MathJax sees them. `\{`
     and `\}` inside `$$…$$` are resolved as markdown escapes during
     `markdownToHtml`, so `$$\mathbb{N} = \{ a \}$$` reaches MathJax as
@@ -225,10 +183,14 @@ Smaller things left, in rough order of how much they matter:
 
 ## 3. Format bar
 
-*   **3.1** The inline toolbar is too jittery. It repositions on every
-    `selectionchange` on the document, which fires constantly while dragging a
-    selection. Needs debouncing, or to only reposition when the selection rect
-    actually moves.
+*   **3.1** *(fixed, unverified)* The inline toolbar was too jittery. The
+    positioning rewrite in format-bar.js fixed it — the bar is shown before it
+    is measured, so it no longer snaps into place on the following event, and
+    it is clamped to the window instead of running off the right edge. Note
+    that the cause named here originally was not the one addressed: it still
+    repositions on every `selectionchange`, and no debounce or rect-changed
+    guard was added. Left to do: drag a selection around in a browser, confirm
+    it is steady, and retire this.
 *   **3.2** Selection doesn't identify the elements inside it.
     `updateActiveButtons` walks up from `selection.anchorNode` only, so the
     active states reflect wherever the selection *started* rather than the

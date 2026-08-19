@@ -199,7 +199,9 @@ Ctrl+R, Ctrl+Shift+R and F5 all belong to the browser.
 Turndown serialises to its own house style, so a save used to rewrite every
 list, rule, emphasis and line break in the file — spec-legal on both sides, and
 an unmergeable diff. [markdown-style.js](front/markdown-style.js) answers that
-from the source rather than from a house style, in three layers, cheapest last:
+from the source rather than from a house style, in three layers, cheapest last
+(D1 in [DECISIONS.md](DECISIONS.md) records why, and what it deliberately does
+not cover):
 
 1.  **Sniff.** `sniffMarkdownStyle` reads the incoming markdown for the
     conventions it already follows — rule character, bullet marker and pad (per
@@ -215,6 +217,18 @@ from the source rather than from a house style, in three layers, cheapest last:
     never strands a `#`, `-`, `1.`, `>` or `---` at the start of a line, where
     it reparses as a block marker. A blockquote's `> ` chain and a list item's
     content indent are re-applied to every continuation line.
+
+    The width itself is measured rather than assumed, and has to be exact:
+    wrapping is greedy, so a file wrapped at 80 reproduces its own breaks only
+    if 80 is what comes back — guess 82 and every break in the document moves.
+    `sniffWrapWidth` therefore takes the **95th percentile** of prose line
+    lengths rather than the longest line, which one unbreakable URL would
+    otherwise set, and gives up entirely (width 0, no re-wrap) on a file with
+    fewer than three wrapped paragraphs, fewer than ten prose lines, or a
+    result outside 40–120 columns. It stays a heuristic: a file that mixes
+    one-sentence-per-line with wrapped prose has no single width and gets
+    whichever wins. The cost of a bad guess is bounded by layer 3, which only
+    lets the width near blocks that actually changed.
 3.  **Restore.** The one that actually does the work. Re-wrapping only ever
     guesses at how the author broke their lines, and measured against this
     repo's own files it guesses badly — they break after a sentence, or let a
