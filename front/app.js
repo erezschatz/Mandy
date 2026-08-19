@@ -308,12 +308,50 @@ const editor = document.getElementById("editor");
 const fileInput = document.getElementById("fileInput");
 const formatBar = document.getElementById("formatBar");
 
+// Turndown decides how much leading/trailing whitespace to pull out of an
+// inline element before any rule's filter or replacement runs -- it is baked
+// into the node during Turndown's own upfront tree walk -- so an addRule
+// override cannot intercept a real space at the edge of a code span; Turndown
+// always moves it outside the backticks and drops it, saving `` `> ` `` as
+// `` `>` ``. Swapping the edge space for a placeholder before Turndown ever
+// parses the string sidesteps that: the placeholder is not whitespace, so
+// Turndown leaves it exactly where it is, and htmlToMarkdown decodes it back
+// once Turndown is done. A code span shielded on both edges gets two
+// placeholders per edge rather than one, because CommonMark itself strips a
+// single leading-and-trailing space pair from a code span's content -- the
+// escape hatch for a span that needs to start with a backtick -- so a lone
+// placeholder on each side would come back stripped on the next parse.
+const CODE_EDGE_SPACE = String.fromCharCode(0xe000);
+
+function shieldCodeEdgeSpaces(html) {
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  container.querySelectorAll("code").forEach((node) => {
+    const hasSiblings = node.previousSibling || node.nextSibling;
+    const isCodeBlock = node.parentNode.nodeName === "PRE" && !hasSiblings;
+    if (isCodeBlock) return;
+    const text = node.textContent;
+    if (!text || text.trim() === "") return;
+    const leading = /^ /.test(text);
+    const trailing = / $/.test(text);
+    if (!leading && !trailing) return;
+    const pad = leading && trailing ? CODE_EDGE_SPACE + CODE_EDGE_SPACE : CODE_EDGE_SPACE;
+    let next = text;
+    if (leading) next = pad + next.slice(1);
+    if (trailing) next = next.slice(0, -1) + pad;
+    node.textContent = next;
+  });
+  return container.innerHTML;
+}
+
 // Turndown's output never ends in a newline, so every saved file was one git
 // reports as "\ No newline at end of file". Normalised here rather than in
 // saveFile because Download MD writes a file too, and a copied document that
 // ends in a newline is what the clipboard's consumers expect anyway.
 function htmlToMarkdown(html) {
-  const markdown = turndownService.turndown(html).replace(/\n*$/, "\n");
+  const markdown = turndownService.turndown(shieldCodeEdgeSpaces(html))
+    .replace(new RegExp(CODE_EDGE_SPACE, "g"), " ")
+    .replace(/\n*$/, "\n");
   // Re-wrap first, restore second: restoring puts back original bytes, and the
   // re-wrap must not then take a hand-broken line back apart.
   const wrapped = reflowMarkdown(markdown, markdownStyle.wrapWidth);

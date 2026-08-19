@@ -111,12 +111,21 @@
       .toolbar {
         position: sticky;
         top: 0;
+        --toolbar-pad-y: 1rem;
+        --btn-pad-y: 0.5rem;
+        --btn-font-size: 0.9rem;
         /* toolbar.js fills this in, so reserve the height it will occupy and
-           the page below does not jump once the script runs. */
-        min-height: 69px;
+           the page below does not jump once the script runs. Derived from the
+           padding/font-size custom properties below, which the button rule
+           also consumes, and the body's line-height (1.6), so it can't go
+           silently stale if either changes. */
+        min-height: calc(
+          2 * var(--toolbar-pad-y) + 2 * var(--btn-pad-y) +
+            var(--btn-font-size) * 1.6
+        );
         background: var(--bg-toolbar);
         color: var(--text-toolbar);
-        padding: 1rem 2rem;
+        padding: var(--toolbar-pad-y) 2rem;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -162,10 +171,10 @@
         background: var(--accent-blue);
         color: var(--text-toolbar);
         border: none;
-        padding: 0.5rem 1rem;
+        padding: var(--btn-pad-y, 0.5rem) 1rem;
         border-radius: 4px;
         cursor: pointer;
-        font-size: 0.9rem;
+        font-size: var(--btn-font-size, 0.9rem);
         display: flex;
         align-items: center;
         gap: 0.5rem;

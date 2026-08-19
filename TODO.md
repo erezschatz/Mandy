@@ -138,13 +138,30 @@ deliberate rather than bugs. In rough order of how much they matter:
     to a reference, the same rewrite in the other direction. Wants a rule that
     emits a reference only where the source already had a definition, plus
     somewhere to re-emit the definition block.
-*   **2.2** Inline code loses a trailing space: `` `> ` `` is saved as
-    `` `>` ``. It is the only thing standing between CLAUDE.md and TODO.md and
-    a byte-identical round trip — they hold one such span each, and the restore
-    cannot cover it because the block no longer matches itself. Turndown's
-    `code` rule trims the content, and CommonMark's own escape hatch is the
-    padded form `` ` > ` ``. A rule override could emit that, at the cost of a
-    form most authors do not write.
+*   **2.2** *(fixed, unverified)* Inline code lost a trailing space: `` `> ` ``
+    saved as `` `>` ``. It was the only thing standing between CLAUDE.md and
+    TODO.md and a byte-identical round trip once that span's block was edited —
+    they hold one such span each, and the restore cannot cover an edited block
+    because it no longer matches itself. Root cause: Turndown decides how much
+    leading/trailing whitespace to pull out of an inline element *before* any
+    rule's filter or replacement runs, baked into the node during Turndown's
+    own upfront tree walk, so an `addRule` override on `code` can't intercept
+    it — Turndown always moves the edge space outside the backticks and drops
+    it. `shieldCodeEdgeSpaces` in app.js swaps a real edge space for a
+    placeholder character before the HTML string ever reaches Turndown (which
+    isn't whitespace, so Turndown leaves it alone), and `htmlToMarkdown` decodes
+    it back afterward. A span shielded on *both* edges gets two placeholders
+    per edge rather than one, because CommonMark strips one leading-and-trailing
+    space pair from a code span's content — the escape hatch for a span that
+    needs to start with a backtick — so a lone placeholder on each side would
+    come back stripped on the next parse. Verified against the real Turndown
+    7.1.2 + markdown-it 13 build outside the app (trailing-only, leading-only,
+    both-sided, and backtick-leading cases all round-trip byte-for-byte); the
+    test harness itself can't cover it because `tests/dom.mjs` stubs
+    `TurndownService` as a recorder rather than a real converter. Left to do:
+    edit the code span on CLAUDE.md's "blockquote's `` `> ` `` chain" line (or
+    any inline code with edge whitespace) in a browser, save, and confirm the
+    byte survives.
 *   **2.3** The source is persisted as a second copy of the document.
     `adoptMarkdownStyle` writes the incoming markdown to
     `localStorage["markdownSource"]`, because the autosave is HTML and carries
@@ -271,12 +288,6 @@ deliberate rather than bugs. In rough order of how much they matter:
     must run first because it defines `onToolbarAction`, which every other
     module calls at load. Click delegation removed the silent bound-to-null
     failure, not the ordering requirement.
-*   **5.4** `min-height: 69px` on `.toolbar` is a magic number derived from
-    current button padding and font size, holding the layout still while
-    toolbar.js builds. It will be silently wrong if either changes.
-*   **5.5** docx-export.js and theme-manager.js still carry the indentation
-    they had as inline `<script>` blocks in index.html. Cosmetic, but both
-    files read oddly.
 
 ## 6. Product
 
