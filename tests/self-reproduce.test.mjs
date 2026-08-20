@@ -102,7 +102,7 @@ export default async function run(check) {
   await firstExport.handler();
   const genOne = firstExport.output();
 
-  check("app export fetches its assets", firstExport.fetches() === 11);
+  check("app export fetches its assets", firstExport.fetches() === 12);
   check("app export bundles docx-export.js", genOne.includes("/docx-export.js"));
   check("app export bundles static-export.js", genOne.includes("/static-export.js"));
   check("app export bundles html-export.js", genOne.includes("/html-export.js"));

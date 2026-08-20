@@ -48,6 +48,14 @@
 
         // Apply immediately
         document.documentElement.setAttribute("data-theme", theme);
+
+        // Same problem, same slot: outline.js builds the sidebar after the
+        // stylesheet has run, so without stamping the state here the editor
+        // would render full-width and then shift once the column appeared.
+        document.documentElement.setAttribute(
+          "data-outline",
+          localStorage.getItem("marky-outline") === "open" ? "open" : "closed",
+        );
       })();
     </script>
 
@@ -185,6 +193,7 @@
     <script src="/lazy-load.js"></script>
     <script src="/markdown-style.js"></script>
     <script src="/app.js"></script>
+    <script src="/outline.js"></script>
     <script src="/renderers.js"></script>
     <script src="/pdf-export.js"></script>
     <script src="/format-bar.js"></script>

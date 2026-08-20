@@ -19,6 +19,7 @@ Marky allows you to create markdown documents and export them as **fully editabl
 - **Live Updates** - Changes appear instantly as you type
 - **Auto-Save** - Your work is automatically saved to your browser every second
 - **Dark Mode** - Toggle between light and dark themes, or let it follow your system preference
+- **Document Outline** - Click "Outline" for a sidebar of the document's headings; click any of them to jump there. It follows how your headings actually nest rather than the numbers in them, so a document that uses H6 for a caption under an H1 does not draw a five-deep staircase. The caret beside it offers **Insert Table of Contents**, which writes a real linked list into the document itself - the one you want when the file is going to be read on GitHub rather than in Marky
 - **Clear Document** - Start fresh with a single click
 
 ### Export Your Work
@@ -27,7 +28,7 @@ Marky allows you to create markdown documents and export them as **fully editabl
   offers Save As. If the file changed underneath you since you opened it, Marky asks before
   overwriting it
 - **Copy to Clipboard** - Copy the rendered content as plain-text markdown with one click
-- **Export as HTML** - Generate a standalone, self-contained HTML page of the document alone
+- **Export as HTML** - Generate a standalone, self-contained HTML page of the document alone. If the outline sidebar is open, the exported page carries a table of contents of its own
 - **Export as Editable** - Generate an HTML file with the editor bundled in, so recipients can modify it directly in their browser and send it back to you. No markdown knowledge required at their end. The file is completely self-contained - one HTML file that runs entirely in the browser, with nothing to install and no sign-up - and fully capable: they can export it to markdown, PDF, DOCX or HTML, and re-export another editable copy to pass along
 - **Export as PDF** - Generate professional, print-ready PDF documents with one click. Images are automatically optimized to ensure reasonable file sizes while maintaining quality
 - **Export as DOCX** - Generate a Word document with headings, tables and formatting intact. Mermaid

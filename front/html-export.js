@@ -72,6 +72,7 @@ onToolbarAction("export-editable", async () => {
     "/lazy-load.js",
     "/markdown-style.js",
     "/app.js",
+    "/outline.js",
     "/renderers.js",
     "/pdf-export.js",
     "/format-bar.js",

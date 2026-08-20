@@ -11,6 +11,7 @@ const SUITES = [
   ["save-fidelity", "./save-fidelity.test.mjs"],
   ["links", "./links.test.mjs"],
   ["list-indent", "./list-indent.test.mjs"],
+  ["outline", "./outline.test.mjs"],
 ];
 
 let passed = 0;

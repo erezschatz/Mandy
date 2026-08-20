@@ -112,16 +112,18 @@ export default function run(check) {
       }),
     );
     check(`${variant}: a caret exists only where a menu does`, carets.length === splits.length);
-    // Both split buttons are file-server controls, which an exported document
-    // has none of — so the export variant renders neither, and nothing there
-    // can open a menu of actions its bundle cannot perform.
+    // Split buttons are not app-only any more. Open/Reload and Save/Save As are
+    // file-server controls an exported document has none of, but the outline is
+    // chrome both variants ship. Named rather than counted, so adding one to
+    // the wrong variant fails here rather than passing on arithmetic.
     check(
-      `${variant}: split buttons ${variant === "app" ? "present" : "absent"}`,
-      splits.length > 0 === (variant === "app"),
+      `${variant}: the right split buttons`,
+      splits.map((s) => splitParts(s).primary.id).sort().join(",") ===
+        (variant === "app" ? "openBtn,saveBtn,tocBtn" : "tocBtn"),
     );
     check(
-      `${variant}: three button groups`,
-      nodes.filter((n) => n.className === "button-group").length === 3,
+      `${variant}: four button groups`,
+      nodes.filter((n) => n.className === "button-group").length === 4,
     );
     check(
       `${variant}: theme toggle ${variant === "app" ? "present" : "absent"}`,

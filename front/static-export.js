@@ -27,6 +27,11 @@ const DOC_DIAGRAM_CSS = `
 
 // The exported page is a document: drop the app chrome and the editor's own
 // viewport-filling geometry, and let the content set the page height.
+//
+// The outline is content here rather than the sidebar it is in the app, so
+// app.css's .outline rules do not apply and it gets its own. Safe in a way the
+// editor's own document could never be: this file is a terminal artifact, it
+// never goes back through Turndown, so nothing here can reach anyone's .md.
 const DOC_LAYOUT_CSS = `
       body {
         background: var(--bg-primary);
@@ -37,6 +42,29 @@ const DOC_LAYOUT_CSS = `
         max-width: 900px;
         margin: 0 auto;
         outline: none;
+      }
+
+      .doc-outline {
+        margin: 2rem 0;
+        padding: 1rem 1.5rem;
+        border-left: 3px solid var(--border-blockquote);
+        background: var(--bg-secondary);
+        border-radius: 4px;
+      }
+
+      .doc-outline > p {
+        font-weight: 600;
+        color: var(--text-heading);
+        margin-bottom: 0.5rem;
+      }
+
+      .doc-outline ul {
+        list-style: none;
+        padding-left: 1.25rem;
+      }
+
+      .doc-outline > ul {
+        padding-left: 0;
       }`;
 
 function escapeHtml(text) {
@@ -80,6 +108,28 @@ function documentBody() {
   // the clone rather than on the document, so nothing lands in the editor and
   // nothing can reach Turndown.
   headingAnchors(clone, true);
+
+  // Follows the sidebar toggle, which is the only switch there is until Marky
+  // grows a Settings pane. Built from the clone, so its hrefs and the ids just
+  // stamped above come out of the same function over the same nodes and cannot
+  // drift apart.
+  if (outlineIsOpen()) {
+    const entries = outlineEntries(clone);
+    if (entries.length) {
+      const nav = document.createElement("nav");
+      nav.className = "doc-outline";
+      const label = document.createElement("p");
+      label.textContent = "Contents";
+      nav.appendChild(label);
+      nav.appendChild(buildNestedList(entries));
+
+      // After the title if there is one, so the document still opens on its
+      // own heading rather than on its own index.
+      const first = clone.firstElementChild;
+      if (first && first.tagName === "H1") first.insertAdjacentElement("afterend", nav);
+      else clone.insertBefore(nav, clone.firstChild);
+    }
+  }
 
   for (const source of clone.querySelectorAll(".mermaid-source")) {
     source.remove();

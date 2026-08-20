@@ -48,7 +48,50 @@ function makeNode(html) {
         },
       }));
     },
+    // Only ever asked for the leading <h1>, which is where the contents nav
+    // goes when there is a title to put it under.
+    get firstElementChild() {
+      const self = this;
+      const open = this.innerHTML.match(/^\s*<([a-z0-9-]+)[^>]*>/i);
+      if (!open) return null;
+      const tag = open[1];
+      const close = `</${tag}>`;
+      const end = this.innerHTML.indexOf(close);
+      return {
+        tagName: tag.toUpperCase(),
+        insertAdjacentElement(position, el) {
+          const at = end + close.length;
+          self.innerHTML =
+            position === "afterend"
+              ? self.innerHTML.slice(0, at) + "\n" + el.html + self.innerHTML.slice(at)
+              : el.html + self.innerHTML;
+        },
+      };
+    },
+    insertBefore(el) {
+      this.innerHTML = el.html + this.innerHTML;
+    },
     cloneNode() { return makeNode(this.innerHTML); },
+  };
+}
+
+// static-export.js builds the contents nav from real elements and inserts it
+// into the clone, so the stub needs elements that can render themselves back
+// into the markup string this suite reads.
+function makeFrag(tag) {
+  return {
+    tagName: tag.toUpperCase(),
+    className: "",
+    textContent: "",
+    children: [],
+    appendChild(child) { this.children.push(child); return child; },
+    get html() {
+      const cls = this.className ? ` class="${this.className}"` : "";
+      const inner = this.children.length
+        ? this.children.map((c) => c.html).join("")
+        : this.textContent;
+      return `<${tag}${cls}>${inner}</${tag}>`;
+    },
   };
 }
 
@@ -56,6 +99,9 @@ export default async function run(check) {
   let written = null;
   let downloadName = null;
   let handler = null;
+  // The static export's TOC follows the sidebar toggle, which is the only
+  // switch there is until Marky grows a Settings pane.
+  let outlineOpen = false;
 
   // The real one from app.js, not a stub: the leading-hyphen bug lived in this
   // slug, and a stub here would have hidden it.
@@ -70,14 +116,33 @@ export default async function run(check) {
         { id: "MJX-CHTML-styles", textContent: "mjx-container{display:inline}" },
         { id: "other", textContent: "SHOULD-NOT-APPEAR" },
       ],
-      createElement: () => ({
-        click() {},
-        set href(_v) {},
-        set download(v) { downloadName = v; },
-      }),
+      createElement: (tag) =>
+        tag === "a"
+          ? {
+              click() {},
+              set href(_v) {},
+              set download(v) { downloadName = v; },
+            }
+          : makeFrag(tag),
       body: { appendChild() {}, removeChild() {} },
     },
     editor: makeNode(DOC_HTML),
+    // Stubbed rather than loaded: this suite checks the wiring — whether the
+    // nav is emitted at all, and where it lands — while outline.test.mjs
+    // checks that the entries and the nesting are right.
+    outlineIsOpen: () => outlineOpen,
+    outlineEntries: () => [{ slug: "quarterly-report", level: 1, depth: 0 }],
+    buildNestedList: (entries) => {
+      const list = makeFrag("ul");
+      for (const entry of entries) {
+        const item = makeFrag("li");
+        const link = makeFrag("a");
+        link.textContent = entry.slug;
+        item.appendChild(link);
+        list.appendChild(item);
+      }
+      return list;
+    },
     fetch: async (url) => ({
       ok: true,
       statusText: "OK",
@@ -112,6 +177,28 @@ export default async function run(check) {
   // and nothing about the document looks wrong until someone clicks one.
   check("headings carry anchor ids",
     written.includes('<h1 id="quarterly-report">'));
+
+  // The TOC is document content here rather than the sidebar it is in the app.
+  // Safe only because this file is a terminal artifact — it never goes back
+  // through Turndown, so nothing added here can reach anyone's .md.
+  // The element, not the class name: .doc-outline's styles are inlined from
+  // DOC_LAYOUT_CSS either way.
+  check("no contents nav while the outline is closed",
+    !written.includes('<nav class="doc-outline">'));
+
+  outlineOpen = true;
+  await handler();
+  check("an open outline exports a contents nav",
+    written.includes('<nav class="doc-outline">'));
+  // After the title, so the document still opens on its own heading rather
+  // than on its own index.
+  check("the nav lands after the leading h1",
+    written.indexOf('<h1 id="quarterly-report">') <
+      written.indexOf('<nav class="doc-outline">'));
+  check("the nav is inside the document, not the page chrome",
+    written.indexOf('<div id="editor">') <
+      written.indexOf('<nav class="doc-outline">'));
+  outlineOpen = false;
 
   check("app.css is inlined", written.includes("#editor h1 { font-size: 2rem; }"));
   check("MathJax runtime styles are copied", written.includes("mjx-container{display:inline}"));

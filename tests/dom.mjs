@@ -42,6 +42,23 @@ export function makeEl(tag = "div", { parent = null, text = "" } = {}) {
 
     classList: { add() {}, remove() {}, contains: () => false },
 
+    // The real DOM distinguishes these: childNodes carries text, children does
+    // not. Text nodes are ordinary children here, so a walk over childNodes
+    // sees them and a test can build a heading with mixed content.
+    get childNodes() {
+      return node.children;
+    },
+    get firstChild() {
+      return node.children[0] || null;
+    },
+    get firstElementChild() {
+      return node.children.find((c) => c.nodeType === 1) || null;
+    },
+    get lastElementChild() {
+      const elements = node.children.filter((c) => c.nodeType === 1);
+      return elements[elements.length - 1] || null;
+    },
+
     get previousElementSibling() {
       const siblings = node.parentNode ? node.parentNode.children : [];
       const index = siblings.indexOf(node);
@@ -65,6 +82,26 @@ export function makeEl(tag = "div", { parent = null, text = "" } = {}) {
     },
     remove() {
       if (node.parentNode) node.parentNode.removeChild(node);
+    },
+    insertBefore(child, reference) {
+      child.parentNode = node;
+      child.parentElement = node;
+      const index = node.children.indexOf(reference);
+      node.children.splice(index < 0 ? node.children.length : index, 0, child);
+      return child;
+    },
+    insertAdjacentElement(position, child) {
+      const parent = node.parentNode;
+      if (!parent) return null;
+      child.parentNode = parent;
+      child.parentElement = parent;
+      const index = parent.children.indexOf(node);
+      parent.children.splice(index + (position === "afterend" ? 1 : 0), 0, child);
+      return child;
+    },
+    dispatchEvent(event) {
+      for (const fn of node.listeners[event.type] || []) fn(event);
+      return true;
     },
 
     setAttribute(name, value) {
@@ -122,6 +159,10 @@ export function makeEl(tag = "div", { parent = null, text = "" } = {}) {
   };
   if (parent) parent.children.push(node);
   return node;
+}
+
+export function makeText(text) {
+  return { nodeType: 3, textContent: text, children: [], parentElement: null };
 }
 
 export function walk(node, out = []) {

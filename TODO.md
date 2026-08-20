@@ -248,7 +248,7 @@ deliberate rather than bugs. In rough order of how much they matter:
     of these same alerts).
 
 *   **4.2** *(unblocks 1.5, 1.9, 6.2)* A menu instead of a button row. The
-    toolbar is full: three button groups plus the theme toggle, already
+    toolbar is full: four button groups plus the theme toggle, already
     wrapping onto a second row below roughly 900px, and every new export or
     formatting control makes it worse. A menu bar (File / Edit / Format /
     Export) scales where the row does not, and gives the formatting the format
@@ -268,6 +268,24 @@ deliberate rather than bugs. In rough order of how much they matter:
     fine on a single filename, but the convention on a row of tabs is a red `*`
     against each unsaved one. (If what was meant is edit/preview/source tabs
     rather than multiple files, that is the source-view item above.)
+
+*   **4.4** *(undecided)* The static HTML export's table of contents follows
+    the outline sidebar's toggle, because that toggle is the only switch that
+    exists. It is the wrong control: the sidebar is chrome for whoever is
+    editing, the export's TOC is content for whoever receives the file, and
+    there is no reason the two should be one decision. The right home is a
+    Settings pane, which does not exist yet — as would "which heading levels
+    does the outline show", if that ever stops being "all of them". Until then
+    the coupling is documented rather than fixed. (`documentBody` in
+    static-export.js, gated on `outlineIsOpen`.)
+*   **4.5** *(needs 1.1)* Insert TOC is a one-shot with no way back. It
+    deliberately does not recognise a list it inserted earlier — a marker class
+    would not survive a save and reload, since Turndown drops it, so a second
+    invocation inserts a second list and re-running it cannot replace the first
+    without risking content the author has since edited. The intended undo is
+    Ctrl+Z, which 1.1 makes unreliable after anything that rewrites
+    `editor.innerHTML`. Once undo is trustworthy this is a non-item; until
+    then, the first insert is awkward to take back by hand.
 
 ## 5. Architecture
 

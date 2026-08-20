@@ -41,6 +41,11 @@ They cover the invariants that fail *silently* rather than loudly:
   browsed directory, the edited marker, and the mtime baseline that Reload and
   the disk-changed marker measure against. It drives a fake disk, so a reload,
   an outside edit and a save over one all have a real file to disagree with.
+- **outline** — the depth algorithm, the inline allowlist, and the shape of the
+  list Insert TOC writes. The depths are a pure function over heading levels, so
+  the pathological document is a table rather than a fixture; the list shape is
+  there because a sublist placed beside its parent `<li>` instead of inside it
+  serialises to a flat list, into the user's file, looking fine on screen.
 - **save-fidelity** — the serialiser options app.js asks for, and then
   `markdown-style.js` directly: the sniffers, and every guard in the re-wrapper.
   That second half is the one that writes into the user's file.
@@ -67,6 +72,8 @@ are no imports. Consequences that bite:
   `reflowMarkdown`, `indexMarkdownBlocks` and `restoreSourceWrapping`, which
   `app.js` calls at top level and on every save;
   `app.js` defines `editor`, `markdownToHtml`, `htmlToMarkdown`;
+  `outline.js` defines `outlineIsOpen`, `outlineEntries` and `buildNestedList`,
+  which `static-export.js` calls at export time;
   `renderers.js` defines `renderMermaidDiagrams` / `renderLatex`;
   `lazy-load.js` defines the `ensure*` loaders. Later files call these freely.
 - **Global-name collisions are real bugs, not hypotheticals.** `file-api.js`
@@ -155,8 +162,14 @@ different mechanisms fix that, because the two outputs have different powers:
   attributes into the markup. It stamps the *clone*, never the editor, so
   nothing reaches Turndown.
 
+`outline.js` is a third consumer: it builds both the sidebar and the inserted
+TOC out of `headingAnchors`, rather than slugging headings a second time, so the
+outline and the editor's own Ctrl+click resolution cannot disagree about what a
+heading is called.
+
 That is a second cross-file dependency on `app.js` alongside `slugifyTitle` —
-`static-export.js` must stay after `app.js` in both `index.html` and `ASSETS`.
+`static-export.js` must stay after `app.js` in both `index.html` and `ASSETS`,
+and after `outline.js` for the same reason.
 
 Two traps here, both of which write into the user's file if you get them wrong:
 
@@ -308,7 +321,10 @@ There are two, and they are different deliverables:
   a standalone page, the same kind of artifact as PDF or DOCX. Inlines
   `app.css`, copies MathJax's runtime-generated `<style id="MJX…">` so maths
   lays out without MathJax present, strips `.mermaid-source` and
-  `contenteditable`, and ships no editor JS at all.
+  `contenteditable`, and ships no editor JS at all. It is also the one place a
+  table of contents is written into the document rather than drawn beside it:
+  this file never goes back through Turndown, so nothing added here can reach
+  anyone's `.md`. See the outline section below.
 - **Editable** ([html-export.js](front/html-export.js)) — bundles the editor
   *with* the document so recipients can edit in-browser and send it back.
 
@@ -332,6 +348,10 @@ drive does not exist in an exported document:
 - `theme-manager.js` — it binds the theme toggle, which `toolbar.js` only
   renders for the `app` variant. Exported documents follow the reader's OS
   preference via the inline `THEME_SCRIPT` instead.
+
+`outline.js` *is* in `ASSETS` — the sidebar needs no server — but an exported
+document opens with it closed regardless of the author's stored preference, for
+the same reason it ignores the author's theme: it is the reader's copy.
 
 Both files build `</script>` from a constant rather than writing it literally,
 for the reason documented at the top of `html-export.js`. They use *different*
@@ -360,6 +380,10 @@ none and falls back to `uploadBtn` / `downloadBtn`. Everything else is shared,
 except the theme toggle — exported documents follow the reader's OS preference
 rather than inheriting the author's stored one.
 
+`tocBtn` is the toolbar's only *stateful* button. `data-open` is the split
+menu's mechanism and says nothing about whether the outline is showing, so the
+toggle carries `aria-pressed` and `app.css` styles it from that directly.
+
 The variant is read from `#editor[data-exported]`, which only exported documents
 carry. `app.js` strips that attribute on `window load`, long after `toolbar.js`
 has run.
@@ -369,10 +393,75 @@ includes the script that binds it**, or it renders as a dead control. The
 editable export's `ASSETS` decide that, and `toolbar.js` must stay first in
 that list for the same reason it is first in `index.html`.
 
+### The outline
+
+The sidebar is chrome and lives **outside `#editor`**, and that is the whole
+design. Everything inside the editor is the document — Turndown serialises it on
+every save — so a self-updating table of contents in there would rewrite a block
+of the user's file every time any heading changed, and it is exactly the block
+that can never match `indexMarkdownBlocks`, because a segment that changed is a
+segment that misses. A live TOC inside the document would be a feature whose
+only output is the diff noise `markdown-style.js` exists to eliminate. It would
+also sit inside a `contenteditable`, where regeneration fights the caret.
+
+**Insert TOC** is the honest version of the same idea, and it is a different
+feature: it writes a nested markdown list once, and that list is then ordinary
+content the author owns. It does not recognise a list it inserted before — a
+marker class does not survive a save and reload, since Turndown drops it — so a
+second invocation inserts a second list rather than guessing (TODO 4.5).
+
+**Depth comes from nesting, not from the heading level.** People use headings as
+a type scale, so a document may put three H6s under an H1 and follow them with
+an H2; indenting by the number in the tag draws that as a five-deep staircase
+with four empty rungs. `outlineDepths` runs a monotonic stack of the open
+levels instead: a heading closes every heading open at its own level or deeper
+and nests inside what is left. The stack is strictly increasing, so depth is
+bounded by the number of *distinct* levels in play rather than by 6 — that
+document maxes out at 2 — and nothing is invented, so one that opens on an H3
+starts at 0. Equal levels are siblings; treating a repeat as a child would nest
+a flat run of H2s forever. The outline reports structure and cannot divine
+intent.
+
+The two visual channels are deliberately independent: **indent is the relative
+depth, type scale is the absolute level**. A stray H6 one rung under an H1
+renders small beside a large one, so an inconsistent document reads as texture
+rather than earning a warning nobody asked for.
+
+`copyInline` decides what survives from a heading into an entry, by
+**allowlist** — `em`/`strong`/`code`/`del`/`sub`/`sup` pass through, everything
+else flattens to its text. The exclusions are the reason it exists: an `<a>`
+inside a heading would nest anchors, which is invalid, and the browser unnests
+them until the entry stops being a link at all. Maths in a heading flattens to
+MathJax's rendered glyphs, which reads correctly and whose slug will not
+resolve — a known limit, left alone.
+
+Three more things worth knowing:
+
+- **The nav element is built in JS, not written into markup.**
+  `html-export.js` hand-writes the whole `.container` block too, so markup added
+  to `index.html` would be a fourth registry that drifts silently. Same
+  reasoning as the toolbar.
+- **The open/closed state is stamped before the stylesheet loads**, in the same
+  inline `<script>` in `index.html` that sets the theme, and the grid column is
+  sized from `--outline-width` rather than from the nav's content. Both exist so
+  the editor does not render full-width and then shift once `outline.js` runs —
+  the same problem `.toolbar`'s `min-height` solves.
+- **Rebuilds hang off a debounced `MutationObserver` on `#editor`**, not an
+  `input` listener, because the document also changes from Open, Reload, Clear,
+  paste and the welcome fetch. The click handler captures the heading *element*
+  rather than looking it up by slug, since a slug goes stale the moment its
+  heading is edited and the rebuild is a second behind.
+
+The static export's TOC is gated on `outlineIsOpen()`. That is a placeholder for
+a Settings pane, not a design — the sidebar is chrome for the author and the
+export's TOC is content for the reader, and they should not be one switch
+(TODO 4.4).
+
 #### Split buttons
 
 A spec with a `menu` renders as a `.split-button`: the primary button, a caret
-beside it, and the menu itself — Open/Reload and Save/Save As so far. The menu is
+beside it, and the menu itself — Open/Reload, Save/Save As, and
+Outline/Insert TOC so far. The menu is
 built *inside* the wrapper, and therefore inside `.toolbar`, which is the whole
 point: its items are ordinary `[data-action]` buttons, so the one delegated
 listener already dispatches them and a menu entry needs no wiring beyond the
