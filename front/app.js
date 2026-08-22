@@ -441,6 +441,12 @@ onToolbarAction("clear", async () => {
   range.collapse(true);
   sel.removeAllRanges();
   sel.addRange(range);
+
+  // Replaced, not edited: Clear also drops the autosave, the sniffed style and
+  // (via file-api.js) the file association, so an undo that brought the text
+  // back would restore it into a document that no longer knows where it came
+  // from. The ask() dialog is what stands in for undo here.
+  undoReset();
 });
 
 onToolbarAction("paste-md", async () => {
@@ -452,6 +458,12 @@ onToolbarAction("paste-md", async () => {
       await renderMermaidDiagrams(editor);
       await renderLatex(editor);
       localStorage.setItem("markdownContent", editor.innerHTML);
+      // Unlike Open, this replaces the document with no confirmation and no
+      // file behind it, so Ctrl+Z is the only way back and it has to work.
+      // The event is also what sets the dirty flag: a programmatic edit raises
+      // none, so before this Paste MD replaced the document and the toolbar
+      // went on claiming it matched the file on disk.
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
     }
   } catch (err) {
     notify("Unable to access clipboard. Please grant clipboard permissions.", {
@@ -473,6 +485,8 @@ if (fileInput) {
       await renderMermaidDiagrams(editor);
       await renderLatex(editor);
       localStorage.setItem("markdownContent", editor.innerHTML);
+      // This is Open, for the variant with no file server behind it.
+      undoReset();
     };
     reader.readAsText(file);
     fileInput.value = "";
@@ -677,6 +691,12 @@ window.addEventListener("load", () => {
     } catch (error) {
       console.error("[MathJax] Startup render error:", error);
     }
+
+    // One baseline for all three branches above — exported, restored and
+    // welcome — and deliberately after the renderers, so the first snapshot is
+    // the document as it will actually be seen rather than the markup before
+    // Mermaid and MathJax rewrote parts of it.
+    undoReset();
   })();
 });
 
@@ -755,16 +775,6 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     runToolbarAction("export-pdf");
   }
-  if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
-    e.preventDefault();
-    document.execCommand("undo");
-  }
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "z") {
-    e.preventDefault();
-    document.execCommand("redo");
-  }
-  if ((e.ctrlKey || e.metaKey) && e.key === "y") {
-    e.preventDefault();
-    document.execCommand("redo");
-  }
+  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y live in undo.js: execCommand's stack is
+  // discarded by every innerHTML assignment in this file.
 });

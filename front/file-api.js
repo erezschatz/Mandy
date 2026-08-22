@@ -308,6 +308,11 @@ async function openFile(filePath) {
   await renderMermaidDiagrams(editor);
   await renderLatex(editor);
   localStorage.setItem("markdownContent", editor.innerHTML);
+  // History does not cross a document boundary. Undo handing back the previous
+  // file's text would leave it under this file's path, one Ctrl+S from being
+  // written there. Reload comes through here too, which is right: discarding
+  // local changes is the whole point of it.
+  undoReset();
   setDirty(false);
   setFileMtime(data.modified);
   setCurrentFile(data.path);

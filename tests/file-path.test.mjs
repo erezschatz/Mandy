@@ -151,6 +151,9 @@ function boot({
         }
       },
       notify() {},
+      // undo.js is not in this suite's bundle; openFile and Clear both
+      // re-baseline the history, and a missing stub makes them throw.
+      undoReset() {},
       // The real one resolves a promise, which is the whole reason the guards
       // could grow a third button — so the stub has to resolve one too, or the
       // callers pass a pending promise off as a yes.

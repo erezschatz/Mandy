@@ -52,6 +52,10 @@ They cover the invariants that fail *silently* rather than loudly:
   resolve to the same thing as agreeing with it. The source scan is the half
   that matters: an `alert()` looks fine from inside the app right up until the
   user has silenced dialogs and their save failure disappears.
+- **undo** — the coalescing rules, the redo branch, and above all that history
+  does not survive `undoReset()`. Also counts the `editor.innerHTML` assignment
+  sites, because the way this regresses is not a broken stack but a new
+  assignment that never tells the stack about it.
 - **save-fidelity** — the serialiser options app.js asks for, and then
   `markdown-style.js` directly: the sniffers, and every guard in the re-wrapper.
   That second half is the one that writes into the user's file.
@@ -81,6 +85,7 @@ are no imports. Consequences that bite:
   `reflowMarkdown`, `indexMarkdownBlocks` and `restoreSourceWrapping`, which
   `app.js` calls at top level and on every save;
   `app.js` defines `editor`, `markdownToHtml`, `htmlToMarkdown`;
+  `undo.js` binds to `editor` and so must follow `app.js`;
   `outline.js` defines `outlineIsOpen`, `outlineEntries` and `buildNestedList`,
   which `static-export.js` calls at export time;
   `renderers.js` defines `renderMermaidDiagrams` / `renderLatex`;
@@ -492,6 +497,49 @@ Open state is one attribute, `data-open` on the wrapper, with CSS doing the rest
 `toolbar.js` holds the single open menu in `openSplit` rather than querying for
 it. Dismissal is on the document, so a click or Escape anywhere closes it — the
 first time `toolbar.js` binds outside `.toolbar`.
+
+### Undo
+
+[undo.js](front/undo.js) keeps the document's history, because the browser's own
+does not survive this app. `execCommand("undo")` works right up until something
+assigns `editor.innerHTML` — open, reload, clear, paste markdown, upload, the
+restore-or-welcome path at startup — at which point the native stack is thrown
+away and Ctrl+Z quietly stops answering for the rest of the session.
+
+Snapshots of the whole `innerHTML`, not a diff or a command log. Contenteditable
+is not a data structure we control: the browser splits nodes on Enter, merges
+them on Backspace, normalises markup on paste and rewrites a trailing space to
+an NBSP behind our back. Anything finer-grained would have to model all of that,
+and getting it wrong corrupts the document.
+
+Four things worth knowing:
+
+- **`undoReset()` is the only API, and it marks a document boundary.** History
+  never crosses one. Undo after an Open must not hand back the previous file's
+  text, because that text would then be sitting under the new file's path, one
+  Ctrl+S away from being written there. Every site that assigns
+  `editor.innerHTML` picks a side — reset, or raise an `input` event and be
+  undoable — and the `undo` suite counts those sites so a new one cannot skip
+  the choice.
+- **A programmatic edit announces itself with a synthetic `input` event.** That
+  was already the convention for autosave and the dirty flag, which is why
+  `insertToc` needed no change at all to become undoable (the old TODO 4.5).
+  `paste-md` gained the dispatch, which also fixed it never marking the document
+  edited.
+- **The caret is stored as a character offset, not a Range.** A Range points at
+  nodes that restoring a snapshot destroys. `undoTextOffset` counts characters
+  across element boundaries, and `undoLocateOffset` walks back to a text node —
+  landing at the end rather than nowhere when the content got shorter.
+- **Coalescing is by `inputType`, not just by time.** Consecutive `insertText`
+  or `deleteContentBackward` inside 600ms collapse into one step; everything
+  else — Enter, a format button, a paste, a synthetic event with no `inputType`
+  at all — starts its own. Time alone would merge two Enters into one step.
+
+Applying a snapshot dispatches `input` so autosave, the dirty flag and the
+outline all hear it, and does so behind a re-entrancy guard so the undo does not
+record itself as an edit. `onToolbarAction("undo"/"redo")` are registered with
+no buttons behind them; the menu bar (TODO 4.2) is where they get rendered, and
+that is a spec entry rather than new wiring.
 
 ### Notifications
 

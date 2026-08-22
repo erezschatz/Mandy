@@ -13,14 +13,26 @@ would break every reference to it.
 
 ## 1. Editing
 
-*   **1.1** *(unblocks 1.4, 1.5)* Undo is bound but unreliable. Ctrl+Z / Ctrl+Y
-    are wired to `execCommand("undo"/"redo")` in app.js and work for typing and
-    for anything done via execCommand (bold, italic, headings, lists). They do
-    NOT survive the seven places that assign `editor.innerHTML = ...` — open
-    file, paste, clear, restore from localStorage, welcome doc. Each wholesale
-    rewrite discards the browser's native undo stack, so undo silently stops
-    working after any of them. Real fix: stop rewriting innerHTML, or keep our
-    own snapshot stack.
+*(1.1 retired: done and verified — undo and redo now run on our own stack in
+[front/undo.js](front/undo.js) rather than `execCommand`'s, which every
+assignment to `editor.innerHTML` discarded. Whole-innerHTML snapshots with the
+caret stored as a character offset, since a Range cannot survive the nodes it
+points at being replaced. The stack is fed by the editor's own `input` event —
+which covers typing, deleting, IME, cut, native paste and every execCommand the
+format bar runs — so the only call sites that had to change are the ones that
+*replace* the document rather than edit it. Those call `undoReset()`, and that
+is a deliberate line: history does not cross a document boundary, because undo
+handing back the previous file's text would leave it sitting under the new
+file's path, one Ctrl+S from being written there. `tests/undo.test.mjs` counts
+the `editor.innerHTML` assignment sites so a new one cannot skip the decision.
+Consecutive edits of the same kind coalesce inside 600ms, so a typed run is one
+step, but Enter, a format button and a programmatic edit each earn their own.
+Confirmed in a browser with real keystrokes: a ten-character run undone as one
+step, redo restoring the caret to the exact offset, undo still working after an
+Open, and refusing to resurrect the previous document across one. Undo/Redo are
+registered as toolbar actions with no buttons behind them yet — 4.2 gives them
+somewhere to live, and it is a spec entry rather than new wiring.)*
+
 *   **1.2** Block vs inline formatting is not distinguished. Selecting part of
     a line and pressing Code turns the whole line into a code block. A partial
     selection should produce inline `<code>`; only a whole-line selection
@@ -29,13 +41,13 @@ would break every reference to it.
 *   **1.3** `toggleCodeBlock` operates on top-level editor children, so a
     selection inside a bullet replaces the entire `<ul>` with one `<pre>` and
     runs all the items together. (format-bar.js, `blocksInRange`)
-*   **1.4** *(undecided; needs 1.1)* Hybrid mode: typing `#` at the start of
+*   **1.4** *(undecided; 1.1 landed)* Hybrid mode: typing `#` at the start of
     a line turns that line into a heading, and the same for `-`, `>` and a
     ` ``` ` fence. Suggested, not agreed — it commits the editor to reading
     keystrokes as markdown everywhere, which is a different product from a
     WYSIWYG surface with a format bar, and it needs an escape hatch for
     someone who wants a literal `#`.
-*   **1.5** *(needs 4.2; tables also need 1.1 and 2.5, or 1.7 instead of both)*
+*   **1.5** *(needs 4.2; tables also need 2.5 now 1.1 has landed, or 1.7 instead)*
     The UI only supports some of the markup MD offers, and not even all of what
     the README advertises. The format bar has p, h1, h2, h3, bold, italic, ul,
     ol, code. Missing: links, images, tables, blockquotes, h4-h6,
@@ -258,43 +270,15 @@ document that is not blank yet, and leave the file association behind.)*
     does the outline show", if that ever stops being "all of them". Until then
     the coupling is documented rather than fixed. (`documentBody` in
     static-export.js, gated on `outlineIsOpen`.)
-*   **4.5** *(needs 1.1)* Insert TOC is a one-shot with no way back. It
-    deliberately does not recognise a list it inserted earlier — a marker class
-    would not survive a save and reload, since Turndown drops it, so a second
-    invocation inserts a second list and re-running it cannot replace the first
-    without risking content the author has since edited. The intended undo is
-    Ctrl+Z, which 1.1 makes unreliable after anything that rewrites
-    `editor.innerHTML`. Once undo is trustworthy this is a non-item; until
-    then, the first insert is awkward to take back by hand.
-
-*   **4.6** Degrading without the server is a one-way door. `file-api.js` probes
-    `/api/home` once, in an IIFE at load, and on failure disables Open, Save,
-    Reload and Save As — plus the two carets — then returns. Nothing ever
-    re-probes, so a server that comes back is invisible: the buttons stay dead
-    for the life of the page and the only way back is a reload, which the app
-    never suggests. The asymmetry runs both ways, and the other direction is
-    worse for being silent: a server that dies *after* load leaves all four
-    buttons looking live, and the first you hear of it is a failed save.
-
-    There is already a recurring hook to hang this on. `checkDiskChanged` runs
-    on window `focus` and on `visibilitychange` whenever a file is open, which
-    is exactly the moment worth re-checking whether the server is there — and
-    coming back to the tab is what someone does after starting it. Note the
-    dead branch skips `checkDiskChanged` entirely, so a revived server also
-    needs the baseline check it never got.
-
-    Two traps for whoever does it. The disable writes **inline styles** —
-    `disabled`, `opacity`, `cursor` and a replacement `title` — so re-enabling
-    means undoing four properties, and the original title is not saved anywhere:
-    it comes from `TOOLBAR_GROUPS`, so the reverse has to read it back off the
-    spec rather than remember it. Cleaner to make the dead state a class plus
-    `aria-disabled` and let the spec stay the one source of the title. Second,
-    `notify` exists now, so both transitions can say so — the returning one is
-    worth a toast, since nothing else on screen changes.
+*(4.5 retired: a non-item now, as it said it would be — Insert TOC already
+dispatched a synthetic `input` event for autosave's benefit, and that is exactly
+what the undo stack listens to, so a TOC insert became one Ctrl+Z away the
+moment 1.1 landed, with no change to outline.js at all. Verified in a browser.
+Still no dedupe on a second invocation, which was never the complaint.)*
 
 ## 5. Architecture
 
-*   **5.1** *(affects 1.1, 1.2, 1.3)* execCommand deprecation/inconsistency.
+*   **5.1** *(affects 1.2, 1.3)* execCommand deprecation/inconsistency.
     Now load-bearing rather than incidental: after the format-bar fix, headings
     go through `formatBlock` and lists through
     `insertUnorderedList`/`insertOrderedList`. Those produce slightly different

@@ -13,6 +13,7 @@ const SUITES = [
   ["list-indent", "./list-indent.test.mjs"],
   ["outline", "./outline.test.mjs"],
   ["notify", "./notify.test.mjs"],
+  ["undo", "./undo.test.mjs"],
 ];
 
 let passed = 0;

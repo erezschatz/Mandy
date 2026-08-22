@@ -103,8 +103,9 @@ export default async function run(check) {
   const genOne = firstExport.output();
 
   // One per entry in ASSETS: the stylesheet plus every script in the bundle.
-  check("app export fetches its assets", firstExport.fetches() === 13);
+  check("app export fetches its assets", firstExport.fetches() === 14);
   check("app export bundles notify.js", genOne.includes("/notify.js"));
+  check("app export bundles undo.js", genOne.includes("/undo.js"));
   check("app export bundles docx-export.js", genOne.includes("/docx-export.js"));
   check("app export bundles static-export.js", genOne.includes("/static-export.js"));
   check("app export bundles html-export.js", genOne.includes("/html-export.js"));
