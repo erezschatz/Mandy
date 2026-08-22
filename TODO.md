@@ -6,48 +6,34 @@ one has to land first, *(best after …)* is a preference rather than a blocker,
 and *(unblocks …)* marks an item others are waiting on — those are the ones to
 start from. Two more say what kind of item it is: *(undecided)* is a suggestion
 nobody has ruled on yet, so it wants a decision before it wants code — settled
-ones move to [DECISIONS.md](DECISIONS.md) — and *(fixed, unverified)* means the
-work landed but nobody has watched it happen in a browser, so what is left is
-the checking. Retire a number when its item goes rather than renumbering, which
-would break every reference to it.
+ones are recorded in [CHANGELOG.md](CHANGELOG.md) — and *(fixed, unverified)*
+means the work landed but nobody has watched it happen in a browser, so what is
+left is the checking.
+
+A finished item leaves this file rather than staying in it struck through: what
+was done and why is in [CHANGELOG.md](CHANGELOG.md), which is the better place
+to look for it, and a list of open work reads better without seven closed items
+in the way. Numbers are reused when that happens, so a reference in the code or
+in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
+— `grep -rn "TODO [0-9]" .` finds them.
 
 ## 1. Editing
 
-*(1.1 retired: done and verified — undo and redo now run on our own stack in
-[front/undo.js](front/undo.js) rather than `execCommand`'s, which every
-assignment to `editor.innerHTML` discarded. Whole-innerHTML snapshots with the
-caret stored as a character offset, since a Range cannot survive the nodes it
-points at being replaced. The stack is fed by the editor's own `input` event —
-which covers typing, deleting, IME, cut, native paste and every execCommand the
-format bar runs — so the only call sites that had to change are the ones that
-*replace* the document rather than edit it. Those call `undoReset()`, and that
-is a deliberate line: history does not cross a document boundary, because undo
-handing back the previous file's text would leave it sitting under the new
-file's path, one Ctrl+S from being written there. `tests/undo.test.mjs` counts
-the `editor.innerHTML` assignment sites so a new one cannot skip the decision.
-Consecutive edits of the same kind coalesce inside 600ms, so a typed run is one
-step, but Enter, a format button and a programmatic edit each earn their own.
-Confirmed in a browser with real keystrokes: a ten-character run undone as one
-step, redo restoring the caret to the exact offset, undo still working after an
-Open, and refusing to resurrect the previous document across one. Undo/Redo are
-registered as toolbar actions with no buttons behind them yet — 4.2 gives them
-somewhere to live, and it is a spec entry rather than new wiring.)*
-
-*   **1.2** Block vs inline formatting is not distinguished. Selecting part of
+*   **1.1** Block vs inline formatting is not distinguished. Selecting part of
     a line and pressing Code turns the whole line into a code block. A partial
     selection should produce inline `<code>`; only a whole-line selection
     should produce a block. P/H1/H2/H3 are inherently block-level, so decide:
     act on the whole line by design, or disable them for partial selections.
-*   **1.3** `toggleCodeBlock` operates on top-level editor children, so a
+*   **1.2** `toggleCodeBlock` operates on top-level editor children, so a
     selection inside a bullet replaces the entire `<ul>` with one `<pre>` and
     runs all the items together. (format-bar.js, `blocksInRange`)
-*   **1.4** *(undecided; 1.1 landed)* Hybrid mode: typing `#` at the start of
+*   **1.3** *(undecided)* Hybrid mode: typing `#` at the start of
     a line turns that line into a heading, and the same for `-`, `>` and a
     ` ``` ` fence. Suggested, not agreed — it commits the editor to reading
     keystrokes as markdown everywhere, which is a different product from a
     WYSIWYG surface with a format bar, and it needs an escape hatch for
     someone who wants a literal `#`.
-*   **1.5** *(4.2 landed; tables also need 2.5, or 1.7 instead)*
+*   **1.4** *(tables also need 2.4, or 1.6 instead)*
     The UI only supports some of the markup MD offers, and not even all of what
     the README advertises. The format bar has p, h1, h2, h3, bold, italic, ul,
     ol, code, and the Format menu now reaches the same nine — which is more
@@ -62,7 +48,7 @@ somewhere to live, and it is a spec entry rather than new wiring.)*
     remove a row or column once markdown-it has rendered the `<table>`.
     Confirmed by hand: editing this very file after `hr: "---"` landed, trying
     to delete the now-obsolete row it made fixed above.
-*   **1.6** *(relative links need 1.8)* Links are done except for three loose
+*   **1.5** *(relative links need 1.7)* Links are done except for three loose
     ends. Ctrl/Cmd+click follows a link and jumps to `#anchor` headings,
     `anchorSlug` / `headingAnchors` in app.js resolve slugs live, and
     `static-export.js` stamps real ids into the exported markup. What is still
@@ -85,15 +71,15 @@ somewhere to live, and it is a spec entry rather than new wiring.)*
       blue and nothing survives as a clickable annotation. Heading ids do not
       help; it needs a different PDF path.
 
-*   **1.7** *(undecided; would unblock 1.5 cheaply)* A source view — see and
+*   **1.6** *(undecided; would unblock 1.4 cheaply)* A source view — see and
     edit the markdown inside the app. Today the document lives as HTML in
     `editor.innerHTML` and markdown exists only at the boundaries: markdown-it
     parses on the way in, Turndown serialises on the way out. Copy MD, Download
     MD and Save all emit it, so it is reachable, just not visible. Suggested,
     not agreed — an editable source view makes markdown a second seat of truth
     and raises which one wins, and where it lives (a tab, a split pane, a mode)
-    is the same question 4.3 asks about tabs.
-*   **1.8** *(unblocked; 4.1 landed)* Nothing guards unsaved work. The toolbar says
+    is the same question 4.1 asks about tabs.
+*   **1.7** Nothing guards unsaved work. The toolbar says
     `(edited)` when the document has diverged from the file, and Reload and an
     overwriting Save both act on it now — but the other three ways out of a
     dirty document still throw it away without asking:
@@ -124,13 +110,7 @@ somewhere to live, and it is a spec entry rather than new wiring.)*
     flag, and gets the browser's own wording. Note the flag lives in
     file-api.js, which the editable export does not ship, so the exported
     document needs its own answer or an honest absence of one.
-*(1.9 retired: answered by 4.2 rather than decided. The item was "more split
-buttons, or a menu bar?" and the menu bar won outright — Open/Reload,
-Save/Save As and Outline/Insert TOC are now ordinary items in File, File and
-View/Insert, and `buildSplitButton` and its caret mechanism are gone. There is
-no third caret to worry about because there are no carets.)*
-
-*   **1.10** Ghost lines. Pasted text brings in empty lines — roughly 1px tall,
+*   **1.8** Ghost lines. Pasted text brings in empty lines — roughly 1px tall,
     enough to space bullets unevenly. Not yet reproduced deliberately. Prime
     suspect is the paste handler (app.js), which feeds clipboard HTML straight
     into `execCommand("insertHTML")` with no sanitising, so empty `<p></p>` and
@@ -144,9 +124,9 @@ no third caret to worry about because there are no carets.)*
 
 Ways the bytes on disk still differ from what was opened, all verified by
 round-tripping real files through the running app.
-[front/markdown-style.js](front/markdown-style.js) is what preserves them; D1
-in [DECISIONS.md](DECISIONS.md) is why, and lists the differences that are
-deliberate rather than bugs. In rough order of how much they matter:
+[front/markdown-style.js](front/markdown-style.js) is what preserves them;
+Decision 1 in [CHANGELOG.md](CHANGELOG.md) is why, and lists the differences
+that are deliberate rather than bugs. In rough order of how much they matter:
 
 *   **2.1** **Reference links are inlined and the definition block deleted.** A
     document that cites the same URL in twenty places arrives with one
@@ -185,7 +165,7 @@ deliberate rather than bugs. In rough order of how much they matter:
     fidelity across a reload — a `console.warn` and nothing else. Storing the
     derived style plus block hashes instead of the whole source would be
     smaller, and could not reconstruct the bytes.
-*   **2.5** *(wanted by 1.5)* An edited table is re-emitted in the `table`
+*   **2.4** *(wanted by 1.4)* An edited table is re-emitted in the `table`
     rule's house style. An untouched one now restores byte-for-byte —
     `normaliseTableRows` takes the rule's cell padding and its fixed three-dash
     delimiter out of the block key, so `|---|---|` and `| --- | --- |` are the
@@ -199,22 +179,14 @@ deliberate rather than bugs. In rough order of how much they matter:
     one-space, or padded to width — which the sniffer can read off the original
     delimiter row. Reachable by typing in a cell, which contenteditable allows
     even though the structural editing above is missing.
-*   **2.6** `markdownSegments` splits on blank lines, list markers, headings
+*   **2.5** `markdownSegments` splits on blank lines, list markers, headings
     and fences. A change anywhere in a fenced block, a table or a multi-line
     paragraph re-serialises the whole segment. Finer granularity would need to
     match at line level, which is a different and much less safe algorithm.
 
-*(2.8 retired: fixed and verified — `markdownToHtml` → `renderLatex` now
-renders `$$\mathbb{N} = \{ a \}$$` with `\{`/`\}` intact, and `htmlToMarkdown`
-round-trips it byte-identical, confirmed in a browser.)*
-
 ## 3. Format bar
 
-*(3.1 retired: fixed and verified — dragging a selection around, including
-selections that end near the viewport edge at a narrow width, keeps the format
-bar fully on-screen with no visible jitter, confirmed in a browser.)*
-
-*   **3.2** Selection doesn't identify the elements inside it.
+*   **3.1** Selection doesn't identify the elements inside it.
     `updateActiveButtons` walks up from `selection.anchorNode` only, so the
     active states reflect wherever the selection *started* rather than the
     whole of it: select a bold run and B lights up, select a span covering both
@@ -224,48 +196,7 @@ bar fully on-screen with no visible jitter, confirmed in a browser.)*
 
 ## 4. Interface
 
-*(4.1 retired: done and verified — [front/notify.js](front/notify.js) replaces
-every `alert()` and `confirm()` in `front/`. `notify(message, opts)` is a
-non-blocking toast, `ask(message, opts)` a modal returning a Promise of the
-chosen action's value. All fourteen call sites across eight files are converted;
-`tests/notify.test.mjs` scans the sources so one cannot slip back. Confirmed in
-a browser in both themes: the four severities, a three-button dialog, Escape
-resolving to a falsy dismiss rather than a yes, and Clear both cancelled and
-accepted. Two things it changed beyond the swap. Errors do not auto-dismiss,
-because the complaint against `alert()` being suppressible is that a save
-failure must not be invisible, and a four-second toast nobody was looking at is
-the same bug. And toolbar dispatch now awaits each handler in turn: `ask()`
-returns a Promise, so app.js's Clear stops mid-handler, and without the await
-file-api.js's hook would run while the question was still on screen, see a
-document that is not blank yet, and leave the file association behind.)*
-
-*(4.2 retired: done and verified — the row of sixteen buttons is a menu bar of
-six words: File / Edit / Insert / Format / View / Export, 24 items behind them.
-`TOOLBAR_GROUPS` became `TOOLBAR_MENUS` and `toolbar.js` a menu renderer over
-it, so the spec survived the change much as predicted; the split-button
-mechanism did not, and went with the row. What the menus gained over the row:
-Undo and Redo (1.1 registered the actions with nowhere to render them), all nine
-formats the format bar has, and keyboard shortcuts shown beside the labels —
-⌘/⇧ on a Mac, Ctrl on everything else. The toolbar is two rows now — the menus, then a
-document row holding the filename and the two icons, which is where the tab bar
-goes when 4.3 lands — and it came down from 104px to 82 doing it. Two things went with the buttons: the app
-title, an `<h1>` repeating what the tab says and the page's only one, which
-belongs to the document; and the GitHub link, which pointed away from the app
-from a bar that is about the document. An exported document has nothing to put
-on the second row — no file on disk, no theme toggle — so it gets one row and a
-reservation to match, stamped by its own inline script.
-
-Two consequences worth recording, because neither was in the plan. Every piece
-of in-button feedback had to move: "Saved!", "Reloaded!", "Copied!" and both
-export spinners lived on buttons that are now menu items, and a menu closes on
-the click — so all five went to `notify` toasts, which is what 4.1 built. And
-`--toolbar-height` turned out to have been describing the wrong thing all along:
-the aside (the mark stacked over the theme toggle, 72px) has always been taller
-than either the button row or the menu bar, so the reserved height was 33px
-short and the page jumped on every load. It is a `max()` of both regions now,
-and measures exactly.)*
-
-*   **4.3** *(needs 1.8)* Tabbed view — several documents open at once, one per
+*   **4.1** *(needs 1.7)* Tabbed view — several documents open at once, one per
     tab. Today the app is built around holding exactly one: `editor.innerHTML`
     is the entire document state, autosave writes a single
     `localStorage["markdownContent"]`, and file-api.js tracks a single
@@ -275,13 +206,13 @@ and measures exactly.)*
     selection. The dirty flag becomes per-tab too, and should switch
     presentation with it: the "(edited)" suffix file-api.js writes today reads
     fine on a single filename, but the convention on a row of tabs is a red `*`
-    against each unsaved one. There is somewhere to put them: 4.2 left the
-    toolbar as two rows, and the second — `.toolbar-content`, holding the
-    filename and the two icons — is shaped for a tab bar rather than for one
-    label. (If what was meant is edit/preview/source tabs
+    against each unsaved one. There is somewhere to put them: the menu bar
+    left the toolbar as two rows, and the second — `.toolbar-content`, holding
+    the filename and the theme toggle — is shaped for a tab bar rather than for
+    one label. (If what was meant is edit/preview/source tabs
     rather than multiple files, that is the source-view item above.)
 
-*   **4.4** *(undecided)* The static HTML export's table of contents follows
+*   **4.2** *(undecided)* The static HTML export's table of contents follows
     the outline sidebar's toggle, because that toggle is the only switch that
     exists. It is the wrong control: the sidebar is chrome for whoever is
     editing, the export's TOC is content for whoever receives the file, and
@@ -290,15 +221,9 @@ and measures exactly.)*
     does the outline show", if that ever stops being "all of them". Until then
     the coupling is documented rather than fixed. (`documentBody` in
     static-export.js, gated on `outlineIsOpen`.)
-*(4.5 retired: a non-item now, as it said it would be — Insert TOC already
-dispatched a synthetic `input` event for autosave's benefit, and that is exactly
-what the undo stack listens to, so a TOC insert became one Ctrl+Z away the
-moment 1.1 landed, with no change to outline.js at all. Verified in a browser.
-Still no dedupe on a second invocation, which was never the complaint.)*
-
 ## 5. Architecture
 
-*   **5.1** *(affects 1.2, 1.3)* execCommand deprecation/inconsistency.
+*   **5.1** *(affects 1.1, 1.2)* execCommand deprecation/inconsistency.
     Now load-bearing rather than incidental: after the format-bar fix, headings
     go through `formatBlock` and lists through
     `insertUnorderedList`/`insertOrderedList`. Those produce slightly different
@@ -320,13 +245,13 @@ Still no dedupe on a second invocation, which was never the complaint.)*
 
 *   **6.1** *(best last, and at least after 6.3)* Rewrite the README to better
     fit the project's state.
-*   **6.2** *(unblocked; 4.2 landed)* More export options. The set today is markdown, HTML,
-    PDF, DOCX and Editable. Decide what else earns a place — ODT or RTF for
-    word processors that are not Word, plain text, EPUB, a slide deck, an image
-    of a single diagram. Two constraints worth holding: each format is another
-    heavy library behind an `ensure*` loader in lazy-load.js, and the export
-    button group is already the most crowded part of the toolbar, so this and
-    the menu item above are the same conversation.
+*   **6.2** More export options. The set today is markdown, HTML, PDF, DOCX and
+    Editable. Decide what else earns a place — ODT or RTF for word processors
+    that are not Word, plain text, EPUB, a slide deck, an image of a single
+    diagram. The constraint that used to sit beside this one is gone: the export
+    group was the most crowded part of the toolbar, and the Export menu has room
+    for whatever earns it. What remains is that each format is another heavy
+    library behind an `ensure*` loader in lazy-load.js.
 *   **6.3** *(feeds 6.1)* The "collaborative" framing doesn't hold.
     Collaborative in 2026 means Google Docs — two people editing one document.
     This is the Word model: pass a file back and forth by mail. Worse, every

@@ -147,7 +147,7 @@ export default async function run(check) {
       !walk(toolbar).some((n) => n.id === "githubBtn") &&
         !readFront("toolbar.js").includes("github"));
     // The app gets two rows: the menus, then the document row. That second row
-    // is where the tab bar goes (TODO 4.3), so its shape is worth pinning now
+    // is where the tab bar goes (TODO 4.1), so its shape is worth pinning now
     // rather than after something else has been built on top of it.
     //
     // An exported document has neither a file on disk nor a theme toggle, so

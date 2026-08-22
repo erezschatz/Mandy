@@ -242,7 +242,7 @@ Turndown serialises to its own house style, so a save used to rewrite every
 list, rule, emphasis and line break in the file — spec-legal on both sides, and
 an unmergeable diff. [markdown-style.js](front/markdown-style.js) answers that
 from the source rather than from a house style, in three layers, cheapest last
-(D1 in [DECISIONS.md](DECISIONS.md) records why, and what it deliberately does
+(Decision 1 in [CHANGELOG.md](CHANGELOG.md) records why, and what it deliberately does
 not cover):
 
 1.  **Sniff.** `sniffMarkdownStyle` reads the incoming markdown for the
@@ -388,7 +388,7 @@ Insert, Format, View, Export — hold 24 items and fit one line at 375px.
 the first to themselves. The second is `.toolbar-content`, the document row: the
 filename on the left, the theme toggle on the right. It is a row rather than the
 filename being a toolbar child in its own right because that is where the tab
-bar goes once more than one document can be open (TODO 4.3) — the filename is
+bar goes once more than one document can be open (TODO 4.1) — the filename is
 standing in for it. An exported document has neither a file on disk nor a theme
 toggle, so it gets no second row at all rather than an empty band.
 
@@ -501,7 +501,8 @@ also sit inside a `contenteditable`, where regeneration fights the caret.
 feature: it writes a nested markdown list once, and that list is then ordinary
 content the author owns. It does not recognise a list it inserted before — a
 marker class does not survive a save and reload, since Turndown drops it — so a
-second invocation inserts a second list rather than guessing (TODO 4.5).
+second invocation inserts a second list rather than guessing. Taking one back
+is Ctrl+Z, which works: see the Undo section.
 
 **Depth comes from nesting, not from the heading level.** People use headings as
 a type scale, so a document may put three H6s under an H1 and follow them with
@@ -548,7 +549,7 @@ Three more things worth knowing:
 The static export's TOC is gated on `outlineIsOpen()`. That is a placeholder for
 a Settings pane, not a design — the sidebar is chrome for the author and the
 export's TOC is content for the reader, and they should not be one switch
-(TODO 4.4).
+(TODO 4.2).
 
 ### Undo
 
@@ -575,7 +576,7 @@ Four things worth knowing:
   the choice.
 - **A programmatic edit announces itself with a synthetic `input` event.** That
   was already the convention for autosave and the dirty flag, which is why
-  `insertToc` needed no change at all to become undoable (the old TODO 4.5).
+  `insertToc` needed no change at all to become undoable.
   `paste-md` gained the dispatch, which also fixed it never marking the document
   edited.
 - **The caret is stored as a character offset, not a Range.** A Range points at
@@ -590,8 +591,8 @@ Four things worth knowing:
 Applying a snapshot dispatches `input` so autosave, the dirty flag and the
 outline all hear it, and does so behind a re-entrancy guard so the undo does not
 record itself as an edit. `onToolbarAction("undo"/"redo")` are registered with
-no buttons behind them; the menu bar (TODO 4.2) is where they get rendered, and
-that is a spec entry rather than new wiring.
+no buttons behind them until the menu bar gave them somewhere to go, which was a
+spec entry rather than new wiring.
 
 ### Notifications
 
@@ -618,7 +619,7 @@ Four things about it that are decisions rather than details:
   looking away from would be the same bug wearing a nicer hat. Hovering also
   holds a toast open, since a message worth reading can outlast its own timer.
 - **`ask()` takes an arbitrary action list, not a yes/no.** That is the whole
-  reason it is not a `confirm()` wrapper: the unsaved-work guards (TODO 1.8)
+  reason it is not a `confirm()` wrapper: the unsaved-work guards (TODO 1.7)
   need Save / Discard / Cancel. Actions render in array order; the one marked
   `default: true` takes focus, so the destructive dialogs mark Cancel and Enter
   does the safe thing.

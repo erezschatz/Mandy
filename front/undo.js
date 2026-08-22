@@ -245,10 +245,9 @@ editor.addEventListener("input", (event) => {
   undoLastTime = now;
 });
 
-// Registered as toolbar actions with no buttons behind them yet: the menu bar
-// (TODO 4.2) is where Undo and Redo get somewhere to live, and registering here
-// means that is a spec entry rather than any new wiring. An action nobody
-// renders is an unused registration, which is exactly what delegation is for.
+// Registered as toolbar actions rather than bound to keys alone: the Edit menu
+// renders them from the same spec every other item comes from, so the shortcut
+// and the menu entry cannot drift into doing different things.
 onToolbarAction("undo", () => undo());
 onToolbarAction("redo", () => redo());
 

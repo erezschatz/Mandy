@@ -408,7 +408,7 @@ onToolbarAction("copy-md", async (button) => {
 onToolbarAction("clear", async () => {
   // Cancel is the default action, so Enter and Escape both do the safe thing.
   // The wording still says nothing about the open file or whether there is
-  // anything unsaved to lose — that is TODO 1.8's, along with the third
+  // anything unsaved to lose — that is TODO 1.7's, along with the third
   // Save option this dialog can now express and confirm() could not.
   const confirmed = await ask(
     "This removes all content and the auto-saved copy.",

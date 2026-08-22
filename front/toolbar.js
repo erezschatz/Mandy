@@ -363,7 +363,7 @@ function buildToolbar(variant) {
   // pinned right at every width.
   // Two rows in the app. The menus get the first to themselves; the second is
   // the document row — the filename today, a tab bar once there is more than
-  // one document open (TODO 4.3) — with the theme toggle pinned to its right.
+  // one document open (TODO 4.1) — with the theme toggle pinned to its right.
   toolbar.appendChild(menubar);
   const content = buildToolbarContent(variant);
   if (content) toolbar.appendChild(content);
