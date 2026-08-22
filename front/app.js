@@ -394,14 +394,10 @@ onToolbarAction("copy-md", async (button) => {
 
   try {
     await navigator.clipboard.writeText(markdown);
-    const originalText = button.innerHTML;
-    button.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="20 6 9 17 4 12"></polyline>
-        </svg>
-        Copied!`;
-    setTimeout(() => {
-      button.innerHTML = originalText;
-    }, 2000);
+    // Was a flash on the button. The button is a menu item now and the menu has
+    // closed behind the click, so the confirmation has to happen somewhere the
+    // user is still looking.
+    notify("Markdown copied to clipboard.", { severity: "success" });
   } catch (err) {
     notify("Unable to copy to clipboard. Please grant clipboard permissions.", {
       severity: "error",

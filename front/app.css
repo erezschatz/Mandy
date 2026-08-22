@@ -218,17 +218,46 @@
          values are unchanged, and every rule below that reads them with a
          fallback was already falling back to exactly these. */
       :root {
-        --toolbar-pad-y: 1rem;
-        --btn-pad-y: 0.5rem;
-        --btn-font-size: 0.9rem;
-        /* The height the toolbar occupies once toolbar.js has filled it: two
-           lots of its own padding, two of a button's, and one line of button
-           text at the body's line-height (1.6). Named because both .toolbar's
-           min-height and .outline's sticky offset need it. */
-        --toolbar-height: calc(
-          2 * var(--toolbar-pad-y) + 2 * var(--btn-pad-y) +
-            var(--btn-font-size) * 1.6
+        --toolbar-pad-y: 0.5rem;
+        --toolbar-row-gap: 0.15rem;
+        --menu-pad-y: 0.4rem;
+        --menu-font-size: 0.9rem;
+        --file-font-size: 0.85rem;
+        /* The document row's parts. Declared here rather than left as literals
+           in the rules below, because the toolbar's reserved height is computed
+           from them. There used to be a GitHub mark here too, and it was the
+           tallest thing in the bar — the row is the filename and the toggle
+           now, both shorter than the menu row above them. */
+        --toggle-height: 20px;
+        /* The height the toolbar occupies once toolbar.js has filled it, which
+           .toolbar reserves as a min-height and .outline uses as its sticky
+           offset. The toolbar ships empty and the two render-blocking CDN
+           scripts sit above toolbar.js, so there is a real window in which the
+           page paints with nothing in it — get this wrong and everything below
+           jumps once the script runs.
+
+           Two rows now, so it is a sum rather than the max() it was when
+           everything shared one: the menu row, the gap, and the document row —
+           whose own height is the tallest of the three things sitting in it. */
+        --menu-line: calc(2 * var(--menu-pad-y) + var(--menu-font-size) * 1.6);
+        --content-height: max(
+          var(--toggle-height),
+          calc(var(--file-font-size) * 1.6)
         );
+        --toolbar-height: calc(
+          2 * var(--toolbar-pad-y) + var(--menu-line) + var(--toolbar-row-gap) +
+            var(--content-height)
+        );
+      }
+
+      /* An exported document has no theme toggle and no file on disk, so
+         toolbar.js builds no second row and the bar is the menus alone. The
+         variant is stamped on <html> by the inline script in the export's head,
+         before this stylesheet is read — a rule keyed on the row's absence
+         could not work, because the row is absent in the app too until
+         toolbar.js has run, which is the exact window this reserves for. */
+      :root[data-variant="export"] {
+        --toolbar-height: calc(2 * var(--toolbar-pad-y) + var(--menu-line));
       }
 
       .toolbar {
@@ -242,212 +271,151 @@
         background: var(--bg-toolbar);
         color: var(--text-toolbar);
         padding: var(--toolbar-pad-y) 2rem;
+        /* Two rows: the menus, then the document row. */
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1rem;
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--toolbar-row-gap);
         box-shadow: 0 2px 5px var(--shadow-light);
         z-index: 100;
-      }
-
-      .toolbar h1 {
-        font-size: 1.5rem;
-        font-weight: 500;
-        /* One line: the buttons take the slack and wrap instead. Released at
-           the narrowest breakpoint, where there genuinely is not room. */
-        white-space: nowrap;
       }
 
       /* Wraps rather than overflowing: the full button row needs ~900px, so
          between the 768px breakpoint and a wide window it used to spill out of
          the toolbar and sit on top of the title. */
-      .buttons {
+.menubar {
         display: flex;
         flex-wrap: wrap;
-        justify-content: flex-end;
         align-items: center;
-        gap: 0.5rem 1rem;
-        /* Takes the slack so the buttons stay right-aligned against the
-           toggle, whatever the title's width. */
-        flex: 1 1 auto;
+        gap: 0.15rem;
+        /* Its own row, so nothing on it competes for width and the triggers
+           keep their natural size. Left-aligned by the flex default. */
         min-width: 0;
       }
 
-      /* The wrap unit. .buttons wraps groups, never the buttons inside one, so
-         file/clipboard/export stay together and relocate as blocks instead of
-         reshuffling individually as the window narrows. */
-      .button-group {
-        display: flex;
-        flex-wrap: nowrap;
-        align-items: center;
-        gap: 0.5rem;
-      }
-
-      button {
-        background: var(--accent-blue);
-        color: var(--text-toolbar);
-        border: none;
-        padding: var(--btn-pad-y, 0.5rem) 1rem;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: var(--btn-font-size, 0.9rem);
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-
-      button:hover {
-        background: var(--accent-blue-hover);
-      }
-
-      button:active {
-        transform: translateY(1px);
-      }
-
-      /* The toolbar's only stateful button. data-open is the split menu's
-         mechanism and says nothing about whether the outline is showing, so
-         the toggle carries aria-pressed and is styled from it directly. */
-      button[aria-pressed="true"] {
-        background: var(--accent-blue-hover);
-        box-shadow: inset 0 0 0 2px var(--text-toolbar);
-      }
-
-      /* Split button: one control with two halves — the primary action, and a
-         caret for the alternatives. The wrapper is the positioning context, so
-         an open menu is out of flow and never reflows the toolbar around it. */
-      .split-button {
+      .menu {
         position: relative;
-        display: flex;
-        align-items: stretch;
       }
 
-      /* The seam. Only the outer corners round, so the two buttons read as one
-         control rather than two that happen to be touching. */
-      .split-button > button:first-child {
-        border-radius: 4px 0 0 4px;
+      .menu-trigger {
+        background: none;
+        border: none;
+        border-radius: 4px;
+        color: var(--text-toolbar);
+        cursor: pointer;
+        font-family: inherit;
+        font-size: var(--menu-font-size);
+        font-weight: 500;
+        line-height: 1.6;
+        padding: var(--menu-pad-y) 0.75rem;
+        white-space: nowrap;
       }
 
-      .split-caret {
-        border-radius: 0 4px 4px 0;
-        border-left: 1px solid rgba(255, 255, 255, 0.3);
-        padding: 0.5rem 0.35rem;
-        /* Overrides the responsive clamps on `button`, which would otherwise
-           pad a 14px chevron out to the width of a labelled button. */
-        min-width: 0;
-        max-width: none;
-        flex: 0 0 auto;
+      .menu-trigger:hover {
+        background: rgba(255, 255, 255, 0.12);
       }
 
-      .split-menu {
+      .menu-trigger:focus-visible {
+        outline: 2px solid var(--accent-blue);
+        outline-offset: 1px;
+      }
+
+      .menu[data-open] > .menu-trigger {
+        background: rgba(255, 255, 255, 0.18);
+      }
+
+      /* display:none rather than opacity: a panel that is merely transparent
+         still takes the pointer, and every item in it stays in the tab order
+         for a keyboard user who cannot see it. */
+      .menu-panel {
         display: none;
         position: absolute;
-        top: calc(100% + 0.25rem);
+        top: calc(100% + 0.35rem);
         left: 0;
-        flex-direction: column;
-        min-width: 100%;
-        padding: 0.25rem;
-        background: var(--bg-primary);
-        border: 1px solid var(--border-secondary);
-        border-radius: 4px;
-        box-shadow: 0 4px 12px var(--shadow-medium);
-        /* Above the sticky toolbar's own stacking context. */
         z-index: 200;
+        min-width: 15rem;
+        padding: 0.3rem;
+        border: 1px solid var(--border-primary);
+        border-radius: 6px;
+        background: var(--bg-primary);
+        box-shadow: 0 8px 24px var(--shadow-medium);
       }
 
-      .split-button[data-open] .split-menu {
+      .menu[data-open] > .menu-panel {
+        display: block;
+      }
+
+      /* The rightmost menus would otherwise open off the edge of the window. */
+      .menu:nth-last-child(-n + 2) > .menu-panel {
+        left: auto;
+        right: 0;
+      }
+
+      .menu-item {
         display: flex;
-      }
-
-      /* Not a toolbar button: it sits on the document background, and the
-         font-size and width clamps the responsive rules put on `button` would
-         shrink these labels to nothing. The class outranks them — which is also
-         why this block has to follow `button:hover`, the one rule it ties with. */
-      .split-menu-item {
-        background: transparent;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.4rem 0.6rem;
+        border: none;
+        border-radius: 4px;
+        background: none;
         color: var(--text-primary);
-        justify-content: flex-start;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 0.9rem;
         text-align: left;
         white-space: nowrap;
-        font-size: 0.9rem;
-        padding: 0.4rem 0.75rem;
-        border-radius: 3px;
-        min-width: max-content;
-        max-width: none;
-        height: auto;
-        flex: 0 0 auto;
       }
 
-      .split-menu-item:hover {
+      .menu-item:hover,
+      .menu-item:focus-visible {
         background: var(--bg-secondary);
+        outline: none;
       }
 
-      .split-menu-item:disabled {
+      .menu-item:disabled {
+        cursor: not-allowed;
         opacity: 0.45;
-        cursor: not-allowed;
-        background: transparent;
       }
 
-      /* PDF Button Styles */
-      #pdfBtn:disabled {
-        background: #95a5a6;
-        cursor: not-allowed;
-        opacity: 0.6;
-      }
-
-      #pdfBtn:hover:not(:disabled) {
-        background: #2980b9;
-      }
-
-      .loading-indicator {
-        font-size: 1.2rem;
-        animation: spin 1s linear infinite;
-      }
-
-      @keyframes spin {
-        0% {
-          transform: rotate(0deg);
-        }
-        100% {
-          transform: rotate(360deg);
-        }
-      }
-
-      #githubBtn {
-        background: transparent;
-        color: white;
-        border: none;
-        padding: 0.5rem;
-        cursor: pointer;
+      /* Reserved on every item, checkable or not, so the labels line up in a
+         column rather than the toggling one sitting proud of its neighbours. */
+      .menu-check {
         display: flex;
-        align-items: center;
-        justify-content: center;
-        text-decoration: none;
-        transition: opacity 0.2s;
-      }
-
-      #githubBtn svg {
-        fill: white;
-      }
-
-      #githubBtn:hover {
-        opacity: 0.8;
-      }
-
-      /* A toolbar region in its own right, not a trailing member of .buttons —
-         it sits outside that wrap container so it never reflows with the
-         buttons and stays pinned to the right edge at every width. */
-      .theme-toggle-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.25rem;
         flex: 0 0 auto;
+        width: 14px;
+        color: var(--accent-blue);
+        visibility: hidden;
+      }
+
+      .menu-item[aria-pressed="true"] .menu-check {
+        visibility: visible;
+      }
+
+      .menu-label {
+        flex: 1 1 auto;
+      }
+
+      .menu-shortcut {
+        flex: 0 0 auto;
+        padding-left: 1.5rem;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .menu-separator {
+        height: 1px;
+        margin: 0.3rem 0.4rem;
+        background: var(--border-primary);
       }
 
       .theme-toggle {
         position: relative;
         width: 40px;
-        height: 20px;
+        /* box-sizing: border-box up top, so this includes the border. */
+        height: var(--toggle-height);
         background: var(--border-primary);
         border-radius: 10px;
         cursor: pointer;
@@ -746,69 +714,39 @@
           display: none;
         }
 
-        /* Wraps rather than stacking as a column, so the title and the
-           toggle keep sharing the first row and the buttons drop to their
-           own row beneath — the toggle stays rightmost instead of becoming
-           a third full-width row. */
+        /* The two rows are structural now, so nothing here has to reorder a
+           wrapping single row into them — only tighten the padding. */
         .toolbar {
-          padding: 0.75rem 1rem;
-          flex-wrap: wrap;
-          gap: 0.75rem;
+          padding: var(--toolbar-pad-y) 1rem;
         }
 
-        .toolbar h1 {
-          font-size: 1.25rem;
-        }
-
-        /* Ordered, not reordered in the DOM: the buttons come second in
-           source but must render on the row below the toggle. */
-        .theme-toggle-container {
-          order: 2;
-        }
-
-        .buttons {
-          order: 3;
-          flex: 1 1 100%;
-          flex-wrap: wrap;
+        .menubar {
           justify-content: center;
-          gap: 0.4rem 0.8rem;
+          gap: 0.1rem;
+          /* The panels anchor to this rather than to a trigger, below. */
+          position: relative;
         }
 
-        .button-group {
-          gap: 0.4rem;
-        }
-
-        button {
-          padding: 0.4rem 0.6rem;
+        .menu-trigger {
+          padding: var(--menu-pad-y) 0.45rem;
           font-size: 0.85rem;
-          gap: 0.3rem;
-          flex: 1 1 auto;
-          min-width: fit-content;
-          max-width: 120px;
         }
 
-        button svg {
-          width: 16px;
-          height: 16px;
+        /* Anchored to the whole bar, not to the trigger that opened it. Hung
+           off a trigger, the rightmost menu runs off the right edge of a narrow
+           window and the leftmost off the left; spanning the bar is the only
+           position that works for all six. `position: static` on the .menu is
+           what hands the panel up to .menubar as its containing block. */
+        .menu {
+          position: static;
         }
 
-        #clearBtn {
-          height: 32px;
-        }
-
-        .theme-toggle-container {
-          flex-direction: row;
-          gap: 0.5rem;
-          align-items: center;
-        }
-
-        #githubBtn {
-          padding: 0.4rem;
-        }
-
-        #githubBtn svg {
-          width: 24px;
-          height: 24px;
+        .menu-panel,
+        .menu:nth-last-child(-n + 2) > .menu-panel {
+          left: 0;
+          right: 0;
+          transform: none;
+          min-width: 0;
         }
 
         #editor {
@@ -842,13 +780,11 @@
       }
 
       @media (max-width: 480px) {
-        .toolbar h1 {
-          font-size: 1.1rem;
-          /* Narrowest screens: let it break rather than push the toggle off. */
-          white-space: normal;
-        }
-
-        button {
+        /* Scoped to the format bar, which is the only icon-only button set
+           left. As a bare `button` rule this also caught menu items, and
+           max-width: 50px on a menu item is not a narrow menu, it is an
+           unreadable one. */
+        .format-btn {
           font-size: 0;
           padding: 0.5rem;
           min-width: 40px;
@@ -856,7 +792,7 @@
           justify-content: center;
         }
 
-        button svg {
+        .format-btn svg {
           width: 18px;
           height: 18px;
           margin: 0;
@@ -947,21 +883,25 @@
       /* ========================================
          Current File Label
          ======================================== */
-      .toolbar-title {
+      /* The toolbar's second row: what the document is, and the two controls
+         that are not about the document at all. The filename is a placeholder
+         here — this is where the tab bar goes once more than one document can
+         be open (TODO 4.3), which is why it is a row of its own rather than
+         the filename being a toolbar child in its own right. */
+      .toolbar-content {
         display: flex;
-        flex-direction: column;
-        gap: 0.15rem;
-        /* Does not shrink: .buttons is the flexible one, so the title keeps
-           its single line and the buttons wrap around it. */
-        flex-shrink: 0;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        min-height: var(--content-height);
       }
 
       .current-file {
-        /* Capped so a deep path cannot stretch the now-unshrinkable title. */
+        /* Capped so a deep path cannot push the aside off the edge. */
         max-width: 32ch;
         color: var(--text-toolbar);
         opacity: 0.7;
-        font-size: 0.85rem;
+        font-size: var(--file-font-size);
         font-style: italic;
         overflow: hidden;
         text-overflow: ellipsis;

@@ -222,3 +222,16 @@ document.querySelectorAll(".format-btn").forEach((btn) => {
     applyFormat(format);
   });
 });
+
+// The Format menu reaches the same nine formats. Registered from one list
+// rather than nine calls so the menu spec and the bar cannot drift apart: an
+// action named in toolbar.js with no format behind it here would render as a
+// dead control, which is exactly what the toolbar suite checks for.
+//
+// applyFormat works off the live selection, which is why toolbar.js prevents
+// the default on mousedown over the menu bar — a click that moved focus out of
+// the editor would take the selection with it and every one of these would
+// return having done nothing.
+for (const format of ["p", "h1", "h2", "h3", "bold", "italic", "ul", "ol", "code"]) {
+  onToolbarAction(`format-${format}`, () => applyFormat(format));
+}

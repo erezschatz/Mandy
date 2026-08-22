@@ -26,11 +26,12 @@ suite by importing it directly; `tests/run.mjs` runs them all.
 
 They cover the invariants that fail *silently* rather than loudly:
 
-- **toolbar** — every button a variant renders has a handler in a script that
-  variant's bundle ships, menu items included. Both bundle lists are parsed out
-  of `index.html` and `html-export.js`, so the test cannot drift from the real
-  ones. Also drives the split menus the way a browser would — toolbar listener
-  first, then the document's, as the event bubbles.
+- **toolbar** — every item a variant renders has a handler in a script that
+  variant's bundle ships. Both bundle lists are parsed out of `index.html` and
+  `html-export.js`, so the test cannot drift from the real ones. Also drives the
+  menus the way a browser would — toolbar listener first, then the document's,
+  as the event bubbles — plus arrow-key navigation, hover-to-switch, and
+  `visibleItems` directly, since the real spec strands no separator today.
 - **format-bar** — formatting never replaces `#editor`. Regression cover for a
   bug that detached the editable root and left the app looking unstyled and
   dead until reload.
@@ -106,9 +107,9 @@ in a way that only shows up later:
    after `toolbar.js`.
 2. `SHELL_ASSETS` in [sw.js](front/sw.js) — or it is missing offline.
 3. `ASSETS` in [html-export.js](front/html-export.js) — only if the editable
-   export needs it. Adding a script here without adding its button to the
-   `export` variant in `toolbar.js` ships dead weight; adding the button
-   without the script ships a dead control.
+   export needs it. Adding a script here without adding its menu item to the
+   `export` variant in `toolbar.js` ships dead weight; adding the item without
+   the script ships a dead control.
 
 Bump `VERSION` in [sw.js](front/sw.js) when the shell changes; `activate` deletes
 caches whose names don't match.
@@ -372,45 +373,118 @@ for the reason documented at the top of `html-export.js`. They use *different*
 constant names (`CLOSE` vs `DOC_CLOSE`) because top-level `const`s collide in
 the shared global scope — see the load-order section above.
 
-### The toolbar
+### The menu bar
 
 There is no toolbar markup in `index.html` or `html-export.js` — both ship an
 empty `<div class="toolbar">` and [toolbar.js](front/toolbar.js) fills it from
-`TOOLBAR_GROUPS`. **Add or change a button there and nowhere else.**
+`TOOLBAR_MENUS`. **Add or change an item there and nowhere else.**
+
+It was a row of sixteen buttons until it stopped fitting: four groups plus the
+theme toggle, wrapping onto a second line below about 900px, with split buttons
+bolted on where two actions had to share one slot. Six words — File, Edit,
+Insert, Format, View, Export — hold 24 items and fit one line at 375px.
+
+**The bar is two rows in the app, one in an exported document.** The menus have
+the first to themselves. The second is `.toolbar-content`, the document row: the
+filename on the left, the theme toggle on the right. It is a row rather than the
+filename being a toolbar child in its own right because that is where the tab
+bar goes once more than one document can be open (TODO 4.3) — the filename is
+standing in for it. An exported document has neither a file on disk nor a theme
+toggle, so it gets no second row at all rather than an empty band.
+
+There is no GitHub link. It pointed away from the app from a bar that should be
+about the document, and it was the tallest thing in that bar.
+
+**There is no app title.** It was an `<h1>` reading "Marky Markdown Editor", it
+cost a third of the bar's width to repeat what the tab already says, and it was
+the page's only `<h1>` — which belongs to the document, not to the chrome.
 
 Clicks are **delegated**: one listener on `.toolbar` dispatches by
 `data-action`. Modules call `onToolbarAction("export-pdf", handler)` rather than
-reaching for an element, so a button a variant does not render is an unused
+reaching for an element, so an item a variant does not render is an unused
 registration instead of a listener bound to `null`. The handler receives the
-button, which is what the spinner, disabled and "Saved!" states use. Several
-handlers may share an action and run in registration order, **each awaited
-before the next starts** — that is how `file-api.js` hooks `"clear"` on top of
-`app.js`'s own clearing, and the await is what keeps that working now that
-`app.js`'s handler stops on an `ask()` dialog. Drop it and `file-api.js` runs
-while the question is still on screen, sees a document that is not blank yet,
-and leaves the file association behind — pointing Ctrl+S at a filename with
-nothing under it. Use
-`toolbarButton(action)` to find a button on demand and `runToolbarAction(action)`
-to drive one from a keyboard shortcut.
+item, and several handlers may share an action and run in registration order,
+**each awaited before the next starts** — that is how `file-api.js` hooks
+`"clear"` on top of `app.js`'s own clearing, and the await is what keeps that
+working now that `app.js`'s handler stops on an `ask()` dialog. Drop it and
+`file-api.js` runs while the question is still on screen, sees a document that
+is not blank yet, and leaves the file association behind — pointing Ctrl+S at a
+filename with nothing under it. Use `toolbarButton(action)` to find an item on
+demand and `runToolbarAction(action)` to drive one from a keyboard shortcut.
 
-Each button declares `variants`. The only real split is the file group: the app
-talks to the file server (`openBtn` / `saveBtn`), while an exported document has
-none and falls back to `uploadBtn` / `downloadBtn`. Everything else is shared,
-except the theme toggle — exported documents follow the reader's OS preference
-rather than inheriting the author's stored one.
+Six things that are decisions rather than details:
 
-`tocBtn` is the toolbar's only *stateful* button. `data-open` is the split
-menu's mechanism and says nothing about whether the outline is showing, so the
-toggle carries `aria-pressed` and `app.css` styles it from that directly.
+- **The trigger carries `data-menu`, not `data-action`.** It is not an action:
+  it belongs to the mechanism in `toolbar.js` rather than to any module. Give it
+  an action and "every rendered action has a handler in this variant's bundle"
+  stops being true — the trigger's handler lives in `toolbar.js`, which that
+  check deliberately excludes. Same rule the old split caret followed.
+- **`mousedown` is prevented over the bar.** Formatting acts on the editor's
+  live selection, and a click that moved focus would take the selection with it,
+  so every Format item would return having done nothing. The format bar's own
+  buttons have always done this; the menu bar had to learn it. The click still
+  fires — only the focus change is suppressed.
+- **A `separator: true` entry is filtered by variant like any other**, and
+  `visibleItems` collapses the leading, trailing and doubled rules left behind.
+  Today's spec happens to filter cleanly in both variants, so nothing rendered
+  exercises it — the toolbar suite drives the function directly instead, because
+  the next app-only item added at the top of a menu strands a rule in the export
+  variant and nobody would see it until they opened that file.
+- **In-button feedback does not survive a menu.** "Saved!", "Reloaded!",
+  "Copied!" and the two export spinners all used to live on the button that was
+  clicked, and a menu closes on the click — so they are `notify` toasts now, and
+  `flashButton` is gone. Anything new that wants to report on a click has the
+  same problem and the same answer.
+- **`--toolbar-height` is the sum of the rows**, not a `max()` of what is in
+  them: the menu row, the gap, and the document row, whose own height is the
+  taller of the two things on it. The toolbar ships empty and the two
+  render-blocking CDN scripts sit above `toolbar.js`, so there is a real window
+  in which the page paints with nothing in it — the reserved height is what
+  stops everything below jumping when the script runs. It measures exactly at
+  every width, which it never did while the bar was one row that wrapped, and
+  everything the arithmetic reads is a custom property so changing a size makes
+  the reservation follow.
+- **The export's shorter bar is stamped, not detected.** `:root[data-variant]`
+  redefines `--toolbar-height` to the menu row alone, and the variant is written
+  by the same inline script in the export's `<head>` that sets the theme —
+  before the stylesheet is read. It cannot be a rule keyed on `.toolbar-content`
+  being absent, however tempting `:has()` looks: the row is equally absent in
+  the app until `toolbar.js` runs, which is the exact window the reservation
+  exists for, so such a rule would reserve the short bar for everyone and then
+  jump. That makes `THEME_SCRIPT` in `html-export.js` and the
+  `:root[data-variant="export"]` block in `app.css` two halves of one thing with
+  no import between them; the toolbar suite checks both.
+- **The theme toggle carries a `title`, and `theme-manager.js` moves it.** It is
+  a sliding pill with no label, so without one nothing on screen says what it
+  does — and it is the only control left in the bar that is not a word. The
+  title and the `aria-label` say the same sentence and are updated together in
+  `updateToggleButton`; stamp one and not the other and the tooltip ends up
+  claiming the opposite of what the switch will do.
+- **`tocBtn` is the only stateful item.** `outline.js` writes `aria-pressed` on
+  it by action, exactly as it did to the old toggle button, and `app.css` draws
+  the checkmark from that attribute. Every item reserves the checkmark's gutter
+  so the labels line up in a column.
+
+Each item declares `variants`. The only real split is the file group: the app
+talks to the file server (`open-file` / `save-file` / `reload-file` /
+`save-as-file`), while an exported document has none and falls back to
+`upload-md` / `download-md`. Everything else is shared, except the theme toggle —
+exported documents follow the reader's OS preference rather than inheriting the
+author's stored one.
 
 The variant is read from `#editor[data-exported]`, which only exported documents
 carry. `app.js` strips that attribute on `window load`, long after `toolbar.js`
 has run.
 
-The rule to preserve: **a button must only exist in a variant whose bundle
+The rule to preserve: **an item must only exist in a variant whose bundle
 includes the script that binds it**, or it renders as a dead control. The
-editable export's `ASSETS` decide that, and `toolbar.js` must stay first in
-that list for the same reason it is first in `index.html`.
+editable export's `ASSETS` decide that, and `toolbar.js` must stay first in that
+list for the same reason it is first in `index.html`.
+
+Keyboard: arrows move along the bar and within a panel, both wrapping; Escape
+closes and hands focus back to the trigger, and is a no-op when no menu is open
+so a `notify.js` dialog still gets it. Hovering switches menus only while one is
+already open — hovering a closed bar must not spring menus at you.
 
 ### The outline
 
@@ -475,28 +549,6 @@ The static export's TOC is gated on `outlineIsOpen()`. That is a placeholder for
 a Settings pane, not a design — the sidebar is chrome for the author and the
 export's TOC is content for the reader, and they should not be one switch
 (TODO 4.4).
-
-#### Split buttons
-
-A spec with a `menu` renders as a `.split-button`: the primary button, a caret
-beside it, and the menu itself — Open/Reload, Save/Save As, and
-Outline/Insert TOC so far. The menu is
-built *inside* the wrapper, and therefore inside `.toolbar`, which is the whole
-point: its items are ordinary `[data-action]` buttons, so the one delegated
-listener already dispatches them and a menu entry needs no wiring beyond the
-`onToolbarAction` its module registers anyway. The same rule as above holds over
-menu items, and the toolbar test enforces it over both.
-
-The caret carries **`data-menu`, not `data-action`**, because it is not an
-action: it belongs to the mechanism in `toolbar.js` rather than to any module.
-Give it an action and "every rendered action has a handler in this variant's
-bundle" stops being true — the caret's handler lives in `toolbar.js`, which that
-check deliberately excludes.
-
-Open state is one attribute, `data-open` on the wrapper, with CSS doing the rest;
-`toolbar.js` holds the single open menu in `openSplit` rather than querying for
-it. Dismissal is on the document, so a click or Escape anywhere closes it — the
-first time `toolbar.js` binds outside `.toolbar`.
 
 ### Undo
 

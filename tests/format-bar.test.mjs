@@ -31,6 +31,9 @@ function scenario(format, buildSelection) {
       localStorage: { setItem() {} },
       Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
       setTimeout: () => {},
+      // The Format menu reaches applyFormat through these registrations; this
+      // suite drives applyFormat directly and only needs them not to throw.
+      onToolbarAction: () => {},
       __format: format,
     },
     "; applyFormat(__format);",
@@ -98,6 +101,9 @@ function position({
       localStorage: { setItem() {} },
       Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
       setTimeout: () => {},
+      // The Format menu reaches applyFormat through these registrations; this
+      // suite drives applyFormat directly and only needs them not to throw.
+      onToolbarAction: () => {},
       __bar: bar,
       __width: barWidth,
       __window: windowWidth,

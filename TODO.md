@@ -47,13 +47,15 @@ somewhere to live, and it is a spec entry rather than new wiring.)*
     keystrokes as markdown everywhere, which is a different product from a
     WYSIWYG surface with a format bar, and it needs an escape hatch for
     someone who wants a literal `#`.
-*   **1.5** *(needs 4.2; tables also need 2.5 now 1.1 has landed, or 1.7 instead)*
+*   **1.5** *(4.2 landed; tables also need 2.5, or 1.7 instead)*
     The UI only supports some of the markup MD offers, and not even all of what
     the README advertises. The format bar has p, h1, h2, h3, bold, italic, ul,
-    ol, code. Missing: links, images, tables, blockquotes, h4-h6,
-    strikethrough, inline code, horizontal rules, and indent/outdent — that
-    last one is bound to Tab but has no control, so on touch there is no way to
-    nest a bullet at all. They render when imported; there is just no way to
+    ol, code, and the Format menu now reaches the same nine — which is more
+    reachable, not more capable. Missing, still: links, images, tables,
+    blockquotes, h4-h6, strikethrough, inline code, horizontal rules, and
+    indent/outdent — that last one is bound to Tab but has no control, so on
+    touch there is no way to nest a bullet at all. The Format and Insert menus
+    are where they go, and both have room now. They render when imported; there is just no way to
     author them. Tables are worse than the others in that list: it's not just
     that there's no control to insert one, an *existing* table — already in the
     document, already rendered — cannot be edited either. No way to add or
@@ -122,13 +124,11 @@ somewhere to live, and it is a spec entry rather than new wiring.)*
     flag, and gets the browser's own wording. Note the flag lives in
     file-api.js, which the editable export does not ship, so the exported
     document needs its own answer or an honest absence of one.
-*   **1.9** *(decide with 4.2)* Only two toolbar controls do double duty.
-    Open/Reload and Save/Save As are split buttons; everything else is still
-    one button per action. The mechanism is general (`menu` on a
-    `TOOLBAR_GROUPS` spec, see CLAUDE.md), so more can be folded in — but the
-    real answer is a menubar, and once there is one most of these buttons will
-    need to double up anyway. Worth deciding that shape before adding a third
-    caret.
+*(1.9 retired: answered by 4.2 rather than decided. The item was "more split
+buttons, or a menu bar?" and the menu bar won outright — Open/Reload,
+Save/Save As and Outline/Insert TOC are now ordinary items in File, File and
+View/Insert, and `buildSplitButton` and its caret mechanism are gone. There is
+no third caret to worry about because there are no carets.)*
 
 *   **1.10** Ghost lines. Pasted text brings in empty lines — roughly 1px tall,
     enough to space bullets unevenly. Not yet reproduced deliberately. Prime
@@ -239,15 +239,32 @@ returns a Promise, so app.js's Clear stops mid-handler, and without the await
 file-api.js's hook would run while the question was still on screen, see a
 document that is not blank yet, and leave the file association behind.)*
 
-*   **4.2** *(unblocks 1.5, 1.9, 6.2)* A menu instead of a button row. The
-    toolbar is full: four button groups plus the theme toggle, already
-    wrapping onto a second row below roughly 900px, and every new export or
-    formatting control makes it worse. A menu bar (File / Edit / Format /
-    Export) scales where the row does not, and gives the formatting the format
-    bar has no room for — links, tables, blockquotes — a place to live.
-    toolbar.js already builds everything from `TOOLBAR_GROUPS` with delegated
-    `data-action` handlers, so the spec survives the change mostly intact; it
-    becomes a menu renderer over the same data.
+*(4.2 retired: done and verified — the row of sixteen buttons is a menu bar of
+six words: File / Edit / Insert / Format / View / Export, 24 items behind them.
+`TOOLBAR_GROUPS` became `TOOLBAR_MENUS` and `toolbar.js` a menu renderer over
+it, so the spec survived the change much as predicted; the split-button
+mechanism did not, and went with the row. What the menus gained over the row:
+Undo and Redo (1.1 registered the actions with nowhere to render them), all nine
+formats the format bar has, and keyboard shortcuts shown beside the labels —
+⌘/⇧ on a Mac, Ctrl on everything else. The toolbar is two rows now — the menus, then a
+document row holding the filename and the two icons, which is where the tab bar
+goes when 4.3 lands — and it came down from 104px to 82 doing it. Two things went with the buttons: the app
+title, an `<h1>` repeating what the tab says and the page's only one, which
+belongs to the document; and the GitHub link, which pointed away from the app
+from a bar that is about the document. An exported document has nothing to put
+on the second row — no file on disk, no theme toggle — so it gets one row and a
+reservation to match, stamped by its own inline script.
+
+Two consequences worth recording, because neither was in the plan. Every piece
+of in-button feedback had to move: "Saved!", "Reloaded!", "Copied!" and both
+export spinners lived on buttons that are now menu items, and a menu closes on
+the click — so all five went to `notify` toasts, which is what 4.1 built. And
+`--toolbar-height` turned out to have been describing the wrong thing all along:
+the aside (the mark stacked over the theme toggle, 72px) has always been taller
+than either the button row or the menu bar, so the reserved height was 33px
+short and the page jumped on every load. It is a `max()` of both regions now,
+and measures exactly.)*
+
 *   **4.3** *(needs 1.8)* Tabbed view — several documents open at once, one per
     tab. Today the app is built around holding exactly one: `editor.innerHTML`
     is the entire document state, autosave writes a single
@@ -258,7 +275,10 @@ document that is not blank yet, and leave the file association behind.)*
     selection. The dirty flag becomes per-tab too, and should switch
     presentation with it: the "(edited)" suffix file-api.js writes today reads
     fine on a single filename, but the convention on a row of tabs is a red `*`
-    against each unsaved one. (If what was meant is edit/preview/source tabs
+    against each unsaved one. There is somewhere to put them: 4.2 left the
+    toolbar as two rows, and the second — `.toolbar-content`, holding the
+    filename and the two icons — is shaped for a tab bar rather than for one
+    label. (If what was meant is edit/preview/source tabs
     rather than multiple files, that is the source-view item above.)
 
 *   **4.4** *(undecided)* The static HTML export's table of contents follows
@@ -300,7 +320,7 @@ Still no dedupe on a second invocation, which was never the complaint.)*
 
 *   **6.1** *(best last, and at least after 6.3)* Rewrite the README to better
     fit the project's state.
-*   **6.2** *(needs 4.2)* More export options. The set today is markdown, HTML,
+*   **6.2** *(unblocked; 4.2 landed)* More export options. The set today is markdown, HTML,
     PDF, DOCX and Editable. Decide what else earns a place — ODT or RTF for
     word processors that are not Word, plain text, EPUB, a slide deck, an image
     of a single diagram. Two constraints worth holding: each format is another

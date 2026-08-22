@@ -1,5 +1,11 @@
-// The one definition of the toolbar. Both the app and the editable export
+// The one definition of the menu bar. Both the app and the editable export
 // render from this spec, so the two can no longer drift.
+//
+// It used to be a row of sixteen buttons that wrapped onto a second line below
+// about 900px, and every new export or formatting control made it worse. A menu
+// bar scales where a row does not: File / Edit / Insert / Format / View /
+// Export are six short words whatever ends up inside them, and the formatting
+// the format bar has no room for finally has somewhere to live.
 //
 // LOAD ORDER: this file must run before every other front/ script. app.js,
 // file-api.js, docx-export.js and static-export.js all call getElementById at
@@ -8,126 +14,99 @@
 // The variant comes from #editor[data-exported], which only exported documents
 // carry. app.js strips that attribute on window load, long after this runs.
 
+// Menu items are text and a shortcut, the way a menu bar's are — the icons the
+// old button row carried went with it, and the GitHub mark went with the aside.
+// One survives: the check for a toggling item.
 const TOOLBAR_ICONS = {
-  open: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>',
-  save:
-    '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>' +
-    '<polyline points="17 21 17 13 7 13 7 21"></polyline>' +
-    '<polyline points="7 3 7 8 15 8"></polyline>',
-  upload:
-    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>' +
-    '<polyline points="17 8 12 3 7 8"></polyline>' +
-    '<line x1="12" y1="3" x2="12" y2="15"></line>',
-  download:
-    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>' +
-    '<polyline points="7 10 12 15 17 10"></polyline>' +
-    '<line x1="12" y1="15" x2="12" y2="3"></line>',
-  clear:
-    '<polyline points="3 6 5 6 21 6"></polyline>' +
-    '<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>' +
-    '<line x1="10" y1="11" x2="10" y2="17"></line>' +
-    '<line x1="14" y1="11" x2="14" y2="17"></line>',
-  copy:
-    '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>' +
-    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>',
-  paste:
-    '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>' +
-    '<rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>',
-  html:
-    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>' +
-    '<polyline points="14 2 14 8 20 8"></polyline>' +
-    '<line x1="12" y1="18" x2="12" y2="12"></line>' +
-    '<line x1="9" y1="15" x2="15" y2="15"></line>',
-  pdf:
-    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>' +
-    '<polyline points="14 2 14 8 20 8"></polyline>' +
-    '<line x1="16" y1="13" x2="8" y2="13"></line>' +
-    '<line x1="16" y1="17" x2="8" y2="17"></line>' +
-    '<polyline points="10 9 9 9 8 9"></polyline>',
-  docx:
-    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>' +
-    '<polyline points="14 2 14 8 20 8"></polyline>' +
-    '<path d="M9 15l2 2 4-4"></path>',
-  editable:
-    '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
-    '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"></path>',
-  outline:
-    '<line x1="4" y1="6" x2="4" y2="6"></line>' +
-    '<line x1="8" y1="6" x2="20" y2="6"></line>' +
-    '<line x1="11" y1="12" x2="20" y2="12"></line>' +
-    '<line x1="14" y1="18" x2="20" y2="18"></line>' +
-    '<circle cx="4" cy="6" r="1" fill="currentColor"></circle>' +
-    '<circle cx="7" cy="12" r="1" fill="currentColor"></circle>' +
-    '<circle cx="10" cy="18" r="1" fill="currentColor"></circle>',
-  caret: '<polyline points="6 9 12 15 18 9"></polyline>',
-  github:
-    '<path d="M12 1C5.923 1 1 5.923 1 12c0 4.867 3.149 8.979 7.521 10.436.55.096.756-.233.756-.522 0-.262-.013-1.128-.013-2.049-2.764.509-3.479-.674-3.699-1.292-.124-.317-.66-1.293-1.127-1.554-.385-.207-.936-.715-.014-.729.866-.014 1.485.797 1.691 1.128.99 1.663 2.571 1.196 3.204.907.096-.715.385-1.196.701-1.471-2.448-.275-5.005-1.224-5.005-5.432 0-1.196.426-2.186 1.128-2.956-.111-.275-.496-1.402.11-2.915 0 0 .921-.288 3.024 1.128a10.193 10.193 0 0 1 2.75-.371c.936 0 1.871.123 2.75.371 2.104-1.43 3.025-1.128 3.025-1.128.605 1.513.221 2.64.111 2.915.701.77 1.127 1.747 1.127 2.956 0 4.222-2.571 5.157-5.019 5.432.399.344.743 1.004.743 2.035 0 1.471-.014 2.654-.014 3.025 0 .289.206.632.756.522C19.851 20.979 23 16.854 23 12c0-6.077-4.922-11-11-11Z"></path>',
+  check: '<polyline points="20 6 9 17 4 12"></polyline>',
 };
 
-// Grouped so each group is a .button-group, the unit that wraps as a block.
-// `variants` decides which documents a button appears in. The only real split
-// is the file group: the app talks to the file server (open/save), while an
+// Ctrl reads wrong on a Mac, and these are only ever labels — the bindings
+// themselves live in app.js, undo.js and file-api.js and already accept both.
+const IS_MAC = /Mac|iPhone|iPad/.test(
+  (typeof navigator !== "undefined" && (navigator.platform || navigator.userAgent)) || "",
+);
+
+function shortcutLabel(shortcut) {
+  if (!shortcut) return "";
+  return IS_MAC
+    ? shortcut.replace(/Ctrl\+/g, "\u2318").replace(/Shift\+/g, "\u21e7")
+    : shortcut;
+}
+
+// `variants` decides which documents an item appears in, and the only real
+// split is still the file group: the app talks to the file server, while an
 // exported document has none and falls back to upload/download. Everything
-// else is shared — exported documents carry the full export set, and read
-// their own inline <style>/<script> to do it.
-const TOOLBAR_GROUPS = [
-  [
-    { id: "openBtn", action: "open-file", label: "Open", icon: "open", variants: ["app"],
-      title: "Open markdown file (Ctrl+O)",
-      menu: [
-        { action: "open-file", label: "Open…" },
-        { action: "reload-file", label: "Reload from disk" },
-      ] },
-    { id: "uploadBtn", action: "upload-md", label: "Upload MD", icon: "upload", variants: ["export"],
-      title: "Upload markdown file (Ctrl+O)" },
-    { id: "saveBtn", action: "save-file", label: "Save", icon: "save", variants: ["app"],
-      title: "Save markdown file (Ctrl+S, Ctrl+Shift+S to save as)",
-      menu: [
-        { action: "save-file", label: "Save" },
-        { action: "save-as-file", label: "Save As…" },
-      ] },
-    { id: "downloadBtn", action: "download-md", label: "Download MD", icon: "download", variants: ["export"],
-      title: "Download as markdown (Ctrl+S)" },
-    { id: "clearBtn", action: "clear", label: "Clear", icon: "clear", variants: ["app", "export"],
-      title: "Clear document" },
-  ],
-  [
-    { id: "tocBtn", action: "toggle-outline", label: "Outline", icon: "outline",
-      variants: ["app", "export"],
-      title: "Show the document outline",
-      menu: [
-        { action: "toggle-outline", label: "Show outline" },
-        { action: "insert-toc", label: "Insert table of contents" },
-      ] },
-  ],
-  [
-    { id: "copyBtn", action: "copy-md", label: "Copy MD", icon: "copy", variants: ["app", "export"],
-      title: "Copy markdown to clipboard" },
-    { id: "pasteBtn", action: "paste-md", label: "Paste MD", icon: "paste", variants: ["app", "export"],
-      title: "Paste from clipboard" },
-  ],
-  [
-    { id: "htmlBtn", action: "export-html", label: "HTML", icon: "html", variants: ["app", "export"],
-      title: "Export the document as a standalone HTML page" },
-    { id: "pdfBtn", action: "export-pdf", icon: "pdf", variants: ["app", "export"],
-      title: "Export as PDF file", ariaLabel: "Export document as PDF",
-      labelHtml:
-        '<span class="btn-text">PDF</span>' +
-        '<span class="loading-indicator" style="display: none">⏳</span>' },
-    { id: "docxBtn", action: "export-docx", icon: "docx", variants: ["app", "export"],
-      title: "Export as Word document (.docx)", ariaLabel: "Export document as DOCX",
-      labelHtml:
-        '<span class="docx-btn-text">DOCX</span>' +
-        '<span class="docx-loading-indicator" style="display: none">⏳</span>' },
-    { id: "editableBtn", action: "export-editable", label: "Editable", icon: "editable",
-      variants: ["app", "export"],
-      title: "Export a copy recipients can edit in their browser and send back" },
-  ],
+// else is shared — exported documents carry the full export set and read their
+// own inline <style>/<script> to do it.
+//
+// A `separator: true` entry is filtered by variant like any other, and the
+// leading, trailing and doubled ones left behind are collapsed at render time
+// so the export variant does not open a File menu with a rule floating at the
+// top of it.
+const ALL = ["app", "export"];
+
+const TOOLBAR_MENUS = [
+  { id: "fileMenu", label: "File", variants: ALL, items: [
+    { id: "openBtn", action: "open-file", label: "Open\u2026", shortcut: "Ctrl+O", variants: ["app"] },
+    { action: "reload-file", label: "Reload from disk", variants: ["app"] },
+    { id: "uploadBtn", action: "upload-md", label: "Open\u2026", shortcut: "Ctrl+O", variants: ["export"] },
+    { separator: true, variants: ALL },
+    { id: "saveBtn", action: "save-file", label: "Save", shortcut: "Ctrl+S", variants: ["app"] },
+    { action: "save-as-file", label: "Save As\u2026", shortcut: "Ctrl+Shift+S", variants: ["app"] },
+    { id: "downloadBtn", action: "download-md", label: "Download markdown", shortcut: "Ctrl+S", variants: ["export"] },
+    { separator: true, variants: ALL },
+    { id: "clearBtn", action: "clear", label: "Clear document", variants: ALL },
+  ] },
+
+  { id: "editMenu", label: "Edit", variants: ALL, items: [
+    { id: "undoBtn", action: "undo", label: "Undo", shortcut: "Ctrl+Z", variants: ALL },
+    { id: "redoBtn", action: "redo", label: "Redo", shortcut: "Ctrl+Shift+Z", variants: ALL },
+    { separator: true, variants: ALL },
+    { id: "copyBtn", action: "copy-md", label: "Copy markdown", variants: ALL },
+    { id: "pasteBtn", action: "paste-md", label: "Paste markdown", variants: ALL },
+  ] },
+
+  { id: "insertMenu", label: "Insert", variants: ALL, items: [
+    { id: "tocInsertBtn", action: "insert-toc", label: "Table of contents", variants: ALL },
+  ] },
+
+  // These drive applyFormat in format-bar.js, which the format bar's own
+  // buttons already went through — the menu is a second way to reach the same
+  // nine formats, not a second implementation of them.
+  { id: "formatMenu", label: "Format", variants: ALL, items: [
+    { action: "format-p", label: "Paragraph", variants: ALL },
+    { action: "format-h1", label: "Heading 1", variants: ALL },
+    { action: "format-h2", label: "Heading 2", variants: ALL },
+    { action: "format-h3", label: "Heading 3", variants: ALL },
+    { separator: true, variants: ALL },
+    { action: "format-bold", label: "Bold", shortcut: "Ctrl+B", variants: ALL },
+    { action: "format-italic", label: "Italic", shortcut: "Ctrl+I", variants: ALL },
+    { separator: true, variants: ALL },
+    { action: "format-ul", label: "Bullet list", variants: ALL },
+    { action: "format-ol", label: "Numbered list", variants: ALL },
+    { action: "format-code", label: "Code block", variants: ALL },
+  ] },
+
+  { id: "viewMenu", label: "View", variants: ALL, items: [
+    // The one item that carries state. outline.js writes aria-pressed on it by
+    // action, exactly as it did to the old toggle button, so the checkmark is
+    // drawn from that attribute rather than from anything tracked here.
+    { id: "tocBtn", action: "toggle-outline", label: "Outline sidebar", checkable: true, variants: ALL },
+  ] },
+
+  { id: "exportMenu", label: "Export", variants: ALL, items: [
+    { id: "htmlBtn", action: "export-html", label: "HTML page\u2026", variants: ALL },
+    { id: "pdfBtn", action: "export-pdf", label: "PDF\u2026", shortcut: "Ctrl+Shift+P", variants: ALL },
+    { id: "docxBtn", action: "export-docx", label: "Word document\u2026", variants: ALL },
+    { separator: true, variants: ALL },
+    { id: "editableBtn", action: "export-editable", label: "Editable copy\u2026", variants: ALL },
+  ] },
 ];
 
-// Toolbar clicks are delegated: one listener on .toolbar dispatches by
+// Menu clicks are delegated: one listener on .toolbar dispatches by
 // data-action. Modules register behaviour by name instead of reaching for an
-// element, so a button missing from a variant means an unused registration
+// element, so an item missing from a variant means an unused registration
 // rather than a listener silently bound to null.
 //
 // Several handlers may share an action — they run in registration order, and
@@ -145,14 +124,14 @@ function onToolbarAction(action, handler) {
 }
 
 // Looked up on demand rather than held from load time, for handlers that need
-// to style their own button (a spinner, a disabled state, a flash of "Saved!").
+// to style their own item (a disabled state, a checkmark).
 function toolbarButton(action) {
   return document.querySelector(`.toolbar [data-action="${action}"]`);
 }
 
 // Nobody awaits the result, so a handler that throws would otherwise surface as
-// a bare unhandled rejection naming neither the action nor the button. Caught
-// for the message only: the loop still stops, the way it did when a throw
+// a bare unhandled rejection naming neither the action nor the item. Caught for
+// the message only: the loop still stops, the way it did when a throw
 // propagated synchronously out of the click listener.
 async function dispatchToolbarAction(action, button, event) {
   try {
@@ -181,183 +160,302 @@ function iconSvg(name, size) {
   );
 }
 
-function buildToolbarButton(spec) {
-  const button = document.createElement("button");
-  button.id = spec.id;
-  button.title = spec.title;
-  button.setAttribute("data-action", spec.action);
-  if (spec.ariaLabel) button.setAttribute("aria-label", spec.ariaLabel);
-  button.innerHTML = iconSvg(spec.icon, 20) + (spec.labelHtml || spec.label);
-  return button;
+// Variant filtering leaves separators stranded — the export variant drops four
+// File items and would open on a rule. Collapse them here rather than making
+// every spec author reason about which side of a split they fall on.
+function visibleItems(items, variant) {
+  const kept = items.filter((item) => item.variants.includes(variant));
+  const out = [];
+  for (const item of kept) {
+    if (!item.separator) {
+      out.push(item);
+    } else if (out.length && !out[out.length - 1].separator) {
+      out.push(item);
+    }
+  }
+  while (out.length && out[out.length - 1].separator) out.pop();
+  return out;
 }
 
-// A split button: the primary action is still a plain click, and a caret beside
-// it offers the alternatives. The menu is built inside the wrapper, and so
-// inside `.toolbar` — which is the whole point. Its items are ordinary
-// [data-action] buttons, so the one delegated listener dispatches them already
-// and a menu entry needs no wiring beyond the `onToolbarAction` its module
-// registers anyway.
-//
-// The caret carries `data-menu`, not `data-action`, because it is not an action:
-// it belongs to the mechanism here rather than to any module. Keeping it out of
-// the action namespace is what keeps "every rendered action has a handler in
-// this variant's bundle" a true statement.
-function buildSplitButton(spec) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "split-button";
-  wrapper.appendChild(buildToolbarButton(spec));
-
-  const caret = document.createElement("button");
-  caret.id = spec.id + "Menu";
-  caret.className = "split-caret";
-  caret.title = `More ${spec.label} options`;
-  caret.setAttribute("data-menu", spec.action);
-  caret.setAttribute("aria-haspopup", "true");
-  caret.setAttribute("aria-expanded", "false");
-  caret.setAttribute("aria-label", `More ${spec.label} options`);
-  caret.innerHTML = iconSvg("caret", 14);
-  wrapper.appendChild(caret);
-
-  const menu = document.createElement("div");
-  menu.className = "split-menu";
-  menu.setAttribute("role", "menu");
-  for (const item of spec.menu) {
-    const entry = document.createElement("button");
-    entry.className = "split-menu-item";
-    entry.setAttribute("data-action", item.action);
-    entry.setAttribute("role", "menuitem");
-    entry.textContent = item.label;
-    menu.appendChild(entry);
+function buildMenuItem(spec) {
+  if (spec.separator) {
+    const rule = document.createElement("div");
+    rule.className = "menu-separator";
+    rule.setAttribute("role", "separator");
+    return rule;
   }
-  wrapper.appendChild(menu);
+
+  const item = document.createElement("button");
+  if (spec.id) item.id = spec.id;
+  item.className = "menu-item";
+  item.type = "button";
+  item.setAttribute("data-action", spec.action);
+  item.setAttribute("role", "menuitem");
+  item.setAttribute("tabindex", "-1");
+  if (spec.checkable) item.setAttribute("aria-pressed", "false");
+
+  const check = document.createElement("span");
+  check.className = "menu-check";
+  check.setAttribute("aria-hidden", "true");
+  check.innerHTML = spec.checkable ? iconSvg("check", 14) : "";
+  item.appendChild(check);
+
+  const label = document.createElement("span");
+  label.className = "menu-label";
+  label.textContent = spec.label;
+  item.appendChild(label);
+
+  const shortcut = document.createElement("span");
+  shortcut.className = "menu-shortcut";
+  shortcut.setAttribute("aria-hidden", "true");
+  shortcut.textContent = shortcutLabel(spec.shortcut);
+  item.appendChild(shortcut);
+
+  return item;
+}
+
+// The trigger carries `data-menu`, not `data-action`, because it is not an
+// action: it belongs to the mechanism here rather than to any module. Keeping
+// it out of the action namespace is what keeps "every rendered action has a
+// handler in this variant's bundle" a true statement.
+function buildMenu(spec, variant) {
+  const items = visibleItems(spec.items, variant);
+  if (!items.length) return null;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "menu";
+
+  const trigger = document.createElement("button");
+  trigger.id = spec.id;
+  trigger.className = "menu-trigger";
+  trigger.type = "button";
+  trigger.textContent = spec.label;
+  trigger.setAttribute("data-menu", spec.id);
+  trigger.setAttribute("aria-haspopup", "true");
+  trigger.setAttribute("aria-expanded", "false");
+  wrapper.appendChild(trigger);
+
+  const panel = document.createElement("div");
+  panel.className = "menu-panel";
+  panel.setAttribute("role", "menu");
+  panel.setAttribute("aria-label", spec.label);
+  for (const item of items) panel.appendChild(buildMenuItem(item));
+  wrapper.appendChild(panel);
 
   return wrapper;
 }
 
-// At most one menu is ever open, so the caret and its wrapper are held here
+// At most one menu is ever open, so the trigger and its wrapper are held here
 // rather than looked up again — nothing else needs to know a menu exists.
-let openSplit = null;
+let openMenu = null;
 
-function closeSplitMenu() {
-  if (!openSplit) return;
-  openSplit.wrapper.removeAttribute("data-open");
-  openSplit.caret.setAttribute("aria-expanded", "false");
-  openSplit = null;
+function closeMenu({ refocus = false } = {}) {
+  if (!openMenu) return;
+  const { wrapper, trigger } = openMenu;
+  wrapper.removeAttribute("data-open");
+  trigger.setAttribute("aria-expanded", "false");
+  openMenu = null;
+  if (refocus) trigger.focus();
 }
 
-function toggleSplitMenu(caret) {
-  const wrapper = caret.parentElement;
-  const wasOpen = openSplit && openSplit.wrapper === wrapper;
-  closeSplitMenu();
-  if (wasOpen) return;
-
+function showMenu(trigger) {
+  const wrapper = trigger.parentElement;
+  if (openMenu && openMenu.wrapper === wrapper) return;
+  closeMenu();
   wrapper.setAttribute("data-open", "true");
-  caret.setAttribute("aria-expanded", "true");
-  openSplit = { wrapper, caret };
+  trigger.setAttribute("aria-expanded", "true");
+  openMenu = { wrapper, trigger };
 }
 
-function buildToolbarTitle(variant) {
-  const title = document.createElement("div");
-  title.className = "toolbar-title";
+function toggleMenu(trigger) {
+  if (openMenu && openMenu.wrapper === trigger.parentElement) closeMenu();
+  else showMenu(trigger);
+}
 
-  const heading = document.createElement("h1");
-  heading.textContent =
-    variant === "export" ? "Markdown Editor" : "Marky Markdown Editor";
-  title.appendChild(heading);
+function menuTriggers() {
+  return Array.from(document.querySelectorAll(".toolbar .menu-trigger"));
+}
 
-  // Only the app tracks a file on disk, but the label is harmless either way
-  // and file-api.js expects to find it.
+function openMenuItems() {
+  if (!openMenu) return [];
+  return Array.from(openMenu.wrapper.querySelectorAll(".menu-item:not([disabled])"));
+}
+
+// Moves focus within the open menu, wrapping at both ends. `from` is the item
+// focus is on now, or -1 to mean "before the first".
+function focusItem(step, from) {
+  const items = openMenuItems();
+  if (!items.length) return;
+  const at = from === undefined ? items.indexOf(document.activeElement) : from;
+  const next = (at + step + items.length) % items.length;
+  items[next].focus();
+}
+
+// There is no app title in the bar. It was an <h1> reading "Marky Markdown
+// Editor" and it cost a third of the toolbar's width to say something the tab
+// already says — and it took the page's only h1 with it, which belonged to the
+// document rather than to the chrome.
+//
+// Only the app tracks a file on disk, but the label is harmless either way and
+// file-api.js expects to find it.
+function buildFileLabel() {
   const currentFile = document.createElement("span");
   currentFile.id = "currentFile";
   currentFile.className = "current-file";
-  title.appendChild(currentFile);
-
-  return title;
+  return currentFile;
 }
 
-// The right-hand region: its own side of the toolbar, outside .buttons so it
-// never reflows with them. Exported documents get no theme toggle on purpose —
-// they follow the reader's OS preference rather than the author's stored one.
-function buildToolbarAside(variant) {
-  const aside = document.createElement("div");
-  aside.className = "theme-toggle-container";
+// The theme toggle is the whole of the document row's right-hand side now. It
+// used to sit beside a GitHub link, which pointed away from the app from a bar
+// that should be about the document — that link is gone, and the wrapper that
+// existed to hold the pair went with it.
+//
+// Exported documents get no toggle on purpose: they follow the reader's OS
+// preference rather than inheriting the author's stored one.
+function buildThemeToggle() {
+  const toggle = document.createElement("div");
+  toggle.id = "themeToggle";
+  toggle.className = "theme-toggle";
+  toggle.setAttribute("role", "switch");
+  toggle.setAttribute("aria-checked", "false");
+  // theme-manager.js keeps all three of these in step with the current theme;
+  // these are the values before it has run. The title is the one a sighted user
+  // gets — a bare sliding pill with no label says nothing about what it does.
+  toggle.setAttribute("aria-label", "Switch to dark mode");
+  toggle.title = "Switch to dark mode";
+  toggle.setAttribute("tabindex", "0");
+  toggle.setAttribute("data-testid", "theme-toggle");
+  toggle.innerHTML = '<div class="theme-toggle-slider"></div>';
+  return toggle;
+}
 
-  const github = document.createElement("a");
-  github.href = "https://github.com/Tommertom/marky";
-  github.target = "_blank";
-  github.rel = "noopener noreferrer";
-  github.id = "githubBtn";
-  github.title = "View on GitHub";
-  github.innerHTML =
-    '<svg height="32" viewBox="0 0 24 24" version="1.1" width="32" ' +
-    `fill="white">${TOOLBAR_ICONS.github}</svg>`;
-  aside.appendChild(github);
+// The toolbar's second row: what the document is, and the control that is not
+// about the document at all. Returns nothing for an exported document, which
+// has neither a file on disk nor a theme toggle — the row would be an empty
+// band, and `:root[data-variant]` takes the reserved height down to match.
+function buildToolbarContent(variant) {
+  if (variant !== "app") return null;
 
-  if (variant === "app") {
-    const toggle = document.createElement("div");
-    toggle.id = "themeToggle";
-    toggle.className = "theme-toggle";
-    toggle.setAttribute("role", "switch");
-    toggle.setAttribute("aria-checked", "false");
-    toggle.setAttribute("aria-label", "Toggle dark mode");
-    toggle.setAttribute("tabindex", "0");
-    toggle.setAttribute("data-testid", "theme-toggle");
-    toggle.innerHTML = '<div class="theme-toggle-slider"></div>';
-    aside.appendChild(toggle);
-  }
-
-  return aside;
+  const content = document.createElement("div");
+  content.className = "toolbar-content";
+  content.appendChild(buildFileLabel());
+  content.appendChild(buildThemeToggle());
+  return content;
 }
 
 function buildToolbar(variant) {
   const toolbar = document.querySelector(".toolbar");
   if (!toolbar) return;
 
-  const buttons = document.createElement("div");
-  buttons.className = "buttons";
+  const menubar = document.createElement("nav");
+  menubar.className = "menubar";
+  menubar.setAttribute("role", "menubar");
+  menubar.setAttribute("aria-label", "Main menu");
 
-  for (const group of TOOLBAR_GROUPS) {
-    const included = group.filter((spec) => spec.variants.includes(variant));
-    if (!included.length) continue;
-
-    const groupEl = document.createElement("div");
-    groupEl.className = "button-group";
-    for (const spec of included) {
-      groupEl.appendChild(
-        spec.menu ? buildSplitButton(spec) : buildToolbarButton(spec),
-      );
-    }
-    buttons.appendChild(groupEl);
+  for (const spec of TOOLBAR_MENUS) {
+    if (!spec.variants.includes(variant)) continue;
+    const menu = buildMenu(spec, variant);
+    if (menu) menubar.appendChild(menu);
   }
 
-  toolbar.appendChild(buildToolbarTitle(variant));
-  toolbar.appendChild(buttons);
-  toolbar.appendChild(buildToolbarAside(variant));
+  // Menus first and hard left, the way a menu bar goes; the filename sits after
+  // them and its auto margin takes the slack, which is what keeps the aside
+  // pinned right at every width.
+  // Two rows in the app. The menus get the first to themselves; the second is
+  // the document row — the filename today, a tab bar once there is more than
+  // one document open (TODO 4.3) — with the theme toggle pinned to its right.
+  toolbar.appendChild(menubar);
+  const content = buildToolbarContent(variant);
+  if (content) toolbar.appendChild(content);
 
-  // The click target is usually the <svg> inside the button, hence closest().
+  // Formatting acts on the editor's selection, and clicking a button would
+  // otherwise blur the editor and take the selection with it. Preventing the
+  // default on mousedown keeps focus where it is; the click still fires. Same
+  // trick, and same reason, as the format bar's own buttons.
+  toolbar.addEventListener("mousedown", (event) => {
+    if (event.target.closest(".menubar")) event.preventDefault();
+  });
+
+  // The click target can be the <svg> inside a checkmark, hence closest().
   toolbar.addEventListener("click", (event) => {
-    const caret = event.target.closest("[data-menu]");
-    if (caret) {
-      toggleSplitMenu(caret);
+    const trigger = event.target.closest("[data-menu]");
+    if (trigger) {
+      toggleMenu(trigger);
       return;
     }
 
-    const button = event.target.closest("[data-action]");
-    if (!button) return;
-    // Covers choosing an item as well as clicking elsewhere in the toolbar: the
-    // item is itself a [data-action] button, so this is the same code path.
-    closeSplitMenu();
-    dispatchToolbarAction(button.dataset.action, button, event);
+    const item = event.target.closest("[data-action]");
+    if (!item) return;
+    closeMenu();
+    dispatchToolbarAction(item.dataset.action, item, event);
   });
 
-  // Anything outside the open menu dismisses it. The caret's own click is
+  // Sliding across the bar with one menu open switches between them, the way a
+  // menu bar is expected to behave. Only while one is open: hovering a closed
+  // bar must not spring menus at you.
+  menubar.addEventListener("mouseover", (event) => {
+    if (!openMenu) return;
+    const trigger = event.target.closest("[data-menu]");
+    if (trigger) showMenu(trigger);
+  });
+
+  menubar.addEventListener("keydown", (event) => {
+    const trigger = event.target.closest("[data-menu]");
+    const triggers = menuTriggers();
+
+    switch (event.key) {
+      case "ArrowRight":
+      case "ArrowLeft": {
+        const current = openMenu ? openMenu.trigger : trigger;
+        if (!current) return;
+        event.preventDefault();
+        const step = event.key === "ArrowRight" ? 1 : -1;
+        const next =
+          triggers[(triggers.indexOf(current) + step + triggers.length) % triggers.length];
+        if (openMenu) showMenu(next);
+        next.focus();
+        break;
+      }
+      case "ArrowDown":
+        event.preventDefault();
+        if (trigger) {
+          showMenu(trigger);
+          focusItem(1, -1);
+        } else {
+          focusItem(1);
+        }
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        if (trigger) {
+          showMenu(trigger);
+          focusItem(-1, 0);
+        } else {
+          focusItem(-1);
+        }
+        break;
+      case "Home":
+      case "End":
+        if (!openMenu) return;
+        event.preventDefault();
+        focusItem(event.key === "Home" ? 1 : -1, event.key === "Home" ? -1 : 0);
+        break;
+      default:
+    }
+  });
+
+  // Anything outside the open menu dismisses it. The trigger's own click is
   // already handled above and bubbles to here afterwards, which is why this
   // tests containment rather than closing unconditionally.
   document.addEventListener("click", (event) => {
-    if (openSplit && !openSplit.wrapper.contains(event.target)) closeSplitMenu();
+    if (openMenu && !openMenu.wrapper.contains(event.target)) closeMenu();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeSplitMenu();
+    // Focus is inside the menu while it is open, so it has to come back out
+    // with it — otherwise Escape leaves focus on a hidden item and the next
+    // keystroke goes nowhere. closeMenu returns early when nothing is open, so
+    // this costs a notify.js dialog's Escape nothing.
+    if (event.key === "Escape") closeMenu({ refocus: true });
   });
 }
 

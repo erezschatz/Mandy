@@ -147,19 +147,6 @@ function joinPath(dir, name) {
   return dir.endsWith("/") ? dir + name : `${dir}/${name}`;
 }
 
-const CHECK_ICON =
-  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" ' +
-  'stroke="currentColor" stroke-width="2">' +
-  '<polyline points="20 6 9 17 4 12"></polyline></svg>';
-
-function flashButton(button, label) {
-  const original = button.innerHTML;
-  button.innerHTML = label;
-  setTimeout(() => {
-    button.innerHTML = original;
-  }, 1500);
-}
-
 // ── Dialog ───────────────────────────────────────────────────────────────────
 
 function closeDialog() {
@@ -343,13 +330,14 @@ async function reloadFile() {
     return;
   }
 
-  // A reload of an unchanged file changes nothing on screen, so without the
-  // flash there is no way to tell it happened — and it must be gated on the read
+  // A reload of an unchanged file changes nothing on screen, so without this
+  // there is no way to tell it happened — and it must be gated on the read
   // actually succeeding, or a file that has since been deleted reports
-  // "Reloaded!" over the document it failed to replace.
+  // "Reloaded!" over the document it failed to replace. A toast rather than a
+  // flash on the button: the button is a menu item now, and the menu has closed
+  // behind the click long before any flash on it would be seen.
   if (!(await openFile(currentFilePath))) return;
-  const openBtn = toolbarButton("open-file");
-  if (openBtn) flashButton(openBtn, `${CHECK_ICON} Reloaded!`);
+  notify(`Reloaded ${name} from disk.`, { severity: "success" });
 }
 
 async function statFile(filePath) {
@@ -433,21 +421,19 @@ async function saveFile(filePath) {
   setDirty(false);
   setFileMtime(data.modified);
   setCurrentFile(data.path);
+  // Reported here rather than at the two call sites so Save As is as loud as
+  // Save. It used to be a flash on the toolbar's Save button, deliberately not
+  // on whatever was clicked, because choosing Save from the split menu closed
+  // the menu behind it and the flash went unseen. Every way in is a menu item
+  // now, so there is no button left to flash and the toast is the whole answer.
+  notify(`Saved ${data.path.split("/").pop()}`, { severity: "success" });
   return true;
 }
 
-// The flash always lands on the toolbar's own Save button, never on whatever was
-// clicked: choosing "Save" from the split menu closes the menu behind it, so
-// flashing the clicked element would hide "Saved!" inside a menu nobody is
-// looking at — and leave it there for the next person who opens it.
 async function saveCurrentOrPrompt() {
   const target = currentFilePath || (await showSaveDialog());
   if (!target) return;
-
-  if (await saveFile(target)) {
-    const saveBtn = toolbarButton("save-file");
-    if (saveBtn) flashButton(saveBtn, `${CHECK_ICON} Saved!`);
-  }
+  await saveFile(target);
 }
 
 // Not named saveAs: FileSaver.js claims that global, and whichever loaded last

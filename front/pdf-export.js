@@ -204,37 +204,23 @@ async function generatePDF() {
   }
 }
 
+// The spinner used to live in the button, as a ⏳ swapped in for its label.
+// That button is a menu item now and the menu closes on the click, so the one
+// export that takes seconds would appear to do nothing at all. A toast held
+// open for the duration says it better than the button ever did — notify()
+// returns its own dismiss function for exactly this.
 onToolbarAction("export-pdf", async (pdfBtn) => {
-  const loadingIndicator = pdfBtn.querySelector(".loading-indicator");
-  const btnText = pdfBtn.querySelector(".btn-text");
+  if (pdfBtn) pdfBtn.disabled = true;
+  const done = notify("Generating PDF…", { severity: "info", timeout: 0 });
 
   try {
-    pdfBtn.disabled = true;
-    btnText.style.display = "none";
-    loadingIndicator.style.display = "inline-block";
-
-    const result = await generatePDF();
-
-    btnText.style.display = "inline";
-    loadingIndicator.style.display = "none";
-
-    const originalText = btnText.textContent;
-    btnText.textContent = "✓ Saved!";
-    setTimeout(() => {
-      btnText.textContent = originalText;
-      pdfBtn.disabled = false;
-    }, 2000);
+    await generatePDF();
+    done();
+    notify("PDF saved.", { severity: "success" });
   } catch (error) {
-    btnText.style.display = "inline";
-    loadingIndicator.style.display = "none";
-
-    const originalText = btnText.textContent;
-    btnText.textContent = "✗ Failed";
-    setTimeout(() => {
-      btnText.textContent = originalText;
-      pdfBtn.disabled = false;
-    }, 2000);
-
+    done();
     notify(`Failed to generate PDF: ${error.message}`, { severity: "error" });
+  } finally {
+    if (pdfBtn) pdfBtn.disabled = false;
   }
 });

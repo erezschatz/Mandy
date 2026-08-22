@@ -39,6 +39,7 @@ function boot({
   const reads = [];
   const writes = [];
   const asked = [];
+  const toasts = [];
   // One bag for both targets: file-api.js binds `focus` on window and
   // `visibilitychange` on document, and no name is claimed by both.
   const listeners = {};
@@ -150,7 +151,7 @@ function boot({
           return h;
         }
       },
-      notify() {},
+      notify: (message) => toasts.push(message),
       // undo.js is not in this suite's bundle; openFile and Clear both
       // re-baseline the history, and a missing stub makes them throw.
       undoReset() {},
@@ -182,6 +183,7 @@ function boot({
     reads,
     writes,
     asked,
+    toasts,
     disk,
     // Coming back to the window, both ways a browser reports it. Fired and then
     // settled rather than awaited, because a browser does not await them either.
@@ -486,20 +488,21 @@ export default async function run(check) {
   saved = await r.saveFile(OPEN);
   check("an untouched file saves without asking", saved === true && !r.asked.length);
 
-  // Both the button and its menu entry carry "save-file", and the menu closes
-  // itself on the way through — so a flash on the clicked element would land
-  // inside a menu nobody is looking at, and still be there next time it opens.
+  // Confirmation used to be a flash on the toolbar's Save button, deliberately
+  // not on whatever was clicked, because the split menu closed behind the click
+  // and took the flash with it. Every way in is a menu item now, so there is no
+  // button left to flash and it has to be said somewhere still on screen.
   r = inStep();
   await settle();
-  r.clickAction("save-file", true);
+  r.clickAction("save-file");
   await settle();
   check(
-    "saving from the menu flashes the toolbar button",
-    r.find("save-file").innerHTML.includes("Saved!"),
+    "saving from the menu says so where it can be seen",
+    /^Saved plan\.md$/.test(r.toasts.at(-1) || ""),
   );
   check(
-    "and leaves the menu entry alone",
-    r.find("save-file", true).innerHTML === "",
+    "and leaves the menu item's own markup alone",
+    r.find("save-file").innerHTML === "",
   );
 
   // Save As writes somewhere the baseline says nothing about, so it is not the

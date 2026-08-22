@@ -627,41 +627,21 @@ async function generateDOCX() {
   return { success: true, filename: filename };
 }
 
-// DOCX Button Event Handler
-onToolbarAction("export-docx", async (docxBtn) => {
-  const loadingIndicator = docxBtn.querySelector(
-    ".docx-loading-indicator"
-  );
-  const btnText = docxBtn.querySelector(".docx-btn-text");
+  // Progress reported through notify for the same reason PDF's is: the button
+  // is a menu item, and the menu is closed before the work starts.
+  onToolbarAction("export-docx", async (docxBtn) => {
+    if (docxBtn) docxBtn.disabled = true;
+    const done = notify("Generating Word document…", { severity: "info", timeout: 0 });
 
-  try {
-    docxBtn.disabled = true;
-    btnText.style.display = "none";
-    loadingIndicator.style.display = "inline-block";
-
-    const result = await generateDOCX();
-
-    btnText.style.display = "inline";
-    loadingIndicator.style.display = "none";
-
-    const originalText = btnText.textContent;
-    btnText.textContent = "✓ Saved!";
-    setTimeout(() => {
-      btnText.textContent = originalText;
-      docxBtn.disabled = false;
-    }, 2000);
-  } catch (error) {
-    console.error("[DOCX] Error:", error);
-    btnText.style.display = "inline";
-    loadingIndicator.style.display = "none";
-
-    const originalText = btnText.textContent;
-    btnText.textContent = "✗ Failed";
-    setTimeout(() => {
-      btnText.textContent = originalText;
-      docxBtn.disabled = false;
-    }, 2000);
-
-    notify(`Failed to generate DOCX: ${error.message}`, { severity: "error" });
-  }
-});
+    try {
+      await generateDOCX();
+      done();
+      notify("Word document saved.", { severity: "success" });
+    } catch (error) {
+      console.error("[DOCX] Error:", error);
+      done();
+      notify(`Failed to generate DOCX: ${error.message}`, { severity: "error" });
+    } finally {
+      if (docxBtn) docxBtn.disabled = false;
+    }
+  });

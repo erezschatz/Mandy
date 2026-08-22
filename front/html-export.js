@@ -14,10 +14,18 @@ const MERMAID_TAG =
 // localStorage and no toggle: this is a document, not the app, and the
 // recipient should not inherit the author's stored preference. Runs before the
 // stylesheet so there is no flash of the wrong theme.
+//
+// It stamps the variant in the same breath, for the same reason and in the same
+// slot: with no toggle and no file on disk the toolbar has no second row, and
+// app.css reserves a shorter bar for that. Both have to be known before the
+// stylesheet is read or the page paints one shape and settles into another —
+// the check cannot wait for toolbar.js to build the row, because "the row is
+// not there yet" and "there is no row" look identical until it has.
 const THEME_SCRIPT =
   "<script>document.documentElement.setAttribute('data-theme'," +
   "window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)')" +
   ".matches?'dark':'light');" +
+  "document.documentElement.setAttribute('data-variant','export');" +
   CLOSE;
 
 // Diagrams are exported as SVG with the light Mermaid palette baked in, so a

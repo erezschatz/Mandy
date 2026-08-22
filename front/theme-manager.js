@@ -76,11 +76,11 @@ const ThemeManager = (function () {
       theme === DARK ? "true" : "false"
     );
 
-    if (theme === DARK) {
-      toggle.setAttribute("aria-label", "Switch to light mode");
-    } else {
-      toggle.setAttribute("aria-label", "Switch to dark mode");
-    }
+    // The title is the sighted user's half of the same sentence, so it moves
+    // with the aria-label rather than being stamped once and left to lie.
+    const label = theme === DARK ? "Switch to light mode" : "Switch to dark mode";
+    toggle.setAttribute("aria-label", label);
+    toggle.title = label;
   }
 
   function watchSystemChanges() {
