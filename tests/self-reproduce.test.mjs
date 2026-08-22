@@ -55,7 +55,7 @@ function runExport({ inlined }) {
       class { constructor(u) { this.pathname = u; } },
       { createObjectURL: () => "blob:x", revokeObjectURL: () => {} },
     ),
-    alert: () => {},
+    notify: () => {},
     console,
     containsLatex: () => false,
     onToolbarAction: (action, fn) => { if (action === "export-editable") handler = fn; },
@@ -102,7 +102,9 @@ export default async function run(check) {
   await firstExport.handler();
   const genOne = firstExport.output();
 
-  check("app export fetches its assets", firstExport.fetches() === 12);
+  // One per entry in ASSETS: the stylesheet plus every script in the bundle.
+  check("app export fetches its assets", firstExport.fetches() === 13);
+  check("app export bundles notify.js", genOne.includes("/notify.js"));
   check("app export bundles docx-export.js", genOne.includes("/docx-export.js"));
   check("app export bundles static-export.js", genOne.includes("/static-export.js"));
   check("app export bundles html-export.js", genOne.includes("/html-export.js"));

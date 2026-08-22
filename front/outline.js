@@ -248,7 +248,9 @@ function blockAtCaret() {
 function insertToc() {
   const entries = outlineEntries(editor);
   if (!entries.length) {
-    alert("This document has no headings to build a table of contents from.");
+    notify("This document has no headings to build a table of contents from.", {
+      severity: "info",
+    });
     return;
   }
 

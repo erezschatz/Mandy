@@ -403,31 +403,44 @@ onToolbarAction("copy-md", async (button) => {
       button.innerHTML = originalText;
     }, 2000);
   } catch (err) {
-    alert("Unable to copy to clipboard. Please grant clipboard permissions.");
+    notify("Unable to copy to clipboard. Please grant clipboard permissions.", {
+      severity: "error",
+    });
   }
 });
 
-onToolbarAction("clear", () => {
-  if (
-    confirm(
-      "Are you sure you want to clear the document? This will remove all content and auto-saved data.",
-    )
-  ) {
-    editor.innerHTML = "<p><br></p>";
-    localStorage.removeItem("markdownContent");
-    localStorage.removeItem("markdownSource");
-    // Or a block of the cleared document could come back on the next save.
-    markdownStyle = Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
-    markdownSource = new Map();
+onToolbarAction("clear", async () => {
+  // Cancel is the default action, so Enter and Escape both do the safe thing.
+  // The wording still says nothing about the open file or whether there is
+  // anything unsaved to lose — that is TODO 1.8's, along with the third
+  // Save option this dialog can now express and confirm() could not.
+  const confirmed = await ask(
+    "This removes all content and the auto-saved copy.",
+    {
+      title: "Clear the document?",
+      severity: "warn",
+      actions: [
+        { label: "Cancel", value: false, variant: "quiet", default: true },
+        { label: "Clear", value: true, variant: "danger" },
+      ],
+    },
+  );
+  if (!confirmed) return;
 
-    editor.focus();
-    const range = document.createRange();
-    const sel = window.getSelection();
-    range.setStart(editor.firstChild, 0);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
-  }
+  editor.innerHTML = "<p><br></p>";
+  localStorage.removeItem("markdownContent");
+  localStorage.removeItem("markdownSource");
+  // Or a block of the cleared document could come back on the next save.
+  markdownStyle = Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
+  markdownSource = new Map();
+
+  editor.focus();
+  const range = document.createRange();
+  const sel = window.getSelection();
+  range.setStart(editor.firstChild, 0);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
 });
 
 onToolbarAction("paste-md", async () => {
@@ -441,7 +454,9 @@ onToolbarAction("paste-md", async () => {
       localStorage.setItem("markdownContent", editor.innerHTML);
     }
   } catch (err) {
-    alert("Unable to access clipboard. Please grant clipboard permissions.");
+    notify("Unable to access clipboard. Please grant clipboard permissions.", {
+      severity: "error",
+    });
   }
 });
 

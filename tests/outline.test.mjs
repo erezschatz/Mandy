@@ -97,7 +97,7 @@ function loadOutline() {
           this.type = type;
         }
       },
-      alert: (message) => alerts.push(message),
+      notify: (message) => alerts.push(message),
       // Immediate rather than deferred: a suite that had to wait a second for
       // the debounce would be a suite nobody runs.
       setTimeout: (fn) => {

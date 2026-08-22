@@ -662,6 +662,6 @@ onToolbarAction("export-docx", async (docxBtn) => {
       docxBtn.disabled = false;
     }, 2000);
 
-    alert(`Failed to generate DOCX: ${error.message}`);
+    notify(`Failed to generate DOCX: ${error.message}`, { severity: "error" });
   }
 });

@@ -27,6 +27,10 @@ function render(variant, probe = "") {
   return { toolbar, hits, listeners };
 }
 
+// Drains the microtask queue: dispatch awaits each handler, so nothing after a
+// click has run yet when the listener returns.
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 // A split button is a wrapper holding the primary button, its caret and the
 // menu. Menu items are buttons too, and deliberately: they ride the same
 // delegated dispatch, so they are held to the same handler-exists rule.
@@ -56,7 +60,7 @@ function handlersIn(files) {
   return actions;
 }
 
-export default function run(check) {
+export default async function run(check) {
   for (const [variant, bundle] of [["app", appBundle], ["export", exportBundle]]) {
     const { toolbar } = render(variant);
     const nodes = walk(toolbar);
@@ -144,23 +148,38 @@ export default function run(check) {
   }
 
   // Delegation: a real click lands on the <svg>, not the button.
+  //
+  // The first handler here resolves a promise before pushing, which is the
+  // shape file-api.js's "clear" hook depends on: app.js now stops on a dialog
+  // before it empties the editor, and if dispatch did not await, file-api.js
+  // would run against a document that is not blank yet and leave the file
+  // association behind. Ordering has to hold across an await, not just across
+  // a synchronous loop.
   const { toolbar, hits } = render(
     "app",
-    `onToolbarAction("export-pdf", (btn) => hits.push(btn.id));
+    `onToolbarAction("export-pdf", async (btn) => {
+       await Promise.resolve();
+       hits.push(btn.id);
+     });
      onToolbarAction("export-pdf", (btn) => hits.push("second:" + btn.id));`,
   );
   const pdf = walk(toolbar).find((n) => n.attrs["data-action"] === "export-pdf");
   pdf.appendChild(makeEl("svg"));
 
   toolbar.listeners.click[0]({ target: pdf.children.at(-1) });
+  check("dispatch does not block on an async handler", hits.length === 0);
+
+  // Enough turns for the handler's own await plus dispatch's.
+  await flush();
   check("click on a button's icon reaches the handler", hits[0] === "pdfBtn");
   check(
-    "multiple handlers per action run in order",
+    "an async handler is awaited before the next one runs",
     hits.length === 2 && hits[1] === "second:pdfBtn",
   );
 
   hits.length = 0;
   toolbar.listeners.click[0]({ target: makeEl() });
+  await flush();
   check("click outside any action is ignored", hits.length === 0);
 
   // --- split menus ---------------------------------------------------------

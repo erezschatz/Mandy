@@ -150,10 +150,13 @@ function boot({
           return h;
         }
       },
-      alert() {},
-      confirm: (message) => {
+      notify() {},
+      // The real one resolves a promise, which is the whole reason the guards
+      // could grow a third button — so the stub has to resolve one too, or the
+      // callers pass a pending promise off as a yes.
+      ask: (message) => {
         asked.push(message);
-        return confirmAnswer;
+        return Promise.resolve(confirmAnswer);
       },
       console,
       setTimeout,
@@ -192,16 +195,28 @@ function boot({
     labelNow: () => api.labelEl.textContent,
     // markdownit is a pass-through here, so this is the markdown a read put in.
     html: () => editorEl.innerHTML,
+    // The harness boots from localStorage without app.js's restore ever running,
+    // so the editor starts empty whatever savedContent said. Anything that turns
+    // on what is actually in the document has to put it there.
+    fill: (html) => {
+      editorEl.innerHTML = html;
+    },
     // Typing, and anything else that goes through execCommand: file-api.js
     // hangs the dirty flag off the editor's own input event.
     type: () => {
       for (const fn of editorEl.listeners.input || []) fn();
     },
-    clear: () => {
-      editorEl.innerHTML = "<p><br></p>"; // app.js's handler has already run
+    // app.js's handler is registered first and does the actual clearing; this
+    // one only drops the file association on top of it. It used to be enough to
+    // fake the emptied editor and dispatch, because app.js's confirm() returned
+    // before the dispatcher moved on. Now app.js stops on a dialog, so this has
+    // to settle — which is the ordering the whole thing hinges on: run it too
+    // early and isBlankContent sees the document still full and keeps the path.
+    clear: async () => {
       toolbar.listeners.click[0]({
         target: document.querySelector('[data-action="clear"]'),
       });
+      await settle();
     },
     // Two elements carry the same action once a button has a split menu — the
     // button and the menu entry — so a test has to be able to say which.
@@ -248,10 +263,34 @@ export default async function run(check) {
     savedPath: "/home/erez/notes/plan.md",
     savedDir: "/home/erez/projects/docs",
   });
-  r.clear();
+  // Filled for real, so dropping the path depends on app.js having emptied the
+  // editor first. With an empty one this check passes on any ordering at all,
+  // which is the trap: it is the ordering that is under test here.
+  r.fill("<h1>Real work</h1>");
+  await r.clear();
+  check("clear asks before discarding", /removes all content/.test(r.asked.at(-1) || ""));
   check("clear drops the persisted path", !r.store.has("marky-current-file"));
   check("clear keeps the last directory",
     r.store.get("marky-last-dir") === "/home/erez/projects/docs");
+
+  // The ordering this suite exists to protect, from the other side: a cancelled
+  // Clear must leave the file association alone. file-api.js's hook decides
+  // that by looking at the editor, so it can only be right if it runs after
+  // app.js's dialog has been answered rather than while it is still open.
+  r = boot({
+    savedContent: "<h1>Real work</h1>",
+    savedPath: "/home/erez/notes/plan.md",
+  });
+  r.fill("<h1>Real work</h1>");
+  confirmAnswer = false;
+  await r.clear();
+  check("a cancelled clear leaves the document alone",
+    r.html() === "<h1>Real work</h1>");
+  check("a cancelled clear keeps the file open",
+    r.pathNow() === "/home/erez/notes/plan.md");
+  check("and keeps it persisted",
+    r.store.get("marky-current-file") === "/home/erez/notes/plan.md");
+  confirmAnswer = true;
 
   // --- a remembered directory that no longer exists ------------------------
   //
@@ -304,7 +343,7 @@ export default async function run(check) {
 
   r = boot({ savedContent: "<h1>Real work</h1>", savedPath: "/home/erez/notes/plan.md" });
   r.type();
-  r.clear();
+  await r.clear();
   check("clear drops the marker with the path", r.labelNow() === "");
   check("clear drops the persisted flag", !r.store.has("marky-dirty"));
 
@@ -417,7 +456,7 @@ export default async function run(check) {
 
   r = changedUnderneath();
   await settle();
-  r.clear();
+  await r.clear();
   check("clear drops the persisted baseline", !r.store.has("marky-file-mtime"));
 
   r = boot({ savedContent: "<p><br></p>", savedPath: OPEN, savedMtime: T1 });

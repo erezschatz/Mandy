@@ -130,9 +130,12 @@ const TOOLBAR_GROUPS = [
 // element, so a button missing from a variant means an unused registration
 // rather than a listener silently bound to null.
 //
-// Several handlers may share an action — they run in registration order. That
-// is how file-api.js hooks "clear" to drop the file association on top of the
-// clearing app.js already does.
+// Several handlers may share an action — they run in registration order, and
+// each is awaited before the next starts. That is how file-api.js hooks "clear"
+// to drop the file association on top of the clearing app.js already does, and
+// the await is what keeps that true now app.js's handler stops on a dialog:
+// without it file-api.js would run while the question was still on screen, see
+// a document that is not blank yet, and leave the file association behind.
 const toolbarActions = new Map();
 
 function onToolbarAction(action, handler) {
@@ -147,12 +150,23 @@ function toolbarButton(action) {
   return document.querySelector(`.toolbar [data-action="${action}"]`);
 }
 
+// Nobody awaits the result, so a handler that throws would otherwise surface as
+// a bare unhandled rejection naming neither the action nor the button. Caught
+// for the message only: the loop still stops, the way it did when a throw
+// propagated synchronously out of the click listener.
+async function dispatchToolbarAction(action, button, event) {
+  try {
+    for (const handler of toolbarActions.get(action) || []) {
+      await handler(button, event);
+    }
+  } catch (err) {
+    console.error(`[Toolbar] "${action}" handler failed:`, err);
+  }
+}
+
 // Lets the keyboard shortcuts drive the same handlers without faking a click.
 function runToolbarAction(action) {
-  const handlers = toolbarActions.get(action);
-  if (!handlers) return;
-  const button = toolbarButton(action);
-  for (const handler of handlers) handler(button);
+  return dispatchToolbarAction(action, toolbarButton(action));
 }
 
 function toolbarVariant() {
@@ -333,9 +347,7 @@ function buildToolbar(variant) {
     // Covers choosing an item as well as clicking elsewhere in the toolbar: the
     // item is itself a [data-action] button, so this is the same code path.
     closeSplitMenu();
-    for (const handler of toolbarActions.get(button.dataset.action) || []) {
-      handler(button, event);
-    }
+    dispatchToolbarAction(button.dataset.action, button, event);
   });
 
   // Anything outside the open menu dismisses it. The caret's own click is

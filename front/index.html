@@ -188,8 +188,10 @@
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/turndown@7.1.2/dist/turndown.min.js"></script>
 
-    <!-- toolbar.js first: everything below binds to elements it creates. -->
+    <!-- toolbar.js first: everything below binds to elements it creates.
+         notify.js next: every module below reports its failures through it. -->
     <script src="/toolbar.js"></script>
+    <script src="/notify.js"></script>
     <script src="/lazy-load.js"></script>
     <script src="/markdown-style.js"></script>
     <script src="/app.js"></script>

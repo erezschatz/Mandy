@@ -235,6 +235,6 @@ onToolbarAction("export-pdf", async (pdfBtn) => {
       pdfBtn.disabled = false;
     }, 2000);
 
-    alert(`Failed to generate PDF: ${error.message}`);
+    notify(`Failed to generate PDF: ${error.message}`, { severity: "error" });
   }
 });

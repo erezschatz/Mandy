@@ -160,9 +160,10 @@ onToolbarAction("export-html", async () => {
     cssContent = await documentStylesheet();
   } catch (err) {
     console.error("[Export] Could not read app.css:", err);
-    alert(
-      `Export failed: ${err.message}.\n\n` +
+    notify(
+      `Export failed: ${err.message}. ` +
         "Exporting only works from the running Marky app.",
+      { severity: "error" },
     );
     return;
   }

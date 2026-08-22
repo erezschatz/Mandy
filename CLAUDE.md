@@ -46,6 +46,12 @@ They cover the invariants that fail *silently* rather than loudly:
   the pathological document is a table rather than a fixture; the list shape is
   there because a sublist placed beside its parent `<li>` instead of inside it
   serialises to a flat list, into the user's file, looking fine on screen.
+- **notify** — that no `front/` file has slipped back to `alert()` or
+  `confirm()`, that every bundle holding a module which calls `notify`/`ask`
+  also ships `notify.js` ahead of it, and that dismissing a dialog does not
+  resolve to the same thing as agreeing with it. The source scan is the half
+  that matters: an `alert()` looks fine from inside the app right up until the
+  user has silenced dialogs and their save failure disappears.
 - **save-fidelity** — the serialiser options app.js asks for, and then
   `markdown-style.js` directly: the sniffers, and every guard in the re-wrapper.
   That second half is the one that writes into the user's file.
@@ -68,6 +74,9 @@ are no imports. Consequences that bite:
   top level. Toolbar *buttons* no longer need to exist by then — clicks are
   delegated (see below) — but non-toolbar elements are still grabbed at load,
   so `#editor`, `#formatBar` and the file dialog must be in the markup.
+  `notify.js` comes next and is depended on the same way: every module below
+  reports its failures through `notify` / `ask`, so it must be defined before
+  any of their handlers run.
   After that: `markdown-style.js` defines `sniffMarkdownStyle`,
   `reflowMarkdown`, `indexMarkdownBlocks` and `restoreSourceWrapping`, which
   `app.js` calls at top level and on every save;
@@ -369,8 +378,13 @@ Clicks are **delegated**: one listener on `.toolbar` dispatches by
 reaching for an element, so a button a variant does not render is an unused
 registration instead of a listener bound to `null`. The handler receives the
 button, which is what the spinner, disabled and "Saved!" states use. Several
-handlers may share an action and run in registration order — that is how
-`file-api.js` hooks `"clear"` on top of `app.js`'s own clearing. Use
+handlers may share an action and run in registration order, **each awaited
+before the next starts** — that is how `file-api.js` hooks `"clear"` on top of
+`app.js`'s own clearing, and the await is what keeps that working now that
+`app.js`'s handler stops on an `ask()` dialog. Drop it and `file-api.js` runs
+while the question is still on screen, sees a document that is not blank yet,
+and leaves the file association behind — pointing Ctrl+S at a filename with
+nothing under it. Use
 `toolbarButton(action)` to find a button on demand and `runToolbarAction(action)`
 to drive one from a keyboard shortcut.
 
@@ -478,6 +492,53 @@ Open state is one attribute, `data-open` on the wrapper, with CSS doing the rest
 `toolbar.js` holds the single open menu in `openSplit` rather than querying for
 it. Dismissal is on the document, so a click or Escape anywhere closes it — the
 first time `toolbar.js` binds outside `.toolbar`.
+
+### Notifications
+
+[notify.js](front/notify.js) is the only way `front/` talks to the user outside
+the document. There is no `alert()` and no `confirm()` left, and the `notify`
+test suite scans the sources to keep it that way.
+
+- `notify(message, { severity, actions, timeout })` — a toast in the bottom
+  right. Non-blocking, returns a function that dismisses it.
+- `ask(message, { title, severity, actions, dismiss })` — a modal, resolving to
+  the chosen action's `value` or to `dismiss` (default `null`).
+
+Why it exists at all is worth keeping: `alert()` blocks the page, ignores the
+theme, and can say nothing but OK. The one that forced the issue is that Chrome
+and Firefox both let a user tick "prevent this page from creating additional
+dialogs", after which every `alert()` in the app silently does nothing — so a
+save failure could reach nobody.
+
+Four things about it that are decisions rather than details:
+
+- **Errors do not auto-dismiss; everything else does.** A toast that vanishes is
+  right for "Saved!" and wrong for "Failed to save file". Having just argued
+  that a suppressible dialog is unacceptable, a four-second one the user was
+  looking away from would be the same bug wearing a nicer hat. Hovering also
+  holds a toast open, since a message worth reading can outlast its own timer.
+- **`ask()` takes an arbitrary action list, not a yes/no.** That is the whole
+  reason it is not a `confirm()` wrapper: the unsaved-work guards (TODO 1.8)
+  need Save / Discard / Cancel. Actions render in array order; the one marked
+  `default: true` takes focus, so the destructive dialogs mark Cancel and Enter
+  does the safe thing.
+- **Dismissing is not agreeing.** Escape, the backdrop and the close button all
+  resolve to `dismiss`, which defaults to `null` so a two-way caller testing the
+  result for truthiness reads it as no. Get this backwards and Escape overwrites
+  the user's file.
+- **It returns a Promise, which made toolbar dispatch asynchronous.** See the
+  toolbar section: handlers sharing an action are now awaited in turn, because
+  `app.js`'s Clear stops mid-handler and `file-api.js`'s hook must not run until
+  it resumes.
+
+The DOM is built in JS, like the toolbar and the outline nav, because
+`html-export.js` hand-writes its own copy of the page shell — markup in
+`index.html` would be a second copy to keep in step. Escape is bound to the
+backdrop rather than the document, so with two dialogs open only the one holding
+focus answers it, and there is no stack to maintain.
+
+`notify.js` is in `ASSETS`: exported documents raise most of the same failures
+the app does, since every export path can fail in one.
 
 ### Server
 

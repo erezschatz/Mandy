@@ -69,6 +69,7 @@ onToolbarAction("export-editable", async () => {
   const ASSETS = [
     "/app.css",
     "/toolbar.js",
+    "/notify.js",
     "/lazy-load.js",
     "/markdown-style.js",
     "/app.js",
@@ -114,8 +115,9 @@ onToolbarAction("export-editable", async () => {
       jsContent = scripts.join("\n\n");
     } catch (err) {
       console.error("[Export] Could not fetch external files:", err);
-      alert(
-        `Export failed: ${err.message}.\n\nExporting only works from the running Marky app.`,
+      notify(
+        `Export failed: ${err.message}. Exporting only works from the running Marky app.`,
+        { severity: "error" },
       );
       return;
     }

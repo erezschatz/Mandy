@@ -12,6 +12,7 @@ const SUITES = [
   ["links", "./links.test.mjs"],
   ["list-indent", "./list-indent.test.mjs"],
   ["outline", "./outline.test.mjs"],
+  ["notify", "./notify.test.mjs"],
 ];
 
 let passed = 0;

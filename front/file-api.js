@@ -126,8 +126,9 @@ editor.addEventListener("input", () => setDirty(true));
 // Clearing the document drops the file association: app.js has already emptied
 // the editor and the autosave, and without this a reload would show a filename
 // with no content behind it, one Ctrl+S away from truncating the real file.
-// app.js registers its handler first, so a cancelled confirm leaves content in
-// place and this correctly does nothing.
+// app.js registers its handler first and the dispatcher awaits it, so this runs
+// after its dialog has been answered: cancel leaves content in place and the
+// blank check correctly does nothing.
 onToolbarAction("clear", () => {
   if (isBlankContent(editor.innerHTML)) {
     setDirty(false);
@@ -189,7 +190,7 @@ async function loadDir(dirPath) {
       localStorage.removeItem(LAST_DIR_KEY);
       return loadDir(null);
     }
-    alert("Failed to browse directory: " + err.message);
+    notify("Failed to browse directory: " + err.message, { severity: "error" });
     return;
   }
 
@@ -299,7 +300,7 @@ async function openFile(filePath) {
     data = await res.json();
     if (!res.ok) throw new Error(data.error || res.statusText);
   } catch (err) {
-    alert("Failed to open file: " + err.message);
+    notify("Failed to open file: " + err.message, { severity: "error" });
     return false;
   }
 
@@ -318,12 +319,22 @@ async function openFile(filePath) {
 // it asks when there are edits to lose.
 async function reloadFile() {
   if (!currentFilePath) {
-    alert("No file is open to reload.");
+    notify("No file is open to reload.", { severity: "info" });
     return;
   }
 
   const name = currentFilePath.split("/").pop();
-  if (isDirty && !confirm(`Reload ${name} from disk? Unsaved edits will be lost.`)) {
+  if (
+    isDirty &&
+    !(await ask(`Unsaved edits to ${name} will be lost.`, {
+      title: "Reload from disk?",
+      severity: "warn",
+      actions: [
+        { label: "Cancel", value: false, variant: "quiet", default: true },
+        { label: "Discard and reload", value: true, variant: "danger" },
+      ],
+    }))
+  ) {
     return;
   }
 
@@ -381,7 +392,18 @@ async function confirmOverwrite(filePath) {
 
   setDiskChanged(true);
   const name = filePath.split("/").pop();
-  return confirm(`${name} changed on disk since you opened it. Overwrite it?`);
+  return ask(
+    `${name} changed on disk since you opened it. Saving replaces whatever ` +
+      "changed it, and Marky has no merge to offer.",
+    {
+      title: "Overwrite the newer file?",
+      severity: "warn",
+      actions: [
+        { label: "Cancel", value: false, variant: "quiet", default: true },
+        { label: "Overwrite", value: true, variant: "danger" },
+      ],
+    },
+  );
 }
 
 async function saveFile(filePath) {
@@ -399,7 +421,7 @@ async function saveFile(filePath) {
     data = await res.json();
     if (!res.ok) throw new Error(data.error || res.statusText);
   } catch (err) {
-    alert("Failed to save file: " + err.message);
+    notify("Failed to save file: " + err.message, { severity: "error" });
     return false;
   }
 

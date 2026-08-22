@@ -41,6 +41,15 @@
         --shadow-light: rgba(0, 0, 0, 0.1);
         --shadow-medium: rgba(0, 0, 0, 0.15);
 
+        /* Notification severities. Not reused from --accent-blue: an error and
+           a link are different things, and the error has to read as one
+           against both themes' backgrounds. */
+        --notify-error: #c0392b;
+        --notify-warn: #b9770e;
+        --notify-success: #1e8449;
+        --notify-info: #3498db;
+        --notify-fg-on-accent: #ffffff;
+
         /* Transitions */
         --transition-speed: 250ms;
       }
@@ -81,6 +90,14 @@
         /* Shadows */
         --shadow-light: rgba(0, 0, 0, 0.3);
         --shadow-medium: rgba(0, 0, 0, 0.4);
+
+        /* Lightened rather than reused: the light theme's #c0392b on a
+           #1a1a1a panel fails contrast and reads as brown. */
+        --notify-error: #ff6b5e;
+        --notify-warn: #f0b429;
+        --notify-success: #5dd39e;
+        --notify-info: #66b3ff;
+        --notify-fg-on-accent: #14181c;
       }
 
       /* ========================================
@@ -1091,8 +1108,234 @@
         background: var(--accent-blue-hover);
       }
 
+      /* ========================================
+         Notifications (notify.js)
+         ======================================== */
+
+      /* Above .file-dialog's 1000: a browse or save failure raised while the
+         dialog is open has to be visible over it. */
+      .notify-stack {
+        position: fixed;
+        right: 1rem;
+        bottom: 1rem;
+        z-index: 1200;
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        width: min(28rem, calc(100vw - 2rem));
+        /* The stack spans a column the page still has to be usable through, so
+           it ignores the pointer everywhere the toasts themselves are not. */
+        pointer-events: none;
+      }
+
+      .notify-toast {
+        pointer-events: auto;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.65rem;
+        padding: 0.75rem 0.85rem;
+        border-radius: 8px;
+        border: 1px solid var(--border-primary);
+        border-left: 3px solid var(--notify-info);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        box-shadow: 0 6px 24px var(--shadow-medium);
+        font-size: 0.9rem;
+        line-height: 1.45;
+        opacity: 0;
+        transform: translateY(0.5rem);
+        transition:
+          opacity var(--transition-speed) ease,
+          transform var(--transition-speed) ease;
+      }
+
+      .notify-toast.is-in {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .notify-icon {
+        display: flex;
+        flex-shrink: 0;
+        padding-top: 0.1rem;
+        color: var(--notify-info);
+      }
+
+      .notify-error .notify-icon {
+        color: var(--notify-error);
+      }
+      .notify-warn .notify-icon {
+        color: var(--notify-warn);
+      }
+      .notify-success .notify-icon {
+        color: var(--notify-success);
+      }
+
+      .notify-toast.notify-error {
+        border-left-color: var(--notify-error);
+      }
+      .notify-toast.notify-warn {
+        border-left-color: var(--notify-warn);
+      }
+      .notify-toast.notify-success {
+        border-left-color: var(--notify-success);
+      }
+
+      .notify-body {
+        flex: 1;
+        min-width: 0;
+      }
+
+      /* A save error carries the server's message, which can be a long path
+         with no spaces in it. */
+      .notify-message {
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .notify-toast-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+      }
+
+      .notify-toast-action {
+        background: none;
+        border: 1px solid var(--border-secondary);
+        border-radius: 4px;
+        color: var(--accent-blue);
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 600;
+        padding: 0.2rem 0.6rem;
+      }
+
+      .notify-toast-action:hover {
+        background: var(--bg-secondary);
+      }
+
+      .notify-close {
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        flex-shrink: 0;
+        font-size: 1.25rem;
+        line-height: 1;
+        padding: 0 0.15rem;
+      }
+
+      .notify-close:hover {
+        color: var(--text-primary);
+      }
+
+      /* ── Modal dialog ── */
+
+      .notify-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        background: rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        transition: opacity var(--transition-speed) ease;
+      }
+
+      .notify-backdrop.is-in {
+        opacity: 1;
+      }
+
+      .notify-dialog {
+        width: min(30rem, 100%);
+        padding: 1.1rem 1.25rem 1rem;
+        border-radius: 8px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        box-shadow: 0 8px 30px var(--shadow-medium);
+      }
+
+      .notify-dialog-header {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+      }
+
+      .notify-dialog-title {
+        flex: 1;
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: var(--text-heading);
+      }
+
+      .notify-dialog-message {
+        margin: 0.6rem 0 0;
+        color: var(--text-primary);
+        overflow-wrap: anywhere;
+      }
+
+      .notify-dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-top: 1.1rem;
+      }
+
+      .notify-btn {
+        border: 1px solid transparent;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 600;
+        padding: 0.45rem 0.9rem;
+      }
+
+      .notify-btn:focus-visible {
+        outline: 2px solid var(--accent-blue);
+        outline-offset: 2px;
+      }
+
+      .notify-btn-quiet {
+        background: var(--bg-secondary);
+        border-color: var(--border-secondary);
+        color: var(--text-primary);
+      }
+
+      .notify-btn-quiet:hover {
+        background: var(--bg-editor-focus);
+      }
+
+      .notify-btn-primary {
+        background: var(--accent-blue);
+        color: #ffffff;
+      }
+
+      .notify-btn-primary:hover {
+        background: var(--accent-blue-hover);
+      }
+
+      .notify-btn-danger {
+        background: var(--notify-error);
+        color: var(--notify-fg-on-accent);
+      }
+
+      .notify-btn-danger:hover {
+        filter: brightness(1.1);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .notify-toast,
+        .notify-backdrop {
+          transition: none;
+        }
+      }
+
       @media print {
         .file-dialog,
+        .notify-stack,
+        .notify-backdrop,
         .current-file {
           display: none !important;
         }

@@ -79,7 +79,7 @@ would break every reference to it.
     not agreed — an editable source view makes markdown a second seat of truth
     and raises which one wins, and where it lives (a tab, a split pane, a mode)
     is the same question 4.3 asks about tabs.
-*   **1.8** *(needs 4.1)* Nothing guards unsaved work. The toolbar says
+*   **1.8** *(unblocked; 4.1 landed)* Nothing guards unsaved work. The toolbar says
     `(edited)` when the document has diverged from the file, and Reload and an
     overwriting Save both act on it now — but the other three ways out of a
     dirty document still throw it away without asking:
@@ -89,10 +89,10 @@ would break every reference to it.
       all, so opening a second file silently discards unsaved edits to the
       first. Note `reloadFile` guards the same call and Open does not, which is
       the inconsistency to fix rather than a design.
-    - **Clear** does confirm, but the wording predates the file API — "remove
-      all content and auto-saved data" — and never mentions the file or whether
-      anything is unsaved. It reads identical whether you are about to lose an
-      untouched welcome document or an hour of work.
+    - **Clear** does confirm, and the dialog is styled and three-button-capable
+      now, but the wording still never mentions the file or whether anything is
+      unsaved. It reads identical whether you are about to lose an untouched
+      welcome document or an hour of work, and it should offer Save.
     - **Closing the tab** does not warn. There is a `beforeunload` handler in
       app.js, but it only flushes the autosave; it never sets `returnValue`, so
       the browser shows nothing. Autosave means the work is usually still there
@@ -100,8 +100,14 @@ would break every reference to it.
       not — a cleared cache, a different browser, a private window.
 
     All three want the same thing: consult the dirty flag, and offer Save /
-    Discard / Cancel rather than a bare yes-no — which is also what Reload's
-    plain `confirm` should become once that exists. Note the flag lives in
+    Discard / Cancel rather than a bare yes-no. `ask()` takes an arbitrary
+    action list and returns the chosen value, so the three-way choice is now
+    just a call — this item is down to wiring, with no mechanism left to build.
+    Reload and the overwrite guard already go through it, but both still offer
+    only Cancel and a destructive action; they want the same third button.
+    `beforeunload` is the one that cannot use it, since the browser will not
+    wait on a Promise — that one still needs `returnValue` set from the dirty
+    flag, and gets the browser's own wording. Note the flag lives in
     file-api.js, which the editable export does not ship, so the exported
     document needs its own answer or an honest absence of one.
 *   **1.9** *(decide with 4.2)* Only two toolbar controls do double duty.
@@ -206,33 +212,20 @@ bar fully on-screen with no visible jitter, confirmed in a browser.)*
 
 ## 4. Interface
 
-*   **4.1** *(unblocks 1.8)* Replace `alert()` and `confirm()` with in-app
-    notifications. There are nine alerts across six files — file-api.js
-    (browse, open, save failures), app.js (clipboard, twice), pdf-export.js,
-    docx-export.js, html-export.js, static-export.js — plus the one `confirm()`
-    behind Clear. Four problems with them, in rough order of how much they
-    matter:
-
-    - They are modal and block the page, which for an export failure is
-      backwards: the error interrupts, and then the document is fine.
-    - They are unstyled OS chrome, so they ignore the theme and look like a
-      browser malfunction rather than part of the app.
-    - They cannot express anything but OK / Cancel, which is why the unsaved-work
-      guards above cannot be built on `confirm()` — those want Save / Discard /
-      Cancel.
-    - Chrome and Firefox both let a user tick "prevent this page from creating
-      additional dialogs", after which every one of them silently does nothing.
-      A save failure would then be completely invisible. Reasonable of the
-      browsers — the mechanism exists because the dialogs were abused — but it
-      means a page cannot rely on `alert` reaching anyone, which together with
-      being unstyleable is why the platform has effectively retired them.
-
-    Wants one small toast/banner module — a message, a severity, an optional set
-    of actions — and every call site converted. Worth doing before the guards
-    above, since those need the three-way choice. It is a new `front/` file, so
-    it needs all three registries (script tag, `SHELL_ASSETS`, and `ASSETS` if
-    exported documents are to report their own export failures — they raise most
-    of these same alerts).
+*(4.1 retired: done and verified — [front/notify.js](front/notify.js) replaces
+every `alert()` and `confirm()` in `front/`. `notify(message, opts)` is a
+non-blocking toast, `ask(message, opts)` a modal returning a Promise of the
+chosen action's value. All fourteen call sites across eight files are converted;
+`tests/notify.test.mjs` scans the sources so one cannot slip back. Confirmed in
+a browser in both themes: the four severities, a three-button dialog, Escape
+resolving to a falsy dismiss rather than a yes, and Clear both cancelled and
+accepted. Two things it changed beyond the swap. Errors do not auto-dismiss,
+because the complaint against `alert()` being suppressible is that a save
+failure must not be invisible, and a four-second toast nobody was looking at is
+the same bug. And toolbar dispatch now awaits each handler in turn: `ask()`
+returns a Promise, so app.js's Clear stops mid-handler, and without the await
+file-api.js's hook would run while the question was still on screen, see a
+document that is not blank yet, and leave the file association behind.)*
 
 *   **4.2** *(unblocks 1.5, 1.9, 6.2)* A menu instead of a button row. The
     toolbar is full: four button groups plus the theme toggle, already
@@ -273,6 +266,31 @@ bar fully on-screen with no visible jitter, confirmed in a browser.)*
     Ctrl+Z, which 1.1 makes unreliable after anything that rewrites
     `editor.innerHTML`. Once undo is trustworthy this is a non-item; until
     then, the first insert is awkward to take back by hand.
+
+*   **4.6** Degrading without the server is a one-way door. `file-api.js` probes
+    `/api/home` once, in an IIFE at load, and on failure disables Open, Save,
+    Reload and Save As — plus the two carets — then returns. Nothing ever
+    re-probes, so a server that comes back is invisible: the buttons stay dead
+    for the life of the page and the only way back is a reload, which the app
+    never suggests. The asymmetry runs both ways, and the other direction is
+    worse for being silent: a server that dies *after* load leaves all four
+    buttons looking live, and the first you hear of it is a failed save.
+
+    There is already a recurring hook to hang this on. `checkDiskChanged` runs
+    on window `focus` and on `visibilitychange` whenever a file is open, which
+    is exactly the moment worth re-checking whether the server is there — and
+    coming back to the tab is what someone does after starting it. Note the
+    dead branch skips `checkDiskChanged` entirely, so a revived server also
+    needs the baseline check it never got.
+
+    Two traps for whoever does it. The disable writes **inline styles** —
+    `disabled`, `opacity`, `cursor` and a replacement `title` — so re-enabling
+    means undoing four properties, and the original title is not saved anywhere:
+    it comes from `TOOLBAR_GROUPS`, so the reverse has to read it back off the
+    spec rather than remember it. Cleaner to make the dead state a class plus
+    `aria-disabled` and let the spec stay the one source of the title. Second,
+    `notify` exists now, so both transitions can say so — the returning one is
+    worth a toast, since nothing else on screen changes.
 
 ## 5. Architecture
 
