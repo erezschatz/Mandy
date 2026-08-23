@@ -270,6 +270,15 @@ export function loadApp() {
         body: { appendChild: noop, removeChild: noop },
         execCommand: (cmd) => commands.push(cmd),
       },
+      // app.js reaches execCommand through execcommand.js's wrapper now. The
+      // recorder stands in for it, so a suite reads the command the module asked
+      // for rather than the normalisation a browser would run afterwards — that
+      // half has its own suite.
+      runCommand: (cmd) => {
+        commands.push(cmd);
+        return true;
+      },
+
       localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
       navigator: { clipboard: {}, platform: "MacIntel" },
       onToolbarAction: noop,

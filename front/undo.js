@@ -208,6 +208,17 @@ function undoReset() {
   undoLastTime = 0;
 }
 
+/**
+ * Bring the current snapshot back in line with the document, without pushing a
+ * step. For an edit made *after* the `input` event that announced it — which is
+ * execcommand.js's normalisation and nothing else so far. Dispatching a second
+ * input event would work too and would be wrong: it would make one action cost
+ * two Ctrl+Z, the first of which would appear to do nothing.
+ */
+function undoRefresh() {
+  undoCurrent = undoSnapshot();
+}
+
 function undo() {
   if (!undoStack.length) return false;
   redoStack.push(undoCurrent || undoSnapshot());

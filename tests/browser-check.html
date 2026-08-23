@@ -1,0 +1,194 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Marky execCommand browser check</title>
+
+<!--
+  A manual harness for the half tests/execcommand.test.mjs cannot reach.
+
+  The Deno suite has no editing engine, so it can only assert what Marky does
+  with execCommand's output, never what that output is. This page runs the real
+  commands in a real contenteditable and reports the markup each engine
+  produces, before and after front/execcommand.js normalises it.
+
+  It exists because execCommand's spec is dead: nothing obliges two engines to
+  agree, so the only way to know what they do is to ask them. See Decision D4 in
+  CHANGELOG.md and TODO 5.1.
+
+  Serve the repo and open this in each browser you care about. It prints a
+  report and, if it was loaded over HTTP from the check server, posts a copy
+  back so a headless run can collect it.
+-->
+
+<style>
+  body { font: 14px/1.5 ui-monospace, monospace; margin: 2rem; }
+  #editor { position: absolute; left: -9999px; }
+  pre { white-space: pre-wrap; }
+  .bad { color: #b00; }
+</style>
+
+<div id="editor" contenteditable="true"></div>
+<pre id="report">running…</pre>
+
+<script src="/execcommand.js"></script>
+<script>
+  // Each case sets the editor up, selects something, runs a command, and
+  // reports the markup. `select` is given the editor and returns a Range.
+  const CASES = [
+    {
+      name: "bold",
+      html: "<p>one two</p>",
+      select: (ed) => wordRange(ed.querySelector("p").firstChild, 0, 3),
+      run: () => runCommand("bold"),
+      // <b> and <strong> both serialise to **bold**, so either is fine. A
+      // styled span is not: Turndown has no rule for it and drops it.
+      ok: (out) => /<(b|strong)>/.test(out) && !/style=/.test(out),
+    },
+    {
+      name: "italic",
+      html: "<p>one two</p>",
+      select: (ed) => wordRange(ed.querySelector("p").firstChild, 0, 3),
+      run: () => runCommand("italic"),
+      ok: (out) => /<(i|em)>/.test(out) && !/style=/.test(out),
+    },
+    {
+      name: "strikeThrough",
+      html: "<p>one two</p>",
+      select: (ed) => wordRange(ed.querySelector("p").firstChild, 0, 3),
+      run: () => runCommand("strikeThrough"),
+      // Planning data for TODO 1.4 rather than a current guarantee.
+      ok: (out) => /<(s|strike|del)>/.test(out) && !/style=/.test(out),
+    },
+    {
+      name: "formatBlock h1",
+      html: "<p>one two</p>",
+      select: (ed) => wordRange(ed.querySelector("p").firstChild, 0, 3),
+      run: () => runCommand("formatBlock", "<h1>"),
+      ok: (out) => /^<h1>/.test(out.trim()),
+    },
+    {
+      name: "formatBlock h1 inside a list item",
+      html: "<ul><li>one two</li></ul>",
+      select: (ed) => wordRange(ed.querySelector("li").firstChild, 0, 3),
+      run: () => runCommand("formatBlock", "<h1>"),
+      // No assertion: this is the one nobody has decided the right answer for.
+      ok: null,
+    },
+    {
+      name: "insertUnorderedList",
+      html: "<p>one</p>",
+      select: (ed) => wordRange(ed.querySelector("p").firstChild, 0, 3),
+      run: () => runCommand("insertUnorderedList"),
+      ok: (out) => /<ul>/.test(out),
+    },
+    {
+      name: "indent inside a list (the nesting one)",
+      html: "<ul><li>one</li><li>two</li></ul>",
+      select: (ed) => wordRange(ed.querySelectorAll("li")[1].firstChild, 0, 3),
+      run: () => runCommand("indent"),
+      // The sublist must end up INSIDE the previous <li>. Beside it serialises
+      // as a flat list — Turndown has no indent to give it.
+      ok: (out) => /<li>one<(ul|ol)>/.test(out.replace(/\s+/g, "")),
+    },
+    {
+      name: "outdent a nested item",
+      html: "<ul><li>one<ul><li>two</li></ul></li></ul>",
+      select: (ed) => wordRange(ed.querySelectorAll("li")[1].firstChild, 0, 3),
+      run: () => runCommand("outdent"),
+      ok: null,
+    },
+    {
+      name: "indent outside a list",
+      html: "<p>one</p>",
+      select: (ed) => wordRange(ed.querySelector("p").firstChild, 0, 3),
+      run: () => runCommand("indent"),
+      // Some engines answer with <blockquote>, which is a different document
+      // from the one the user asked for. app.js guards Tab to lists only, so
+      // this is here to confirm the guard is still needed.
+      ok: null,
+    },
+    {
+      name: "insertHorizontalRule",
+      html: "<p>one</p>",
+      select: (ed) => wordRange(ed.querySelector("p").firstChild, 3, 3),
+      run: () => runCommand("insertHorizontalRule"),
+      ok: (out) => /<hr>/.test(out),
+    },
+    {
+      name: "createLink",
+      html: "<p>one two</p>",
+      select: (ed) => wordRange(ed.querySelector("p").firstChild, 0, 3),
+      run: () => runCommand("createLink", "https://example.com"),
+      ok: (out) => /<a [^>]*href="https:\/\/example\.com"/.test(out),
+    },
+  ];
+
+  function wordRange(textNode, start, end) {
+    const range = document.createRange();
+    range.setStart(textNode, start);
+    range.setEnd(textNode, end);
+    return range;
+  }
+
+  function runCase(testCase) {
+    editor.innerHTML = testCase.html;
+    editor.focus();
+
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(testCase.select(editor));
+
+    // Raw first: run the command with normalisation suppressed, so the report
+    // shows what the engine actually produced as well as what we make of it.
+    const before = withoutNormalising(testCase.run);
+    const rawOutput = editor.innerHTML;
+
+    normaliseEditorMarkup(editor);
+    const normalised = editor.innerHTML;
+
+    return {
+      name: testCase.name,
+      raw: rawOutput,
+      normalised,
+      changed: rawOutput !== normalised,
+      verdict: testCase.ok === null
+        ? "—"
+        : testCase.ok(normalised) ? "ok" : "PROBLEM",
+      returned: before,
+    };
+  }
+
+  // runCommand normalises on the way out, which is the point of it — but the
+  // report is more useful showing both, so this borrows the raw path for one
+  // call. Restored immediately: nothing else on the page may see it missing.
+  function withoutNormalising(fn) {
+    const real = window.normaliseEditorMarkup;
+    window.normaliseEditorMarkup = () => false;
+    try {
+      return fn();
+    } finally {
+      window.normaliseEditorMarkup = real;
+    }
+  }
+
+  const results = CASES.map((testCase) => {
+    try {
+      return runCase(testCase);
+    } catch (error) {
+      return { name: testCase.name, verdict: "THREW", raw: String(error) };
+    }
+  });
+
+  const report = {
+    agent: navigator.userAgent,
+    results,
+    problems: results.filter((r) => r.verdict !== "ok" && r.verdict !== "—").length,
+  };
+
+  document.getElementById("report").textContent = JSON.stringify(report, null, 2);
+  document.title = `check: ${report.problems} problems`;
+
+  // Only meaningful when served by the check server; harmless from file://.
+  try {
+    fetch("/report", { method: "POST", body: JSON.stringify(report) });
+  } catch {}
+</script>

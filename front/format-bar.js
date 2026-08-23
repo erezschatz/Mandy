@@ -117,12 +117,91 @@ function blockAncestor(node) {
   return element && element !== editor ? element : null;
 }
 
-// Top-level blocks the selection touches, for the one format with no
-// execCommand equivalent.
+// The blocks a selection actually touches — the innermost one around each end
+// and everything between, not `editor.children`.
+//
+// Top-level children were wrong in exactly one way, and it was destructive: a
+// selection inside a single bullet reported the whole `<ul>`, so Code replaced
+// the list with one `<pre>` and ran every item together. The innermost block is
+// the `<li>` the text is in, which is what the caret is actually sitting in.
+//
+// Walked rather than queried because the check has to run under the DOM stub
+// too, where querySelectorAll answers with nothing.
 function blocksInRange(range) {
-  return Array.from(editor.children).filter((child) =>
-    range.intersectsNode(child),
+  const hits = [];
+  (function walk(node) {
+    for (const child of node.children || []) {
+      if (child.nodeType !== 1) continue;
+      if (BLOCK_TAGS.includes(child.tagName) && range.intersectsNode(child)) {
+        hits.push(child);
+      }
+      walk(child);
+    }
+  })(editor);
+
+  // A nested list reports both `<li>`s and only the inner one holds the text.
+  return hits.filter(
+    (el) => !hits.some((other) => other !== el && el.contains(other)),
   );
+}
+
+// Whether Code should produce a block rather than an inline span.
+//
+// Three cases, and the middle one is the reason this exists: selecting two
+// words in a paragraph and pressing Code used to turn the entire paragraph into
+// a fenced block. Markdown has two different constructs here and the button
+// only ever reached one of them.
+function coversWholeBlocks(range, blocks) {
+  // Across a block boundary there is no inline answer — markdown has no code
+  // span that spans two paragraphs — so the block is the only thing it can be.
+  if (blocks.length > 1) return true;
+  // A caret is not a partial selection. Every other block format acts on the
+  // whole block from a bare caret, and Code should not be the one that makes
+  // you select the line first.
+  if (range.collapsed) return true;
+  return range.toString().trim() === (blocks[0].textContent || "").trim();
+}
+
+// The inline `<code>` the selection sits in, if any. A `<code>` inside a `<pre>`
+// is the code block's own and belongs to the other branch.
+function inlineCodeAt(range) {
+  const node = range.commonAncestorContainer;
+  const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  const code = element && element.closest && element.closest("code");
+  if (!code || !editor.contains(code)) return null;
+  return code.closest("pre") ? null : code;
+}
+
+function toggleInlineCode(range) {
+  const existing = inlineCodeAt(range);
+  if (existing) {
+    existing.parentNode.replaceChild(
+      document.createTextNode(existing.textContent),
+      existing,
+    );
+    return;
+  }
+
+  const text = range.toString();
+  if (!text.trim()) return;
+
+  // textContent, not the extracted nodes: markdown has no way to express bold
+  // inside a code span, so anything carried in would be silently dropped by
+  // Turndown on the next save. Dropping it here at least happens on screen.
+  const code = document.createElement("code");
+  code.textContent = text;
+  range.deleteContents();
+  range.insertNode(code);
+
+  // Leave the new span selected rather than collapsing the caret to wherever
+  // deleteContents left it, so pressing Code twice is a toggle.
+  const selection = window.getSelection();
+  if (selection.removeAllRanges && document.createRange) {
+    const next = document.createRange();
+    next.selectNodeContents(code);
+    selection.removeAllRanges();
+    selection.addRange(next);
+  }
 }
 
 function saveSoon() {
@@ -131,9 +210,13 @@ function saveSoon() {
   }, 100);
 }
 
-// Hand-rolled because there is no execCommand for code blocks. Multiple
-// selected blocks collapse into one fenced block, joined by newlines.
-function toggleCodeBlock(range) {
+// Hand-rolled because there is no execCommand for either kind of code.
+//
+// Which kind is the whole decision, and it is made from the selection rather
+// than from a second button: a partial selection means an inline span, whole
+// blocks mean a fenced block. Markdown draws that line too, so a button that
+// only reached one of them could not write half of what the format offers.
+function toggleCode(range) {
   const block = blockAncestor(range.commonAncestorContainer);
   const pre = block && block.closest("pre");
 
@@ -145,7 +228,23 @@ function toggleCodeBlock(range) {
   }
 
   const blocks = blocksInRange(range);
-  if (!blocks.length) return;
+  if (!blocks.length) return toggleInlineCode(range);
+
+  // A <pre> can only stand in for a block that is a direct child of the editor.
+  // Swapping one in for an <li> is invalid markup, and the honest version — a
+  // fenced block nested inside the list item — is a separate feature with a
+  // save-fidelity question behind it (TODO 1.1).
+  const atTopLevel = blocks.every((b) => b.parentNode === editor);
+
+  if (!coversWholeBlocks(range, blocks) || !atTopLevel) {
+    // Inline is only safe within a single block. Across two, deleteContents
+    // would pull the blocks themselves apart — so selecting three bullets and
+    // pressing Code would delete the list to make a code span markdown cannot
+    // write anyway. Nothing to do, and better said than done silently.
+    if (blocks.length === 1) return toggleInlineCode(range);
+    notify("Select inside a single block to format it as code.", { severity: "info" });
+    return;
+  }
 
   const preElement = document.createElement("pre");
   const codeElement = document.createElement("code");
@@ -165,25 +264,38 @@ function applyFormat(format) {
 
   switch (format) {
     case "bold":
-      document.execCommand("bold", false, null);
+      runCommand("bold");
       break;
     case "italic":
-      document.execCommand("italic", false, null);
+      runCommand("italic");
       break;
     // The list commands toggle: run inside an existing list, they unwrap it.
     case "ul":
-      document.execCommand("insertUnorderedList", false, null);
+      runCommand("insertUnorderedList");
       break;
     case "ol":
-      document.execCommand("insertOrderedList", false, null);
+      runCommand("insertOrderedList");
       break;
     case "code":
-      toggleCodeBlock(range);
+      toggleCode(range);
+      // The one branch that raises no input event of its own. Every execCommand
+      // above raises one, and autosave, the dirty flag, the outline and the undo
+      // stack all hang off exactly that — so before this a code block was
+      // invisible to Ctrl+Z and left the toolbar claiming the document still
+      // matched the file on disk.
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
       break;
     // p, h1, h2, h3. formatBlock spans a multi-block selection natively and
     // works inside the editable root rather than on it.
+    //
+    // These act on the whole block even from a partial selection, by design
+    // rather than by omission — there is no such thing as half a heading, and
+    // every editor people already use behaves this way. Disabling them on a
+    // partial selection was the alternative and would read as broken. Code is
+    // the only format with a real inline counterpart, which is why it is the
+    // only one that reads the selection's extent.
     default:
-      document.execCommand("formatBlock", false, `<${format}>`);
+      runCommand("formatBlock", `<${format}>`);
   }
 
   // Bold and italic leave the bar up so they can be combined on one selection.

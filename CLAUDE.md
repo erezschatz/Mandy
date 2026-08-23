@@ -34,7 +34,11 @@ They cover the invariants that fail *silently* rather than loudly:
   `visibleItems` directly, since the real spec strands no separator today.
 - **format-bar** — formatting never replaces `#editor`. Regression cover for a
   bug that detached the editable root and left the app looking unstyled and
-  dead until reload.
+  dead until reload. Also every branch of Code, which is the only format that
+  reads the selection's *extent*: partial versus whole-block versus bare caret,
+  and the three ways a list can be involved. Its stub ranges report intersecting
+  the `<ul>` as well as the `<li>`, the way a real range does — a range that
+  claimed only the `<li>` would quietly excuse the bug the test exists for.
 - **self-reproduce** — an exported document re-exports without touching the
   network, and hands its successor byte-identical CSS and JS.
 - **static-export** / **file-path** — the document-only export's contents, and
@@ -56,6 +60,12 @@ They cover the invariants that fail *silently* rather than loudly:
   resolve to the same thing as agreeing with it. The source scan is the half
   that matters: an `alert()` looks fine from inside the app right up until the
   user has silenced dialogs and their save failure disappears.
+- **execcommand** — the normalisation between execCommand and the file, and the
+  source scan that stops a new call site skipping it. It deliberately does not
+  test what any browser *produces*: the stub has no editing engine, so a suite
+  can only assert what we do with the output. That half is
+  [tests/browser-check.html](tests/browser-check.html), which is not part of
+  `npm test` — see below.
 - **undo** — the coalescing rules, the redo branch, and above all that history
   does not survive `undoReset()`. Also counts the `editor.innerHTML` assignment
   sites, because the way this regresses is not a broken stack but a new
@@ -68,6 +78,26 @@ They cover the invariants that fail *silently* rather than loudly:
   whether a block is a blank line or an inline is a real one. Only the predicate
   — the traversal around it needs an HTML parser the stub does not have, which
   is why the decision lives in one pure function.
+
+### The browser check
+
+[tests/browser-check.html](tests/browser-check.html) is not part of `npm test`
+and cannot be: it needs a real editing engine. Serve the repo, open it in each
+browser, and it runs the real execCommand cases in a real `contenteditable`,
+reporting the markup each engine produces before and after
+`normaliseEditorMarkup`. Loaded over HTTP it also POSTs the report to `/report`,
+which is how a headless run collects it.
+
+**It is the only thing in the repo that can tell measurement from folklore.**
+Every engine-specific claim in `front/` and in the metafiles either came from
+this page or is a guess — and the first run killed two long-standing ones: that
+`styleWithCSS` was needed to stop styled spans (neither engine emits them for
+bold or italic once it is off) and that the list-nesting bug was Chrome's (both
+engines do it). It also found a live bug, where `formatBlock` in a bullet
+destroyed the list in Chrome.
+
+Re-run it when adding a format, and when a browser does something surprising.
+TODO 5.1 records what it currently measures.
 
 ## Architecture
 
@@ -95,6 +125,10 @@ are no imports. Consequences that bite:
   `app.js` calls at top level and on every save;
   `app.js` defines `editor`, `markdownToHtml`, `htmlToMarkdown`;
   `undo.js` binds to `editor` and so must follow `app.js`;
+  `execcommand.js` defines `runCommand`, which `app.js` and `format-bar.js` both
+  call — at click time rather than at load, so it only has to be *present* in
+  the bundle, but it reads `editor` and calls `undoRefresh` and so sits after
+  both;
   `outline.js` defines `outlineIsOpen`, `outlineEntries` and `buildNestedList`,
   which `static-export.js` calls at export time;
   `renderers.js` defines `renderMermaidDiagrams` / `renderLatex`;
@@ -429,9 +463,9 @@ There are two, and they are different deliverables:
 - **Editable** ([html-export.js](front/html-export.js)) — bundles the editor
   *with* the document so recipients can edit in-browser and send it back.
 
-**Exported documents are self-reproducing.** They carry the whole export set —
-HTML, PDF, DOCX and Editable — so the collaboration chain survives more than one
-hop. The trick is that an exported file has no origin to fetch from but is
+**Exported documents are self-reproducing.** They carry the export set a
+document can travel on in — markdown, HTML and Editable — so the collaboration
+chain survives more than one hop. The trick is that an exported file has no origin to fetch from but is
 already carrying everything inline, so both export modules read the document
 itself when it can: `static-export.js` takes the stylesheet from
 `<style id="app-style">`, and `html-export.js` takes CSS *and* the whole bundle
@@ -439,8 +473,12 @@ from `<style id="app-style">` + `<script id="app-script">`, falling back to
 `fetch` only when those are absent (i.e. when running in the app). Rename either
 id and re-export silently degrades to a fetch of nothing.
 
-Two modules are deliberately excluded from `ASSETS`, both because the thing they
-drive does not exist in an exported document:
+**The exported document is a nerfed Marky, not Marky.** What ships is an editable
+*document*; the application around it is the means, not the deliverable. Four
+modules are deliberately excluded from `ASSETS`, for two different reasons.
+
+The first two are excluded because the thing they drive does not exist in an
+exported document:
 
 - `file-api.js` — it drives the server-backed open/save, and an exported
   document has no server. It falls back to blob download instead, which is why
@@ -450,6 +488,20 @@ drive does not exist in an exported document:
   renders for the `app` variant. Exported documents follow the reader's OS
   preference via the inline `THEME_SCRIPT` instead.
 
+The other two are excluded because the formats they produce are dead ends:
+
+- `pdf-export.js` and `docx-export.js` — nobody edits a PDF or a Word file and
+  sends it back, so neither format extends the chain the editable export exists
+  to keep going. They were 12% of the bundle inlined into every exported copy to
+  produce artifacts that can never be exported *from*. Their `export-pdf` /
+  `export-docx` items are `variants: ["app"]` for the same reason, and the two
+  halves have to move together: drop the scripts alone and the items become dead
+  controls, drop the items alone and the bundle carries dead weight. The toolbar
+  suite catches the first, the self-reproduce suite the second.
+
+  `ensureHtml2Pdf` and `ensureDocx` stay in `lazy-load.js`, which is a shared
+  file with no variants — unreachable in an export rather than absent from it.
+
 `outline.js` *is* in `ASSETS` — the sidebar needs no server — but an exported
 document opens with it closed regardless of the author's stored preference, for
 the same reason it ignores the author's theme: it is the reader's copy.
@@ -458,6 +510,47 @@ Both files build `</script>` from a constant rather than writing it literally,
 for the reason documented at the top of `html-export.js`. They use *different*
 constant names (`CLOSE` vs `DOC_CLOSE`) because top-level `const`s collide in
 the shared global scope — see the load-order section above.
+
+### execCommand
+
+Eight of the nine formats, plus paste and Tab-indent, go through
+`document.execCommand`. [execcommand.js](front/execcommand.js) is the only file
+allowed to call it — `runCommand(command, value)` is the door, and the
+`execcommand` suite scans `front/` to keep it the only one, because the way this
+regresses is not a broken fix but a new call site that never reaches it.
+
+Decision D4 in [CHANGELOG.md](CHANGELOG.md) is why execCommand stays rather than
+being reimplemented, and carries the boundary rule for new formats. What the code
+does:
+
+- **`styleWithCSS` is turned off once, at load.** Its default was never specified
+  and is per-browser. Turndown has no rule for `<span style="font-weight:bold">`,
+  so it drops the span and keeps the text — bold would vanish on save with
+  nothing wrong on screen until the file was reopened. This one line is what
+  actually closes that; the retagging below is a backstop for pasted markup.
+- **`normaliseEditorMarkup` fixes what markdown cannot absorb, and only that.**
+  Most vendor disagreement never reaches the file: `<b>` and `<strong>` are both
+  `**bold**`. What does reach it is styled spans and `<font>`, sublists placed
+  beside their item instead of inside it, headings or paragraphs wrapped around a
+  list, an `<li>` nested directly in an `<li>`, and Chrome's `id="null"` on a
+  rule.
+- **Retagging moves the children, it does not copy the text.** A selection points
+  at a text node; rebuilding the text would drop the caret on every command that
+  needed normalising.
+- **Four subtrees are never touched** — `pre`, `code`, `.mermaid-wrapper` and
+  `mjx-container`. The last two hold the only copy of their own source, and
+  rewriting one breaks the round-trip to markdown irrecoverably with the document
+  still looking right on screen.
+- **It reports whether it changed anything, and that drives `undoRefresh()`.**
+  execCommand dispatches `input` synchronously, so the undo stack snapshotted the
+  un-normalised document before `runCommand` got to fix it. Refreshing corrects
+  that snapshot in place. Dispatching a second `input` would work and would be
+  wrong: one action would cost two Ctrl+Z, the first appearing to do nothing.
+
+Three divergences survive it, all measured rather than assumed, all in TODO 5.1.
+The one to know about is Firefox merging a bullet into the item above on outdent
+— it cannot be normalised, because that markup is indistinguishable from a
+deliberate hard break in a list item.
 
 ### The menu bar
 
@@ -551,12 +644,13 @@ Six things that are decisions rather than details:
   the checkmark from that attribute. Every item reserves the checkmark's gutter
   so the labels line up in a column.
 
-Each item declares `variants`. The only real split is the file group: the app
+Each item declares `variants`. There are three splits. The file group: the app
 talks to the file server (`open-file` / `save-file` / `reload-file` /
 `save-as-file`), while an exported document has none and falls back to
-`upload-md` / `download-md`. Everything else is shared, except the theme toggle —
-exported documents follow the reader's OS preference rather than inheriting the
-author's stored one.
+`upload-md` / `download-md`. The theme toggle, since exported documents follow
+the reader's OS preference rather than inheriting the author's stored one. And
+PDF / DOCX, which are app-only because the formats are terminal — see the two
+exports section above.
 
 The variant is read from `#editor[data-exported]`, which only exported documents
 carry. `app.js` strips that attribute on `window load`, long after `toolbar.js`
@@ -571,6 +665,62 @@ Keyboard: arrows move along the bar and within a panel, both wrapping; Escape
 closes and hands focus back to the trigger, and is a no-op when no menu is open
 so a `notify.js` dialog still gets it. Hovering switches menus only while one is
 already open — hovering a closed bar must not spring menus at you.
+
+### The format bar
+
+`applyFormat` in [format-bar.js](front/format-bar.js) is the one entry point —
+the bar's own buttons and the Format menu both go through it, so the menu is a
+second way to reach nine formats rather than a second implementation of them.
+Eight of the nine are `execCommand` calls. Code is the exception, and everything
+interesting here is about Code.
+
+**Code is the only format with both a block and an inline spelling**, and
+markdown draws that line as sharply as HTML does: ` ``` ` fences a block, single
+backticks span text inside a line. There is no `execCommand` for either, so the
+choice has to be made here — and it is made from the selection rather than from a
+second button:
+
+- **A partial selection** inside one block gives inline `<code>`. This is the
+  common case and the button used to get it wrong, turning the whole paragraph
+  into a fenced block over two selected words.
+- **A whole block, or several** gives `<pre><code>`. Several collapse into one
+  fenced block joined by newlines, because there is no inline construct that
+  spans a block boundary to offer instead.
+- **A bare caret** counts as the whole block. Every other block format acts on
+  the whole block from a caret, and Code being the one that made you select the
+  line first would read as broken rather than as precise.
+
+**`blocksInRange` answers with the innermost blocks, not `editor.children`.**
+That distinction is load-bearing and it was destructive to get wrong: a selection
+inside one bullet reported the whole `<ul>`, so Code replaced the list with a
+single `<pre>` and ran every item together. The innermost block is the `<li>` the
+text is actually in. Nested lists report both `<li>`s, so the result is filtered
+to those containing none of the others.
+
+**A `<pre>` only ever stands in for a direct child of `#editor`.** Putting one
+where an `<li>` was is invalid markup, and the honest version — a fence nested
+inside the list item — is a separate feature with a save-fidelity question behind
+it. So a whole bullet falls back to inline, and a selection covering several
+bullets declines with a `notify` rather than falling back: inline across two
+blocks would have `deleteContents` pull the blocks themselves apart to build a
+code span markdown cannot write anyway.
+
+**p / h1 / h2 / h3 act on the whole block from a partial selection, by design.**
+There is no such thing as half a heading. The alternative on the table was
+disabling them unless the selection covered a whole line, which would have read
+as a broken button; `formatBlock` already behaves this way and so does every
+editor people arrive from. Code is the only one that reads the extent, because
+it is the only one with somewhere else to go.
+
+**The Code branch dispatches a synthetic `input` event.** Every `execCommand`
+raises one for free, and autosave, the dirty flag, the outline and the undo stack
+all hang off exactly that — so the hand-rolled branch was invisible to Ctrl+Z and
+left the toolbar claiming the document still matched the file on disk. Same
+convention as `insertToc` and the undo section below.
+
+`updateActiveButtons` still reads only `selection.anchorNode`, so the active
+states reflect where the selection started rather than the whole of it. That is
+TODO 3.1 and is untouched by any of the above.
 
 ### The outline
 

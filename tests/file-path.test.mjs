@@ -568,7 +568,7 @@ export default async function run(check) {
   check("and the copy becomes the open file", r.pathNow() === "/home/erez/notes/copy.md");
   confirmAnswer = true;
 
-  // --- the unsaved-work guard (TODO 1.7) -----------------------------------
+  // --- the unsaved-work guard ----------------------------------------------
   //
   // Three ways out of a dirty document used to throw it away without asking, or
   // ask without saying what was at stake. They go through one guard now, and

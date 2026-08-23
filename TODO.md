@@ -19,21 +19,22 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
 
 ## 1. Editing
 
-*   **1.1** Block vs inline formatting is not distinguished. Selecting part of
-    a line and pressing Code turns the whole line into a code block. A partial
-    selection should produce inline `<code>`; only a whole-line selection
-    should produce a block. P/H1/H2/H3 are inherently block-level, so decide:
-    act on the whole line by design, or disable them for partial selections.
-*   **1.2** `toggleCodeBlock` operates on top-level editor children, so a
-    selection inside a bullet replaces the entire `<ul>` with one `<pre>` and
-    runs all the items together. (format-bar.js, `blocksInRange`)
+*   **1.1** *(needs a browser)* A fenced code block inside a list item. Code now
+    declines rather than damaging anything — a whole bullet gets inline
+    `<code>`, several bullets get a toast — but the construct markdown actually
+    offers there, a fence indented inside the `<li>`, is still unreachable. It
+    is left undone because it is a save-fidelity question rather than a DOM one:
+    `<li><pre><code>` has to survive Turndown and markdown-it in both
+    directions, and nobody has watched it do so. Check that round-trip first;
+    the editing part is a few lines either way.
+
 *   **1.3** *(undecided)* Hybrid mode: typing `#` at the start of
     a line turns that line into a heading, and the same for `-`, `>` and a
     ` ``` ` fence. Suggested, not agreed — it commits the editor to reading
     keystrokes as markdown everywhere, which is a different product from a
     WYSIWYG surface with a format bar, and it needs an escape hatch for
     someone who wants a literal `#`.
-*   **1.4** *(tables also need 2.3, or 1.6 instead)*
+*   **1.4** *(tables also need 2.3, or 1.6 instead; read D4 first)*
     The UI only supports some of the markup MD offers, and not even all of what
     the README advertises. The format bar has p, h1, h2, h3, bold, italic, ul,
     ol, code, and the Format menu now reaches the same nine — which is more
@@ -48,6 +49,16 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
     remove a row or column once markdown-it has rendered the `<table>`.
     Confirmed by hand: editing this very file after `hr: "---"` landed, trying
     to delete the now-obsolete row it made fixed above.
+
+    Two things the browser check already settled for this item. **Strikethrough
+    has no Turndown rule** — it lives in `turndown-plugin-gfm`, which this
+    project does not carry — so `<del>`/`<s>`/`<strike>` are dropped on save
+    today, and a strikethrough control needs a `~~` rule in app.js before it
+    needs a button. And of the controls on the list that *do* have an
+    execCommand, `createLink`, `insertHorizontalRule` and `strikeThrough` all
+    produce identical markup in both engines, so per D4's boundary rule they can
+    use it. Tables, inline code and indent/outdent get written by hand either
+    way.
 *   **1.5** Links are done except for three loose
     ends. Ctrl/Cmd+click follows a link and jumps to `#anchor` headings,
     `anchorSlug` / `headingAnchors` in app.js resolve slugs live, and
@@ -215,7 +226,7 @@ they matter:
 
 ## 4. Interface
 
-*   **4.1** *(needs 4.3)* Tabbed view — several documents open at once, one per
+*   **4.1** Tabbed view — several documents open at once, one per
     tab. The guard it was waiting on has landed, so what is left is the document
     model.
 
@@ -268,34 +279,47 @@ they matter:
     the coupling is documented rather than fixed. (`documentBody` in
     static-export.js, gated on `outlineIsOpen`.)
 
-*   **4.3** *(unblocks 4.1)* The editable export should be a nerfed Marky, not
-    Marky. Settled as a design position: what gets exported is an editable
-    *document*, and the application around it is a means to that rather than the
-    thing being shipped. Concretely it should carry Export to markdown, HTML and
-    Editable HTML, and nothing else — PDF and DOCX are dead ends in the
-    collaboration chain, since nobody edits a PDF and sends it back, so they
-    contribute nothing that justifies their weight in every exported file.
-
-    That drops `pdf-export.js` and `docx-export.js` from `ASSETS` in
-    html-export.js, removes their items from the `export` variant in
-    `TOOLBAR_MENUS`, and shrinks every exported document. The self-reproduce
-    suite's asset count and CLAUDE.md's "carries the whole export set" claim both
-    need narrowing in the same commit — exports still self-reproduce, just over
-    the three formats that can actually be reproduced from.
-
-    It is listed as unblocking 4.1 because it settles the question tabs would
-    otherwise have to answer: tabs are app-only, and the export never has to
-    have a story about them. 5.2 would streamline how the split is expressed;
-    this does not wait on it.
-
 ## 5. Architecture
 
-*   **5.1** *(affects 1.1, 1.2)* execCommand deprecation/inconsistency.
-    Now load-bearing rather than incidental: after the format-bar fix, headings
-    go through `formatBlock` and lists through
-    `insertUnorderedList`/`insertOrderedList`. Those produce slightly different
-    markup across engines, so this now affects core formatting and needs a
-    cross-browser check.
+*   **5.1** Three execCommand divergences that survive normalisation. The
+    decision is settled — D4 in [CHANGELOG.md](CHANGELOG.md): execCommand stays,
+    [front/execcommand.js](front/execcommand.js) normalises what it leaves
+    behind, and new formats follow the boundary rule recorded there. What is
+    left here is the residue that normalisation cannot reach, all three measured
+    in Chrome 139 and Firefox 154 by
+    [tests/browser-check.html](tests/browser-check.html):
+
+    - **Firefox loses a bullet on outdent.** Shift+Tab on a nested item gives
+      `<li>one<br>two</li>` — merged into the item above — where Chrome gives two
+      siblings. This is the one with teeth: it is reachable from a shortcut the
+      app binds, and it silently costs the user a list item. It cannot be
+      normalised, because that markup is indistinguishable from a deliberate
+      hard break inside a list item, so it needs a real fix — most likely doing
+      the outdent by hand for the nested case rather than asking for it.
+    - **A heading inside a list item should be a no-op, and currently is only in
+      Chrome.** Chrome wrapped the whole list in the heading, which was
+      destructive and is now unwrapped — so the command does nothing there.
+      Firefox puts the `<h1>` inside the `<li>`, which is what was literally
+      asked for and does round-trip through markdown.
+
+      Settled: **the no-op is the wanted behaviour, in both engines.** A heading
+      inside a bullet is expressible but it is not something the editor should
+      offer a way to make by accident, and "less havoc than Chrome" is not the
+      same as right. So the fix is to refuse it in `applyFormat` — where the
+      selection still exists, unlike in `normaliseEditorMarkup` — rather than to
+      teach Chrome the Firefox behaviour. Deferred to 1.4, since that is when
+      block formatting gets looked at properly and the refusal wants to be
+      consistent with whatever the other block controls do about lists.
+    - **`indent` outside a list produces a `<blockquote>`**, with inline styles
+      in Chrome and without in Firefox. Not reachable today: app.js guards Tab to
+      lists only. Recorded because the check confirms that guard is still
+      earning its place, and because 1.4's blockquote control will meet it.
+
+    Re-run the check page when adding a format, or when a browser does something
+    surprising. It is the only thing in the repo that can tell measurement from
+    folklore — the Deno suite has no editing engine, and the first run of this
+    page killed two long-standing beliefs about which engine did what.
+
 *   **5.2** *(subsumes 5.3)* No module system. Every file in front/ is a plain
     `<script>`, so every top-level `const` is a shared global and collisions
     are real bugs, not hypotheticals (`CLOSE` vs `DOC_CLOSE`, `saveFileAs` vs

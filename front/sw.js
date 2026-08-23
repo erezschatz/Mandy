@@ -8,7 +8,7 @@
 //                  and they are the heavy ones worth never re-fetching.
 //   /api/*       → never touched. Those are live file reads and writes.
 
-const VERSION = "v1.19";
+const VERSION = "v1.20";
 const SHELL_CACHE = `marky-shell-${VERSION}`;
 const RUNTIME_CACHE = `marky-runtime-${VERSION}`;
 
@@ -24,6 +24,7 @@ const SHELL_ASSETS = [
   "/markdown-style.js",
   "/app.js",
   "/undo.js",
+  "/execcommand.js",
   "/outline.js",
   "/renderers.js",
   "/pdf-export.js",

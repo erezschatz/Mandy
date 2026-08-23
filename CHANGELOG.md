@@ -365,6 +365,126 @@ inline script before the stylesheet is read. The theme toggle gained a tooltip
 that moves with the theme, being the only control left in the bar that is not a
 word.
 
+## 2026-08-23 — One door for execCommand, and a browser check behind it
+
+[front/execcommand.js](front/execcommand.js) arrived: `runCommand` is now the
+only place in `front/` that calls `document.execCommand`, and a source scan in
+the new `execcommand` suite keeps it that way. It sets `styleWithCSS` off once
+at load, runs the command, and normalises what the engine left behind.
+
+`styleWithCSS` had never been set. Its default was never specified and is
+per-browser, so which of tags-or-styled-spans Marky got was whatever the engine
+felt like — and Turndown has no rule for `<span style="font-weight:bold">`, so it
+drops the span and keeps the text. Bold would have disappeared on save with
+nothing wrong on screen until the file was reopened.
+
+The normalisation covers what markdown cannot absorb, which is a shorter list
+than it sounds: `<b>` and `<strong>` are both `**bold**`, so most of what the
+engines disagree about never reaches the file. What does: styled spans and
+`<font>` retagged to `<strong>`/`<em>`/`<del>` or unwrapped, sublists moved
+inside the item they belong to, headings and paragraphs unwrapped from around a
+list, an `<li>` nested in an `<li>` made its sibling, and Chrome's `id="null"`
+stripped off a rule. Mermaid, MathJax, `<pre>` and `<code>` subtrees are never
+touched — each holds the only copy of its own source.
+
+`undoRefresh()` in undo.js is new and exists for one caller. execCommand
+dispatches `input` synchronously, so the undo stack has already snapshotted the
+un-normalised document by the time `runCommand` gets to fix it. Refreshing
+corrects that snapshot in place; dispatching a second `input` would instead make
+one action cost two Ctrl+Z, the first of which would appear to do nothing.
+
+**[tests/browser-check.html](tests/browser-check.html) is new, and it is why any
+of the above says anything specific.** The Deno suite has no editing engine, so
+it can only assert what Marky does with execCommand's output and never what that
+output is — that half was always going to be manual. The page runs the real
+commands in a real contenteditable and reports the markup before and after
+normalisation. Measured in Chrome 139 and Firefox 154, it moved the cases that
+produce byte-identical markup in both engines from 6 of 11 to 8 of 11.
+
+Two things everyone knows about execCommand turned out to be false:
+
+- **Neither engine emits styled spans** for bold or italic with `styleWithCSS`
+  off. Both give `<b>` / `<i>`. The content-losing case is closed by the one
+  line, and the retagging is a backstop for pasted markup rather than the fix.
+- **The list-nesting bug is in both engines**, not Chrome's alone. The comment in
+  app.js had claimed it for Chrome since it was written; it now says what was
+  measured.
+
+It also found a live bug. In Chrome, `formatBlock` run with the caret inside a
+bullet wraps the *entire list* in the heading — `<h1><ul>…</ul></h1>` — so
+pressing H1 in a list destroyed the list. That is reachable from a shipped
+button and is now normalised away.
+
+Three divergences survive and are recorded in TODO 5.1 rather than papered over.
+The sharpest is Firefox's: outdenting a nested bullet merges it into the item
+above as `<li>one<br>two</li>` instead of making it a sibling, which loses a
+bullet. It cannot be normalised — that markup is indistinguishable from a
+deliberate hard break in a list item — so it needs a real fix.
+
+## 2026-08-23 — Code formatting tells a span from a block
+
+Two bugs in `format-bar.js`, both of which came from the same missing idea: that
+the *extent* of a selection means something.
+
+**Inline code exists now.** Selecting two words and pressing Code turned the
+entire paragraph into a fenced block, because Code had only one output. Markdown
+has two constructs here and the button reached one of them, so half the format
+was unreachable from the UI. `coversWholeBlocks` decides between them: a partial
+selection gives `<code>`, a whole block or several gives `<pre><code>`, and a
+bare caret counts as the whole block — every other block format acts on a whole
+block from a caret, and Code demanding a selection first would read as broken.
+Pressing Code inside an existing span unwraps it, so it is a toggle rather than a
+one-way conversion.
+
+**`blocksInRange` stops answering with `editor.children`.** A selection inside a
+single bullet reported the whole `<ul>`, and Code then replaced the list with one
+`<pre>` holding every item run together — destructive, and unrecoverable except
+by undo. It walks to the innermost block now, which is the `<li>` the text is in,
+and filters nested lists down to the items that hold no others.
+
+A `<pre>` still only ever stands in for a direct child of `#editor`, since one in
+place of an `<li>` is invalid markup and the nested-fence version is a separate
+feature. A whole bullet therefore falls back to inline; a selection spanning
+several bullets declines with a toast, because inline across a block boundary
+would have `deleteContents` take the list apart to build a code span markdown
+cannot write.
+
+Two things found while in there. The Code branch raised no `input` event, being
+the only hand-rolled format — so a code block was invisible to undo and left the
+`(edited)` marker unset. And Ctrl+Shift+P is now gated on the PDF item existing,
+which it was not before the export set shrank.
+
+Settled while deciding the first of these: **p / h1 / h2 / h3 act on the whole
+block from a partial selection, by design.** There is no such thing as half a
+heading, `formatBlock` already behaves this way, and the alternative — disabling
+them unless the selection covered a whole line — would read as a broken button
+rather than a precise one. Code is the only format that reads the extent, because
+it is the only one with an inline counterpart to read it for.
+
+## 2026-08-23 — The editable export is a nerfed Marky
+
+PDF and Word left the exported document: `pdf-export.js` and `docx-export.js`
+dropped out of `ASSETS`, and their menu items became `variants: ["app"]`. An
+exported file now offers markdown, HTML and Editable, and is 12% smaller for it
+— about 26KB of JavaScript that was inlined into every copy.
+
+The reasoning is what the export *is*. It ships an editable document, and the
+application around it is the means rather than the deliverable, so a module earns
+its place by extending the chain the export exists to keep going. Markdown, HTML
+and Editable all do: a recipient can open one, edit it and pass it on. PDF and
+Word are terminal — nobody edits a PDF and sends it back — so both were weight in
+every copy, in service of producing artifacts that can never be exported *from*.
+
+The two halves have to move together, and the suites enforce that from opposite
+directions: the toolbar suite fails if an item is rendered whose script the
+variant does not ship, and the self-reproduce suite fails if the bundle carries a
+script no item reaches. Ctrl+Shift+P is now gated on the PDF item existing, the
+way Ctrl+S and Ctrl+O already were, so it no longer swallows the browser's own
+binding in a document that cannot answer it.
+
+`ensureHtml2Pdf` and `ensureDocx` stay in `lazy-load.js`, which is shared and has
+no variants — unreachable in an export rather than absent from it.
+
 ## 2026-08-23 — Invisible whitespace, and the unsaved-work guard
 
 Three TODO items, two of which turned out to be one.
@@ -518,3 +638,94 @@ still keeps everything markdown can express.
 
 It is worth saying out loud in the README rather than burying: this is a feature,
 not a fidelity bug.
+
+## D4. execCommand stays, and Marky normalises after it
+
+Deprecated is a worse position than removed, and that is the right way round to
+worry about it. Removed would be a migration with a deadline. Deprecated means
+the spec that defined it was abandoned, so nothing obliges any two engines to
+agree about what a command produces, and no process exists to make them.
+
+What keeps them honest instead is web compatibility, which is a harder constraint
+than a spec ever was: spec compliance is voluntary, breaking a decade of editors
+is not. The commands are frozen legacy code in engines nobody is funding to
+change them. So the risk is not that they drift apart from here — it is that they
+are *already* apart and nobody is going to fix it. Both halves of that were
+measured rather than assumed; see the browser check below.
+
+Three options were on the table.
+
+**Reimplement the commands.** Own every mutation, drop execCommand entirely. The
+argument against is not cost, it is aim: the half that would be replaced is the
+frozen, predictable half. What actually moves underneath Marky is contenteditable
+— selection behaviour, IME, touch handles, autocorrect, mobile keyboards — and
+that is under active development and would be untouched by the exercise. It is
+expensive and pointed at the wrong target.
+
+**Carry on and fix things as they surface.** What Marky did until now, which
+produced exactly one workaround (`isNested` in app.js) and a comment
+misattributing a shared bug to one vendor for months.
+
+**Normalise.** Let execCommand do the work, then fix what it left behind, in one
+place, and only for the differences markdown cannot absorb. That is the choice,
+and the last clause is what makes it cheap. Turndown flattens most vendor
+disagreement on the way out — `<b>` and `<strong>` are both `**bold**`; whatever
+an engine does to build an `<h2>`, it is `## ` — so the list of things that have
+to be fixed is short and stays short. `front/execcommand.js` is the one door, and
+a source scan in the `execcommand` suite is what stops a later call site skipping
+it.
+
+The boundary rule for new work, which is the operative part of this decision:
+
+- A format with no execCommand behind it is written bespoke. There is no choice,
+  and Marky has been doing it since inline code.
+- A format that has one uses it, unless the browser check puts it on the list of
+  divergences that survive to the file.
+- Existing call sites stay until they demonstrate a problem. Migrating on
+  principle buys nothing that normalising has not already bought.
+
+`applyFormat` is a single switch statement, which is what makes all of this
+reversible: converting a case is a local change. That is also the answer to
+whether this had to be settled before TODO 1.4 adds ten more controls. It did
+not — but *deciding* was nearly free and discovering later would have cost 1.4
+twice, which is why it was decided anyway.
+
+**The check is the load-bearing part.** [tests/browser-check.html](tests/browser-check.html)
+runs the real commands in a real contenteditable and reports what came out. The
+Deno suite structurally cannot do this — it has no editing engine, so it can only
+assert what Marky does with the output — which means every engine-specific claim
+in the codebase is either measured by that page or is folklore. Two long-standing
+beliefs died the first time it ran. Re-run it when adding a format, and when a
+browser does something surprising.
+
+**On Marky 2.0.** Everything above is a treatment rather than a cure, and the
+cure is known: hold the document as a model in JS, render to the DOM, and treat
+contenteditable as an input method whose changes are intercepted and
+reinterpreted rather than accepted. That retires this decision, `undo.js`'s
+snapshot design, the hard half of tabs, and the reason table cells cannot be
+edited. It is a rewrite of the editor and it is not on the 1.0 route.
+
+Two constraints are recorded now so a future rewrite starts from them rather
+than rediscovering them:
+
+- **The model must be a markdown CST with source spans, not a generic rich-text
+  document model.** ProseMirror, Lexical and Slate all normalise on the way in —
+  which is precisely what destroys the information markdown-style.js exists to
+  preserve. Ported naively onto one of those, D1 stops being true. Built
+  markdown-shaped from the start, source spans on nodes are *better* than
+  today's content-keyed matching, because a span cannot be defeated by two
+  identical paragraphs.
+- **The near-zero-dependency stance decides whether it is feasible at all.**
+  Building a model, schema, transactional undo, selection mapping and renderer
+  from scratch is where most editor projects die; adopting an existing engine
+  makes it tractable and contradicts what this project is. That is a call to make
+  deliberately, not to discover three months in.
+
+The reason none of this becomes "just edit the markdown in a textarea with a
+preview" — which would dissolve all of section 2 of the TODO at a stroke — is a
+product position, not an oversight. Humans should not be editing markup by hand;
+markdown files are used as code in real projects, so their diffs need the highest
+signal-to-noise a tool can give them, ideally nothing but the actual change. A
+WYSIWYG surface that saves byte-faithful markdown is the thing worth building.
+Everything expensive in this repo follows from taking both halves of that
+seriously.
