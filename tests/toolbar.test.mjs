@@ -200,9 +200,19 @@ export default async function run(check) {
     exportActions.includes("upload-md") && exportActions.includes("download-md"));
   check("both get undo and redo",
     ["undo", "redo"].every((a) => appActions.includes(a) && exportActions.includes(a)));
-  check("both get the whole export set",
+  check("the app exports every format",
     ["export-html", "export-pdf", "export-docx", "export-editable"]
-      .every((a) => exportActions.includes(a)));
+      .every((a) => appActions.includes(a)));
+  // The export set is deliberately shorter in an exported document: it carries
+  // the formats a document can travel on in, and PDF and DOCX are terminal —
+  // nobody edits one and sends it back. Dropping the items and dropping the
+  // scripts from ASSETS have to happen together, and the bundle check above is
+  // what catches half of that; this catches the other half, where the scripts
+  // go and the items are left behind as dead controls.
+  check("an exported document carries the three it can be reproduced from",
+    ["export-html", "export-editable"].every((a) => exportActions.includes(a)));
+  check("and not the two that are dead ends",
+    !exportActions.includes("export-pdf") && !exportActions.includes("export-docx"));
   check("and all nine formats",
     ["p", "h1", "h2", "h3", "bold", "italic", "ul", "ol", "code"]
       .every((f) => appActions.includes(`format-${f}`)));

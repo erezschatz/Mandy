@@ -82,13 +82,12 @@ onToolbarAction("export-editable", async () => {
     "/markdown-style.js",
     "/app.js",
     "/undo.js",
+    "/execcommand.js",
     "/outline.js",
     "/renderers.js",
-    "/pdf-export.js",
     "/format-bar.js",
     "/static-export.js",
     "/html-export.js",
-    "/docx-export.js",
   ];
 
   let cssContent = "";

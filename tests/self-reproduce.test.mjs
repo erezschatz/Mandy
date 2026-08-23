@@ -14,7 +14,7 @@ const { slugifyTitle } = loadApp();
 
 const INLINE_CSS = "#editor h1 { font-size: 2rem; } /* gen-N css */";
 const INLINE_JS = [
-  "toolbar.js", "app.js", "static-export.js", "html-export.js", "docx-export.js",
+  "toolbar.js", "app.js", "static-export.js", "html-export.js",
 ].map(readFront).join("\n\n");
 
 function runExport({ inlined }) {
@@ -103,13 +103,19 @@ export default async function run(check) {
   const genOne = firstExport.output();
 
   // One per entry in ASSETS: the stylesheet plus every script in the bundle.
-  check("app export fetches its assets", firstExport.fetches() === 14);
+  check("app export fetches its assets", firstExport.fetches() === 13);
   check("app export bundles notify.js", genOne.includes("/notify.js"));
   check("app export bundles undo.js", genOne.includes("/undo.js"));
-  check("app export bundles docx-export.js", genOne.includes("/docx-export.js"));
   check("app export bundles static-export.js", genOne.includes("/static-export.js"));
   check("app export bundles html-export.js", genOne.includes("/html-export.js"));
   check("app export omits file-api.js", !genOne.includes("/file-api.js"));
+
+  // Three modules are left out, for two different reasons. file-api.js drives a
+  // server an exported document does not have. pdf-export.js and docx-export.js
+  // drive formats that cannot be exported *from*, so they add weight to every
+  // copy without extending the chain the editable export exists to keep going.
+  check("app export omits pdf-export.js", !genOne.includes("/pdf-export.js"));
+  check("app export omits docx-export.js", !genOne.includes("/docx-export.js"));
 
   // The filename is the only thing a recipient sees before opening the file.
   // It used to be a bare timestamp, which named the document nothing at all and

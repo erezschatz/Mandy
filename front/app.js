@@ -749,7 +749,7 @@ editor.addEventListener("paste", (e) => {
     // through to the plain text is better than inserting an empty string and
     // leaving the user to wonder where their paste went.
     if (clean.trim()) {
-      document.execCommand("insertHTML", false, clean);
+      runCommand("insertHTML", clean);
       return;
     }
   }
@@ -757,7 +757,7 @@ editor.addEventListener("paste", (e) => {
   // The character only, never the entity: in text/plain an "&nbsp;" is six
   // characters somebody actually copied.
   if (text && text.trim()) {
-    document.execCommand("insertText", false, text.replace(/\u00a0/g, " "));
+    runCommand("insertText", text.replace(/\u00a0/g, " "));
   }
 });
 
@@ -868,9 +868,11 @@ function listItemAtCaret() {
   return item && editor.contains(item) ? item : null;
 }
 
-// Chrome's execCommand puts the nested list beside the item it belongs to
-// rather than inside it, so the parent list is one hop further up than the
-// spec shape suggests. Look for either.
+// execCommand puts the nested list beside the item it belongs to rather than
+// inside it — in Chrome and in Firefox both, measured, not folklore — so the
+// parent list can be one hop further up than the spec shape suggests. Look for
+// either: execcommand.js normalises the markup after every command, but this
+// also runs against lists that arrived by paste or from a file.
 function isNested(item) {
   const list = item.parentElement;
   return !!(list && list.parentElement && list.parentElement.closest("ul, ol"));
@@ -892,13 +894,13 @@ editor.addEventListener("keydown", (e) => {
   if (e.shiftKey) {
     if (!isNested(item)) return;
     e.preventDefault();
-    document.execCommand("outdent");
+    runCommand("outdent");
     return;
   }
 
   if (!item.previousElementSibling) return;
   e.preventDefault();
-  document.execCommand("indent");
+  runCommand("indent");
 });
 
 document.addEventListener("keydown", (e) => {
@@ -913,7 +915,10 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     runToolbarAction("upload-md");
   }
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "P") {
+  // Gated the way Ctrl+S and Ctrl+O are: an exported document renders no PDF
+  // item and ships no pdf-export.js, so without this the shortcut swallows the
+  // browser's own Ctrl+Shift+P to do nothing.
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "P" && toolbarButton("export-pdf")) {
     e.preventDefault();
     runToolbarAction("export-pdf");
   }

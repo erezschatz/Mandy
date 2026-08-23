@@ -97,8 +97,14 @@ const TOOLBAR_MENUS = [
 
   { id: "exportMenu", label: "Export", variants: ALL, items: [
     { id: "htmlBtn", action: "export-html", label: "HTML page\u2026", variants: ALL },
-    { id: "pdfBtn", action: "export-pdf", label: "PDF\u2026", shortcut: "Ctrl+Shift+P", variants: ALL },
-    { id: "docxBtn", action: "export-docx", label: "Word document\u2026", variants: ALL },
+    // App-only, and the one place the export set is deliberately shorter than
+    // the app's. PDF and DOCX are terminal formats: nobody edits a PDF and
+    // sends it back, so neither contributes to the chain an editable export
+    // exists to keep going — and both cost a module in every exported file.
+    // Dropping them from the variant and from ASSETS has to happen together,
+    // or one ships a dead control and the other dead weight.
+    { id: "pdfBtn", action: "export-pdf", label: "PDF\u2026", shortcut: "Ctrl+Shift+P", variants: ["app"] },
+    { id: "docxBtn", action: "export-docx", label: "Word document\u2026", variants: ["app"] },
     { separator: true, variants: ALL },
     { id: "editableBtn", action: "export-editable", label: "Editable copy\u2026", variants: ALL },
   ] },
