@@ -365,6 +365,48 @@ inline script before the stylesheet is read. The theme toggle gained a tooltip
 that moves with the theme, being the only control left in the bar that is not a
 word.
 
+## 2026-08-23 — Invisible whitespace, and the unsaved-work guard
+
+Three TODO items, two of which turned out to be one.
+
+**U+00A0 and empty wrappers no longer reach the file.** A browser rewrites a
+trailing space in an edited `contenteditable` text node to a non-breaking space,
+so the character appears in documents nobody typed it into. It is invisible, it
+copies into other applications as a space, and find-in-page matches it *against*
+a space — so searching "hello world" cheerfully finds the "hello\u00a0world" the
+user then has no way to locate or delete. `normaliseNbsp` in `app.js` converts
+both spellings before Turndown parses, which also fixed the second half of the
+same bug: the code-span shield tested for a literal space and so never saw an
+NBSP at the edge of a span, while Turndown's own edge-trim did see it (JS `\s`
+matches U+00A0) and moved the character outside the backticks and into the file.
+One conversion closed both doors, which is why the two items landed together.
+
+**Pasted HTML is sanitised on the way in.** `sanitisePastedHtml` drops empty
+`<span>`/`<b>`/`<i>` wrappers and the blank `<p>`/`<div>` blocks that render as a
+~1px line and space bullets unevenly. Deliberately targeted rather than the
+round-trip through markdown the TODO had proposed: pasting a web page should keep
+its bold, its links and its tables, and only what nobody can see should go. The
+one rule with any subtlety is the asymmetry over `<br>` — a block whose only
+content is one *is* the ghost line, which is exactly the markup Word and Docs
+emit for a blank one, while inside an inline element the same tag is a real break
+in a real line and saves its parent.
+
+**Every way out of a dirty document now offers to save it.** `confirmDiscard` in
+`file-api.js` is the one guard behind Open, Reload and Clear. Open replaced the
+document with no check at all while Reload guarded the identical call, and Clear
+asked a question whose wording read the same whether it was about to discard an
+untouched welcome document or an hour of work. All three ask once, name the file,
+and offer Save / Discard / Cancel — the three-way choice `ask()` was built for
+and `confirm()` could not express. Dismissing resolves to cancel, never to
+discard. The overwrite guard gained a third button of its own, Save as…, which is
+the only answer to "your file changed underneath you" that does not require
+somebody's work to be thrown away. `beforeunload` is the one that cannot use
+`ask()`, since the browser will not wait on a Promise, so it sets `returnValue`
+from the dirty flag and takes the browser's own wording.
+
+An exported document ships no `file-api.js` and has no file to be dirty against,
+so it gets the plain question rather than a second implementation of the guard.
+
 ## 2026-08-22 — Fold `DECISIONS.md` into this file, renumber TODO.md
 
 This changelog was written, `DECISIONS.md` was removed and its two decisions moved
@@ -422,8 +464,11 @@ chose and would not undo; the fourth is a bug, filed as TODO 2.1.
 
 Measured by hand, opening and saving this repo's own files through the running
 app: README.md and welcome.md come back byte-identical, CLAUDE.md and TODO.md
-one character short apiece (TODO 2.2). Before this, all four came back wholly
-rewritten.
+one character short apiece. Before this, all four came back wholly rewritten.
+That measurement predates D3 and the inline-code fix that came with it, and has
+not been re-taken in a browser since.
+
+D3 is the one deliberate exception to all of the above.
 
 ## D2. Blockquotes render as CommonMark defines them, not as GitHub does
 
@@ -441,3 +486,35 @@ to prevent.
 
 So `markdownit()` in app.js keeps the default `breaks: false`. One vendor's
 chat widget is not worth the file.
+
+## D3. Byte fidelity stops at whitespace nobody can see
+
+D1 says an unedited file comes back as the bytes it arrived as. There is one
+category it does not extend to, and the decision is to break fidelity rather
+than preserve it: U+00A0 where a space was meant, and elements with nothing in
+them.
+
+The argument is that the user has no move available. A trailing space is at
+least visible in the sense that you can put the caret past it and press
+Backspace, and a stray `<b>` is visible in the rendering. A non-breaking space
+is none of those things. It looks like a space, it copies out as a space, and
+find-in-page matches it against a space — so a document containing one cannot be
+searched for the thing it appears to contain, and the user cannot find what they
+cannot see. Worse, they did not put it there: the browser wrote it while they
+were editing something nearby. The same goes for the blank `<p>` a paste leaves
+behind, which renders as a hairline and spaces bullets unevenly with nothing on
+screen to grab.
+
+Preserving those bytes faithfully is preserving damage. So the promise is
+narrowed and stated rather than quietly hedged: Marky gives a file back byte for
+byte *except* for invisible whitespace and empty elements, which it removes.
+
+Two things keep the exception from eating D1. The normalisation runs on the HTML
+before Turndown rather than on the markdown after `restoreSourceWrapping`, so a
+U+00A0 an author genuinely wrote survives in any block they have not touched —
+only edited text is normalised. And the paste sanitiser is targeted at empty
+wrappers rather than being a round-trip through markdown, so pasting a web page
+still keeps everything markdown can express.
+
+It is worth saying out loud in the README rather than burying: this is a feature,
+not a fidelity bug.

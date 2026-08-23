@@ -295,6 +295,6 @@ export function loadApp() {
       " documentElement: __root, byId: __byId," +
       " htmlToMarkdown, anchorSlug, headingAnchors, openExternalLink," +
       " slugifyTitle, isBlankContent, sniffMarkdownStyle, reflowMarkdown," +
-      " adoptMarkdownStyle };",
+      " adoptMarkdownStyle, normaliseNbsp, isGhostElement };",
   );
 }

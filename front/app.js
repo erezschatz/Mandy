@@ -323,6 +323,35 @@ const formatBar = document.getElementById("formatBar");
 // placeholder on each side would come back stripped on the next parse.
 const CODE_EDGE_SPACE = String.fromCharCode(0xe000);
 
+// U+00A0 is the one invisible character a user cannot get rid of from inside
+// the app. Browsers write it in place of a trailing space in an edited
+// contenteditable text node, so it arrives without ever being typed; it renders
+// as a space and copies into other documents as one; and find-in-page matches
+// it *against* a plain space, so searching "hello world" cheerfully finds the
+// "hello\u00a0world" the user is then unable to locate and delete. There is no
+// move available to them: the character is invisible, unsearchable, and comes
+// from the editor rather than from anything they wrote.
+//
+// So it is normalised rather than preserved, and this is the one place the file
+// deliberately does not come back byte-identical.
+//
+// It runs before Turndown, and on the HTML rather than on the markdown, for two
+// separate reasons. The markdown has already been through
+// restoreSourceWrapping by then, which hands back the original bytes of every
+// block that still matches -- normalising there would strip a U+00A0 the author
+// really did write, out of a paragraph nobody touched. Doing it here means only
+// text that was actually edited is normalised, which is the boundary we want
+// anyway. And the shield below tests for a literal space, so converting first
+// is also what lets it see a trailing one at the edge of a code span: Turndown
+// treats U+00A0 as whitespace (JS \s matches it) and moves it outside the
+// backticks, so an unconverted one escaped the span *and* landed in the file.
+//
+// Both spellings, because innerHTML serialises U+00A0 back out as the entity.
+// A literal "&amp;nbsp;" in the document is safe: it has no "&nbsp;" substring.
+function normaliseNbsp(html) {
+  return html.replace(/\u00a0|&nbsp;/g, " ");
+}
+
 function shieldCodeEdgeSpaces(html) {
   const container = document.createElement("div");
   container.innerHTML = html;
@@ -349,7 +378,7 @@ function shieldCodeEdgeSpaces(html) {
 // saveFile because Download MD writes a file too, and a copied document that
 // ends in a newline is what the clipboard's consumers expect anyway.
 function htmlToMarkdown(html) {
-  const markdown = turndownService.turndown(shieldCodeEdgeSpaces(html))
+  const markdown = turndownService.turndown(shieldCodeEdgeSpaces(normaliseNbsp(html)))
     .replace(new RegExp(CODE_EDGE_SPACE, "g"), " ")
     .replace(/\n*$/, "\n");
   // Re-wrap first, restore second: restoring puts back original bytes, and the
@@ -406,22 +435,46 @@ onToolbarAction("copy-md", async (button) => {
 });
 
 onToolbarAction("clear", async () => {
-  // Cancel is the default action, so Enter and Escape both do the safe thing.
-  // The wording still says nothing about the open file or whether there is
-  // anything unsaved to lose — that is TODO 1.7's, along with the third
-  // Save option this dialog can now express and confirm() could not.
-  const confirmed = await ask(
-    "This removes all content and the auto-saved copy.",
-    {
+  // Two different questions wearing one dialog until now. Clearing an untouched
+  // welcome document costs nothing; clearing an hour of unsaved work costs the
+  // hour — and the old wording read identically either way, which made the
+  // dialog useless as a signal about what was at stake.
+  //
+  // So the dirty case goes through file-api.js's shared guard, which knows the
+  // filename and can offer Save. The guard does not exist in an exported
+  // document, which ships no file-api.js and has no file to be dirty against:
+  // that is the honest absence rather than a second implementation, and the
+  // plain question below is what an export gets.
+  // One dialog or the other, never both. The guard's question already covers
+  // everything the plain one says and adds the filename and a Save button, so
+  // asking twice would only teach the user to click through the first.
+  const guarded =
+    typeof confirmDiscard === "function" &&
+    typeof documentIsDirty === "function" &&
+    documentIsDirty();
+
+  if (guarded) {
+    const proceed = await confirmDiscard({
       title: "Clear the document?",
-      severity: "warn",
-      actions: [
-        { label: "Cancel", value: false, variant: "quiet", default: true },
-        { label: "Clear", value: true, variant: "danger" },
-      ],
-    },
-  );
-  if (!confirmed) return;
+      detail: "The auto-saved copy goes too.",
+      discardLabel: "Discard and clear",
+    });
+    if (!proceed) return;
+  } else {
+    // Cancel is the default action, so Enter and Escape both do the safe thing.
+    const confirmed = await ask(
+      "This removes all content and the auto-saved copy.",
+      {
+        title: "Clear the document?",
+        severity: "warn",
+        actions: [
+          { label: "Cancel", value: false, variant: "quiet", default: true },
+          { label: "Clear", value: true, variant: "danger" },
+        ],
+      },
+    );
+    if (!confirmed) return;
+  }
 
   editor.innerHTML = "<p><br></p>";
   localStorage.removeItem("markdownContent");
@@ -615,6 +668,75 @@ document.documentElement.style.setProperty(
     : '"Ctrl+Click to open link"',
 );
 
+// Pasted HTML arrives carrying two kinds of junk that are invisible in the
+// document and impossible to find from inside it: elements the source page's
+// styling left behind with nothing in them, and blank <p>/<div> blocks that
+// render as a ~1px line and space bullets unevenly. The blanks are the ones
+// that stick: Turndown serialises them, so they survive a save and a reload and
+// travel on into whatever the file is opened with next.
+//
+// Deliberately targeted rather than a round-trip through markdown. Pasting a
+// web page should keep its bold, its links and its tables -- what gets dropped
+// is only what nobody can see and nobody asked for.
+const GHOST_INLINE_TAGS = new Set([
+  "SPAN", "B", "I", "EM", "STRONG", "U", "S", "STRIKE", "FONT",
+  "SMALL", "BIG", "SUB", "SUP", "MARK", "ABBR",
+]);
+const GHOST_BLOCK_TAGS = new Set(["P", "DIV"]);
+
+// Elements that are content in themselves, so an ancestor holding one is not
+// empty however empty its text looks.
+const REPLACED_TAGS = new Set([
+  "IMG", "TABLE", "HR", "SVG", "VIDEO", "AUDIO", "IFRAME",
+  "INPUT", "CANVAS", "OBJECT", "EMBED", "PICTURE",
+]);
+
+// Walked rather than queried because the check has to run inside the DOM stub
+// too, where querySelectorAll answers with nothing.
+function holdsTag(node, tags) {
+  for (const child of node.childNodes || []) {
+    if (child.nodeType !== 1) continue;
+    if (tags.has(child.tagName)) return true;
+    if (holdsTag(child, tags)) return true;
+  }
+  return false;
+}
+
+const BR_TAG = new Set(["BR"]);
+
+/**
+ * Whether this element is junk: no text, nothing in it that counts as content.
+ *
+ * The asymmetry over <br> is the point and not an oversight. A <p> or <div>
+ * whose only content is a line break *is* the ghost line -- that is the exact
+ * markup Word and Docs emit for a blank one. Inside an inline element the same
+ * <br> is a real break in a real line, so it saves its parent.
+ */
+function isGhostElement(node) {
+  if (!node || node.nodeType !== 1) return false;
+  const inline = GHOST_INLINE_TAGS.has(node.tagName);
+  if (!inline && !GHOST_BLOCK_TAGS.has(node.tagName)) return false;
+  if ((node.textContent || "").trim() !== "") return false;
+  if (holdsTag(node, REPLACED_TAGS)) return false;
+  return inline ? !holdsTag(node, BR_TAG) : true;
+}
+
+function sanitisePastedHtml(html) {
+  const container = document.createElement("div");
+  container.innerHTML = normaliseNbsp(html);
+
+  // Repeated because emptying a ghost can expose its parent as one: the wrapper
+  // chains these pastes carry are often several deep with nothing at the bottom
+  // of them. Each pass removes at least one node, so it terminates.
+  for (;;) {
+    const ghosts = Array.from(container.querySelectorAll("*")).filter(isGhostElement);
+    if (!ghosts.length) break;
+    ghosts.forEach((node) => node.remove());
+  }
+
+  return container.innerHTML;
+}
+
 editor.addEventListener("paste", (e) => {
   e.preventDefault();
 
@@ -622,9 +744,20 @@ editor.addEventListener("paste", (e) => {
   const text = e.clipboardData.getData("text/plain");
 
   if (html && html.trim()) {
-    document.execCommand("insertHTML", false, html);
-  } else if (text && text.trim()) {
-    document.execCommand("insertText", false, text);
+    const clean = sanitisePastedHtml(html);
+    // A fragment that was nothing but wrappers sanitises to nothing. Falling
+    // through to the plain text is better than inserting an empty string and
+    // leaving the user to wonder where their paste went.
+    if (clean.trim()) {
+      document.execCommand("insertHTML", false, clean);
+      return;
+    }
+  }
+
+  // The character only, never the entity: in text/plain an "&nbsp;" is six
+  // characters somebody actually copied.
+  if (text && text.trim()) {
+    document.execCommand("insertText", false, text.replace(/\u00a0/g, " "));
   }
 });
 
@@ -696,7 +829,7 @@ window.addEventListener("load", () => {
   })();
 });
 
-window.addEventListener("beforeunload", () => {
+window.addEventListener("beforeunload", (e) => {
   const currentContent = editor.innerHTML.trim();
   // Check if content is empty or just the empty paragraph placeholder
   const willSave =
@@ -708,6 +841,19 @@ window.addEventListener("beforeunload", () => {
   // Only save if content is not essentially empty
   if (willSave) {
     localStorage.setItem("markdownContent", editor.innerHTML);
+  }
+
+  // The one guard that cannot use ask(): the browser will not wait on a
+  // Promise, so this gets returnValue and the browser's own wording, with no
+  // say in what it says. Autosave means the work is usually still there when
+  // you come back, which is exactly why nobody notices this is missing until
+  // the one time it is not — a cleared cache, another browser, a private
+  // window. documentIsDirty lives in file-api.js, which an exported document
+  // does not ship and which has no file to be dirty against anyway.
+  if (typeof documentIsDirty === "function" && documentIsDirty()) {
+    e.preventDefault();
+    e.returnValue = "";
+    return "";
   }
 });
 

@@ -33,7 +33,7 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
     keystrokes as markdown everywhere, which is a different product from a
     WYSIWYG surface with a format bar, and it needs an escape hatch for
     someone who wants a literal `#`.
-*   **1.4** *(tables also need 2.4, or 1.6 instead)*
+*   **1.4** *(tables also need 2.3, or 1.6 instead)*
     The UI only supports some of the markup MD offers, and not even all of what
     the README advertises. The format bar has p, h1, h2, h3, bold, italic, ul,
     ol, code, and the Format menu now reaches the same nine — which is more
@@ -48,7 +48,7 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
     remove a row or column once markdown-it has rendered the `<table>`.
     Confirmed by hand: editing this very file after `hr: "---"` landed, trying
     to delete the now-obsolete row it made fixed above.
-*   **1.5** *(relative links need 1.7)* Links are done except for three loose
+*   **1.5** Links are done except for three loose
     ends. Ctrl/Cmd+click follows a link and jumps to `#anchor` headings,
     `anchorSlug` / `headingAnchors` in app.js resolve slugs live, and
     `static-export.js` stamps real ids into the exported markup. What is still
@@ -79,54 +79,94 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
     not agreed — an editable source view makes markdown a second seat of truth
     and raises which one wins, and where it lives (a tab, a split pane, a mode)
     is the same question 4.1 asks about tabs.
-*   **1.7** Nothing guards unsaved work. The toolbar says
-    `(edited)` when the document has diverged from the file, and Reload and an
-    overwriting Save both act on it now — but the other three ways out of a
-    dirty document still throw it away without asking:
+*   **1.7** Paste without formatting (Ctrl/Cmd+Shift+V), and the menu reorg it
+    comes with. Three parts, and the first is a question rather than work:
+    browsers already implement that binding in a `contenteditable` as
+    paste-as-plain-text, but the handler in app.js intercepts *every* paste and
+    prefers `text/html` whenever the clipboard offers one — so if the browser
+    still hands over an HTML flavour we override the user's request. Check in a
+    real browser first: if Chrome strips `text/html` for that binding the plain
+    branch already fires and there is nothing to build but the Firefox case.
+    Either way the robust shape is a flag set from a `keydown` on `#editor` and
+    consumed by the next `paste` event.
 
-    - **Open** replaces the document outright. `openFile` in file-api.js
-      assigns `editor.innerHTML` and overwrites the autosave with no check at
-      all, so opening a second file silently discards unsaved edits to the
-      first. Note `reloadFile` guards the same call and Open does not, which is
-      the inconsistency to fix rather than a design.
-    - **Clear** does confirm, and the dialog is styled and three-button-capable
-      now, but the wording still never mentions the file or whether anything is
-      unsaved. It reads identical whether you are about to lose an untouched
-      welcome document or an hour of work, and it should offer Save.
-    - **Closing the tab** does not warn. There is a `beforeunload` handler in
-      app.js, but it only flushes the autosave; it never sets `returnValue`, so
-      the browser shows nothing. Autosave means the work is usually still there
-      on reopen, which is *why* nobody notices this until the one time it is
-      not — a cleared cache, a different browser, a private window.
+    Second, the plain branch has a bug waiting for it. It goes through
+    `execCommand("insertText")`, which raises `input` with
+    `inputType: "insertText"` — and that is in `UNDO_COALESCING`, so a plain
+    paste within 600ms of typing merges into the keystroke before it and one
+    Ctrl+Z takes back both. The paste path should break coalescing explicitly.
 
-    All three want the same thing: consult the dirty flag, and offer Save /
-    Discard / Cancel rather than a bare yes-no. `ask()` takes an arbitrary
-    action list and returns the chosen value, so the three-way choice is now
-    just a call — this item is down to wiring, with no mechanism left to build.
-    Reload and the overwrite guard already go through it, but both still offer
-    only Cancel and a destructive action; they want the same third button.
-    `beforeunload` is the one that cannot use it, since the browser will not
-    wait on a Promise — that one still needs `returnValue` set from the dirty
-    flag, and gets the browser's own wording. Note the flag lives in
-    file-api.js, which the editable export does not ship, so the exported
-    document needs its own answer or an honest absence of one.
-*   **1.8** Ghost lines. Pasted text brings in empty lines — roughly 1px tall,
-    enough to space bullets unevenly. Not yet reproduced deliberately. Prime
-    suspect is the paste handler (app.js), which feeds clipboard HTML straight
-    into `execCommand("insertHTML")` with no sanitising, so empty `<p></p>` and
-    `<div><br></div>` from Word/Docs/web pages land in the document and are
-    then serialised by Turndown, which is why they persist. Confirm by pasting
-    and checking Copy MD for stray blank lines. Likely fix: round-trip pasted
-    HTML through htmlToMarkdown → markdownToHtml before inserting, so only
-    markdown-expressible structure gets in.
+    Third, the Edit menu. It currently holds *Copy markdown* and *Paste
+    markdown*, which are whole-document operations, and adding selection-level
+    Cut / Copy / Paste beside them gives two pairs of near-identical names
+    meaning entirely different things. The split that resolves it: **Edit** gets
+    Cut, Copy, Paste and Paste without formatting; *Copy markdown* moves to
+    **Export**, where "copy as markdown" is what it has always meant; *Paste
+    markdown* moves to **Insert**, which needs 1.8 first to stop being a lie.
+    Cut and Copy can go through `execCommand`, which raises `input`, so undo and
+    the dirty flag pick them up for nothing. `mousedown` is already prevented
+    over the bar, so the editor's selection survives the click.
+
+    Note that this is now a convenience rather than a fix: the whitespace
+    cleanup took the pain out of an ordinary paste, so what is left here is
+    wanting the text bare, not wanting it repaired.
+
+*   **1.8** *(wanted by 1.7)* Paste markdown replaces the document instead of
+    inserting into it. `onToolbarAction("paste-md")` in app.js assigns
+    `editor.innerHTML` outright — a legacy of the serverless model, where
+    replacing the document from the clipboard was the closest thing to an Open
+    there was. There is a real Open now, and no editor anywhere has a "replace
+    everything from the clipboard" command. It should insert at the caret like
+    its name says; wanting the replacement is Clear followed by Paste, which is
+    two deliberate actions rather than one surprising one.
+
+    `insertToc` in outline.js is the pattern to copy — caret insertion with a
+    synthetic `input` event. Doing it that way also stops this being an
+    `innerHTML` assignment site, so it becomes ordinarily undoable and drops out
+    of the count the undo suite keeps.
+
+*   **1.9** Invisible whitespace: what the cleanup does not reach. Pasted HTML
+    is sanitised on the way in and U+00A0 is normalised on the way out (see D3
+    in [CHANGELOG.md](CHANGELOG.md)), which covers everything that reaches the
+    *file*. It does not cover the live DOM in between: type a trailing space,
+    let the browser rewrite it to U+00A0, then select that paragraph and paste
+    it into Google Docs, and the character goes with it — that path crosses
+    neither boundary. Closing it means normalising the document itself, on a
+    debounced `input` or on `copy`, which is fiddlier than either of the two
+    that landed: rewriting a text node under the caret can move the caret.
+
+*   **1.10** The clean/dirty flag should follow undo. Undo an edit made to a
+    clean document and the document is clean again — nothing to save — but
+    `file-api.js` latches the flag on the editor's `input` event and never
+    unlatches it, so undoing *sets* dirty rather than clearing it.
+
+    Two ways to answer "is this document clean?", and they differ on one case.
+    *Position equality* remembers where the undo history was at the last save
+    and compares positions; type `x` then Backspace and it still reports dirty,
+    because the content is identical but the position is not. *Content equality*
+    compares the content, calls that clean, and costs a second copy of the
+    document plus a comparison per keystroke. Content equality is what a user
+    would say if you asked them, and half of it is already built: `markdownSource`
+    holds the opened file's markdown and is persisted, so after a reload — where
+    no undo history survives — the honest answer is available by serialising the
+    restored document and comparing. Doing it continuously is then a schedule,
+    not a new mechanism.
+
+    Either way the savepoint wants a monotonic counter rather than a stack index,
+    since `UNDO_LIMIT` is 100 and the stack shifts. A savepoint that falls off
+    the bottom simply never matches again, which is correct; a recycled index
+    would match the wrong state. How deep that limit should be is a Settings
+    question once there is a Settings pane (4.2).
 
 ## 2. Save fidelity
 
 Ways the bytes on disk still differ from what was opened, all verified by
 round-tripping real files through the running app.
 [front/markdown-style.js](front/markdown-style.js) is what preserves them;
-Decision 1 in [CHANGELOG.md](CHANGELOG.md) is why, and lists the differences
-that are deliberate rather than bugs. In rough order of how much they matter:
+Decision D1 in [CHANGELOG.md](CHANGELOG.md) is why, and lists the differences
+that are deliberate rather than bugs — as does D3, which is the one whole
+category fidelity deliberately does not extend to. In rough order of how much
+they matter:
 
 *   **2.1** **Reference links are inlined and the definition block deleted.** A
     document that cites the same URL in twenty places arrives with one
@@ -136,28 +176,7 @@ that are deliberate rather than bugs. In rough order of how much they matter:
     to a reference, the same rewrite in the other direction. Wants a rule that
     emits a reference only where the source already had a definition, plus
     somewhere to re-emit the definition block.
-*   **2.2** *(regression, confirmed in browser)* Inline code still loses a
-    trailing space, through a different door than the one `shieldCodeEdgeSpaces`
-    was built to close. Editing text inside or beside a code span (e.g. the
-    `` `> ` `` on CLAUDE.md's "blockquote's ... chain" line) in a real
-    contenteditable, then saving, turned it into `` `>X` `` followed by a
-    literal U+00A0 NBSP character, then `chain` — the space escaped the span
-    *and* landed in the file as an invisible non-ASCII byte. Root cause:
-    browsers commonly rewrite a trailing space inside an edited contenteditable
-    text node to `&nbsp;` (U+00A0) rather than leaving it as U+0020, to stop it
-    collapsing. `shieldCodeEdgeSpaces`'s leading/trailing check in app.js
-    (`/^ /`, `/ $/`) only matches literal ASCII space, so it never sees the
-    NBSP and doesn't shield it — while Turndown's own edge-trim treats NBSP as
-    whitespace (`\s` in JS matches U+00A0) and moves it outside the backticks
-    same as before the fix. So the original bug (verified fixed outside the
-    app, against a hand-built HTML string with a plain space) doesn't reproduce
-    that way inside the app, because the app never gets a plain trailing space
-    to shield once a human has actually edited near one. Fix needs the shield's
-    regexes to also match ` `, and `htmlToMarkdown` to decode the shielded
-    placeholder back to whichever original character it stood in for — not
-    unconditionally to `" "` — or an NBSP-holding span round-trips to a plain
-    space and silently changes the byte anyway.
-*   **2.3** The source is persisted as a second copy of the document.
+*   **2.2** The source is persisted as a second copy of the document.
     `adoptMarkdownStyle` writes the incoming markdown to
     `localStorage["markdownSource"]`, because the autosave is HTML and carries
     no markdown to re-sniff on reload. It roughly doubles what Marky stores,
@@ -165,7 +184,7 @@ that are deliberate rather than bugs. In rough order of how much they matter:
     fidelity across a reload — a `console.warn` and nothing else. Storing the
     derived style plus block hashes instead of the whole source would be
     smaller, and could not reconstruct the bytes.
-*   **2.4** *(wanted by 1.4)* An edited table is re-emitted in the `table`
+*   **2.3** *(wanted by 1.4)* An edited table is re-emitted in the `table`
     rule's house style. An untouched one now restores byte-for-byte —
     `normaliseTableRows` takes the rule's cell padding and its fixed three-dash
     delimiter out of the block key, so `|---|---|` and `| --- | --- |` are the
@@ -179,7 +198,7 @@ that are deliberate rather than bugs. In rough order of how much they matter:
     one-space, or padded to width — which the sniffer can read off the original
     delimiter row. Reachable by typing in a cell, which contenteditable allows
     even though the structural editing above is missing.
-*   **2.5** `markdownSegments` splits on blank lines, list markers, headings
+*   **2.4** `markdownSegments` splits on blank lines, list markers, headings
     and fences. A change anywhere in a fenced block, a table or a multi-line
     paragraph re-serialises the whole segment. Finer granularity would need to
     match at line level, which is a different and much less safe algorithm.
@@ -196,21 +215,48 @@ that are deliberate rather than bugs. In rough order of how much they matter:
 
 ## 4. Interface
 
-*   **4.1** *(needs 1.7)* Tabbed view — several documents open at once, one per
-    tab. Today the app is built around holding exactly one: `editor.innerHTML`
-    is the entire document state, autosave writes a single
+*   **4.1** *(needs 4.3)* Tabbed view — several documents open at once, one per
+    tab. The guard it was waiting on has landed, so what is left is the document
+    model.
+
+    Today the app is built around holding exactly one: `editor.innerHTML` is the
+    entire document state, autosave writes a single
     `localStorage["markdownContent"]`, and file-api.js tracks a single
-    `currentFilePath`. All three become per-document, plus somewhere to persist
-    the open set across reloads. Worth deciding early whether a tab is just a
-    path plus content, or carries its own undo history, scroll position and
-    selection. The dirty flag becomes per-tab too, and should switch
-    presentation with it: the "(edited)" suffix file-api.js writes today reads
-    fine on a single filename, but the convention on a row of tabs is a red `*`
-    against each unsaved one. There is somewhere to put them: the menu bar
-    left the toolbar as two rows, and the second — `.toolbar-content`, holding
-    the filename and the theme toggle — is shaped for a tab bar rather than for
-    one label. (If what was meant is edit/preview/source tabs
-    rather than multiple files, that is the source-view item above.)
+    `currentFilePath`. Settled: **a tab is a whole document**, so undo history,
+    dirty status, file path, mtime baseline and the last-browsed directory are
+    all per-tab. Working in tab A and then switching to B must not leave B's
+    Open starting from A's directory, and A's unsaved status must still stop the
+    window closing.
+
+    Three things the obvious list misses:
+
+    - **`markdownSource` and `markdownStyle` are per-tab too.** The sniffed
+      source is what makes a save byte-faithful, and it is already a second full
+      copy of the document (2.2). N tabs is therefore 2N copies in
+      `localStorage`, and blowing the quota does not break editing — it silently
+      costs fidelity on the next reload, with a `console.warn` and nothing else.
+      Decide what happens with eight tabs open *before* the tab bar, not after.
+    - **Undo has to park and restore rather than reset.** Every
+      `editor.innerHTML` assignment currently picks reset-or-be-undoable, and a
+      tab switch is neither. It needs a third option: park the outgoing tab's
+      `{undoStack, redoStack, undoCurrent}` and restore the incoming one's. That
+      is a real relaxation of "history never crosses a document boundary", safe
+      only because the boundary becomes the tab rather than the assignment.
+    - **One `#editor`, not N.** app.js, undo.js, file-api.js, format-bar.js and
+      outline.js all grab `editor` once at load, so N editor elements would
+      fight the whole shared-scope arrangement. Swap the content instead.
+
+    `beforeunload` cannot name which tab is dirty — the browser shows its own
+    string and will not wait on us. That is accepted rather than solved: the
+    compensation is on the next load, where the restored tabs can show which are
+    unsaved, and where the information is actually usable.
+
+    The bar has a home already: the menu bar left the toolbar as two rows, and
+    the second — `.toolbar-content`, holding the filename and the theme toggle —
+    is shaped for a tab bar rather than for one label. `--toolbar-height`
+    arithmetic in app.css follows it, and the `(edited)` suffix becomes the
+    conventional red `*` against each unsaved tab. (If what was meant is
+    edit/preview/source tabs rather than multiple files, that is 1.6.)
 
 *   **4.2** *(undecided)* The static HTML export's table of contents follows
     the outline sidebar's toggle, because that toggle is the only switch that
@@ -221,6 +267,27 @@ that are deliberate rather than bugs. In rough order of how much they matter:
     does the outline show", if that ever stops being "all of them". Until then
     the coupling is documented rather than fixed. (`documentBody` in
     static-export.js, gated on `outlineIsOpen`.)
+
+*   **4.3** *(unblocks 4.1)* The editable export should be a nerfed Marky, not
+    Marky. Settled as a design position: what gets exported is an editable
+    *document*, and the application around it is a means to that rather than the
+    thing being shipped. Concretely it should carry Export to markdown, HTML and
+    Editable HTML, and nothing else — PDF and DOCX are dead ends in the
+    collaboration chain, since nobody edits a PDF and sends it back, so they
+    contribute nothing that justifies their weight in every exported file.
+
+    That drops `pdf-export.js` and `docx-export.js` from `ASSETS` in
+    html-export.js, removes their items from the `export` variant in
+    `TOOLBAR_MENUS`, and shrinks every exported document. The self-reproduce
+    suite's asset count and CLAUDE.md's "carries the whole export set" claim both
+    need narrowing in the same commit — exports still self-reproduce, just over
+    the three formats that can actually be reproduced from.
+
+    It is listed as unblocking 4.1 because it settles the question tabs would
+    otherwise have to answer: tabs are app-only, and the export never has to
+    have a story about them. 5.2 would streamline how the split is expressed;
+    this does not wait on it.
+
 ## 5. Architecture
 
 *   **5.1** *(affects 1.1, 1.2)* execCommand deprecation/inconsistency.

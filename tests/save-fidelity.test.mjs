@@ -15,10 +15,10 @@
 // paragraph into a bullet, and the file still parses, so nothing anywhere else
 // would notice.
 
-import { loadApp, loadSource } from "./dom.mjs";
+import { loadApp, loadSource, makeEl, readFront } from "./dom.mjs";
 
 export default function run(check) {
-  const { options, htmlToMarkdown } = loadApp();
+  const { options, htmlToMarkdown, isGhostElement } = loadApp();
 
   check(
     "horizontal rules serialise as --- , not Turndown's * * *",
@@ -49,6 +49,40 @@ export default function run(check) {
     htmlToMarkdown("a\n\nb") === "a\n\nb\n",
   );
 
+  // The one difference from the opened file that is deliberate rather than a
+  // bug. A browser rewrites a trailing space in an edited text node to U+00A0,
+  // which is invisible in the document, matches a plain space in find-in-page,
+  // and cannot be located or deleted from inside the app -- so it is normalised
+  // on the way out even though that costs byte fidelity for the block it is in.
+  // Checked in both spellings because innerHTML gives back the entity.
+  check(
+    "a U+00A0 is normalised to a plain space",
+    htmlToMarkdown("hello\u00a0world") === "hello world\n",
+  );
+
+  check(
+    "the &nbsp; entity is normalised too",
+    htmlToMarkdown("hello&nbsp;world") === "hello world\n",
+  );
+
+  // The other half of the bug is the code-span shield, which tests for a
+  // literal space: an unconverted U+00A0 at the edge of a span was invisible to
+  // it, and Turndown -- whose \s does match U+00A0 -- moved the character
+  // outside the backticks and into the file. Converting first is what closes
+  // that. The stub cannot show it: querySelectorAll returns [] there, so the
+  // shield is a no-op and this only asserts the character does not survive.
+  // The interaction itself was checked against the running app.
+  check(
+    "no U+00A0 survives a code span",
+    !/\u00a0/.test(htmlToMarkdown("<p>a <code>>\u00a0</code>b</p>")),
+  );
+
+  check(
+    "a literal &amp;nbsp; is not mistaken for the entity",
+    htmlToMarkdown("a &amp;nbsp; b") === "a &amp;nbsp; b\n",
+  );
+
+  ghostChecks(check, isGhostElement);
   styleChecks(check);
 }
 
@@ -211,5 +245,81 @@ function styleChecks(check) {
   check(
     "a pipe in prose does not make a table of the paragraph",
     restore("use a | b here\n", index("use  a | b  here\n")) === "use  a | b  here\n",
+  );
+}
+
+// The other half of the invisible-junk problem, and the one that reaches the
+// file: empty wrappers and blank <p>/<div> blocks come in on a paste, Turndown
+// serialises them, and they are then in the document for good.
+//
+// Only the predicate is driven here. The traversal around it needs a real HTML
+// parser to have anything to walk, and the stub's innerHTML is a stored string
+// -- so the decision is what gets tested, and the sanitiser is written to keep
+// that decision in one pure function for exactly that reason.
+function ghostChecks(check, isGhostElement) {
+  const el = (tag, text = "") => makeEl(tag, { text });
+  const nest = (tag, ...children) => {
+    const node = makeEl(tag);
+    children.forEach((child) => node.appendChild(child));
+    return node;
+  };
+
+  check("an empty <p> is a ghost", isGhostElement(el("p")));
+  check("an empty <div> is a ghost", isGhostElement(el("div")));
+  check("an empty <span> is a ghost", isGhostElement(el("span")));
+  check("an empty <b> is a ghost", isGhostElement(el("b")));
+
+  check("a <p> with text is not", !isGhostElement(el("p", "hello")));
+  check("a <span> with text is not", !isGhostElement(el("span", "hello")));
+
+  // The asymmetry, which is the only interesting rule in the function. Word and
+  // Docs both write a blank line as a block holding one <br>, so a block is not
+  // saved by one -- but inside an inline element the same tag is a real break
+  // in a real line, and removing its parent would take the break with it.
+  check(
+    "a <p> holding only a <br> is the ghost line itself",
+    isGhostElement(nest("p", el("br"))),
+  );
+  check(
+    "a <span> holding a <br> is kept",
+    !isGhostElement(nest("span", el("br"))),
+  );
+
+  // Empty is not the same as contentless. An image has no text and is the whole
+  // point of the block it sits in.
+  check(
+    "a <p> holding an <img> is kept",
+    !isGhostElement(nest("p", el("img"))),
+  );
+  check(
+    "a <div> holding a <table> is kept",
+    !isGhostElement(nest("div", el("table"))),
+  );
+  check(
+    "a wrapper several deep with an <img> at the bottom is kept",
+    !isGhostElement(nest("div", nest("span", nest("span", el("img"))))),
+  );
+
+  // Everything outside the two lists is the author's, however empty it looks.
+  // An empty <li> is a bullet they made; an empty <td> is a cell in their table.
+  check("an empty <li> is not a ghost", !isGhostElement(el("li")));
+  check("an empty <td> is not a ghost", !isGhostElement(el("td")));
+  check("an empty <a> is not a ghost", !isGhostElement(el("a")));
+  check("an empty <h2> is not a ghost", !isGhostElement(el("h2")));
+
+  check("a text node is not a ghost", !isGhostElement({ nodeType: 3 }));
+  check("nothing at all is not a ghost", !isGhostElement(null));
+
+  // A source scan, for the half the stub cannot reach: the sanitiser only helps
+  // if the paste handler actually routes through it, and the way this regresses
+  // is a later edit reaching for the raw clipboard string again.
+  const source = readFront("app.js");
+  check(
+    "the paste handler sanitises the clipboard HTML",
+    /sanitisePastedHtml\(html\)/.test(source),
+  );
+  check(
+    "nothing inserts unsanitised clipboard HTML",
+    !/insertHTML", false, html\)/.test(source),
   );
 }

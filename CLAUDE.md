@@ -42,6 +42,9 @@ They cover the invariants that fail *silently* rather than loudly:
   browsed directory, the edited marker, and the mtime baseline that Reload and
   the disk-changed marker measure against. It drives a fake disk, so a reload,
   an outside edit and a save over one all have a real file to disagree with.
+  It also drives the unsaved-work guard, where the property under test is not
+  that a dialog appears but that every answer except Discard leaves the document
+  where it was — including a Save the user backed out of halfway.
 - **outline** — the depth algorithm, the inline allowlist, and the shape of the
   list Insert TOC writes. The depths are a pure function over heading levels, so
   the pathological document is a table rather than a fixture; the list shape is
@@ -59,7 +62,12 @@ They cover the invariants that fail *silently* rather than loudly:
   assignment that never tells the stack about it.
 - **save-fidelity** — the serialiser options app.js asks for, and then
   `markdown-style.js` directly: the sniffers, and every guard in the re-wrapper.
-  That second half is the one that writes into the user's file.
+  That second half is the one that writes into the user's file. It also covers
+  the invisible-whitespace rules: that U+00A0 is normalised in both spellings,
+  and the ghost-element predicate, including the `<br>` asymmetry that decides
+  whether a block is a blank line or an inline is a real one. Only the predicate
+  — the traversal around it needs an HTML parser the stub does not have, which
+  is why the decision lives in one pure function.
 
 ## Architecture
 
@@ -236,6 +244,50 @@ is not gated on it — the baseline says nothing about a file we never read.
 action that confirms when there are edits to lose. It has no keyboard shortcut:
 Ctrl+R, Ctrl+Shift+R and F5 all belong to the browser.
 
+### The unsaved-work guard
+
+`confirmDiscard` in [file-api.js](front/file-api.js) is the single gate in front
+of every action that throws the open document away — Open, Reload and Clear.
+Before it, the three disagreed: Reload asked, Open replaced the document with no
+check at all despite calling the identical function, and Clear asked a question
+whose wording read the same whether it was about to discard an untouched welcome
+document or an hour of work. The presence of a dialog was therefore a bad signal
+about how much was at stake, which is worse than no dialog.
+
+Four things about it that are decisions rather than details:
+
+- **Three buttons, not two.** A yes/no asks the user to choose between losing
+  their work and abandoning what they were doing, when what they want is almost
+  always neither. This is the case `ask()`'s arbitrary action list was built for.
+- **Dismissing is cancelling.** `dismiss: "cancel"` is passed explicitly, so
+  Escape, the backdrop and the close button all abandon the action rather than
+  agreeing to discard. Get it backwards and a stray keypress destroys the work
+  the guard exists to protect.
+- **Save must report whether it saved.** `saveCurrentOrPrompt` and `saveFileAs`
+  return booleans for this reason alone: an unnamed document opens the save
+  dialog, an overwrite of a file that moved asks again, and the write itself can
+  fail. In each of those the edits are still unsaved, so the action waiting on
+  the save must not go ahead either. The `file-path` suite drives exactly that
+  path with a queue of dialog answers.
+- **Clear picks one dialog or the other, never both.** The guard's question
+  already says everything the plain one does and adds the filename and a Save
+  button, so a dirty document gets the guard and a clean one gets the plain
+  question. Asking twice would only teach the user to click through the first.
+
+Two of the four guards do not go through it. `confirmOverwrite` is about
+somebody *else's* work rather than the user's, so it asks its own question — but
+it gained the same third button, Save as…, which is the only answer to "your file
+changed underneath you" that does not require someone's work to be lost. It
+cannot recurse: the new path is not `currentFilePath`, so the staleness check
+returns early. And `beforeunload` in `app.js` cannot use `ask()` at all, because
+the browser will not wait on a Promise — it sets `returnValue` from
+`documentIsDirty()` and takes the browser's own wording.
+
+An exported document ships no `file-api.js`, and has no file to be dirty against.
+Both call sites in `app.js` therefore feature-test (`typeof confirmDiscard ===
+"function"`) and fall back to the plain question. That is an honest absence
+rather than a second implementation of a flag with nothing behind it.
+
 ### Save fidelity
 
 Turndown serialises to its own house style, so a save used to rewrite every
@@ -306,6 +358,40 @@ a `---` rule and a paragraph containing a pipe both stay literal.
 
 CLAUDE.md, README.md and welcome.md all round-trip byte-identical. Editing one
 word in CLAUDE.md changes exactly the paragraph it was in.
+
+**One category is deliberately exempt: whitespace nobody can see.** Decision D3
+in [CHANGELOG.md](CHANGELOG.md) is the argument; the mechanics are two functions
+and where they sit.
+
+`normaliseNbsp` converts U+00A0 — and the `&nbsp;` entity, which is how
+`innerHTML` gives the character back — to a plain space. It runs *before*
+Turndown and on the HTML, which is load-bearing in both respects. On the
+markdown after `restoreSourceWrapping` it would strip a U+00A0 the author really
+wrote out of a block nobody touched, destroying exactly the fidelity D1 promises;
+running it here means only edited text is normalised. And the code-span shield
+below it tests for a literal space, so converting first is also what lets the
+shield see a trailing one at the edge of a span — an unconverted NBSP was
+invisible to the shield's `/ $/` while Turndown's own edge-trim saw it perfectly
+well (JS `\s` matches U+00A0) and moved the character outside the backticks and
+into the file. One conversion, two bugs.
+
+`sanitisePastedHtml` handles the way in. It drops empty inline wrappers and the
+blank `<p>`/`<div>` blocks a paste leaves behind, which render as a hairline and
+space bullets unevenly. Two things about it:
+
+- **It is targeted, not a round-trip through markdown.** Pasting a web page
+  should keep its bold, its links and its tables; only what nobody can see goes.
+- **`isGhostElement` treats `<br>` asymmetrically, and that is the point.** A
+  `<p>` or `<div>` whose only content is one *is* the ghost line — that is the
+  markup Word and Docs emit for a blank one. Inside an inline element the same
+  tag is a real break in a real line, and removing its parent would take the
+  break with it. The predicate is a separate pure function from the traversal
+  because the test stub has no HTML parser, so the decision is testable and the
+  walk over it is not.
+
+Neither reaches the live DOM in between, so a U+00A0 the browser writes while you
+type still travels if you select that text and paste it into another application.
+That is TODO 1.9 and is known rather than overlooked.
 
 Two Turndown rules in `app.js` exist for the same reason. **`table`** (with
 `tableCell` / `tableRow` / `tableSection`) is not an optimisation: Turndown 7
@@ -619,10 +705,10 @@ Four things about it that are decisions rather than details:
   looking away from would be the same bug wearing a nicer hat. Hovering also
   holds a toast open, since a message worth reading can outlast its own timer.
 - **`ask()` takes an arbitrary action list, not a yes/no.** That is the whole
-  reason it is not a `confirm()` wrapper: the unsaved-work guards (TODO 1.7)
-  need Save / Discard / Cancel. Actions render in array order; the one marked
-  `default: true` takes focus, so the destructive dialogs mark Cancel and Enter
-  does the safe thing.
+  reason it is not a `confirm()` wrapper, and the unsaved-work guards are what
+  it was built for: Save / Discard / Cancel, and Cancel / Overwrite / Save as….
+  Actions render in array order; the one marked `default: true` takes focus, so
+  the destructive dialogs mark Cancel and Enter does the safe thing.
 - **Dismissing is not agreeing.** Escape, the backdrop and the close button all
   resolve to `dismiss`, which defaults to `null` so a two-way caller testing the
   result for truthiness reads it as no. Get this backwards and Escape overwrites

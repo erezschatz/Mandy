@@ -16,9 +16,15 @@ const DIALOG_IDS = [
   "dialogSaveConfirm",
 ];
 
-// Lets a test park the answer the next confirm() gives, and read back what it
-// was asked. Reload and overwrite both hinge on it.
+// Lets a test park the answer the next dialog gives, and read back what it was
+// asked. Reload, Open and overwrite all hinge on it.
+//
+// `confirmAnswer` is the two-way reading: true takes the action, false backs
+// out. It stays useful for the three-button guards because their extra button
+// is Save, and "agreed" there still means the destructive one. `confirmChoice`
+// names a button outright, which is the only way to exercise Save.
 let confirmAnswer = true;
+let confirmChoice = null;
 
 // Every disk check is fired and not awaited — a page load fires one, and so does
 // the visibilitychange handler. One turn of the timer queue drains them, since
@@ -32,6 +38,7 @@ function boot({
   savedDirty,
   savedMtime,
   realDirs,
+  entries = [],
   disk = new Map(),
 }) {
   const store = new Map();
@@ -39,6 +46,7 @@ function boot({
   const reads = [];
   const writes = [];
   const asked = [];
+  const askedActions = [];
   const toasts = [];
   // One bag for both targets: file-api.js binds `focus` on window and
   // `visibilitychange` on document, and no name is claimed by both.
@@ -137,7 +145,7 @@ function boot({
             ? { ok: false, json: async () => ({ error: "Cannot read directory" }) }
             : {
               ok: true,
-              json: async () => ({ path, parent: "/home", entries: [] }),
+              json: async () => ({ path, parent: "/home", entries }),
             };
         }
         return { ok: true, json: async () => ({ home: HOME }), text: async () => "" };
@@ -158,9 +166,29 @@ function boot({
       // The real one resolves a promise, which is the whole reason the guards
       // could grow a third button — so the stub has to resolve one too, or the
       // callers pass a pending promise off as a yes.
-      ask: (message) => {
+      ask: (message, options = {}) => {
         asked.push(message);
-        return Promise.resolve(confirmAnswer);
+        askedActions.push(options.actions || []);
+        const actions = options.actions || [];
+        // Declining resolves to `dismiss`. The real default is null; false
+        // here instead, so a two-way caller reads it the same way and the
+        // suites written before there was a third button keep their meaning.
+        const dismiss = "dismiss" in options ? options.dismiss : false;
+
+        if (confirmChoice) {
+          // An array is a queue: the discard guard's Save can raise the
+          // overwrite dialog behind it, and the two need different answers.
+          const want = Array.isArray(confirmChoice) ? confirmChoice.shift() : confirmChoice;
+          const hit = actions.find((a) => a.label === want);
+          return Promise.resolve(hit ? hit.value : dismiss);
+        }
+        if (!actions.length) return Promise.resolve(confirmAnswer);
+
+        // Every dialog in front/ marks Cancel as the default, so the first
+        // action that is not the default is the one the user came to press.
+        const affirmative = actions.find((a) => !a.default);
+        if (confirmAnswer) return Promise.resolve(affirmative ? affirmative.value : true);
+        return Promise.resolve(dismiss);
       },
       console,
       setTimeout,
@@ -183,6 +211,7 @@ function boot({
     reads,
     writes,
     asked,
+    askedActions,
     toasts,
     disk,
     // Coming back to the window, both ways a browser reports it. Fired and then
@@ -233,6 +262,30 @@ function boot({
     },
     clickAction(action, fromMenu = false) {
       toolbar.listeners.click[0]({ target: this.find(action, fromMenu) });
+    },
+    // Opening goes through the browser rather than through openFile directly,
+    // because the guard is on the row click: calling openFile would walk
+    // straight past the thing under test.
+    // The name lives in a child span, and the stub's innerHTML = "" does not
+    // empty `children`, so rows pile up across directories — hence the last
+    // match rather than the first.
+    pick: async (name) => {
+      const rows = extra
+        .get("dialogEntries")
+        .children.filter((node) =>
+          (node.children || []).some((c) => c.textContent === name)
+        );
+      const row = rows.at(-1);
+      if (!row) throw new Error(`no dialog row for ${name}`);
+      await row.listeners.click[0]();
+      await settle();
+    },
+    // The browser asks the page whether it may leave. Nothing awaits it there
+    // either, which is the reason this guard is returnValue and not ask().
+    unload: () => {
+      const event = { preventDefault() {}, returnValue: undefined };
+      for (const fn of listeners.beforeunload || []) fn(event);
+      return event.returnValue;
     },
   };
 }
@@ -514,4 +567,120 @@ export default async function run(check) {
   check("saving elsewhere is not blocked by the open file's baseline", saved === true);
   check("and the copy becomes the open file", r.pathNow() === "/home/erez/notes/copy.md");
   confirmAnswer = true;
+
+  // --- the unsaved-work guard (TODO 1.7) -----------------------------------
+  //
+  // Three ways out of a dirty document used to throw it away without asking, or
+  // ask without saying what was at stake. They go through one guard now, and
+  // the property that matters is not that a dialog appears — it is that every
+  // answer other than "discard" leaves the document exactly where it was.
+
+  const OTHER = "/home/x/other.md";
+  const dirtyWith = (extra = {}) =>
+    boot({
+      savedContent: "<h1>Mine</h1>",
+      savedPath: OPEN,
+      savedMtime: T1,
+      entries: [{ name: "other.md", isDir: false }],
+      disk: new Map([
+        [OPEN, { content: "# Mine", modified: T1 }],
+        [OTHER, { content: "# Other", modified: T1 }],
+      ]),
+      ...extra,
+    });
+
+  // Open replaced the document outright, with no check at all, while Reload
+  // guarded the very same call. That inconsistency was the bug.
+  r = dirtyWith();
+  await settle();
+  r.fill("<h1>Mine</h1>");
+  r.type();
+  confirmAnswer = false;
+  await r.showOpenDialog();
+  await r.pick("other.md");
+  check("opening over unsaved edits asks first", /Unsaved edits/.test(r.asked.at(-1) || ""));
+  check("and names the file at risk", /plan\.md/.test(r.asked.at(-1) || ""));
+  check("a cancelled open leaves the document alone", r.html() === "<h1>Mine</h1>");
+  check("and leaves the file open", r.pathNow() === OPEN);
+  check("and never reads the other file", !r.reads.includes(`read:${OTHER}`));
+
+  // Cancel has to be the dismissible answer as well as a button: Escape and the
+  // backdrop resolve to `dismiss`, and a guard that read those as agreement
+  // would throw the work away on a stray keypress.
+  check(
+    "the guard dismisses to cancel, not to discard",
+    (r.askedActions.at(-1) || []).some((a) => a.label === "Cancel" && a.default),
+  );
+  check(
+    "and offers Save alongside the destructive answer",
+    (r.askedActions.at(-1) || []).some((a) => a.value === "save"),
+  );
+
+  r = dirtyWith();
+  await settle();
+  r.fill("<h1>Mine</h1>");
+  r.type();
+  confirmAnswer = true;
+  await r.showOpenDialog();
+  await r.pick("other.md");
+  check("discarding opens the other file", r.pathNow() === OTHER);
+  check("and the document comes from disk", r.html() === "# Other");
+
+  // Nothing to lose, nothing to ask. A guard that fired on every Open would be
+  // trained away inside a day.
+  r = dirtyWith();
+  await settle();
+  await r.showOpenDialog();
+  await r.pick("other.md");
+  check("a clean document opens without asking", !r.asked.length);
+  check("and still opens", r.pathNow() === OTHER);
+
+  // The third button is the whole reason ask() is not a confirm() wrapper.
+  r = dirtyWith();
+  await settle();
+  r.fill("<h1>Mine</h1>");
+  r.type();
+  confirmChoice = "Save";
+  await r.showOpenDialog();
+  await r.pick("other.md");
+  check("choosing Save writes the open file first", r.writes.includes(OPEN));
+  check("and then opens the other one", r.pathNow() === OTHER);
+  confirmChoice = null;
+
+  // The half that is easy to get wrong: a Save the user backed out of leaves
+  // the edits unsaved, so the action waiting on it must not go ahead either.
+  r = dirtyWith({ disk: new Map([
+    [OPEN, { content: "# Mine", modified: T2 }],
+    [OTHER, { content: "# Other", modified: T1 }],
+  ]) });
+  await settle();
+  r.fill("<h1>Mine</h1>");
+  r.type();
+  confirmChoice = ["Save", "Cancel"];
+  await r.showOpenDialog();
+  await r.pick("other.md");
+  check("a Save that was called off aborts the open", r.pathNow() === OPEN);
+  check("and writes nothing", !r.writes.length);
+  confirmChoice = null;
+
+  // The overwrite guard gets the same third button, and its third answer is the
+  // only one that resolves the dilemma rather than picking a side of it.
+  r = changedUnderneath();
+  await settle();
+  confirmAnswer = false;
+  await r.saveFile(OPEN);
+  check(
+    "the overwrite guard offers somewhere else to write",
+    (r.askedActions.at(-1) || []).some((a) => a.value === "save-as"),
+  );
+  confirmAnswer = true;
+
+  // beforeunload is the one guard that cannot use ask(): the browser will not
+  // wait on a Promise, so all it gets is returnValue and the browser's wording.
+  r = dirtyWith();
+  await settle();
+  check("a clean document closes without a prompt", r.unload() === undefined);
+  r.fill("<h1>Mine</h1>");
+  r.type();
+  check("a dirty one asks the browser to stop", r.unload() === "");
 }

@@ -216,12 +216,22 @@ async function loadDir(dirPath) {
       row.appendChild(modified);
     }
 
-    row.addEventListener("click", () => {
+    row.addEventListener("click", async () => {
       if (entry.isDir) {
         loadDir(joinPath(data.path, entry.name));
       } else if (dialogMode === "open") {
+        // Asked here rather than when the dialog opens, so browsing and
+        // changing your mind costs nothing. The notify backdrop sits above
+        // .file-dialog, so the question lands over the browser and cancelling
+        // leaves it open on the same directory.
+        const target = joinPath(data.path, entry.name);
+        const proceed = await confirmDiscard({
+          title: "Open another file?",
+          discardLabel: "Discard and open",
+        });
+        if (!proceed) return;
         closeDialog();
-        openFile(joinPath(data.path, entry.name));
+        openFile(target);
       } else {
         dialogFilename.value = entry.name;
         dialogFilename.focus();
@@ -278,6 +288,56 @@ function confirmSaveName() {
   }
 }
 
+// ── The unsaved-work guard ───────────────────────────────────────
+//
+// One function for every action that throws the open document away: Open,
+// Reload and Clear. They used to disagree — Reload asked, Open did not, and
+// Clear asked without ever mentioning the file or whether anything was unsaved
+// — which made the presence of a dialog a bad signal about how much was at
+// stake.
+//
+// Three buttons rather than two, which is the whole reason ask() takes an
+// action list instead of being a confirm() wrapper. A two-way dialog asks the
+// user to choose between losing their work and abandoning what they were doing,
+// when the thing they actually want is almost always neither.
+//
+// Returns true when the caller should go ahead: nothing to lose, the user
+// saved, or the user chose to discard.
+
+function documentIsDirty() {
+  return isDirty;
+}
+
+async function confirmDiscard({ title, detail = "", discardLabel = "Discard" }) {
+  if (!isDirty) return true;
+
+  const name = currentFilePath ? currentFilePath.split("/").pop() : null;
+  const subject = name ? `Unsaved edits to ${name}` : "Unsaved edits";
+  const message = `${subject} will be lost.${detail ? " " + detail : ""}`;
+
+  const choice = await ask(message, {
+    title,
+    severity: "warn",
+    actions: [
+      { label: "Cancel", value: "cancel", variant: "quiet", default: true },
+      { label: discardLabel, value: "discard", variant: "danger" },
+      { label: "Save", value: "save" },
+    ],
+    // Escape, the backdrop and the close button must not read as agreement:
+    // this dialog's whole job is to stop work disappearing without an answer.
+    dismiss: "cancel",
+  });
+
+  if (choice === "cancel") return false;
+  if (choice === "discard") return true;
+
+  // Save can still fail or be called off — a document with no path opens the
+  // save dialog, an overwrite of a file that moved asks again, and the write
+  // itself can error. In every one of those the edits are still unsaved, so the
+  // action that prompted this must not go ahead either.
+  return saveCurrentOrPrompt();
+}
+
 // ── Open / Save ──────────────────────────────────────────────────────────────
 
 async function openFile(filePath) {
@@ -316,19 +376,11 @@ async function reloadFile() {
   }
 
   const name = currentFilePath.split("/").pop();
-  if (
-    isDirty &&
-    !(await ask(`Unsaved edits to ${name} will be lost.`, {
-      title: "Reload from disk?",
-      severity: "warn",
-      actions: [
-        { label: "Cancel", value: false, variant: "quiet", default: true },
-        { label: "Discard and reload", value: true, variant: "danger" },
-      ],
-    }))
-  ) {
-    return;
-  }
+  const proceed = await confirmDiscard({
+    title: "Reload from disk?",
+    discardLabel: "Discard and reload",
+  });
+  if (!proceed) return;
 
   // A reload of an unchanged file changes nothing on screen, so without this
   // there is no way to tell it happened — and it must be gated on the read
@@ -372,19 +424,24 @@ async function checkDiskChanged() {
 // read it destroys those changes, and Marky has no merge to offer — so this is
 // the last point at which the choice is still the user's.
 async function confirmOverwrite(filePath) {
-  if (filePath !== currentFilePath || !fileMtime) return true;
+  if (filePath !== currentFilePath || !fileMtime) return "overwrite";
 
   let modified;
   try {
     ({ modified } = await statFile(filePath));
   } catch {
     // Cannot tell. The save itself is about to report anything really wrong.
-    return true;
+    return "overwrite";
   }
-  if (!modified || modified === fileMtime) return true;
+  if (!modified || modified === fileMtime) return "overwrite";
 
   setDiskChanged(true);
   const name = filePath.split("/").pop();
+  // Three buttons for the same reason the discard guard has three: Cancel and
+  // Overwrite ask the user to choose between losing somebody else's work and
+  // losing their own, and the way out of that is to write somewhere else. Save
+  // As cannot loop back here — the new path is not currentFilePath, so the
+  // check above returns early.
   return ask(
     `${name} changed on disk since you opened it. Saving replaces whatever ` +
       "changed it, and Marky has no merge to offer.",
@@ -392,15 +449,19 @@ async function confirmOverwrite(filePath) {
       title: "Overwrite the newer file?",
       severity: "warn",
       actions: [
-        { label: "Cancel", value: false, variant: "quiet", default: true },
-        { label: "Overwrite", value: true, variant: "danger" },
+        { label: "Cancel", value: "cancel", variant: "quiet", default: true },
+        { label: "Overwrite", value: "overwrite", variant: "danger" },
+        { label: "Save as\u2026", value: "save-as" },
       ],
+      dismiss: "cancel",
     },
   );
 }
 
 async function saveFile(filePath) {
-  if (!(await confirmOverwrite(filePath))) return false;
+  const overwrite = await confirmOverwrite(filePath);
+  if (overwrite === "cancel") return false;
+  if (overwrite === "save-as") return saveFileAs();
 
   const markdown = htmlToMarkdown(editor.innerHTML);
 
@@ -430,17 +491,21 @@ async function saveFile(filePath) {
   return true;
 }
 
+// Reports whether the document actually reached disk, which confirmDiscard
+// needs: a Save the user backed out of must not clear the way for the action
+// that was waiting on it.
 async function saveCurrentOrPrompt() {
   const target = currentFilePath || (await showSaveDialog());
-  if (!target) return;
-  await saveFile(target);
+  if (!target) return false;
+  return saveFile(target);
 }
 
 // Not named saveAs: FileSaver.js claims that global, and whichever loaded last
 // would silently clobber the other.
 async function saveFileAs() {
   const target = await showSaveDialog();
-  if (target) await saveFile(target);
+  if (!target) return false;
+  return saveFile(target);
 }
 
 // ── Wiring ───────────────────────────────────────────────────────────────────

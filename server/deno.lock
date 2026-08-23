@@ -1,16 +1,16 @@
 {
   "version": "5",
   "specifiers": {
-    "npm:hono@^4.13.2": "4.13.2"
+    "npm:hono@^4.13.3": "4.13.3"
   },
   "npm": {
-    "hono@4.13.2": {
-      "integrity": "sha512-JydRilDRkYBQMt9qR9U92mXxmbGqsqSn/IKOrh4e7/gEbn+0zSr8igTu0obwJoNGN4sez28DIql7FBHWydoJpA=="
+    "hono@4.13.3": {
+      "integrity": "sha512-r8AO2mYHoLxSHkgafNeC/BXyb2vWRxD3jem4Ts+ptav8oTG5FIRifAjuJEmZI4bSvvc2ns0GxmIYiZnHqN3mMw=="
     }
   },
   "workspace": {
     "dependencies": [
-      "npm:hono@^4.13.2"
+      "npm:hono@^4.13.3"
     ]
   }
 }
