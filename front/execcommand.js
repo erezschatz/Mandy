@@ -158,10 +158,15 @@ function normaliseEditorMarkup(root) {
     // caret in a bullet with <h1><ul>…</ul></h1> — the entire list wrapped in a
     // heading. Both are invalid nesting that the HTML parser will take apart
     // differently on the next reload, and the second one is destructive: the
-    // list stops being a list. Unwrapping makes the command a no-op instead,
-    // which is the conservative answer. Firefox does the sensible thing here
-    // and puts the <h1> inside the <li>; matching that would mean knowing which
-    // item the caret was in, which normalisation cannot see. See TODO 5.1.
+    // list stops being a list.
+    //
+    // Unwrapping makes the command a no-op, and a no-op is the *wanted*
+    // behaviour rather than a fallback: a heading inside a bullet is not
+    // something the editor should offer a way to make by accident. Firefox
+    // still puts the <h1> inside the <li>, so the two engines currently
+    // disagree about whether the button does anything. Settling that means
+    // refusing it in applyFormat, where the selection still exists — normalise
+    // cannot see which item the caret was in. TODO 5.1, deferred to 1.4.
     if (UNWRAPPABLE_AROUND_LIST.has(node.tagName) && holdsListChild(node)) {
       unwrapElement(node);
       changed = true;

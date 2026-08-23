@@ -335,7 +335,10 @@ they matter:
 ## 6. Product
 
 *   **6.1** *(best last, and at least after 6.3)* Rewrite the README to better
-    fit the project's state.
+    fit the project's state. D0 in [CHANGELOG.md](CHANGELOG.md) is the framing
+    to write it from — what the project is *for* is argued there and nowhere in
+    the README, which still describes a markdown editor rather than the case for
+    one.
 *   **6.2** More export options. The set today is markdown, HTML, PDF, DOCX and
     Editable. Decide what else earns a place — ODT or RTF for word processors
     that are not Word, plain text, EPUB, a slide deck, an image of a single

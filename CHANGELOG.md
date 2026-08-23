@@ -548,7 +548,72 @@ to happen, and rather than in [CLAUDE.md](CLAUDE.md) because that describes how
 the code works — this is why it works that way, and what changing it would cost.
 Reopen one by editing it here, not by filing it as a TODO again.
 
+D0 is the exception to that description: it is not a question that was argued
+out but the position the rest of them follow from. It is numbered zero because
+it was written last and belongs first.
+
+## D0. Humans should not be writing markup
+
+Markup, data and configuration formats — HTML, CSS, JSON, XML, INI, markdown —
+should never have been things people typed by hand. They are source. They are
+written for a machine to read, and the only reason a human ever edits one
+directly is that nobody built the other half of the tool.
+
+Every other domain worked this out long ago. Nobody writes the binary of a
+spreadsheet, or hand-edits the internal representation of an image, or types the
+XML inside a `.docx`. There is a document, and there is what the document is
+stored as, and the person works on the document. Markup formats are the holdout,
+and the holdout has been rationalised into a virtue: we call these formats
+"human-readable" and treat that as the end of the discussion.
+
+YAML is what happens when the rationalisation is taken seriously enough to
+design around. It was invented to be the friendly one, and it ended up the worst
+of both worlds — not genuinely comfortable to read at any real size, and carrying
+all the fragility of human text: significant indentation, half a dozen ways to
+spell a string, and values that change type depending on how they are written.
+It is neither reliably machine-safe nor actually pleasant, and it exists because
+the problem was taken to be "the syntax is unfriendly" rather than "a person is
+being asked to write source at all".
+
+The answer is a clean separation of source and presentation. The human works on
+a graphical, usable document. The machine handles the source. Neither one has to
+compromise for the other, which is exactly what every "human-readable format"
+asks them both to do.
+
+**Where this stopped being an opinion and became the reason for this project:**
+moving `.md` files back and forth with an LLM, and noticing that a real share of
+the time was going into editing the *markdown* rather than the *text*. Fixing a
+list marker. Re-wrapping a paragraph. Repairing a table whose columns no longer
+lined up. None of that is writing, and none of it is work a person should be
+doing — it is the machine's job, handed to a human because the editor was
+missing.
+
+The response is not a new format. Inventing a friendlier syntax is what produced
+YAML, and there is no reason to expect the next attempt to go differently. The
+response is to double down on the separation: leave markdown exactly as it is,
+as the machine's artifact, and put a real editing surface in front of it.
+
+Two things follow, and they are why the rest of this file is as long as it is:
+
+- **The document must be edited as a document, not as text with a preview beside
+  it.** A source pane with a live rendering is still a person editing markup —
+  it just gives them a nicer view of the consequences. That is the cheap version
+  and it would dissolve most of section 2 of the TODO at a stroke; it is refused
+  because it solves the wrong problem.
+- **The bytes it saves have to be the bytes it was given.** An editor that
+  silently rewrites the file has not taken the source off the human's hands, it
+  has just moved the work: now they read a diff of several hundred lines to find
+  the one sentence they changed. D1 is that argument in full, and this is where
+  it comes from.
+
+Marky was the starting point because it was already open, web-based and small
+enough to bend to this. The preference for open source, JavaScript and near-zero
+dependencies is real but secondary — it decided *what to start from*, not what
+to build.
+
 ## D1. A saved file gets its own bytes back
+
+The consequence of D0, worked out in detail.
 
 Markdown is loosely specified, so the same document has many legal spellings:
 `-`, `*` or `+` bullets, `---`, `***` or `___` rules, setext or atx headings,
@@ -558,11 +623,19 @@ which means the question is not whether a save is correct but what correct
 means: does the file have to come back as the bytes it arrived as, or only as a
 document that renders the same?
 
-Marky's own files are project documentation, kept in git. An editor that
-re-spells the whole file on every save turns a one-word change into a diff of
-several hundred rewritten lines, and that cost lands on whoever reviews it
-rather than on whoever made the edit. Rendering equivalence is no comfort at
-that point.
+Nothing in a markdown file has to keep its original spelling for the file to
+render identically, and for a personal document nothing much is lost when it
+does not. Rewrite every bullet in a private note and the note still reads the
+same; nobody is looking at the difference.
+
+That stops being true the moment the file is under version control, which in a
+software project it always is — and increasingly so when working with LLMs,
+where markdown *is* the project documentation and the interface to it. Then the
+diff is the artifact. An editor that re-spells the whole file on every save
+turns a one-word change into several hundred rewritten lines, and that cost
+lands on whoever reads the diff rather than on whoever made the edit. Rendering
+equivalence is no comfort at that point: the reviewer cannot see what changed,
+and neither can anything reading the history.
 
 So: the bytes. An unedited document must come back unchanged, and editing one
 paragraph must change one paragraph, wherever we can manage it.
