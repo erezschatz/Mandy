@@ -297,28 +297,6 @@ they matter:
     folklore — the Deno suite has no editing engine, and the first run of this
     page killed two long-standing beliefs about which engine did what.
 
-*   **5.4** The file-server liveness check only runs once, in the startup IIFE
-    in [front/file-api.js](front/file-api.js). It probes `/api/home` and
-    disables Open/Save/Reload/Save As if the server is not there — but never
-    again: start the app with the server up and kill it mid-session and the
-    buttons stay live, so the next click fails with a `notify` rather than
-    being disabled up front. Start with the server down, bring it up
-    afterwards, and the buttons stay dead until a full reload, even though
-    nothing else about the page needs one.
-
-    `checkDiskChanged` already re-verifies a weaker version of the same
-    question — "does what we believe about the outside world still hold" — on
-    `focus`, `visibilitychange` and startup, so the trigger points are not new.
-    But it cannot just be folded into that function: `checkDiskChanged` only
-    runs when `currentFilePath && fileMtime`, i.e. only with a file open, and
-    liveness has to be checked with no file open too (a fresh install, the
-    welcome doc, a file opened before the server died). It also needs to flip
-    both ways where the startup check today only flips one: extract the probe
-    into something like `setServerAvailable(bool)` that can enable the buttons
-    back as cleanly as it disables them, and call it from the same wake
-    triggers as `checkDiskChanged` rather than standing up a second independent
-    listener pair.
-
 *   **5.2** *(subsumes 5.3)* No module system. Every file in front/ is a plain
     `<script>`, so every top-level `const` is a shared global and collisions
     are real bugs, not hypotheticals (`CLOSE` vs `DOC_CLOSE`, `saveFileAs` vs

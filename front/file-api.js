@@ -541,10 +541,45 @@ async function saveFileAs() {
 
 // ── Wiring ───────────────────────────────────────────────────────────────────
 
-// Without the file server (e.g. the statically hosted build) there is nothing
-// to open or save into, so say so up front instead of failing on click. The
-// carets go with them: a live menu over two dead buttons is worse than either.
-(async () => {
+// Without the file server (e.g. the statically hosted build, or the app
+// server having died) there is nothing to open or save into, so say so on the
+// buttons instead of failing on click. The carets go with them: a live menu
+// over two dead buttons is worse than either.
+//
+// null until the first check lands, so the very first result always writes
+// the DOM once, whichever way it goes.
+let serverAvailable = null;
+let checkingServer = false;
+
+function setServerAvailable(available) {
+  if (serverAvailable === available) return;
+  serverAvailable = available;
+
+  const buttons = [
+    ...["open-file", "save-file", "reload-file", "save-as-file"].map((a) =>
+      document.querySelector(`.toolbar [data-action="${a}"]`)
+    ),
+    ...["open-file", "save-file"].map((a) =>
+      document.querySelector(`.toolbar [data-menu="${a}"]`)
+    ),
+  ];
+  for (const btn of buttons) {
+    if (!btn) continue;
+    btn.disabled = !available;
+    btn.style.opacity = available ? "" : "0.5";
+    btn.style.cursor = available ? "" : "not-allowed";
+    btn.title = available ? "" : "Unavailable: the Marky file server is not running";
+  }
+}
+
+// Was a startup-only probe: a server that died mid-session left the buttons
+// claiming it was still there until the next full reload, and one brought up
+// after a dead start never got noticed at all. Now it runs again on the same
+// wake points checkDiskChanged does, so both directions self-correct without
+// needing a reload.
+async function checkServerAvailable() {
+  if (checkingServer) return;
+  checkingServer = true;
   try {
     const res = await fetch("/api/home");
     if (!res.ok) throw new Error(res.statusText);
@@ -552,29 +587,21 @@ async function saveFileAs() {
     // so only a well-formed JSON reply counts as "the server is there".
     const data = await res.json();
     if (typeof data.home !== "string") throw new Error("Not the Marky server");
+    setServerAvailable(true);
   } catch {
-    const dead = [
-      ...["open-file", "save-file", "reload-file", "save-as-file"].map((a) =>
-        document.querySelector(`.toolbar [data-action="${a}"]`)
-      ),
-      ...["open-file", "save-file"].map((a) =>
-        document.querySelector(`.toolbar [data-menu="${a}"]`)
-      ),
-    ];
-    for (const btn of dead) {
-      if (!btn) continue;
-      btn.disabled = true;
-      btn.style.opacity = "0.5";
-      btn.style.cursor = "not-allowed";
-      btn.title = "Unavailable: the Marky file server is not running";
-    }
-    return;
+    setServerAvailable(false);
+  } finally {
+    checkingServer = false;
   }
+}
 
+(async () => {
+  await checkServerAvailable();
   // A page load restores the document from autosave without going near the
-  // file, so the very first thing worth knowing is whether the two still agree.
-  // `focus` never fires for the tab that already has it.
-  checkDiskChanged();
+  // file, so the very first thing worth knowing is whether the two still
+  // agree — but only if there is a server to ask. `focus` never fires for the
+  // tab that already has it.
+  if (serverAvailable) checkDiskChanged();
 })();
 
 onToolbarAction("open-file", showOpenDialog);
@@ -582,13 +609,20 @@ onToolbarAction("reload-file", reloadFile);
 onToolbarAction("save-file", saveCurrentOrPrompt);
 onToolbarAction("save-as-file", saveFileAs);
 
-// Coming back to the window is when an outside edit is most likely to have
-// happened and cheapest to report. Both events are needed — switching tabs
-// within a window fires only `visibilitychange`, alt-tabbing back to the browser
-// only `focus` — and checkDiskChanged drops the overlap when both fire.
-window.addEventListener("focus", checkDiskChanged);
+// Coming back to the window is when the server or the file are most likely to
+// have changed underneath the app and cheapest to notice. Both events are
+// needed — switching tabs within a window fires only `visibilitychange`,
+// alt-tabbing back to the browser only `focus` — and each check drops the
+// overlap when both fire.
+window.addEventListener("focus", () => {
+  checkServerAvailable();
+  checkDiskChanged();
+});
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) checkDiskChanged();
+  if (!document.hidden) {
+    checkServerAvailable();
+    checkDiskChanged();
+  }
 });
 dialogClose.addEventListener("click", closeDialog);
 dialogSaveConfirm.addEventListener("click", confirmSaveName);

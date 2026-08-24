@@ -921,7 +921,14 @@ The service worker never touches `/api/*` — those are live reads and writes.
 
 ### Degrading without the server
 
-`file-api.js` probes `/api/home` at startup and disables Open/Save if it doesn't
-get well-formed JSON back (a static host answering 200 with `index.html` does
-not count). The editor still boots from the service-worker cache; clipboard and
-all three exports keep working.
+`file-api.js` probes `/api/home` and disables Open/Save/Reload/Save As if it
+doesn't get well-formed JSON back (a static host answering 200 with
+`index.html` does not count). The editor still boots from the service-worker
+cache; clipboard and all three exports keep working.
+
+The probe is not just a startup check: `checkServerAvailable()` runs again on
+`window focus` and `visibilitychange`, the same wake points `checkDiskChanged`
+uses, so a server that dies mid-session gets noticed without a click failing
+first, and one brought up after a dead start re-enables the buttons without a
+reload. `setServerAvailable(bool)` is idempotent both ways, guarded like
+`setDirty`/`setDiskChanged` against writing the DOM when nothing changed.

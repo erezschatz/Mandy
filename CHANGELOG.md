@@ -562,6 +562,28 @@ return to either, for the same reason — undo's stack does not survive one — 
 restored flag says there is nothing unsaved; otherwise the document stays
 dirty until the next real save, same as before this landed.
 
+## 2026-08-24 — The file-server liveness check runs more than once
+
+TODO 5.4. Open/Save/Reload/Save As used to be disabled by a single probe of
+`/api/home` in a startup IIFE, and never touched again. A server that died
+mid-session left them claiming it was still there, so the next click failed
+with a `notify` instead of finding a disabled button; a server brought up
+after a dead start left them disabled until a full reload, for no reason the
+page itself needed one.
+
+`checkServerAvailable()` in `file-api.js` replaces the IIFE and now runs again
+on `window focus` and `visibilitychange` — the same wake points
+`checkDiskChanged` already used for the weaker question of whether the open
+file changed underneath the app, reused here rather than standing up a second
+listener pair. It could not simply be folded into `checkDiskChanged` itself:
+that function only runs with a file open (`currentFilePath && fileMtime`), and
+liveness has to be checked with none open too — a fresh install, the welcome
+document, a file opened before the server died. `setServerAvailable(bool)` is
+the part that had to change shape rather than just get called more often: the
+original only ever disabled, so it became idempotent in both directions,
+guarded the same way `setDirty`/`setDiskChanged` are against writing the DOM
+when nothing changed.
+
 ## 2026-08-22 — Fold `DECISIONS.md` into this file, renumber TODO.md
 
 This changelog was written, `DECISIONS.md` was removed and its two decisions moved

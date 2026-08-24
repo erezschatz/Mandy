@@ -40,12 +40,14 @@ function boot({
   realDirs,
   entries = [],
   disk = new Map(),
+  serverUp = true,
 }) {
   const store = new Map();
   const browsed = [];
   const reads = [];
   const writes = [];
   let undoPos = null;
+  let up = serverUp;
   const asked = [];
   const askedActions = [];
   const toasts = [];
@@ -149,6 +151,9 @@ function boot({
               json: async () => ({ path, parent: "/home", entries }),
             };
         }
+        // /api/home. A dead server is a connection failure, not a bad
+        // response, so simulate it the way a browser actually sees one.
+        if (!up) throw new Error("Failed to fetch");
         return { ok: true, json: async () => ({ home: HOME }), text: async () => "" };
       },
       // `options` is the real one's own bag, and reading a file writes the
@@ -245,6 +250,11 @@ function boot({
     // dirty flag's undo half without the real stack.
     setUndoPosition: (n) => {
       undoPos = n;
+    },
+    // Flips whether /api/home answers, for the tests driving the file-server
+    // liveness check. Takes effect on the next probe, not retroactively.
+    setServerUp: (v) => {
+      up = v;
     },
     // Typing, and anything else that goes through execCommand: file-api.js
     // hangs the dirty flag off the editor's own input event.
@@ -726,4 +736,35 @@ export default async function run(check) {
   r.fill("<h1>Mine</h1>");
   r.type();
   check("a dirty one asks the browser to stop", r.unload() === "");
+
+  // --- the file server going away, and coming back --------------------------
+  //
+  // TODO 5.4: the startup probe used to be the only check there was, so a
+  // server that died mid-session left the buttons claiming it was still there,
+  // and one brought up after a dead start stayed disabled until a reload.
+  // `focus` and `visibilitychange` are the same wake points checkDiskChanged
+  // already used, reused here for the same reason: whatever changed while the
+  // tab was away is cheapest to notice the moment it comes back.
+
+  r = boot({ savedContent: "<h1>Real work</h1>", serverUp: false });
+  await settle();
+  check("a dead server disables Open", r.find("open-file").disabled === true);
+  check("and says why", r.find("open-file").title.includes("not running"));
+  check("and disables Save", r.find("save-file").disabled === true);
+
+  r.setServerUp(true);
+  await r.focus();
+  check("coming back up re-enables Open", r.find("open-file").disabled === false);
+  check("and clears the explanation", r.find("open-file").title === "");
+  check("and re-enables Save", r.find("save-file").disabled === false);
+
+  r = boot({ savedContent: "<h1>Real work</h1>", serverUp: true });
+  await settle();
+  check("a live server at boot leaves Open enabled",
+    r.find("open-file").disabled === false);
+
+  r.setServerUp(false);
+  await r.reveal();
+  check("dying mid-session disables it without a reload",
+    r.find("open-file").disabled === true);
 }
