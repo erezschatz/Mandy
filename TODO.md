@@ -19,14 +19,19 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
 
 ## 1. Editing
 
-*   **1.1** *(needs a browser)* A fenced code block inside a list item. Code now
-    declines rather than damaging anything — a whole bullet gets inline
-    `<code>`, several bullets get a toast — but the construct markdown actually
-    offers there, a fence indented inside the `<li>`, is still unreachable. It
-    is left undone because it is a save-fidelity question rather than a DOM one:
-    `<li><pre><code>` has to survive Turndown and markdown-it in both
-    directions, and nobody has watched it do so. Check that round-trip first;
-    the editing part is a few lines either way.
+*   **1.1** A fenced code block inside a list item. Code now declines rather
+    than damaging anything — a whole bullet gets inline `<code>`, several
+    bullets get a toast — but the construct markdown actually offers there, a
+    fence indented inside the `<li>`, is still unreachable from the format bar.
+
+    The save-fidelity half is settled: `<li><pre><code>` was checked in a
+    browser and survives markdown-it and Turndown in both directions
+    byte-identically, including a full pass through `normaliseEditorMarkup`
+    (one of the four subtrees it never touches) and `restoreSourceWrapping`.
+    A document that already has one round-trips fine today — what's missing is
+    purely the editing side: `applyFormat`'s Code branch has no third outcome
+    for "selection is inside one list item, make it a block," only inline and
+    whole-block-outside-a-list. A few lines in format-bar.js.
 
 *   **1.3** *(undecided)* Hybrid mode: typing `#` at the start of
     a line turns that line into a heading, and the same for `-`, `>` and a
