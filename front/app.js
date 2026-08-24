@@ -503,16 +503,18 @@ onToolbarAction("paste-md", async () => {
     const clipboardText = await navigator.clipboard.readText();
     if (clipboardText && clipboardText.trim()) {
       const html = markdownToHtml(clipboardText);
-      editor.innerHTML = html;
+      // Caret insertion, not a document replacement — there is a real Open
+      // now, and wanting the replacement is Clear followed by this. runCommand
+      // raises `input` for free, so undo, autosave and the dirty flag pick it
+      // up the same way a real paste does, and this is no longer an
+      // editor.innerHTML assignment site for undo.js to know about.
+      runCommand("insertHTML", html);
       await renderMermaidDiagrams(editor);
       await renderLatex(editor);
+      // The two renderers run after the `input` event above already scheduled
+      // a debounced autosave, so without this an immediate reload could still
+      // catch the pre-render markup.
       localStorage.setItem("markdownContent", editor.innerHTML);
-      // Unlike Open, this replaces the document with no confirmation and no
-      // file behind it, so Ctrl+Z is the only way back and it has to work.
-      // The event is also what sets the dirty flag: a programmatic edit raises
-      // none, so before this Paste MD replaced the document and the toolbar
-      // went on claiming it matched the file on disk.
-      editor.dispatchEvent(new Event("input", { bubbles: true }));
     }
   } catch (err) {
     notify("Unable to access clipboard. Please grant clipboard permissions.", {

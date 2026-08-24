@@ -584,6 +584,25 @@ original only ever disabled, so it became idempotent in both directions,
 guarded the same way `setDirty`/`setDiskChanged` are against writing the DOM
 when nothing changed.
 
+## 2026-08-24 — Paste Markdown inserts instead of replacing
+
+TODO 1.8. `onToolbarAction("paste-md")` assigned `editor.innerHTML` outright —
+a leftover from the serverless model, where replacing the document from the
+clipboard was the closest thing to an Open there was. There is a real Open
+now, and no editor anywhere ships a "replace everything from the clipboard"
+command under a Paste label; wanting the replacement is Clear followed by
+Paste, two deliberate actions rather than one surprising one.
+
+It now goes through `runCommand("insertHTML", html)` — the execCommand door
+every other paste in the app already uses — rather than through the
+`undoReset()`-or-synthetic-`input` choice every other document-replacing site
+has to make. execCommand raises `input` for free, so undo, autosave and the
+dirty flag pick it up exactly the way a real paste does, with nothing to wire
+up by hand. It also means Paste Markdown is no longer an `editor.innerHTML`
+assignment site at all: the `undo` suite's count of them dropped from six to
+five, catching a regression to the old behaviour the same way it catches a new
+site skipping the choice.
+
 ## 2026-08-22 — Fold `DECISIONS.md` into this file, renumber TODO.md
 
 This changelog was written, `DECISIONS.md` was removed and its two decisions moved

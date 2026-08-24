@@ -823,9 +823,11 @@ Four things worth knowing:
   the choice.
 - **A programmatic edit announces itself with a synthetic `input` event.** That
   was already the convention for autosave and the dirty flag, which is why
-  `insertToc` needed no change at all to become undoable.
-  `paste-md` gained the dispatch, which also fixed it never marking the document
-  edited.
+  `insertToc` needed no change at all to become undoable. `paste-md` needs
+  none either: it inserts through `runCommand("insertHTML", …)` rather than
+  replacing the document, so execCommand raises the event for free, the same
+  door every other paste goes through — and it stopped being an
+  `editor.innerHTML` assignment site the `undo` suite has to count at all.
 - **The caret is stored as a character offset, not a Range.** A Range points at
   nodes that restoring a snapshot destroys. `undoTextOffset` counts characters
   across element boundaries, and `undoLocateOffset` walks back to a text node —

@@ -113,28 +113,15 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
     meaning entirely different things. The split that resolves it: **Edit** gets
     Cut, Copy, Paste and Paste without formatting; *Copy markdown* moves to
     **Export**, where "copy as markdown" is what it has always meant; *Paste
-    markdown* moves to **Insert**, which needs 1.8 first to stop being a lie.
-    Cut and Copy can go through `execCommand`, which raises `input`, so undo and
-    the dirty flag pick them up for nothing. `mousedown` is already prevented
-    over the bar, so the editor's selection survives the click.
+    markdown* moves to **Insert**, which reads honestly now that it inserts
+    rather than replaces. Cut and Copy can go through `execCommand`, which
+    raises `input`, so undo and the dirty flag pick them up for nothing.
+    `mousedown` is already prevented over the bar, so the editor's selection
+    survives the click.
 
     Note that this is now a convenience rather than a fix: the whitespace
     cleanup took the pain out of an ordinary paste, so what is left here is
     wanting the text bare, not wanting it repaired.
-
-*   **1.8** *(wanted by 1.7)* Paste markdown replaces the document instead of
-    inserting into it. `onToolbarAction("paste-md")` in app.js assigns
-    `editor.innerHTML` outright — a legacy of the serverless model, where
-    replacing the document from the clipboard was the closest thing to an Open
-    there was. There is a real Open now, and no editor anywhere has a "replace
-    everything from the clipboard" command. It should insert at the caret like
-    its name says; wanting the replacement is Clear followed by Paste, which is
-    two deliberate actions rather than one surprising one.
-
-    `insertToc` in outline.js is the pattern to copy — caret insertion with a
-    synthetic `input` event. Doing it that way also stops this being an
-    `innerHTML` assignment site, so it becomes ordinarily undoable and drops out
-    of the count the undo suite keeps.
 
 *   **1.9** Invisible whitespace: what the cleanup does not reach. Pasted HTML
     is sanitised on the way in and U+00A0 is normalised on the way out (see D3
