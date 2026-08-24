@@ -57,44 +57,85 @@ function showFormatBar() {
   updateActiveButtons();
 }
 
+// One predicate per button, each checking for an ancestor tag between a text
+// node and #editor — the same test the old anchor-only walk made, just run
+// per node instead of once. p/h1/h2/h3 match their own tag directly, the way
+// formatBlock leaves it; bold and italic fold both spellings execCommand can
+// produce; ul/ol/code match on presence anywhere in the chain, nested list or
+// not, which is what the single-node walk always did too.
+const FORMAT_PREDICATES = {
+  p: (node) => hasAncestorTag(node, "P"),
+  h1: (node) => hasAncestorTag(node, "H1"),
+  h2: (node) => hasAncestorTag(node, "H2"),
+  h3: (node) => hasAncestorTag(node, "H3"),
+  bold: (node) => hasAncestorTag(node, "STRONG", "B"),
+  italic: (node) => hasAncestorTag(node, "EM", "I"),
+  ul: (node) => hasAncestorTag(node, "UL"),
+  ol: (node) => hasAncestorTag(node, "OL"),
+  code: (node) => hasAncestorTag(node, "CODE"),
+};
+
+function hasAncestorTag(textNode, ...tags) {
+  let node = textNode.parentElement;
+  while (node && node !== editor) {
+    if (tags.includes(node.tagName)) return true;
+    node = node.parentElement;
+  }
+  return false;
+}
+
+// The non-empty text nodes the selection actually touches, in document order.
+// A text node's own formatting is uniform along its length — a range that
+// only grazes the end of one still counts the whole node, the way a browser's
+// own bold-button state does at a selection boundary. Blank nodes (the
+// whitespace contenteditable leaves between blocks) are dropped so they can
+// never masquerade as an unformatted character and drag "all" down to "mixed".
+function textNodesInRange(range) {
+  const nodes = [];
+  (function walk(node) {
+    for (const child of node.childNodes || []) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        if ((child.textContent || "").trim() && range.intersectsNode(child)) {
+          nodes.push(child);
+        }
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        walk(child);
+      }
+    }
+  })(editor);
+  return nodes;
+}
+
+// all: every touched node has it. none: no touched node has it. mixed:
+// somewhere in between — the state the old single-node check could not tell
+// apart from either extreme, because it only ever asked about one node.
+function formatState(nodes, predicate) {
+  if (!nodes.length) return "none";
+  let all = true;
+  let any = false;
+  for (const node of nodes) {
+    if (predicate(node)) any = true;
+    else all = false;
+  }
+  return all ? "all" : any ? "mixed" : "none";
+}
+
 function updateActiveButtons() {
   const selection = window.getSelection();
   if (!selection.rangeCount) return;
 
-  let node = selection.anchorNode;
-  if (!node) return;
-  if (node.nodeType === Node.TEXT_NODE) {
-    node = node.parentElement;
-  }
+  const nodes = textNodesInRange(selection.getRangeAt(0));
 
   document.querySelectorAll(".format-btn").forEach((btn) => {
-    btn.classList.remove("active");
+    btn.classList.remove("active", "mixed");
   });
 
-  while (node && node !== editor) {
-    const tagName = node.tagName?.toLowerCase();
-    const btn = document.querySelector(`.format-btn[data-format="${tagName}"]`);
-    if (btn) {
-      btn.classList.add("active");
-    }
-
-    if (tagName === "strong" || tagName === "b") {
-      const boldBtn = document.querySelector('.format-btn[data-format="bold"]');
-      if (boldBtn) {
-        boldBtn.classList.add("active");
-      }
-    }
-
-    if (tagName === "em" || tagName === "i") {
-      const italicBtn = document.querySelector(
-        '.format-btn[data-format="italic"]',
-      );
-      if (italicBtn) {
-        italicBtn.classList.add("active");
-      }
-    }
-
-    node = node.parentElement;
+  for (const [format, predicate] of Object.entries(FORMAT_PREDICATES)) {
+    const btn = document.querySelector(`.format-btn[data-format="${format}"]`);
+    if (!btn) continue;
+    const state = formatState(nodes, predicate);
+    if (state === "all") btn.classList.add("active");
+    else if (state === "mixed") btn.classList.add("mixed");
   }
 }
 

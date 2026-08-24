@@ -143,14 +143,6 @@ that are deliberate rather than bugs — as does D3, which is the one whole
 category fidelity deliberately does not extend to. In rough order of how much
 they matter:
 
-*   **2.1** **Reference links are inlined and the definition block deleted.** A
-    document that cites the same URL in twenty places arrives with one
-    definition and leaves with twenty copies. The restore cannot cover it:
-    inlining changes the text of the block, so the block stops matching itself.
-    Turndown's `linkReferenceStyle` is not the fix — it converts *every* link
-    to a reference, the same rewrite in the other direction. Wants a rule that
-    emits a reference only where the source already had a definition, plus
-    somewhere to re-emit the definition block.
 *   **2.2** The source is persisted as a second copy of the document.
     `adoptMarkdownStyle` writes the incoming markdown to
     `localStorage["markdownSource"]`, because the autosave is HTML and carries
@@ -177,16 +169,6 @@ they matter:
     and fences. A change anywhere in a fenced block, a table or a multi-line
     paragraph re-serialises the whole segment. Finer granularity would need to
     match at line level, which is a different and much less safe algorithm.
-
-## 3. Format bar
-
-*   **3.1** Selection doesn't identify the elements inside it.
-    `updateActiveButtons` walks up from `selection.anchorNode` only, so the
-    active states reflect wherever the selection *started* rather than the
-    whole of it: select a bold run and B lights up, select a span covering both
-    bold and non-bold text and it still lights up (or doesn't) depending only
-    on the anchor end. It should reflect the whole selection — all-bold vs
-    mixed vs none — and probably show a third, indeterminate state for mixed.
 
 ## 4. Interface
 

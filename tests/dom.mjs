@@ -193,12 +193,17 @@ export function markdownitStub(inlineRules = [], renderRules = {}) {
     inline: {
       ruler: {
         before: (anchor, name, rule) => inlineRules.push({ anchor, name, rule }),
+        // app.js swaps its own referenceAwareLink in over the built-in "link"
+        // rule at load time; render is a pass-through here regardless, so the
+        // swapped rule is never actually invoked by anything in this stub.
+        at: (name, rule) => inlineRules.push({ anchor: name, name, rule }),
       },
     },
     renderer: { rules: renderRules },
     utils: {
       escapeHtml: (s) =>
         s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+      normalizeReference: (s) => s.trim().replace(/\s+/g, " ").toLowerCase(),
     },
   });
 }
@@ -250,9 +255,13 @@ export function loadApp() {
       },
       TurndownService: class {
         // Options are recorded, not honoured: the serialiser is a pass-through
-        // here, so a suite can only assert what app.js asked for.
+        // here, so a suite can only assert what app.js asked for. The real
+        // constructor exposes them back as `this.options`, which
+        // adoptMarkdownStyle writes into on every document it adopts, so the
+        // stub needs the same live object rather than just the external copy.
         constructor(options) {
           Object.assign(opts, options);
+          this.options = opts;
         }
         addRule(name, rule) {
           rules[name] = rule;
@@ -304,6 +313,8 @@ export function loadApp() {
       " documentElement: __root, byId: __byId," +
       " htmlToMarkdown, anchorSlug, headingAnchors, openExternalLink," +
       " slugifyTitle, isBlankContent, sniffMarkdownStyle, reflowMarkdown," +
-      " adoptMarkdownStyle, normaliseNbsp, isGhostElement };",
+      " adoptMarkdownStyle, normaliseNbsp, isGhostElement," +
+      " scanReferenceDefinitions, normalizeReferenceLabel, appendReferenceDefinitions," +
+      " referenceDefinitionsNow: () => referenceDefinitions };",
   );
 }

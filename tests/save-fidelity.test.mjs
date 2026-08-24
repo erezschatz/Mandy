@@ -84,6 +84,126 @@ export default function run(check) {
 
   ghostChecks(check, isGhostElement);
   styleChecks(check);
+  referenceLinkChecks(check);
+}
+
+// TODO 2.1: a reference link and an inline link resolve to the identical
+// <a href> once markdown-it has parsed them, so without help a save could not
+// tell them apart and quietly rewrote every reference as inline, dropping its
+// [label]: url definition with it. Two halves, tested separately because
+// that is exactly where the fix splits: scanReferenceDefinitions is pure
+// string work day one test can drive directly; referenceAwareLink is a
+// three-way fork inside markdown-it's own inline parser that the pass-through
+// TurndownService stub never calls, the same reason mathjax/mermaid/table are
+// tested by pulling the rule out and calling it directly rather than through
+// htmlToMarkdown -- see the mathjax rule tests in latex.test.mjs.
+function referenceLinkChecks(check) {
+  const { scanReferenceDefinitions, normalizeReferenceLabel } = loadApp();
+
+  check(
+    "a single-line definition is captured",
+    scanReferenceDefinitions("[foo]: http://example.com\n").get("foo") ===
+      "[foo]: http://example.com",
+  );
+
+  check(
+    "a titled definition is captured whole, not just the destination",
+    scanReferenceDefinitions('[foo]: http://example.com "Title"\n').get("foo") ===
+      '[foo]: http://example.com "Title"',
+  );
+
+  check(
+    "the label key is case- and whitespace-normalised",
+    scanReferenceDefinitions("[ My  Label ]: http://example.com\n").has("my label"),
+  );
+
+  check(
+    "the first of two definitions for the same label wins",
+    scanReferenceDefinitions("[foo]: http://a\n[foo]: http://b\n").get("foo") ===
+      "[foo]: http://a",
+  );
+
+  check(
+    "a line that only looks like a definition inside a fence is not one",
+    !scanReferenceDefinitions("```\n[foo]: http://example.com\n```\n").has("foo"),
+  );
+
+  check(
+    "an ordinary paragraph is not mistaken for a definition",
+    !scanReferenceDefinitions("This costs $5: not a link.\n").size,
+  );
+
+  check(
+    "normalizeReferenceLabel agrees with the scan's own keys",
+    normalizeReferenceLabel(" My  Label ") === "my label",
+  );
+
+  // ── the Turndown rule ──────────────────────────────────────────────────
+
+  const { rules, adoptMarkdownStyle, referenceDefinitionsNow } = loadApp();
+  adoptMarkdownStyle("Body text.\n\n[foo]: http://example.com \"Example\"\n");
+
+  check(
+    "the scan ran as part of adopting the document's style",
+    referenceDefinitionsNow().get("foo") === '[foo]: http://example.com "Example"',
+  );
+
+  const rule = rules.referenceLink;
+  check("app.js registers a referenceLink rule", !!rule);
+
+  const stamped = (label) => ({
+    nodeName: "A",
+    getAttribute: (n) => (n === "data-ref-label" ? label : null),
+  });
+
+  check("the rule matches a link stamped with a known label", rule.filter(stamped("foo")));
+  check(
+    "the match is case-insensitive, the same as the definition lookup",
+    rule.filter(stamped("FOO")),
+  );
+  check(
+    "the rule declines a label with no surviving definition",
+    !rule.filter(stamped("no-such-label")),
+  );
+  check("the rule declines an unstamped link", !rule.filter(stamped(null)));
+  check(
+    "the rule ignores other elements even if stamped",
+    !rule.filter({ nodeName: "SPAN", getAttribute: () => "foo" }),
+  );
+
+  check(
+    "the replacement writes [text][label], not the inline form",
+    rule.replacement("caption", stamped("foo")) === "[caption][foo]",
+  );
+  check(
+    "the replacement keeps the label's original spelling, not the normalised key",
+    rule.replacement("caption", stamped("Foo")) === "[caption][Foo]",
+  );
+
+  // ── appending the definitions a save actually used ───────────────────────
+
+  const { adoptMarkdownStyle: adopt2, appendReferenceDefinitions } = loadApp();
+  adopt2("[foo]: http://example.com\n[bar]: http://example.org\n");
+
+  check(
+    "a label nothing referenced this save is not appended",
+    appendReferenceDefinitions("Body.\n", new Set()) === "Body.\n",
+  );
+  check(
+    "a used label's exact source line is appended after a blank line",
+    appendReferenceDefinitions("Body.\n", new Set(["foo"])) ===
+      "Body.\n\n[foo]: http://example.com\n",
+  );
+  check(
+    "several used labels are appended in the order they were used",
+    appendReferenceDefinitions("Body.\n", new Set(["bar", "foo"])) ===
+      "Body.\n\n[bar]: http://example.org\n[foo]: http://example.com\n",
+  );
+  check(
+    "a label with no surviving definition is silently skipped",
+    appendReferenceDefinitions("Body.\n", new Set(["foo", "ghost"])) ===
+      "Body.\n\n[foo]: http://example.com\n",
+  );
 }
 
 // markdown-style.js is all pure string work, so unlike the options above these
@@ -169,6 +289,12 @@ function styleChecks(check) {
   check("fenced code is never re-wrapped", reflow(fenced, 30) === fenced);
   const table = "| a very long header | another very long header |\n";
   check("table rows are never re-wrapped", reflow(table, 20) === table);
+
+  // A reference definition's destination is one word with nowhere to break;
+  // wrapping it would either overflow anyway or fold it onto a continuation
+  // line indented by an amount CommonMark never promised meant anything.
+  const definition = "[foo]: http://example.com/a/very/long/path/that/exceeds/the/width\n";
+  check("a reference definition is never re-wrapped", reflow(definition, 20) === definition);
 
   // Maths is not prose either, and a break inside it lands wherever the width
   // says -- between \frac and its arguments, or after a lone backslash.

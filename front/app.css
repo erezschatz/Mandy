@@ -691,6 +691,16 @@
         border-color: var(--accent-blue);
       }
 
+      /* Some but not all of the selection has this format — a selection that
+         mixed bold and non-bold text used to read as one or the other with
+         nothing on screen to say it was actually both. Outlined rather than
+         filled so it cannot be mistaken for .active at a glance. */
+      .format-btn.mixed {
+        background: var(--bg-format-bar);
+        color: var(--accent-blue);
+        border-color: var(--accent-blue);
+      }
+
       .separator {
         width: 1px;
         height: 24px;

@@ -80,6 +80,134 @@ md.renderer.rules.math = function (tokens, idx) {
   return token.markup + md.utils.escapeHtml(token.content) + token.markup;
 };
 
+// [text][label] and [text](url) resolve to the identical link_open token --
+// same href, same title, nothing left to say which syntax the author wrote --
+// so by the time the HTML exists there is no way to tell a reference link
+// from an inline one, and a save silently rewrote every reference as inline
+// and dropped its [label]: url definition on the floor.
+//
+// This is markdown-it 13.0.1's own inline "link" rule
+// (lib/rules_inline/link.js), copied rather than wrapped because the two
+// paths -- inline and reference -- share one function with no seam to hook,
+// and reimplementing link-label matching by hand is exactly the kind of
+// fragile hand-rolled parsing this codebase avoids elsewhere (see D4 on
+// execCommand). The only change from upstream is the one marked below; an
+// upgrade of the CDN version needs this diffed against the new source, not
+// just dropped in.
+//
+// The stamp records the raw label text, not markdown-it's normalised form --
+// app.js does its own normalising (normalizeReferenceLabel) to look it back
+// up, so this half never has to match markdown-it's exact Unicode case-folding
+// for the two to agree with each other.
+md.inline.ruler.at("link", function referenceAwareLink(state, silent) {
+  var attrs, code, label, labelEnd, labelStart, pos, res, ref, token,
+    href = "", title = "",
+    oldPos = state.pos, max = state.posMax, start = state.pos,
+    parseReference = true;
+
+  if (state.src.charCodeAt(state.pos) !== 0x5b /* [ */) return false;
+
+  labelStart = state.pos + 1;
+  labelEnd = state.md.helpers.parseLinkLabel(state, state.pos, true);
+  if (labelEnd < 0) return false;
+
+  pos = labelEnd + 1;
+  if (pos < max && state.src.charCodeAt(pos) === 0x28 /* ( */) {
+    // Inline link: might have found a valid shortcut link, disable reference
+    // parsing.
+    parseReference = false;
+    pos++;
+    for (; pos < max; pos++) {
+      code = state.src.charCodeAt(pos);
+      if (!state.md.utils.isSpace(code) && code !== 0x0a) break;
+    }
+    if (pos >= max) return false;
+
+    start = pos;
+    res = state.md.helpers.parseLinkDestination(state.src, pos, state.posMax);
+    if (res.ok) {
+      href = state.md.normalizeLink(res.str);
+      if (state.md.validateLink(href)) {
+        pos = res.pos;
+      } else {
+        href = "";
+      }
+
+      start = pos;
+      for (; pos < max; pos++) {
+        code = state.src.charCodeAt(pos);
+        if (!state.md.utils.isSpace(code) && code !== 0x0a) break;
+      }
+
+      res = state.md.helpers.parseLinkTitle(state.src, pos, state.posMax);
+      if (pos < max && start !== pos && res.ok) {
+        title = res.str;
+        pos = res.pos;
+        for (; pos < max; pos++) {
+          code = state.src.charCodeAt(pos);
+          if (!state.md.utils.isSpace(code) && code !== 0x0a) break;
+        }
+      }
+    }
+
+    if (pos >= max || state.src.charCodeAt(pos) !== 0x29 /* ) */) {
+      // Parsing a valid shortcut link failed, fallback to reference.
+      parseReference = true;
+    }
+    pos++;
+  }
+
+  if (parseReference) {
+    if (typeof state.env.references === "undefined") return false;
+
+    if (pos < max && state.src.charCodeAt(pos) === 0x5b /* [ */) {
+      start = pos + 1;
+      pos = state.md.helpers.parseLinkLabel(state, pos);
+      if (pos >= 0) {
+        label = state.src.slice(start, pos++);
+      } else {
+        pos = labelEnd + 1;
+      }
+    } else {
+      pos = labelEnd + 1;
+    }
+
+    // Covers label === '' and label === undefined (collapsed reference link
+    // and shortcut reference link respectively).
+    if (!label) label = state.src.slice(labelStart, labelEnd);
+
+    ref = state.env.references[state.md.utils.normalizeReference(label)];
+    if (!ref) {
+      state.pos = oldPos;
+      return false;
+    }
+    href = ref.href;
+    title = ref.title;
+  }
+
+  if (!silent) {
+    state.pos = labelStart;
+    state.posMax = labelEnd;
+
+    token = state.push("link_open", "a", 1);
+    token.attrs = attrs = [["href", href]];
+    if (title) attrs.push(["title", title]);
+    // The one addition to upstream: stamp which label a reference link
+    // resolved through, so the DOM can say what the token stream cannot.
+    if (parseReference) attrs.push(["data-ref-label", label]);
+
+    state.linkLevel++;
+    state.md.inline.tokenize(state);
+    state.linkLevel--;
+
+    token = state.push("link_close", "a", -1);
+  }
+
+  state.pos = pos;
+  state.posMax = max;
+  return true;
+});
+
 // The conventions of the document currently open. Replaced wholesale every time
 // a document arrives with markdown to read; until then these are Turndown's own
 // defaults, so a session that never opens a file serialises exactly as it did
@@ -89,6 +217,92 @@ let markdownStyle = Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
 // The blocks of the document as it arrived, so an untouched one can be saved
 // back as the bytes it came in as rather than as Turndown's rendering of it.
 let markdownSource = new Map();
+
+// A reference definition has no representation in the parsed document at all
+// -- markdown-it consumes the line silently, so unlike everything else
+// Turndown serialises, there is nothing left to read it back from. Stashed
+// here the same way Mermaid and LaTeX stash what their own rendering destroys
+// (see renderers.js), except a definition has no element to stash onto, so
+// this keeps the raw line text keyed by its label instead. referenceAwareLink
+// above is the other half: it stamps which label a reference link resolved
+// through, so the referenceLink Turndown rule below can look the line back up
+// by that label and know whether to bother.
+let referenceDefinitions = new Map();
+
+// CommonMark's own label matching: trim, collapse internal whitespace, fold
+// case. Deliberately not markdown-it's normalizeReference -- that lives on
+// the parser instance and only matters for resolving href/title correctly,
+// which referenceAwareLink already does. This one only has to agree with
+// itself between the scan below and the Turndown rule that reads its output,
+// so it does not need to reproduce markdown-it's exact Unicode case-folding,
+// and staying independent of the parser keeps both testable without one.
+function normalizeReferenceLabel(label) {
+  return (label || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+// Reads the raw markdown for reference definitions and keys their exact
+// source lines by label, so the Turndown rule below can hand one back
+// byte-for-byte rather than re-deriving "[label]: url" in some house style
+// that would not match what the author wrote. Deliberately narrow: this
+// catches the common single-line "[label]: destination" / '"title"' form and
+// nothing that spans lines. A definition markdown-it parses but this misses
+// simply never finds a match at save time, so the link that used it saves as
+// a plain inline link instead of losing its target outright.
+function scanReferenceDefinitions(markdown) {
+  const definitions = new Map();
+  let fence = null;
+
+  for (const line of (markdown || "").split("\n")) {
+    const fenceMatch = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (fence) {
+      if (fenceMatch && fenceMatch[1][0] === fence[0] && fenceMatch[1].length >= fence.length) {
+        fence = null;
+      }
+      continue;
+    }
+    if (fenceMatch) {
+      fence = fenceMatch[1];
+      continue;
+    }
+
+    if (!isReferenceDefinitionLine(line)) continue;
+    const label = line.match(/^ {0,3}\[([^\]]+)\]:/)[1];
+    const key = normalizeReferenceLabel(label);
+    // First definition wins: CommonMark's own precedence when a label is
+    // defined more than once.
+    if (!definitions.has(key)) definitions.set(key, line);
+  }
+
+  return definitions;
+}
+
+// The labels a given save actually used, so appendReferenceDefinitions only
+// brings back the ones still pointed at -- an edit that removed the last link
+// to a label drops its definition too, rather than leaving an orphan nobody
+// references. Reset at the top of every htmlToMarkdown call; the Turndown
+// rule below fills it in as it runs.
+let usedReferenceLabels = new Set();
+
+// Appended after Turndown and before the reflow/restore pass, so a
+// reference's destination is exactly as immune to re-wrapping as every other
+// definition line (see isReferenceDefinitionLine in markdown-style.js) and so
+// an unedited definition that happens to still be present as its own block in
+// the source is eligible for the same byte-restore every other segment gets.
+//
+// Always at the end of the document, regardless of where the source placed
+// it. Mid-document definitions do not survive this -- markdown-it gives them
+// no DOM node to track a position with -- so "collected once at the end" is
+// the deliberate answer to a question that was otherwise open, rather than
+// a gap.
+function appendReferenceDefinitions(markdown, usedLabels) {
+  const lines = [];
+  for (const key of usedLabels) {
+    const line = referenceDefinitions.get(key);
+    if (line) lines.push(line);
+  }
+  if (!lines.length) return markdown;
+  return markdown.replace(/\n*$/, "\n") + "\n" + lines.join("\n") + "\n";
+}
 
 const turndownService = new TurndownService({
   headingStyle: "atx",
@@ -111,6 +325,7 @@ const turndownService = new TurndownService({
 function adoptMarkdownStyle(markdown, remember = true) {
   markdownStyle = sniffMarkdownStyle(markdown);
   markdownSource = indexMarkdownBlocks(markdown);
+  referenceDefinitions = scanReferenceDefinitions(markdown);
   if (remember) {
     try {
       localStorage.setItem("markdownSource", markdown);
@@ -242,6 +457,28 @@ turndownService.addRule("autolink", {
   },
   replacement: function (content, node) {
     return "<" + node.getAttribute("href") + ">";
+  },
+});
+
+// Reference links are inlined by default the way every un-styled Turndown
+// link is, which loses the whole point of writing one: a source that cites
+// the same URL twenty times over arrives with one definition and would leave
+// with twenty copies. referenceAwareLink stamps which label a link resolved
+// through; this rule reads the stamp back and only trusts it if the
+// definition survived the scan in scanReferenceDefinitions, so a label
+// markdown-it resolved but the scan could not find (a definition spanning
+// more than one line, say) falls through to Turndown's own default and saves
+// as a plain inline link rather than as a reference with nothing to point at.
+turndownService.addRule("referenceLink", {
+  filter: function (node) {
+    if (node.nodeName !== "A") return false;
+    const label = node.getAttribute("data-ref-label");
+    return Boolean(label) && referenceDefinitions.has(normalizeReferenceLabel(label));
+  },
+  replacement: function (content, node) {
+    const label = node.getAttribute("data-ref-label");
+    usedReferenceLabels.add(normalizeReferenceLabel(label));
+    return "[" + content + "][" + label + "]";
   },
 });
 
@@ -378,12 +615,14 @@ function shieldCodeEdgeSpaces(html) {
 // saveFile because Download MD writes a file too, and a copied document that
 // ends in a newline is what the clipboard's consumers expect anyway.
 function htmlToMarkdown(html) {
+  usedReferenceLabels = new Set();
   const markdown = turndownService.turndown(shieldCodeEdgeSpaces(normaliseNbsp(html)))
     .replace(new RegExp(CODE_EDGE_SPACE, "g"), " ")
     .replace(/\n*$/, "\n");
+  const withReferences = appendReferenceDefinitions(markdown, usedReferenceLabels);
   // Re-wrap first, restore second: restoring puts back original bytes, and the
   // re-wrap must not then take a hand-broken line back apart.
-  const wrapped = reflowMarkdown(markdown, markdownStyle.wrapWidth);
+  const wrapped = reflowMarkdown(withReferences, markdownStyle.wrapWidth);
   return restoreSourceWrapping(wrapped, markdownSource);
 }
 
@@ -482,6 +721,7 @@ onToolbarAction("clear", async () => {
   // Or a block of the cleared document could come back on the next save.
   markdownStyle = Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
   markdownSource = new Map();
+  referenceDefinitions = new Map();
 
   editor.focus();
   const range = document.createRange();

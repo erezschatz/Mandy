@@ -79,6 +79,17 @@ function isHorizontalRule(line, previous) {
   return null;
 }
 
+// A reference link's definition: "[label]: destination". Loose on purpose —
+// this only has to stop reflowMarkdown tearing a long URL across two lines,
+// so a false positive costs nothing (a line that is not really a definition
+// just does not get wrapped either) while a false negative would corrupt one.
+// app.js's own scan for the definitions themselves reuses this same check
+// rather than a second regex, so the two cannot silently disagree about what
+// counts as one.
+function isReferenceDefinitionLine(line) {
+  return /^ {0,3}\[[^\]]+\]:\s*\S/.test(line);
+}
+
 function commonest(counts, fallback) {
   let best = fallback;
   let bestCount = 0;
@@ -507,13 +518,18 @@ function reflowMarkdown(markdown, width) {
     }
 
     // A wrapped `|` row stops being a table, and a wrapped heading turns its
-    // own tail into a paragraph. Both are silent -- the file still parses.
+    // own tail into a paragraph. Both are silent -- the file still parses. A
+    // wrapped reference definition is worse: the destination is one word with
+    // nowhere to break, so wrapping would either leave it overlong anyway or
+    // fold it onto a continuation line indented by an amount CommonMark never
+    // promised meant anything -- simplest to leave the whole line alone.
     if (
       line.length <= width ||
       !line.trim() ||
       /^\s*[|#]/.test(line) ||
       hasMathSpan(line) ||
-      isHorizontalRule(line, "")
+      isHorizontalRule(line, "") ||
+      isReferenceDefinitionLine(line)
     ) {
       out.push(line);
       continue;

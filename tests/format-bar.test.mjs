@@ -199,6 +199,85 @@ function textIn(block) {
   return node;
 }
 
+// A real text node child, unlike textIn's detached one — updateActiveButtons
+// walks down from #editor to find these, so a node the tree cannot reach is a
+// node the fix under test can never see.
+function appendText(parent, str) {
+  const node = makeText(str);
+  node.parentElement = parent;
+  parent.children.push(node);
+  return node;
+}
+
+// A classList that actually remembers what was added, unlike dom.mjs's default
+// no-op — the whole point here is reading back which state a button ended up
+// in.
+function trackedClassList() {
+  const set = new Set();
+  return {
+    add: (...names) => names.forEach((n) => set.add(n)),
+    remove: (...names) => names.forEach((n) => set.delete(n)),
+    contains: (n) => set.has(n),
+  };
+}
+
+const FORMATS = ["p", "h1", "h2", "h3", "bold", "italic", "ul", "ol", "code"];
+
+// Drives updateActiveButtons directly. `build` returns the editor tree and the
+// text nodes the selection touches — passed straight to a stub range's
+// intersectsNode, since a text node's own formatting cannot be partial, so
+// per-text-node is the right (and simplest) granularity to fake a selection
+// at.
+function activeCase(build) {
+  const { editor, touched } = build();
+  const buttons = {};
+  for (const format of FORMATS) {
+    const btn = makeEl("button");
+    btn.attrs["data-format"] = format;
+    btn.classList = trackedClassList();
+    buttons[format] = btn;
+  }
+
+  loadSource(
+    "format-bar.js",
+    {
+      document: {
+        createElement: (t) => makeEl(t),
+        querySelector: (sel) => {
+          const m = sel.match(/data-format="([a-z0-9]+)"/);
+          return (m && buttons[m[1]]) || null;
+        },
+        querySelectorAll: (sel) => (sel === ".format-btn" ? Object.values(buttons) : []),
+        addEventListener() {},
+        execCommand() {},
+      },
+      runCommand: () => {},
+      window: {
+        getSelection: () => ({
+          rangeCount: 1,
+          getRangeAt: () => ({ intersectsNode: (n) => touched.includes(n) }),
+        }),
+      },
+      editor,
+      formatBar: { classList: { remove() {}, add() {} } },
+      localStorage: { setItem() {} },
+      Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
+      setTimeout: () => {},
+      onToolbarAction: () => {},
+    },
+    "; updateActiveButtons();",
+  );
+
+  return {
+    state: (format) => {
+      const cl = buttons[format].classList;
+      if (cl.contains("active")) return "active";
+      if (cl.contains("mixed")) return "mixed";
+      return "none";
+    },
+  };
+}
+
 export default function run(check) {
   for (const [label, selection] of [
     ["multi-line selection", multiBlock],
@@ -411,4 +490,94 @@ export default function run(check) {
     };
   });
   check("formatting as code announces itself with an input event", c.inputs.length === 1);
+
+  // --- the whole selection, not just where it started (TODO 3.1) -----------
+  //
+  // updateActiveButtons used to walk up from selection.anchorNode alone, so a
+  // selection covering both bold and plain text lit the Bold button up or left
+  // it dark purely on which end of the drag the browser calls the anchor —
+  // never mind that neither answer describes the selection. Every case below
+  // hands the stub range a fixed list of "touched" text nodes rather than an
+  // anchor, since that is the granularity the fix actually operates at.
+
+  let r = activeCase(() => {
+    const editor = makeEl("div");
+    const p = makeEl("p", { parent: editor });
+    const strong = makeEl("strong", { parent: p });
+    const t = appendText(strong, "hello world");
+    return { editor, touched: [t] };
+  });
+  check("fully bold text reads active", r.state("bold") === "active");
+  check("its paragraph reads active too", r.state("p") === "active");
+  check("and it does not also claim italic", r.state("italic") === "none");
+
+  r = activeCase(() => {
+    const editor = makeEl("div");
+    const p = makeEl("p", { parent: editor });
+    const plain = appendText(p, "hello ");
+    const strong = makeEl("strong", { parent: p });
+    const bold = appendText(strong, "world");
+    return { editor, touched: [plain, bold] };
+  });
+  check(
+    "a selection spanning bold and plain text reads mixed, not active or none",
+    r.state("bold") === "mixed",
+  );
+
+  // The anchor is wherever the drag started, which can be either end — so the
+  // old check's answer for this exact selection depended on drag direction.
+  // The fix does not have an anchor to be fooled by.
+  r = activeCase(() => {
+    const editor = makeEl("div");
+    const p = makeEl("p", { parent: editor });
+    const strong = makeEl("strong", { parent: p });
+    const bold = appendText(strong, "world ");
+    const plain = appendText(p, "and more");
+    return { editor, touched: [bold, plain] };
+  });
+  check("mixed regardless of which end of the selection is bold",
+    r.state("bold") === "mixed");
+
+  r = activeCase(() => {
+    const editor = makeEl("div");
+    const p = makeEl("p", { parent: editor });
+    const plain = appendText(p, "hello world");
+    return { editor, touched: [plain] };
+  });
+  check("plain text reads none", r.state("bold") === "none");
+
+  r = activeCase(() => {
+    const editor = makeEl("div");
+    const h1 = makeEl("h1", { parent: editor });
+    const heading = appendText(h1, "Title");
+    const p = makeEl("p", { parent: editor });
+    const body = appendText(p, "body");
+    return { editor, touched: [heading, body] };
+  });
+  check("a selection spanning a heading and a paragraph reads h1 mixed",
+    r.state("h1") === "mixed");
+  check("and reads p mixed too", r.state("p") === "mixed");
+
+  r = activeCase(() => {
+    const editor = makeEl("div");
+    const ul = makeEl("ul", { parent: editor });
+    const li = makeEl("li", { parent: ul });
+    const t = appendText(li, "item");
+    return { editor, touched: [t] };
+  });
+  check("a list item reads its list format active", r.state("ul") === "active");
+
+  // A blank text node in range — the whitespace contenteditable leaves between
+  // blocks — must not read as "an unformatted character" and drag an
+  // otherwise-uniform selection down to mixed.
+  r = activeCase(() => {
+    const editor = makeEl("div");
+    const p = makeEl("p", { parent: editor });
+    const strong = makeEl("strong", { parent: p });
+    const bold = appendText(strong, "hello");
+    const blank = appendText(p, "  ");
+    return { editor, touched: [bold, blank] };
+  });
+  check("a blank touched node does not turn active into mixed",
+    r.state("bold") === "active");
 }

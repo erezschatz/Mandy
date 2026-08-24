@@ -452,6 +452,68 @@ the numbering come from the document instead of Turndown's hardcoded `*   one` /
 carries: `[notes](notes.md)` also has matching text and href, and `<notes.md>`
 is not an autolink — CommonMark renders it as literal text.
 
+**Reference-style links are a third problem in this family, and the one none
+of the above could reach.** `[text][label]` and `[text](url)` parse to the
+identical `link_open` token once markdown-it resolves the reference — same
+href, same title, nothing left to say which syntax the author wrote — so
+Turndown always serialised every link as inline, and the `[label]: url`
+definition it depended on had no DOM node to survive on and simply vanished.
+A document that cited one URL twenty times over a reference arrived with one
+definition and would have left with twenty copies, unrecoverably.
+
+The fix is the same two-part shape as Mermaid and LaTeX: stash what parsing
+would otherwise destroy, read it back at serialise time.
+
+- **`referenceAwareLink` in `app.js` replaces markdown-it's own inline `link`
+  rule** via `md.inline.ruler.at("link", …)`, rather than being layered
+  alongside it — the two syntaxes share one function with no seam to hook, so
+  this is a near-verbatim copy of markdown-it 13.0.1's own
+  `lib/rules_inline/link.js` with one addition: when the reference branch
+  resolves, it stamps the token with `data-ref-label`, the raw label text as
+  written. Copied rather than reimplemented from scratch for the same reason
+  execCommand is not reimplemented (D4) — label matching has its own escaping
+  and nesting rules, and `state.md.helpers.parseLinkLabel` already gets them
+  right. An upgrade of the CDN markdown-it version needs this diffed against
+  the new source, not just left in place.
+- **`scanReferenceDefinitions` reads the raw markdown a document arrived
+  with** for `[label]: destination "title"` lines — skipping fenced code —
+  and keys their exact source line by label. `adoptMarkdownStyle` runs it
+  alongside the style sniff and the block index, so it shares their lifecycle:
+  rebuilt on every open, reload and restore-from-autosave, reset on Clear.
+  Deliberately narrow: only the common single-line form is recognised, and a
+  definition markdown-it parses but this regex misses simply never finds a
+  match at save time — the link that used it saves as a plain inline link
+  instead of losing its target.
+- **The `referenceLink` Turndown rule reads the stamp back off the `<a>`,**
+  confirms `scanReferenceDefinitions` still has that label, and writes
+  `[text][label]` instead of the default. It records which labels it actually
+  used (`usedReferenceLabels`, reset at the top of every `htmlToMarkdown`
+  call), and `appendReferenceDefinitions` appends each one's exact original
+  line — never a regenerated `[label]: url`, so an untouched definition
+  restores byte-for-byte the same way an untouched paragraph does — after a
+  blank line at the end of the document, regardless of where the source
+  placed it: a definition has no DOM node to track a position with, so
+  "collected once at the end" is deliberate rather than a gap. A label used
+  twice gets one definition; a label no longer used by anything gets none.
+- **`isReferenceDefinitionLine` in `markdown-style.js`** keeps
+  `reflowMarkdown` from ever wrapping a definition line — the destination is
+  one word with nowhere to break, so wrapping would either overflow anyway or
+  fold it onto a continuation line at an indent CommonMark never promised
+  meant anything.
+
+Two things this does not reach, both consequences of the same root cause —
+markdown-it giving a definition no DOM node — and both accepted rather than
+solved. **A definition spanning more than one line** is invisible to the
+scan, so a reference resolved through one saves as a plain inline link
+instead. **An edited or freshly-typed reference link** — one whose usage
+syntax does not byte-match what the source wrote, which includes every
+`[text][]` or bare `[text]` shortcut form, since the rule always writes the
+explicit `[text][label]` — falls out of the segment-matching restore the same
+way any edited paragraph does, and saves in the explicit form rather than the
+collapsed one the author chose. Neither loses the link or the definition; both
+just cost the byte-perfection an untouched, already-explicit reference gets
+for free.
+
 ### Lazy loading
 
 Mermaid (3.4 MB), MathJax, html2pdf, docx and FileSaver load on first actual
@@ -729,9 +791,18 @@ all hang off exactly that — so the hand-rolled branch was invisible to Ctrl+Z 
 left the toolbar claiming the document still matched the file on disk. Same
 convention as `insertToc` and the undo section below.
 
-`updateActiveButtons` still reads only `selection.anchorNode`, so the active
-states reflect where the selection started rather than the whole of it. That is
-TODO 3.1 and is untouched by any of the above.
+**`updateActiveButtons` reads the whole selection, not just where it started.**
+It used to walk up from `selection.anchorNode` alone, so a selection spanning
+both bold and plain text lit the Bold button up or left it dark purely on which
+end of the drag the browser calls the anchor — never mind that neither answer
+described the selection. It now collects every non-blank text node the range
+touches (`textNodesInRange`) and asks each of the nine `FORMAT_PREDICATES`
+whether *all*, *some*, or *none* of them carry that format — a text node's own
+formatting cannot be partial, so per-node is the right granularity to fake a
+selection at without a real editing engine, which is also why the test suite
+drives it that way. All lights the button `.active`, same as before; none
+leaves it dark; some is new, and lights it `.mixed` — outlined rather than
+filled, so it cannot be mistaken for `.active` at a glance.
 
 ### The outline
 

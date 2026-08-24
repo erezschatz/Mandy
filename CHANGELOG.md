@@ -603,7 +603,73 @@ assignment site at all: the `undo` suite's count of them dropped from six to
 five, catching a regression to the old behaviour the same way it catches a new
 site skipping the choice.
 
-## 2026-08-22 — Fold `DECISIONS.md` into this file, renumber TODO.md
+## 2026-08-24 — The format bar reads the whole selection, not just where it started
+
+TODO 3.1. `updateActiveButtons` walked up from `selection.anchorNode` alone,
+so which end of the drag the browser happens to call the anchor decided
+whether Bold lit up — select a run spanning bold and plain text and the
+button's state depended on where the selection started, not on what it
+actually covered. Neither "on" nor "off" was true of a mixed selection, and
+the button could only ever say one of them.
+
+`updateActiveButtons` now collects every non-blank text node the range
+touches (`textNodesInRange`, walking down from `#editor` and filtering on
+`range.intersectsNode`) and asks each of nine `FORMAT_PREDICATES` — one per
+format-bar button — whether *all*, *some*, or *none* of them carry it
+(`formatState`). All keeps the button `.active`, same as before. Some is new:
+`.mixed`, styled outlined rather than filled so it reads as its own state
+rather than a paler `.active`. Per-text-node is the right granularity to ask
+at without a real editing engine to drive: a single text node's own
+formatting cannot be partial, which is also what makes this cheaply testable
+in the Deno suite — a stub range's `intersectsNode` just names which nodes are
+"touched," and `tests/format-bar.test.mjs` builds the mixed/all/none trees
+directly rather than simulating a drag.
+
+## 2026-08-24 — Reference-style links survive a save
+
+TODO 2.1. `[text][label]` and `[text](url)` resolve to the identical
+`link_open` token once markdown-it has parsed them — same href, same title,
+nothing left downstream to say which syntax the author wrote — so every save
+rewrote every reference link as inline and dropped its `[label]: url`
+definition on the floor, unrecoverably. A document citing one URL twenty
+times over a reference arrived with one definition and would have left with
+twenty copies of the same link.
+
+Same two-part shape as Mermaid and LaTeX: stash what parsing destroys, read
+it back at serialise time. `referenceAwareLink` in `app.js` replaces
+markdown-it's own inline `link` rule (`md.inline.ruler.at("link", …)`) with a
+near-verbatim copy of markdown-it 13.0.1's own that stamps a reference link's
+element with the raw label it resolved through — copied rather than
+reimplemented, the same reasoning as D4's for execCommand, since label
+matching has its own escaping and nesting rules that
+`state.md.helpers.parseLinkLabel` already gets right. `scanReferenceDefinitions`
+separately reads the raw markdown for `[label]: destination "title"` lines
+and keys their exact source text by label, run alongside the existing style
+sniff and block index in `adoptMarkdownStyle` so it shares their lifecycle.
+The new `referenceLink` Turndown rule reads the stamp back, confirms the scan
+still has that label, and writes `[text][label]`; `appendReferenceDefinitions`
+appends each label a save actually used — never a regenerated line, always
+the exact original bytes — once at the end of the document. A label used
+twice gets one definition; a label nothing points at any more gets none.
+
+Two things this does not reach, both because a definition has no DOM node to
+carry information on: one spanning more than one line is invisible to the
+scan, and an edited or freshly-written reference — including every `[text][]`
+or bare `[text]` shortcut, since the rule always writes the explicit form —
+falls out of the byte-for-byte segment restore the same way any edited
+paragraph does. Neither loses the link or the definition, both just cost the
+perfection an untouched, already-explicit reference gets for free.
+
+Verified against a real markdown-it in the running app rather than only the
+Deno suite: the custom inline rule is parser-internal logic the suite's
+pass-through Turndown stub cannot exercise, the same gap `tests/browser-check.html`
+exists for on the execCommand side. `tests/save-fidelity.test.mjs` covers the
+half that is pure string work — the scan, the append, and the Turndown rule
+driven directly the way `mathjax`/`mermaid` already are — and
+`tests/dom.mjs`'s `markdownitStub` gained `inline.ruler.at` and
+`utils.normalizeReference`, plus a fix to its `TurndownService` stub, which
+never actually exposed `this.options` and so had never been caught calling
+`adoptMarkdownStyle` before now.
 
 This changelog was written, `DECISIONS.md` was removed and its two decisions moved
 to the end of it, and TODO.md dropped the seven retired entries it had been
