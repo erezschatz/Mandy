@@ -190,9 +190,19 @@ they matter:
     - **`markdownSource` and `markdownStyle` are per-tab too.** The sniffed
       source is what makes a save byte-faithful, and it is already a second full
       copy of the document (2.2). N tabs is therefore 2N copies in
-      `localStorage`, and blowing the quota does not break editing — it silently
-      costs fidelity on the next reload, with a `console.warn` and nothing else.
-      Decide what happens with eight tabs open *before* the tab bar, not after.
+      `localStorage`. Settled: **no budget, no eviction, no per-tab cap.** Each
+      tab's `localStorage.setItem` either succeeds or fails on its own, exactly
+      as it does today for one document — the browser's quota is not ours to
+      manage, and building a fairness scheme (which tab gets evicted to make
+      room for a new one, how many tabs are "supported") would be solving a
+      problem nobody has hit yet at the cost of real complexity. A tab that
+      loses the race degrades silently to "sniffs to nothing" on its next
+      reload, same as a single oversized document does now — cosmetic, not
+      data loss, and **not surfaced to the user at all**: the failure never
+      touches the current session, the file that gets saved, or the save
+      action itself, so any UI mention of it reads as "something's wrong with
+      my file" to someone who has no way to act on it and did nothing wrong.
+      Stays a `console.warn`, unchanged, for whoever is debugging it.
     - **Undo has to park and restore rather than reset.** Every
       `editor.innerHTML` assignment currently picks reset-or-be-undoable, and a
       tab switch is neither. It needs a third option: park the outgoing tab's
@@ -211,9 +221,24 @@ they matter:
     The bar has a home already: the menu bar left the toolbar as two rows, and
     the second — `.toolbar-content`, holding the filename and the theme toggle —
     is shaped for a tab bar rather than for one label. `--toolbar-height`
-    arithmetic in app.css follows it, and the `(edited)` suffix becomes the
-    conventional red `*` against each unsaved tab. (If what was meant is
-    edit/preview/source tabs rather than multiple files, that is 1.6.)
+    arithmetic in app.css follows it. (If what was meant is edit/preview/source
+    tabs rather than multiple files, that is 1.6.)
+
+    **The `(edited, disk changed)` text label becomes a single dot per tab.**
+    Settled: a red dot for edited (whether or not the disk also changed — edited
+    is the more urgent of the two and wins outright, no need to distinguish the
+    combination visually), a neutral dot for disk-changed-only, no dot when
+    clean. `var(--notify-error)` and `var(--text-toolbar)` respectively — both
+    already theme-aware tokens, so no new ones needed, and `--text-toolbar`
+    reads fine against `--bg-toolbar` in either theme (`#2c3e50` light,
+    `#0f1419` dark — different values, both dark enough that white text is
+    already how the toolbar reads its own labels). A colour-only signal is a
+    soft accessibility gap on its own, so the full sentence — what the current
+    text label says today — has to still exist as a real `title`/`aria-label`,
+    not just a CSS hover tooltip, the same discipline `theme-manager.js`
+    already applies to the theme toggle's own title. The transient toasts
+    (Saved!, Reloaded!) are unaffected — the dot is the ambient state between
+    actions, not a replacement for the feedback an action already gives.
 
 *   **4.2** *(undecided)* The static HTML export's table of contents follows
     the outline sidebar's toggle, because that toggle is the only switch that
