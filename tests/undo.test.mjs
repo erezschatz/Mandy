@@ -50,7 +50,8 @@ function harness({ html = "<p>start</p>" } = {}) {
     runToolbarAction: (action) => actions.get(action)?.(),
     console,
   }, "; return { undo, redo, undoReset, undoTextOffset, undoLocateOffset," +
-     " undoDepth: () => undoStack.length, redoDepth: () => redoStack.length };");
+     " undoDepth: () => undoStack.length, redoDepth: () => redoStack.length," +
+     " undoPosition };");
 
   return {
     ...api, editor, actions, heard,
@@ -178,10 +179,47 @@ export default function run(check) {
   while (h.redo()) { /* drain */ }
   check("and redo stops at the top", h.redo() === false && h.redoDepth() === 0);
 
+  // --- position, which file-api.js reads to follow the dirty flag ----------
+  //
+  // A stack index is not enough on its own: UNDO_LIMIT shifts the whole stack
+  // down once it fills, so an index would end up naming whatever slid into
+  // that slot rather than the state that was actually there. undoPosition()
+  // hands back an id instead, minted once per state and never reused, so a
+  // savepoint can only ever be reached again by actually undoing or redoing
+  // back to it.
+
+  h = harness();
+  h.undoReset();
+  const clean = h.undoPosition();
+  h.type("a");
+  const edited = h.undoPosition();
+  check("an edit moves off the position it started at", edited !== clean);
+
+  h.undo();
+  check("undo lands back on the exact id it started from",
+    h.undoPosition() === clean);
+
+  h.redo();
+  check("redo returns to the same id it left, not a freshly minted one",
+    h.undoPosition() === edited);
+
+  // A run of coalesced typing pushes one stack entry but still moves the
+  // position on every keystroke — the id tracks content, not stack depth.
+  h = harness();
+  h.undoReset();
+  const start = h.undoPosition();
+  h.type("a"); h.type("b"); h.type("c");
+  const afterRun = h.undoPosition();
+  check("coalescing still advances the position", afterRun !== start);
+  h.undo();
+  check("one undo takes back the whole run, position included",
+    h.undoPosition() === start);
+
   // --- the document boundary, which is the point of the file ---------------
 
   h = harness();
   h.undoReset();
+  const firstFile = h.undoPosition();
   h.type("edits to the first file");
   check("there is history to lose", h.undoDepth() === 1);
 
@@ -190,6 +228,8 @@ export default function run(check) {
   h.undoReset();
   check("opening a file forgets the history", h.undoDepth() === 0);
   check("and the redo branch with it", h.redoDepth() === 0);
+  check("and mints a fresh position rather than reusing the old file's",
+    h.undoPosition() !== firstFile && h.undoPosition() !== null);
   h.undo();
   check(
     "so undo cannot hand back the previous file's text",

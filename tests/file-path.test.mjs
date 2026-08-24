@@ -45,6 +45,7 @@ function boot({
   const browsed = [];
   const reads = [];
   const writes = [];
+  let undoPos = null;
   const asked = [];
   const askedActions = [];
   const toasts = [];
@@ -163,6 +164,11 @@ function boot({
       // undo.js is not in this suite's bundle; openFile and Clear both
       // re-baseline the history, and a missing stub makes them throw.
       undoReset() {},
+      // Stands in for undo.js's position id. Controlled by the returned
+      // `setUndoPosition` so a test can simulate an edit followed by an undo
+      // landing back on the id a save recorded, without driving the real
+      // stack — that half is undo.test.mjs's job.
+      undoPosition: () => undoPos,
       // The real one resolves a promise, which is the whole reason the guards
       // could grow a third button — so the stub has to resolve one too, or the
       // callers pass a pending promise off as a yes.
@@ -234,6 +240,11 @@ function boot({
     // on what is actually in the document has to put it there.
     fill: (html) => {
       editorEl.innerHTML = html;
+    },
+    // Simulates undo.js reporting a position, for the tests that drive the
+    // dirty flag's undo half without the real stack.
+    setUndoPosition: (n) => {
+      undoPos = n;
     },
     // Typing, and anything else that goes through execCommand: file-api.js
     // hangs the dirty flag off the editor's own input event.
@@ -410,6 +421,38 @@ export default async function run(check) {
   r = boot({ savedContent: "<h1>Real work</h1>" });
   r.type();
   check("no marker without a file open", r.labelNow() === "");
+
+  // --- the marker follows undo ----------------------------------------------
+  //
+  // TODO 1.10: the flag used to only ever latch true on an edit and never
+  // unlatch, so undoing back to a saved document still claimed it was edited.
+  // undo.js's own stack is stubbed out above; `setUndoPosition` stands in for
+  // it, so this drives file-api.js's half of the fix — that a position equal
+  // to the one recorded at the last save reads clean, and anything else does
+  // not — without needing the real stack, which undo.test.mjs already covers.
+
+  r = boot({ savedContent: "<h1>Real work</h1>", savedPath: "/home/erez/notes/plan.md" });
+  r.setUndoPosition(0);
+  await r.saveFile("/home/erez/notes/plan.md");
+  check("save records the position as clean", r.labelNow() === "plan.md");
+
+  r.setUndoPosition(1);
+  r.type();
+  check("moving away from it marks the document edited",
+    r.labelNow() === "plan.md (edited)");
+
+  r.setUndoPosition(0);
+  r.type(); // what applyUndoSnapshot's synthetic input event triggers
+  check("undoing back to the saved position clears it again",
+    r.labelNow() === "plan.md");
+  check("and drops the persisted flag too", !r.store.has("marky-dirty"));
+
+  r.setUndoPosition(2);
+  r.type();
+  r.setUndoPosition(3); // content restored by hand, not by undo/redo
+  r.type();
+  check("a different position never reads clean by coincidence",
+    r.labelNow() === "plan.md (edited)");
 
   // --- reload, and the file changing underneath ----------------------------
   //

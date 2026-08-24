@@ -826,6 +826,9 @@ window.addEventListener("load", () => {
     // the document as it will actually be seen rather than the markup before
     // Mermaid and MathJax rewrote parts of it.
     undoReset();
+    // Only file-api.js knows whether this session's restored document is
+    // dirty, and an exported document has no file-api.js at all.
+    if (typeof initUndoBaseline === "function") initUndoBaseline();
   })();
 });
 

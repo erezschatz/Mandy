@@ -27,6 +27,11 @@ let isDirty = false;
 // of `isDirty`: that one is our edits, this one is everybody else's.
 let fileMtime = null;
 let diskChanged = false;
+// The undo.js position id that counts as clean — the state as of the last
+// open, reload, save or clear. null means there is none to return to this
+// session (e.g. edits carried across a reload, whose undo history did not
+// survive it), so the document stays dirty until the next real save.
+let cleanPosition = null;
 let dialogMode = "open";
 // Last visited directory, reused between openings and across reloads — walking
 // back to the same folder every session is the kind of friction you only notice
@@ -70,6 +75,15 @@ function setDiskChanged(changed) {
   if (diskChanged === changed) return;
   diskChanged = changed;
   renderCurrentFile();
+}
+
+// The one place a document is declared clean: open, reload, save and clear all
+// call this instead of setDirty(false) directly, because being clean is more
+// than isDirty being false — it is also the position undo should be measured
+// against from here on.
+function markClean() {
+  cleanPosition = undoPosition();
+  setDirty(false);
 }
 
 // Persisted for the same reason the dirty flag is: autosave restores the
@@ -117,11 +131,28 @@ function setCurrentFile(filePath) {
   }
 })();
 
+// Called by app.js once, right after its own startup undoReset() has minted
+// the id for whichever document just loaded — restored, welcome or exported.
+// Only worth recording as clean when the restored flag agrees: a document that
+// carried unsaved edits across the reload has no undo history to return to
+// either (undo.js's stack does not survive one), so there is no position left
+// to call clean until the next real save.
+function initUndoBaseline() {
+  if (!isDirty) cleanPosition = undoPosition();
+}
+
 // Typing, formatting and paste all land here: execCommand fires input too, so
 // the format bar marks the document edited without needing its own hook.
 // Assigning editor.innerHTML does not, which is why opening a file and clearing
-// do not trip this.
-editor.addEventListener("input", () => setDirty(true));
+// do not trip this — and applying an undo/redo snapshot does, deliberately
+// (see undo.js): that is what lets undoing back to cleanPosition report clean
+// again instead of the flag only ever latching true. undo.js registers its own
+// input listener first, so undoPosition() already reflects the post-edit id by
+// the time this one runs.
+editor.addEventListener("input", () => {
+  const pos = undoPosition();
+  setDirty(pos === null || cleanPosition === null || pos !== cleanPosition);
+});
 
 // Clearing the document drops the file association: app.js has already emptied
 // the editor and the autosave, and without this a reload would show a filename
@@ -131,7 +162,7 @@ editor.addEventListener("input", () => setDirty(true));
 // blank check correctly does nothing.
 onToolbarAction("clear", () => {
   if (isBlankContent(editor.innerHTML)) {
-    setDirty(false);
+    markClean();
     setFileMtime(null);
     setCurrentFile(null);
   }
@@ -360,7 +391,7 @@ async function openFile(filePath) {
   // written there. Reload comes through here too, which is right: discarding
   // local changes is the whole point of it.
   undoReset();
-  setDirty(false);
+  markClean();
   setFileMtime(data.modified);
   setCurrentFile(data.path);
   return true;
@@ -479,7 +510,7 @@ async function saveFile(filePath) {
     return false;
   }
 
-  setDirty(false);
+  markClean();
   setFileMtime(data.modified);
   setCurrentFile(data.path);
   // Reported here rather than at the two call sites so Save As is as loud as

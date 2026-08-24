@@ -527,6 +527,41 @@ from the dirty flag and takes the browser's own wording.
 An exported document ships no `file-api.js` and has no file to be dirty against,
 so it gets the plain question rather than a second implementation of the guard.
 
+## 2026-08-24 — The dirty flag follows undo
+
+TODO 1.10. `file-api.js` latched `isDirty` true on the editor's `input` event
+and never unlatched it, so undoing an edit back to the document as it was at
+the last save still left the toolbar claiming it was edited — the one lie the
+flag exists to prevent, reintroduced by the one feature that should have been
+immune to it.
+
+Fixed with position equality rather than content equality, the cheaper of the
+two the TODO weighed. `undo.js` now mints a monotonic id per state
+(`undoNextId`, read back via `undoPosition()`) rather than reusing a stack
+index — `UNDO_LIMIT` shifts the stack once it fills, so an index would end up
+naming whatever slid into that slot instead of the state that was actually
+there, where an id minted once and never reused cannot. Undo and redo hand
+back the snapshot's existing id rather than minting a new one, so returning to
+a position by undoing is indistinguishable from never having left it. Every
+moment the document and its origin come back into step — open, reload, save,
+clear — now calls `markClean()` in `file-api.js`, which records that id as
+`cleanPosition`; the `input` listener that used to just set the flag now
+compares the current position against it instead.
+
+It differs from content equality on one case, on purpose: type a character and
+Backspace it, and the position has moved on even though the text is back to
+what it was, so the document still reads dirty. Content equality would need a
+second copy of the document compared on every keystroke — `markdownSource`
+already holds enough to do that after a reload, where undo's own history does
+not survive to compare positions against, but doing it continuously is future
+work rather than this fix.
+
+A document that carries unsaved edits across a reload has no position to
+return to either, for the same reason — undo's stack does not survive one — so
+`initUndoBaseline()` only records a clean position at startup when the
+restored flag says there is nothing unsaved; otherwise the document stays
+dirty until the next real save, same as before this landed.
+
 ## 2026-08-22 — Fold `DECISIONS.md` into this file, renumber TODO.md
 
 This changelog was written, `DECISIONS.md` was removed and its two decisions moved

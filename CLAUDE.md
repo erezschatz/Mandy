@@ -251,7 +251,18 @@ A page load restores the document from autosave, never by re-reading the file,
 so the two can drift apart from either end. `file-api.js` tracks both directions
 and reports them in the same toolbar label: `plan.md (edited, disk changed)`.
 
-- **Our edits** are `isDirty`, set from the editor's own `input` event.
+- **Our edits** are `isDirty`, set from the editor's own `input` event —
+  compared against `cleanPosition`, undo.js's id for the state as of the last
+  open, reload, save or clear, rather than latched true forever. That is what
+  lets undoing an edit back to that exact position read clean again instead of
+  the flag only ever being set, never cleared: `markClean()` in `file-api.js`
+  records the id, and undo/redo reaching it back is indistinguishable from
+  never having left, since `undoPosition()` hands back an id an edit mints once
+  and undo/redo reuse rather than a stack index that `UNDO_LIMIT` can recycle
+  into naming a different state. It differs from asking "does the content
+  match" on one case, deliberately left alone: type a character and Backspace
+  it and the id has moved on even though the text has not, so the document
+  still reads dirty.
 - **Everybody else's** are `fileMtime`, the mtime the file had when we last read
   or wrote it. `GET /api/file` returns it; `?stat=1` returns *only* it, which is
   the call `checkDiskChanged` makes on window `focus`, on `visibilitychange`, and

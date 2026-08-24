@@ -174,8 +174,25 @@ function undoRestoreSelection(saved) {
 
 // ── The stack ────────────────────────────────────────────────────────────────
 
+// Identifies a state, not a position in the stack: a stack index goes stale
+// the moment UNDO_LIMIT shifts everything down by one, and would then match
+// whatever state has slid into that slot rather than the one that was there.
+// An id minted once and never reused cannot — it is only ever revisited by
+// literally undoing or redoing back to it, never recreated by two unrelated
+// edits landing on the same id. file-api.js uses this to know whether undo has
+// brought the document back to the position it was last saved from.
+let undoNextId = 0;
+
 function undoSnapshot() {
-  return { html: editor.innerHTML, selection: undoCaptureSelection() };
+  return { html: editor.innerHTML, selection: undoCaptureSelection(), id: undoNextId++ };
+}
+
+// The id of the document's current state. Undo and redo hand back a snapshot
+// that already carries the id it was minted with, rather than calling
+// undoSnapshot() again — that is what makes a round trip back to a state
+// reproduce its original id instead of getting a new one.
+function undoPosition() {
+  return undoCurrent ? undoCurrent.id : null;
 }
 
 function applyUndoSnapshot(snapshot) {

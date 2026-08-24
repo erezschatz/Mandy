@@ -146,29 +146,6 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
     debounced `input` or on `copy`, which is fiddlier than either of the two
     that landed: rewriting a text node under the caret can move the caret.
 
-*   **1.10** The clean/dirty flag should follow undo. Undo an edit made to a
-    clean document and the document is clean again — nothing to save — but
-    `file-api.js` latches the flag on the editor's `input` event and never
-    unlatches it, so undoing *sets* dirty rather than clearing it.
-
-    Two ways to answer "is this document clean?", and they differ on one case.
-    *Position equality* remembers where the undo history was at the last save
-    and compares positions; type `x` then Backspace and it still reports dirty,
-    because the content is identical but the position is not. *Content equality*
-    compares the content, calls that clean, and costs a second copy of the
-    document plus a comparison per keystroke. Content equality is what a user
-    would say if you asked them, and half of it is already built: `markdownSource`
-    holds the opened file's markdown and is persisted, so after a reload — where
-    no undo history survives — the honest answer is available by serialising the
-    restored document and comparing. Doing it continuously is then a schedule,
-    not a new mechanism.
-
-    Either way the savepoint wants a monotonic counter rather than a stack index,
-    since `UNDO_LIMIT` is 100 and the stack shifts. A savepoint that falls off
-    the bottom simply never matches again, which is correct; a recycled index
-    would match the wrong state. How deep that limit should be is a Settings
-    question once there is a Settings pane (4.2).
-
 ## 2. Save fidelity
 
 Ways the bytes on disk still differ from what was opened, all verified by
@@ -319,6 +296,28 @@ they matter:
     surprising. It is the only thing in the repo that can tell measurement from
     folklore — the Deno suite has no editing engine, and the first run of this
     page killed two long-standing beliefs about which engine did what.
+
+*   **5.4** The file-server liveness check only runs once, in the startup IIFE
+    in [front/file-api.js](front/file-api.js). It probes `/api/home` and
+    disables Open/Save/Reload/Save As if the server is not there — but never
+    again: start the app with the server up and kill it mid-session and the
+    buttons stay live, so the next click fails with a `notify` rather than
+    being disabled up front. Start with the server down, bring it up
+    afterwards, and the buttons stay dead until a full reload, even though
+    nothing else about the page needs one.
+
+    `checkDiskChanged` already re-verifies a weaker version of the same
+    question — "does what we believe about the outside world still hold" — on
+    `focus`, `visibilitychange` and startup, so the trigger points are not new.
+    But it cannot just be folded into that function: `checkDiskChanged` only
+    runs when `currentFilePath && fileMtime`, i.e. only with a file open, and
+    liveness has to be checked with no file open too (a fresh install, the
+    welcome doc, a file opened before the server died). It also needs to flip
+    both ways where the startup check today only flips one: extract the probe
+    into something like `setServerAvailable(bool)` that can enable the buttons
+    back as cleanly as it disables them, and call it from the same wake
+    triggers as `checkDiskChanged` rather than standing up a second independent
+    listener pair.
 
 *   **5.2** *(subsumes 5.3)* No module system. Every file in front/ is a plain
     `<script>`, so every top-level `const` is a shared global and collisions
