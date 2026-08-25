@@ -425,8 +425,8 @@ export default function run(check) {
   check("and the bullet gets inline code",
     c.inserted.length === 1 && c.inserted[0].tagName === "CODE");
 
-  // Even a whole bullet: a <pre> in place of an <li> is invalid markup, and the
-  // nested-fence version is a separate feature with a save question behind it.
+  // A whole bullet nests its fence inside the <li> rather than swapping the
+  // <li> itself out — that would be invalid markup — or falling back to inline.
   c = codeCase((editor) => {
     const { ul, lis } = list(editor, ["first"]);
     return {
@@ -436,9 +436,42 @@ export default function run(check) {
       collapsed: false,
     };
   });
-  check("selecting a whole bullet does not swap it for a <pre>", !c.tag("PRE"));
-  check("it gets inline code instead",
-    c.inserted.length === 1 && c.inserted[0].tagName === "CODE");
+  check("selecting a whole bullet gets a nested <pre>", !!c.tag("PRE"));
+  check("the <pre> lives inside the <li>, not in place of it",
+    c.tag("PRE") && c.tag("PRE").parentNode.tagName === "LI");
+  check("the list item survives",
+    c.tag("UL") && c.tag("UL").children.filter((n) => n.tagName === "LI").length === 1);
+  check("and nothing goes through inline code", c.inserted.length === 0);
+
+  // A caret in an otherwise-empty bullet counts as the whole block too, same
+  // as every other block format.
+  c = codeCase((editor) => {
+    const { ul, lis } = list(editor, ["only"]);
+    return {
+      commonAncestorContainer: textIn(lis[0]),
+      intersectsNode: (n) => n === lis[0] || n === ul,
+      toString: () => "",
+      collapsed: true,
+    };
+  });
+  check("a bare caret in a bullet also nests a <pre>", !!c.tag("PRE"));
+
+  // Toggling back off: the <pre> comes out and the li's own text returns,
+  // rather than the top-level revert's <p> wrapper — a bullet never had one.
+  c = codeCase((editor) => {
+    const { ul, lis } = list(editor, [""]);
+    const li = lis[0];
+    const pre = makeEl("pre", { parent: li });
+    const code = makeEl("code", { parent: pre, text: "already" });
+    return {
+      commonAncestorContainer: textIn(code),
+      intersectsNode: (n) => n === li || n === ul || n === pre,
+      toString: () => "already",
+      collapsed: false,
+    };
+  });
+  check("code nested in a bullet unwraps back to the bullet", !c.tag("PRE"));
+  check("no stray <p> wrapper is left behind", !c.tag("P"));
 
   // The original report: select the list, get one <pre> with every item run
   // together and the <ul> gone. Inline is not the fallback here — a code span

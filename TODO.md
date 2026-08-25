@@ -19,26 +19,6 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
 
 ## 1. Editing
 
-*   **1.1** A fenced code block inside a list item. Code now declines rather
-    than damaging anything — a whole bullet gets inline `<code>`, several
-    bullets get a toast — but the construct markdown actually offers there, a
-    fence indented inside the `<li>`, is still unreachable from the format bar.
-
-    The save-fidelity half is settled: `<li><pre><code>` was checked in a
-    browser and survives markdown-it and Turndown in both directions
-    byte-identically, including a full pass through `normaliseEditorMarkup`
-    (one of the four subtrees it never touches) and `restoreSourceWrapping`.
-    A document that already has one round-trips fine today — what's missing is
-    purely the editing side: `applyFormat`'s Code branch has no third outcome
-    for "selection is inside one list item, make it a block," only inline and
-    whole-block-outside-a-list. A few lines in format-bar.js.
-
-*   **1.3** *(undecided)* Hybrid mode: typing `#` at the start of
-    a line turns that line into a heading, and the same for `-`, `>` and a
-    ` ``` ` fence. Suggested, not agreed — it commits the editor to reading
-    keystrokes as markdown everywhere, which is a different product from a
-    WYSIWYG surface with a format bar, and it needs an escape hatch for
-    someone who wants a literal `#`.
 *   **1.4** *(tables also need 2.3, or 1.6 instead; read D4 first)*
     The UI only supports some of the markup MD offers, and not even all of what
     the README advertises. The format bar has p, h1, h2, h3, bold, italic, ul,

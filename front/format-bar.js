@@ -262,19 +262,42 @@ function toggleCode(range) {
   const pre = block && block.closest("pre");
 
   if (pre && editor.contains(pre)) {
-    const paragraph = document.createElement("p");
-    paragraph.textContent = pre.textContent;
-    pre.parentNode.replaceChild(paragraph, pre);
+    const container = pre.parentNode;
+    const text = pre.textContent;
+    if (container.tagName === "LI") {
+      // Undoes the nested case below: the <pre> is the li's only child, not a
+      // wrapper standing in for the li itself, so it comes out and the li's
+      // own text takes its place — same shape the li had before toggling on.
+      pre.remove();
+      container.textContent = text;
+    } else {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = text;
+      container.replaceChild(paragraph, pre);
+    }
     return;
   }
 
   const blocks = blocksInRange(range);
   if (!blocks.length) return toggleInlineCode(range);
 
-  // A <pre> can only stand in for a block that is a direct child of the editor.
-  // Swapping one in for an <li> is invalid markup, and the honest version — a
-  // fenced block nested inside the list item — is a separate feature with a
-  // save-fidelity question behind it (TODO 1.1).
+  // A whole bullet nests its fence inside the <li> instead of replacing it —
+  // swapping the <li> itself for a <pre> would be invalid markup, but a <pre>
+  // as the li's only child round-trips through markdown fine.
+  if (blocks.length === 1 && blocks[0].tagName === "LI" && coversWholeBlocks(range, blocks)) {
+    const li = blocks[0];
+    const preElement = document.createElement("pre");
+    const codeElement = document.createElement("code");
+    codeElement.textContent = li.textContent;
+    preElement.appendChild(codeElement);
+    li.textContent = "";
+    li.appendChild(preElement);
+    return;
+  }
+
+  // A <pre> can only stand in for a block that is a direct child of the
+  // editor — the list-item case above is the one exception, handled by
+  // nesting rather than replacing.
   const atTopLevel = blocks.every((b) => b.parentNode === editor);
 
   if (!coversWholeBlocks(range, blocks) || !atTopLevel) {

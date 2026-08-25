@@ -682,6 +682,27 @@ TODO no longer has to carry it.
 
 ---
 
+## 2026-08-25 — A fenced code block inside a list item (TODO 1.1)
+
+The one gap `coversWholeBlocks` left: a whole bullet used to fall back to
+inline `<code>`, because a `<pre>` in place of the `<li>` is invalid markup.
+The honest version — a fence nested *inside* the item — was already known to
+round-trip byte-identically through markdown-it and Turndown, including a full
+pass through `normaliseEditorMarkup` and `restoreSourceWrapping`; what was
+missing was purely the editing side.
+
+`toggleCode` now special-cases a single, wholly-selected `<li>`: it clears the
+item's own content and appends a `<pre><code>` rather than replacing the item,
+which stays a direct child of its `<ul>`/`<ol>` the whole time. Toggling back
+reverses that in kind — the `<pre>` comes out and the item's text returns
+directly, with no `<p>` wrapper, since a bullet never had one. That is a
+different revert than the top-level case (`<pre>` swapped for a `<p>`), so the
+two now branch on whether the `<pre>`'s parent is an `<li>`.
+
+Multiple bullets selected together, or a partial selection inside one, are
+unaffected — those already had their answers (decline with a toast; inline
+code) and still do.
+
 # Decisions
 
 Questions that came up while building Marky, were argued out, and are settled.
