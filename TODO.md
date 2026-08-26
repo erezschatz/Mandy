@@ -118,6 +118,31 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
     debounced `input` or on `copy`, which is fiddlier than either of the two
     that landed: rewriting a text node under the caret can move the caret.
 
+*   **1.10** The floating format bar never appears at a bare caret —
+    `showFormatBar` in [front/format-bar.js](front/format-bar.js) bails out on
+    `selection.isCollapsed`, so "make this line H3" or "turn this line into a
+    bullet" with no text selected has no path but the Format menu. A hybrid
+    mode used to cover this and was dropped, so the gap is real again. The menu
+    route still works — `execCommand("formatBlock")` and the list commands both
+    act fine on a collapsed selection, `applyFormat` does not require one — so
+    this is a discoverability problem, not a functionality one. The likely fix
+    is a caret variant of the bar showing block-level controls only: Bold /
+    Italic / Code toggle *typing state* at a bare caret rather than acting on
+    visible text, a different and arguably confusing affordance from what the
+    bar does everywhere else, so those probably stay menu-only. Needs a
+    decision on which subset appears before it's worth building.
+
+*   **1.11** No search-and-replace. Ctrl+F is chrome-level browser UI that
+    highlights matches in the live DOM but exposes nothing to the page, and
+    `window.find()` only moves the selection — it doesn't replace, isn't
+    standard, and support is inconsistent. So this is one of the few editor
+    features the platform doesn't hand over for free: match-finding over the
+    document, a highlight/navigate UI, and replacement done through
+    `runCommand("insertText", …)` or Range manipulation so it stays undoable
+    and raises `input` like everything else in
+    [execcommand.js](front/execcommand.js). Comparable in size to 1.7, not to
+    the one-liners nearby.
+
 ## 2. Save fidelity
 
 Ways the bytes on disk still differ from what was opened, all verified by

@@ -1123,6 +1123,76 @@ function isNested(item) {
   return !!(list && list.parentElement && list.parentElement.closest("ul, ol"));
 }
 
+// execCommand's outdent isn't trustworthy here in either engine: Firefox
+// merges the item into the one above it (<li>one<br>two</li>) instead of
+// unnesting it, silently losing a bullet with no way back, and that markup is
+// indistinguishable from a deliberate hard break so normaliseEditorMarkup
+// cannot repair it after the fact — see TODO 5.1. So this does the move by
+// hand instead of asking execCommand for it, in both browsers: `item` leaves
+// its list and becomes a sibling of the <li> it was nested under, and any
+// items that followed it in that list move with it, becoming its own nested
+// sublist rather than being left behind under the old parent.
+function outdentListItem(item) {
+  const innerList = item.parentElement;
+
+  // execCommand's own indent leaves the nested list beside the item it
+  // belongs to rather than inside it (see isNested above), and
+  // normaliseEditorMarkup folds that back into the spec shape after every
+  // execCommand — but this bypasses execCommand, and a list pasted in from
+  // elsewhere can still arrive in the sibling shape. Fold it here too, rather
+  // than teach every step below both shapes.
+  if (innerList.parentElement && innerList.parentElement.tagName !== "LI") {
+    const owner = innerList.previousElementSibling;
+    if (owner && owner.tagName === "LI") {
+      innerList.parentElement.removeChild(innerList);
+      owner.appendChild(innerList);
+    }
+  }
+
+  const parentItem = innerList.parentElement;
+  const outerList = parentItem.closest("ul, ol");
+
+  const selection = window.getSelection();
+  const anchorNode = selection.anchorNode;
+  const anchorOffset = selection.anchorOffset;
+
+  const following = [];
+  for (let sibling = item.nextElementSibling; sibling; sibling = sibling.nextElementSibling) {
+    following.push(sibling);
+  }
+
+  if (following.length) {
+    let subList = item.querySelector(":scope > ul, :scope > ol");
+    if (!subList) {
+      subList = document.createElement(innerList.tagName);
+      item.appendChild(subList);
+    }
+    for (const node of following) {
+      innerList.removeChild(node);
+      subList.insertBefore(node, subList.firstChild);
+    }
+  }
+
+  innerList.removeChild(item);
+  if (!innerList.children.length) parentItem.removeChild(innerList);
+
+  outerList.insertBefore(item, parentItem.nextSibling);
+
+  // Moving nodes rather than replacing them keeps the Range's endpoints
+  // valid, but contenteditable doesn't always keep the visible caret in sync
+  // with that — so put it back explicitly rather than trust the browser.
+  if (anchorNode && editor.contains(anchorNode)) {
+    const range = document.createRange();
+    const max = anchorNode.nodeType === 3 ? anchorNode.length : anchorNode.childNodes.length;
+    range.setStart(anchorNode, Math.min(anchorOffset, max));
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 // Tab indents a bullet instead of moving focus — but only inside a list, and
 // only where the nesting is expressible: markdown cannot write a first item
 // nested under nothing, and Turndown would emit an indent that parses back as
@@ -1139,7 +1209,7 @@ editor.addEventListener("keydown", (e) => {
   if (e.shiftKey) {
     if (!isNested(item)) return;
     e.preventDefault();
-    runCommand("outdent");
+    outdentListItem(item);
     return;
   }
 

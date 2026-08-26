@@ -64,6 +64,19 @@ export function makeEl(tag = "div", { parent = null, text = "" } = {}) {
       const index = siblings.indexOf(node);
       return index > 0 ? siblings[index - 1] : null;
     },
+    get nextSibling() {
+      const siblings = node.parentNode ? node.parentNode.children : [];
+      const index = siblings.indexOf(node);
+      return index >= 0 && index < siblings.length - 1 ? siblings[index + 1] : null;
+    },
+    get nextElementSibling() {
+      const siblings = node.parentNode ? node.parentNode.children : [];
+      const index = siblings.indexOf(node);
+      for (let i = index + 1; i < siblings.length; i++) {
+        if (siblings[i].nodeType === 1) return siblings[i];
+      }
+      return null;
+    },
 
     appendChild(child) {
       child.parentNode = node;
@@ -225,7 +238,16 @@ export function loadApp() {
   const inlineRules = [];
   const renderRules = {};
   // Mutable: a suite parks the caret somewhere before driving a handler.
-  const selection = { anchorNode: null };
+  // removeAllRanges/addRange are no-ops here — a suite that cares where the
+  // caret landed reads anchorNode/anchorOffset back off this same object,
+  // which the fake range below writes on setStart rather than really moving
+  // any selection.
+  const selection = {
+    anchorNode: null,
+    anchorOffset: 0,
+    removeAllRanges() {},
+    addRange() {},
+  };
 
   // The toolbar is sticky at top: 0, so an anchor jump has to clear it. Given a
   // height here so a suite can check the arithmetic rather than just the call.
@@ -278,6 +300,7 @@ export function loadApp() {
         querySelector: (sel) => (sel === ".toolbar" ? toolbar : null),
         body: { appendChild: noop, removeChild: noop },
         execCommand: (cmd) => commands.push(cmd),
+        createRange: () => ({ setStart: noop, collapse: noop }),
       },
       // app.js reaches execCommand through execcommand.js's wrapper now. The
       // recorder stands in for it, so a suite reads the command the module asked

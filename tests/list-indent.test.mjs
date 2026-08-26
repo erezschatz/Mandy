@@ -34,6 +34,9 @@ export default function run(check) {
   const second = makeEl("li", { parent: list, text: "two" });
   const paragraph = makeEl("p", { parent: editor, text: "prose" });
 
+  const inputs = [];
+  editor.addEventListener("input", (e) => inputs.push(e));
+
   // Drives the handler with the caret at `node`, and reports what it did.
   const press = (node, event = tabEvent()) => {
     selection.anchorNode = node;
@@ -62,19 +65,64 @@ export default function run(check) {
   check("a caret in a text node resolves to its item", r.command === "indent");
 
   // --- unnesting -----------------------------------------------------------
+  //
+  // execCommand's own outdent isn't trusted here — Firefox merges a nested
+  // item into the one above it instead of unnesting it, losing a bullet with
+  // no way back (TODO 5.1) — so Shift+Tab moves the item by hand instead of
+  // calling runCommand. These checks drive the DOM outcome directly rather
+  // than the command name, since there is no command any more.
 
   // The spec shape: the sublist lives inside the item it hangs off.
-  const sublist = makeEl("ul", { parent: second });
-  const nested = makeEl("li", { parent: sublist, text: "two a" });
-  r = press(nested, tabEvent({ shift: true }));
-  check("Shift+Tab on a nested item outdents it", r.command === "outdent");
+  {
+    const outer = makeEl("ul", { parent: editor });
+    const owner = makeEl("li", { parent: outer, text: "parent" });
+    const sublist = makeEl("ul", { parent: owner });
+    const nested = makeEl("li", { parent: sublist, text: "child" });
+    r = press(nested, tabEvent({ shift: true }));
+    check("Shift+Tab on a nested item calls no execCommand", r.command === null);
+    check("and swallows the keypress", r.prevented);
+    check("the item leaves the sublist", nested.parentNode === outer);
+    check(
+      "and lands right after the item it was nested under",
+      outer.children.indexOf(nested) === outer.children.indexOf(owner) + 1,
+    );
+    check("the now-empty sublist is removed", !owner.children.includes(sublist));
+  }
 
   // Chrome's execCommand shape: the sublist is a sibling of its parent item,
   // one hop further from the ancestor <li> than the spec shape.
-  const chromeSublist = makeEl("ul", { parent: list });
-  const chromeNested = makeEl("li", { parent: chromeSublist, text: "two b" });
-  r = press(chromeNested, tabEvent({ shift: true }));
-  check("Shift+Tab handles Chrome's sibling nesting too", r.command === "outdent");
+  // outdentListItem folds that back into the spec shape before moving anything.
+  {
+    const outer = makeEl("ul", { parent: editor });
+    const owner = makeEl("li", { parent: outer, text: "parent" });
+    const chromeSublist = makeEl("ul", { parent: outer });
+    const chromeNested = makeEl("li", { parent: chromeSublist, text: "child" });
+    r = press(chromeNested, tabEvent({ shift: true }));
+    check(
+      "Shift+Tab handles Chrome's sibling nesting too",
+      outer.children.indexOf(chromeNested) === outer.children.indexOf(owner) + 1,
+    );
+    check("and the sibling sublist is gone", !outer.children.includes(chromeSublist));
+  }
+
+  // A middle item takes whatever followed it in the nested list along as its
+  // own sublist, rather than leaving those items stranded under the old parent.
+  {
+    const outer = makeEl("ul", { parent: editor });
+    const owner = makeEl("li", { parent: outer, text: "parent" });
+    const sublist = makeEl("ul", { parent: owner });
+    const a = makeEl("li", { parent: sublist, text: "a" });
+    const b = makeEl("li", { parent: sublist, text: "b" });
+    const c = makeEl("li", { parent: sublist, text: "c" });
+    r = press(b, tabEvent({ shift: true }));
+    check("the outdented item moves up", b.parentNode === outer);
+    check("an earlier sibling stays behind", sublist.children.includes(a));
+    check("a later sibling moves under it instead", b.contains(c) && !sublist.children.includes(c));
+    check("the earlier sibling's own sublist survives", owner.children.includes(sublist));
+  }
+
+  // Every outdent raises input, same as an execCommand would have.
+  check("Shift+Tab raises input for autosave/undo/outline to hear", inputs.length > 0);
 
   // Plain outdent at the top level turns the bullet into a paragraph. That is a
   // formatting change wearing an indent's keybinding, so it does not happen.
