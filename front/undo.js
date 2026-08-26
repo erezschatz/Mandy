@@ -1,11 +1,12 @@
 // Undo and redo, on our own stack rather than the browser's.
 //
 // The browser's native undo is fine right up until something assigns
-// editor.innerHTML — open a file, paste markdown, clear, restore from autosave,
-// load the welcome document — at which point the whole native stack is
-// discarded and Ctrl+Z silently stops doing anything for the rest of the
-// session. Silently is the problem: nothing looks broken, the shortcut just
-// stops answering, and the first you know of it is when you needed it.
+// editor.innerHTML — open a file, paste markdown, start a new document,
+// restore from autosave, load the welcome document — at which point the whole
+// native stack is discarded and Ctrl+Z silently stops doing anything for the
+// rest of the session. Silently is the problem: nothing looks broken, the
+// shortcut just stops answering, and the first you know of it is when you
+// needed it.
 //
 // So the document's history is kept here instead, as whole-innerHTML snapshots
 // with the caret position beside them. Snapshots rather than a diff or a
@@ -213,7 +214,7 @@ function applyUndoSnapshot(snapshot) {
 
 /**
  * Forget the history. For the sites that *replace* the document rather than
- * edit it — open, reload, clear, upload, and the restore-or-welcome path at
+ * edit it — open, reload, new, upload, and the restore-or-welcome path at
  * startup. Call it after the content and any renderers have finished, so the
  * baseline is the document as the user will actually see it.
  */

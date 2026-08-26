@@ -175,7 +175,7 @@ function buildOutlineNav() {
   container.insertBefore(outlineNav, editor);
 
   // One observer instead of an input listener, because the document changes
-  // from more directions than typing: opening a file, reloading it, Clear,
+  // from more directions than typing: opening a file, reloading it, New,
   // paste, and the welcome document arriving after its fetch. characterData is
   // in there for editing a heading in place, which moves no nodes at all.
   new MutationObserver(scheduleOutline).observe(editor, {

@@ -255,29 +255,6 @@ they matter:
     the coupling is documented rather than fixed. (`documentBody` in
     static-export.js, gated on `outlineIsOpen`.)
 
-*   **4.3** *(File)* "Clear" is doing two jobs under one name. Today's
-    `onToolbarAction("clear")` in [app.js](front/app.js) empties the editor,
-    drops the autosave, the sniffed style and the reference-definition map, and
-    resets undo — and file-api.js's own `"clear"` hook piles the file
-    association on top (`setFileMtime(null)`, `setCurrentFile(null)`), on the
-    theory that an empty document should not still claim to be `notes.md`. That
-    is the right behaviour for *starting a new document*, and the wrong one for
-    *emptying the document you have open* — which should read like Ctrl+A then
-    Delete: the content goes, the file you're editing, its undo history and its
-    autosave don't.
-
-    The fix is to split the one action into two: **Clear** becomes an ordinary
-    edit — select-all-and-delete through `runCommand`, so it raises `input` for
-    free and undoes as one step like any other edit, no dialog needed since
-    Ctrl+Z already covers it — and a new **New** takes over Clear's current
-    weight: the confirmation dialog, the full reset (autosave, style, undo,
-    reference map), and file-api.js's association drop. `New` is what "no
-    baggage" means — a document with no more history than the one Marky opens
-    with. Toolbar item and File-menu entry both need adding
-    ([toolbar.js](front/toolbar.js)'s `TOOLBAR_MENUS`), and the unsaved-work
-    guard moves from Clear's handler to New's — Clear no longer has anything to
-    guard, since an ordinary edit is exactly what Ctrl+Z already protects.
-
 ## 5. Architecture
 
 *   **5.1** Three execCommand divergences that survive normalisation. The

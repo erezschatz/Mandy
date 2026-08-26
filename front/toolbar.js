@@ -48,6 +48,12 @@ const ALL = ["app", "export"];
 
 const TOOLBAR_MENUS = [
   { id: "fileMenu", label: "File", variants: ALL, items: [
+    // New carries the weight Clear used to: the confirmation dialog and the
+    // full reset (autosave, sniffed style, undo, file association). See
+    // CHANGELOG.md, "New and Clear are two different weights now". It leads
+    // the menu the way New/Open do in every other editor.
+    { id: "newBtn", action: "new", label: "New document", variants: ALL },
+    { separator: true, variants: ALL },
     { id: "openBtn", action: "open-file", label: "Open\u2026", shortcut: "Ctrl+O", variants: ["app"] },
     { action: "reload-file", label: "Reload from disk", variants: ["app"] },
     { id: "uploadBtn", action: "upload-md", label: "Open\u2026", shortcut: "Ctrl+O", variants: ["export"] },
@@ -55,8 +61,6 @@ const TOOLBAR_MENUS = [
     { id: "saveBtn", action: "save-file", label: "Save", shortcut: "Ctrl+S", variants: ["app"] },
     { action: "save-as-file", label: "Save As\u2026", shortcut: "Ctrl+Shift+S", variants: ["app"] },
     { id: "downloadBtn", action: "download-md", label: "Download markdown", shortcut: "Ctrl+S", variants: ["export"] },
-    { separator: true, variants: ALL },
-    { id: "clearBtn", action: "clear", label: "Clear document", variants: ALL },
   ] },
 
   { id: "editMenu", label: "Edit", variants: ALL, items: [
@@ -65,6 +69,11 @@ const TOOLBAR_MENUS = [
     { separator: true, variants: ALL },
     { id: "copyBtn", action: "copy-md", label: "Copy markdown", variants: ALL },
     { id: "pasteBtn", action: "paste-md", label: "Paste markdown", variants: ALL },
+    { separator: true, variants: ALL },
+    // An ordinary edit now — select all, delete — rather than the
+    // document-replacing action it used to be, so it lives here rather than
+    // in File. See CHANGELOG.md, "New and Clear are two different weights now".
+    { id: "clearBtn", action: "clear", label: "Clear document", variants: ALL },
   ] },
 
   { id: "insertMenu", label: "Insert", variants: ALL, items: [
@@ -118,8 +127,8 @@ const TOOLBAR_MENUS = [
 // rather than a listener silently bound to null.
 //
 // Several handlers may share an action — they run in registration order, and
-// each is awaited before the next starts. That is how file-api.js hooks "clear"
-// to drop the file association on top of the clearing app.js already does, and
+// each is awaited before the next starts. That is how file-api.js hooks "new"
+// to drop the file association on top of the reset app.js already does, and
 // the await is what keeps that true now app.js's handler stops on a dialog:
 // without it file-api.js would run while the question was still on screen, see
 // a document that is not blank yet, and leave the file association behind.

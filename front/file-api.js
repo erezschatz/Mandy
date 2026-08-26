@@ -28,7 +28,7 @@ let isDirty = false;
 let fileMtime = null;
 let diskChanged = false;
 // The undo.js position id that counts as clean — the state as of the last
-// open, reload, save or clear. null means there is none to return to this
+// open, reload, save or new document. null means there is none to return to this
 // session (e.g. edits carried across a reload, whose undo history did not
 // survive it), so the document stays dirty until the next real save.
 let cleanPosition = null;
@@ -77,7 +77,7 @@ function setDiskChanged(changed) {
   renderCurrentFile();
 }
 
-// The one place a document is declared clean: open, reload, save and clear all
+// The one place a document is declared clean: open, reload, save and new all
 // call this instead of setDirty(false) directly, because being clean is more
 // than isDirty being false — it is also the position undo should be measured
 // against from here on.
@@ -154,13 +154,14 @@ editor.addEventListener("input", () => {
   setDirty(pos === null || cleanPosition === null || pos !== cleanPosition);
 });
 
-// Clearing the document drops the file association: app.js has already emptied
-// the editor and the autosave, and without this a reload would show a filename
-// with no content behind it, one Ctrl+S away from truncating the real file.
-// app.js registers its handler first and the dispatcher awaits it, so this runs
-// after its dialog has been answered: cancel leaves content in place and the
-// blank check correctly does nothing.
-onToolbarAction("clear", () => {
+// Starting a new document drops the file association: app.js has already
+// emptied the editor and the autosave, and without this a reload would show a
+// filename with no content behind it, one Ctrl+S away from truncating the real
+// file. app.js registers its handler first and the dispatcher awaits it, so
+// this runs after its dialog has been answered: cancel leaves content in place
+// and the blank check correctly does nothing. Clear does not get this hook —
+// it stays open on the same file, so there is no association to drop.
+onToolbarAction("new", () => {
   if (isBlankContent(editor.innerHTML)) {
     markClean();
     setFileMtime(null);
@@ -322,10 +323,10 @@ function confirmSaveName() {
 // ── The unsaved-work guard ───────────────────────────────────────
 //
 // One function for every action that throws the open document away: Open,
-// Reload and Clear. They used to disagree — Reload asked, Open did not, and
-// Clear asked without ever mentioning the file or whether anything was unsaved
-// — which made the presence of a dialog a bad signal about how much was at
-// stake.
+// Reload and New. They used to disagree — Reload asked, Open did not, and New
+// (then called Clear) asked without ever mentioning the file or whether
+// anything was unsaved — which made the presence of a dialog a bad signal
+// about how much was at stake.
 //
 // Three buttons rather than two, which is the whole reason ask() takes an
 // action list instead of being a confirm() wrapper. A two-way dialog asks the

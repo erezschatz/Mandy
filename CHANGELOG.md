@@ -703,6 +703,107 @@ Multiple bullets selected together, or a partial selection inside one, are
 unaffected — those already had their answers (decline with a toast; inline
 code) and still do.
 
+---
+
+## 2026-08-26 — Firefox no longer loses a bullet on outdent (TODO 5.1)
+
+The one execCommand divergence TODO 5.1 called out as having teeth: Shift+Tab
+on a nested item merged it into the item above in Firefox
+(`<li>one<br>two</li>`) instead of unnesting it, silently costing a bullet with
+no way back. It could not be normalised after the fact — that markup is
+indistinguishable from a deliberate hard break inside a list item — so it
+needed a real fix rather than a repair.
+
+`outdentListItem` in `app.js` does the move by hand instead, in both browsers:
+`execCommand("outdent")` is no longer called for this case at all, since
+neither engine's output was trustworthy enough to build on. The item leaves its
+`<ul>`/`<ol>` and becomes a sibling of the `<li>` it was nested under; anything
+that followed it in the old list moves with it, becoming its own nested
+sublist, the same way outdent behaves everywhere else rather than stranding
+those items under the old parent. Chrome's own sibling-nesting shape (the
+nested list beside its item rather than inside it, same as `isNested` already
+watches for) is folded back to the spec shape first, defensively — normal use
+never produces it here since indents already go through normalisation, but
+pasted content could. The caret is restored explicitly and a synthetic `input`
+event raised, since bypassing execCommand also bypasses the event it raises for
+free.
+
+`tests/list-indent.test.mjs` now drives the resulting DOM shape directly rather
+than asserting an execCommand name that no longer gets called, and
+`tests/dom.mjs` gained the handful of primitives that needed — `nextSibling`,
+`nextElementSibling`, `document.createRange`, and `removeAllRanges`/`addRange`
+on the stub selection.
+
+## 2026-08-26 — Strikethrough and horizontal rule (TODO 1.4)
+
+Two of the formats TODO 1.4 already knew were cheap: the browser check had
+already confirmed `strikeThrough` and `insertHorizontalRule` produce identical
+markup in both engines, so neither needed anything from `execcommand.js`
+beyond the command itself.
+
+Strikethrough needed one more thing first — Turndown ships no rule for it
+either, the same gap the `table` rule exists to close, since GFM strikethrough
+lives in `turndown-plugin-gfm` and this project carries neither that plugin
+nor a substitute. Without a rule, `<s>`/`<del>`/`<strike>` fell through to
+Turndown's default and the text saved back with the formatting silently
+dropped. `app.js` now carries a `strikethrough` rule wrapping the content in
+`~~…~~`; parsing `~~text~~` back in already worked, since markdown-it's
+strikethrough rule is core rather than a plugin.
+
+Both landed through all three registries a new format-bar control or menu
+item touches: `format-bar.js` (predicate, `applyFormat` case, the
+bar-stays-open list, the menu-registration loop), `toolbar.js`
+(`TOOLBAR_MENUS`), and the button markup in both `index.html` and
+`html-export.js`'s hand-written copy of the format bar. Horizontal rule only
+needed the last two, plus a one-line `onToolbarAction` handler in `app.js` —
+it has no toggle state to track, so it lives in Insert rather than the format
+bar. `CLAUDE.md`'s format counts (ten now, not nine) and the menu-item count
+(26, not 24) were updated alongside it, and TODO 1.4's missing-formats list
+dropped both.
+
+## 2026-08-26 — New and Clear are two different weights now (TODO 4.3)
+
+Clear was doing two jobs under one name. `onToolbarAction("clear")` in
+`app.js` emptied the editor, dropped the autosave, the sniffed style and the
+reference-definition map, and reset undo — and `file-api.js`'s own `"clear"`
+hook piled the file association on top (`setFileMtime(null)`,
+`setCurrentFile(null)`), on the theory that an empty document should not still
+claim to be `notes.md`. That is the right behaviour for starting a document
+over, and the wrong one for emptying the document you have open, which should
+read like Ctrl+A then Delete: the content goes, the file you're editing, its
+undo history and its autosave don't.
+
+The one action split into two. **New** took over Clear's old weight
+outright — same guarded dialog, same full reset, same `file-api.js` hook,
+renamed rather than rewritten — and **Clear** became an ordinary edit: select
+the editor's contents and delete them through `runCommand`, which raises
+`input` the same way typing does, so it undoes as one step and needs no
+dialog of its own. The selection is built with `Range.selectNodeContents`
+rather than `execCommand("selectAll")`, because a menu click can land here
+with focus nowhere near the editor — selectAll scopes to wherever focus
+already is, and nothing guarantees focus was ever inside `#editor` this
+session; `selectNodeContents` pins the range regardless. Clear no longer
+touches `file-api.js` at all, since nothing it does can point a filename at
+the wrong content.
+
+The weight split reads in the menu placement too: New leads the File menu
+([toolbar.js](front/toolbar.js)'s `TOOLBAR_MENUS`), the way New/Open leads in
+every other editor, while Clear moved to Edit, beside Undo/Redo and Copy/Paste
+markdown, since an ordinary edit is what it now is. `tests/toolbar.test.mjs`'s
+shortcut-label check had assumed the File menu's first item was Open; it now
+finds Open by its action rather than by position, so a future menu reorder
+cannot silently break it the same way. Every comment across `app.js`,
+`file-api.js`, `toolbar.js`, `undo.js` and `outline.js` that named Clear as
+the document-replacing action now names New instead — the MutationObserver
+outline rebuild, the `undoReset()` doc comment, the unsaved-work guard's own
+description of itself — since Clear stopped being one. `tests/file-path.test.mjs`'s
+`clear()` helper became `newDocument()` and every assertion it drove moved
+with it, and a new block confirms Clear now asks nothing and leaves the file
+association alone — the exact thing that suite exists to catch drifting back
+together. `tests/dom.mjs`'s stub gained nothing new; `tests/undo.test.mjs`'s
+site-count comment was relabelled, not the count itself, since renaming an
+action is not adding an `editor.innerHTML` assignment site.
+
 # Decisions
 
 Questions that came up while building Marky, were argued out, and are settled.

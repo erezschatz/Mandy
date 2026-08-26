@@ -15,7 +15,7 @@ import { loadSource, makeEl, makeText, readFront } from "./dom.mjs";
 // forget the history, or an input event to record the change as undoable.
 // Update this when a site is added or removed, having made that choice.
 const REPLACEMENT_SITES = {
-  "app.js": 5, // clear, upload, welcome (x2), restore-from-autosave
+  "app.js": 5, // new, upload, welcome (x2), restore-from-autosave
   "file-api.js": 1, // openFile, which reload comes through too
 };
 

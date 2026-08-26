@@ -292,12 +292,13 @@ Ctrl+R, Ctrl+Shift+R and F5 all belong to the browser.
 ### The unsaved-work guard
 
 `confirmDiscard` in [file-api.js](front/file-api.js) is the single gate in front
-of every action that throws the open document away — Open, Reload and Clear.
-Before it, the three disagreed: Reload asked, Open replaced the document with no
-check at all despite calling the identical function, and Clear asked a question
-whose wording read the same whether it was about to discard an untouched welcome
-document or an hour of work. The presence of a dialog was therefore a bad signal
-about how much was at stake, which is worse than no dialog.
+of every action that throws the open document away — Open, Reload and New (the
+action that used to be called Clear; see below). Before it, the three
+disagreed: Reload asked, Open replaced the document with no check at all
+despite calling the identical function, and New/Clear asked a question whose
+wording read the same whether it was about to discard an untouched welcome
+document or an hour of work. The presence of a dialog was therefore a bad
+signal about how much was at stake, which is worse than no dialog.
 
 Four things about it that are decisions rather than details:
 
@@ -314,7 +315,7 @@ Four things about it that are decisions rather than details:
   fail. In each of those the edits are still unsaved, so the action waiting on
   the save must not go ahead either. The `file-path` suite drives exactly that
   path with a queue of dialog answers.
-- **Clear picks one dialog or the other, never both.** The guard's question
+- **New picks one dialog or the other, never both.** The guard's question
   already says everything the plain one does and adds the filename and a Save
   button, so a dirty document gets the guard and a clean one gets the plain
   question. Asking twice would only teach the user to click through the first.
@@ -332,6 +333,20 @@ An exported document ships no `file-api.js`, and has no file to be dirty against
 Both call sites in `app.js` therefore feature-test (`typeof confirmDiscard ===
 "function"`) and fall back to the plain question. That is an honest absence
 rather than a second implementation of a flag with nothing behind it.
+
+**New and Clear are two different weights, not one action with two names.**
+Clear used to be both: it emptied the editor *and* dropped the autosave, the
+sniffed style and (via `file-api.js`'s `"new"` hook — see below) the file
+association, guarded by the dialog above. That is the right behaviour for
+starting a document over, and the wrong one for emptying the document you have
+open, which should read like Ctrl+A then Delete: the content goes, the file
+you're editing doesn't. So New kept all of Clear's old weight — same handler
+body, same guard, same reset — and Clear became an ordinary edit:
+`runCommand("selectAll")` then `runCommand("delete")`, which raises `input` the
+same way typing does, so it undoes as one step and needs no dialog of its own.
+Clear no longer touches `file-api.js` at all — nothing it does can leave a
+filename pointed at the wrong content, so there is nothing for that module to
+guard.
 
 ### Save fidelity
 
@@ -479,7 +494,7 @@ would otherwise destroy, read it back at serialise time.
   with** for `[label]: destination "title"` lines — skipping fenced code —
   and keys their exact source line by label. `adoptMarkdownStyle` runs it
   alongside the style sniff and the block index, so it shares their lifecycle:
-  rebuilt on every open, reload and restore-from-autosave, reset on Clear.
+  rebuilt on every open, reload and restore-from-autosave, reset on New.
   Deliberately narrow: only the common single-line form is recognised, and a
   definition markdown-it parses but this regex misses simply never finds a
   match at save time — the link that used it saves as a plain inline link
@@ -657,7 +672,7 @@ reaching for an element, so an item a variant does not render is an unused
 registration instead of a listener bound to `null`. The handler receives the
 item, and several handlers may share an action and run in registration order,
 **each awaited before the next starts** — that is how `file-api.js` hooks
-`"clear"` on top of `app.js`'s own clearing, and the await is what keeps that
+`"new"` on top of `app.js`'s own reset, and the await is what keeps that
 working now that `app.js`'s handler stops on an `ask()` dialog. Drop it and
 `file-api.js` runs while the question is still on screen, sees a document that
 is not blank yet, and leaves the file association behind — pointing Ctrl+S at a
@@ -859,7 +874,7 @@ Three more things worth knowing:
   the editor does not render full-width and then shift once `outline.js` runs —
   the same problem `.toolbar`'s `min-height` solves.
 - **Rebuilds hang off a debounced `MutationObserver` on `#editor`**, not an
-  `input` listener, because the document also changes from Open, Reload, Clear,
+  `input` listener, because the document also changes from Open, Reload, New,
   paste and the welcome fetch. The click handler captures the heading *element*
   rather than looking it up by slug, since a slug goes stale the moment its
   heading is edited and the rebuild is a second behind.
@@ -949,7 +964,7 @@ Four things about it that are decisions rather than details:
   the user's file.
 - **It returns a Promise, which made toolbar dispatch asynchronous.** See the
   toolbar section: handlers sharing an action are now awaited in turn, because
-  `app.js`'s Clear stops mid-handler and `file-api.js`'s hook must not run until
+  `app.js`'s New stops mid-handler and `file-api.js`'s hook must not run until
   it resumes.
 
 The DOM is built in JS, like the toolbar and the outline nav, because

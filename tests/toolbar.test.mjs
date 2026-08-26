@@ -287,7 +287,7 @@ export default async function run(check) {
   // --- shortcut labels ------------------------------------------------------
 
   const fileMenu = menusIn(render("app").toolbar)[0];
-  const openItem = itemsIn(fileMenu)[0];
+  const openItem = itemsIn(fileMenu).find((n) => n.attrs["data-action"] === "open-file");
   const shortcut = openItem.children.find((c) => c.className === "menu-shortcut");
   check("shortcuts are rendered beside the label", shortcut.textContent === "Ctrl+O");
   check("and hidden from assistive tech, which reads the binding itself",

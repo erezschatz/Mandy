@@ -51,6 +51,9 @@ function boot({
   const asked = [];
   const askedActions = [];
   const toasts = [];
+  // Clear goes through runCommand rather than replacing editor.innerHTML, and
+  // this suite does not load execcommand.js — recorded rather than executed.
+  const commands = [];
   // One bag for both targets: file-api.js binds `focus` on window and
   // `visibilitychange` on document, and no name is claimed by both.
   const listeners = {};
@@ -85,7 +88,7 @@ function boot({
     body: makeEl(),
     head: makeEl(),
     documentElement: makeEl(),
-    createRange: () => ({ setStart() {}, collapse() {} }),
+    createRange: () => ({ setStart() {}, collapse() {}, selectNodeContents() {} }),
     execCommand() {},
   };
 
@@ -93,6 +96,12 @@ function boot({
     ["toolbar.js", "markdown-style.js", "app.js", "file-api.js"],
     {
       document,
+      // execcommand.js is not in this suite's bundle: Clear's own weight is
+      // the recording below, not what a real execCommand does with it.
+      runCommand: (cmd) => {
+        commands.push(cmd);
+        return true;
+      },
       localStorage: {
         getItem: (k) => (store.has(k) ? store.get(k) : null),
         setItem: (k, v) => store.set(k, v),
@@ -166,7 +175,7 @@ function boot({
         }
       },
       notify: (message) => toasts.push(message),
-      // undo.js is not in this suite's bundle; openFile and Clear both
+      // undo.js is not in this suite's bundle; openFile and New both
       // re-baseline the history, and a missing stub makes them throw.
       undoReset() {},
       // Stands in for undo.js's position id. Controlled by the returned
@@ -224,6 +233,7 @@ function boot({
     asked,
     askedActions,
     toasts,
+    commands,
     disk,
     // Coming back to the window, both ways a browser reports it. Fired and then
     // settled rather than awaited, because a browser does not await them either.
@@ -261,15 +271,15 @@ function boot({
     type: () => {
       for (const fn of editorEl.listeners.input || []) fn();
     },
-    // app.js's handler is registered first and does the actual clearing; this
+    // app.js's handler is registered first and does the actual emptying; this
     // one only drops the file association on top of it. It used to be enough to
     // fake the emptied editor and dispatch, because app.js's confirm() returned
     // before the dispatcher moved on. Now app.js stops on a dialog, so this has
     // to settle — which is the ordering the whole thing hinges on: run it too
     // early and isBlankContent sees the document still full and keeps the path.
-    clear: async () => {
+    newDocument: async () => {
       toolbar.listeners.click[0]({
-        target: document.querySelector('[data-action="clear"]'),
+        target: document.querySelector('[data-action="new"]'),
       });
       await settle();
     },
@@ -346,14 +356,14 @@ export default async function run(check) {
   // editor first. With an empty one this check passes on any ordering at all,
   // which is the trap: it is the ordering that is under test here.
   r.fill("<h1>Real work</h1>");
-  await r.clear();
-  check("clear asks before discarding", /removes all content/.test(r.asked.at(-1) || ""));
-  check("clear drops the persisted path", !r.store.has("marky-current-file"));
-  check("clear keeps the last directory",
+  await r.newDocument();
+  check("new asks before discarding", /removes all content/.test(r.asked.at(-1) || ""));
+  check("new drops the persisted path", !r.store.has("marky-current-file"));
+  check("new keeps the last directory",
     r.store.get("marky-last-dir") === "/home/erez/projects/docs");
 
   // The ordering this suite exists to protect, from the other side: a cancelled
-  // Clear must leave the file association alone. file-api.js's hook decides
+  // New must leave the file association alone. file-api.js's hook decides
   // that by looking at the editor, so it can only be right if it runs after
   // app.js's dialog has been answered rather than while it is still open.
   r = boot({
@@ -362,14 +372,36 @@ export default async function run(check) {
   });
   r.fill("<h1>Real work</h1>");
   confirmAnswer = false;
-  await r.clear();
-  check("a cancelled clear leaves the document alone",
+  await r.newDocument();
+  check("a cancelled new leaves the document alone",
     r.html() === "<h1>Real work</h1>");
-  check("a cancelled clear keeps the file open",
+  check("a cancelled new keeps the file open",
     r.pathNow() === "/home/erez/notes/plan.md");
   check("and keeps it persisted",
     r.store.get("marky-current-file") === "/home/erez/notes/plan.md");
   confirmAnswer = true;
+
+  // --- Clear is not New ------------------------------------------------------
+  //
+  // Clear used to be this same guarded, file-dropping action under a different
+  // name. Now it is an ordinary edit — no dialog, no touch to any of the state
+  // New still resets — and this is the suite that would notice if the two
+  // handlers drifted back together.
+
+  r = boot({
+    savedContent: "<h1>Real work</h1>",
+    savedPath: "/home/erez/notes/plan.md",
+    savedDir: "/home/erez/projects/docs",
+  });
+  r.fill("<h1>Real work</h1>");
+  r.clickAction("clear");
+  await settle();
+  check("clear asks nothing", r.asked.length === 0);
+  check("clear goes through runCommand, not a document replacement",
+    r.commands.includes("delete"));
+  check("clear keeps the file open", r.pathNow() === "/home/erez/notes/plan.md");
+  check("and keeps it persisted",
+    r.store.get("marky-current-file") === "/home/erez/notes/plan.md");
 
   // --- a remembered directory that no longer exists ------------------------
   //
@@ -422,9 +454,9 @@ export default async function run(check) {
 
   r = boot({ savedContent: "<h1>Real work</h1>", savedPath: "/home/erez/notes/plan.md" });
   r.type();
-  await r.clear();
-  check("clear drops the marker with the path", r.labelNow() === "");
-  check("clear drops the persisted flag", !r.store.has("marky-dirty"));
+  await r.newDocument();
+  check("new drops the marker with the path", r.labelNow() === "");
+  check("new drops the persisted flag", !r.store.has("marky-dirty"));
 
   // Nothing to be out of step with when no file is open, so the marker would
   // be a bare "(edited)" hanging next to the app title.
@@ -567,8 +599,8 @@ export default async function run(check) {
 
   r = changedUnderneath();
   await settle();
-  await r.clear();
-  check("clear drops the persisted baseline", !r.store.has("marky-file-mtime"));
+  await r.newDocument();
+  check("new drops the persisted baseline", !r.store.has("marky-file-mtime"));
 
   r = boot({ savedContent: "<p><br></p>", savedPath: OPEN, savedMtime: T1 });
   check("and a blank document never restores one", !r.store.has("marky-file-mtime"));

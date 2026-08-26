@@ -689,11 +689,16 @@ onToolbarAction("copy-md", async (button) => {
   }
 });
 
-onToolbarAction("clear", async () => {
-  // Two different questions wearing one dialog until now. Clearing an untouched
-  // welcome document costs nothing; clearing an hour of unsaved work costs the
-  // hour — and the old wording read identically either way, which made the
-  // dialog useless as a signal about what was at stake.
+// New is what "no baggage" means: a document with no more history than the
+// one Marky opens with. This used to be what Clear did — see the comment on
+// the "clear" handler below for why the two split (CHANGELOG.md, "New and
+// Clear are two different weights now").
+onToolbarAction("new", async () => {
+  // Two different questions wearing one dialog until now. Starting fresh over
+  // an untouched welcome document costs nothing; starting fresh over an hour
+  // of unsaved work costs the hour — and the old wording read identically
+  // either way, which made the dialog useless as a signal about what was at
+  // stake.
   //
   // So the dirty case goes through file-api.js's shared guard, which knows the
   // filename and can offer Save. The guard does not exist in an exported
@@ -710,9 +715,9 @@ onToolbarAction("clear", async () => {
 
   if (guarded) {
     const proceed = await confirmDiscard({
-      title: "Clear the document?",
+      title: "Start a new document?",
       detail: "The auto-saved copy goes too.",
-      discardLabel: "Discard and clear",
+      discardLabel: "Discard and start new",
     });
     if (!proceed) return;
   } else {
@@ -720,11 +725,11 @@ onToolbarAction("clear", async () => {
     const confirmed = await ask(
       "This removes all content and the auto-saved copy.",
       {
-        title: "Clear the document?",
+        title: "Start a new document?",
         severity: "warn",
         actions: [
           { label: "Cancel", value: false, variant: "quiet", default: true },
-          { label: "Clear", value: true, variant: "danger" },
+          { label: "New", value: true, variant: "danger" },
         ],
       },
     );
@@ -734,7 +739,7 @@ onToolbarAction("clear", async () => {
   editor.innerHTML = "<p><br></p>";
   localStorage.removeItem("markdownContent");
   localStorage.removeItem("markdownSource");
-  // Or a block of the cleared document could come back on the next save.
+  // Or a block of the old document could come back on the next save.
   markdownStyle = Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
   markdownSource = new Map();
   referenceDefinitions = new Map();
@@ -747,11 +752,35 @@ onToolbarAction("clear", async () => {
   sel.removeAllRanges();
   sel.addRange(range);
 
-  // Replaced, not edited: Clear also drops the autosave, the sniffed style and
+  // Replaced, not edited: New also drops the autosave, the sniffed style and
   // (via file-api.js) the file association, so an undo that brought the text
   // back would restore it into a document that no longer knows where it came
   // from. The ask() dialog is what stands in for undo here.
   undoReset();
+});
+
+// Clear used to carry New's weight above — dialog, full reset, file
+// association drop — under the theory that an empty document should not
+// still claim to be notes.md. That is right for starting over, and wrong for
+// emptying the document you have open: this reads like Ctrl+A then Delete
+// instead. The content goes; the file you're editing, its undo history and
+// its autosave don't. `runCommand` raises `input` the same as typing would,
+// so it undoes as one ordinary step and needs no dialog of its own — Ctrl+Z
+// already covers it.
+//
+// The selection is built directly rather than via execCommand("selectAll"),
+// because a menu click can land here with the caret nowhere near the editor
+// — selectAll scopes to wherever focus already is, and this document has no
+// guarantee focus was ever inside #editor this session. selectNodeContents
+// pins the range to the editor regardless.
+onToolbarAction("clear", () => {
+  editor.focus();
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+  runCommand("delete");
 });
 
 // Cross-browser identical per D4 / TODO 1.4's measurements — including the
@@ -766,7 +795,7 @@ onToolbarAction("paste-md", async () => {
     if (clipboardText && clipboardText.trim()) {
       const html = markdownToHtml(clipboardText);
       // Caret insertion, not a document replacement — there is a real Open
-      // now, and wanting the replacement is Clear followed by this. runCommand
+      // now, and wanting the replacement is New followed by this. runCommand
       // raises `input` for free, so undo, autosave and the dirty flag pick it
       // up the same way a real paste does, and this is no longer an
       // editor.innerHTML assignment site for undo.js to know about.
