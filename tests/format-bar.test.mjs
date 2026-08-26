@@ -221,7 +221,7 @@ function trackedClassList() {
   };
 }
 
-const FORMATS = ["p", "h1", "h2", "h3", "bold", "italic", "ul", "ol", "code"];
+const FORMATS = ["p", "h1", "h2", "h3", "bold", "italic", "strikethrough", "ul", "ol", "code"];
 
 // Drives updateActiveButtons directly. `build` returns the editor tree and the
 // text nodes the selection touches — passed straight to a stub range's
@@ -300,6 +300,8 @@ export default function run(check) {
   check("ol issues insertOrderedList",
     scenario("ol", multiBlock).commands[0] === "insertOrderedList");
   check("bold issues bold", scenario("bold", multiBlock).commands[0] === "bold");
+  check("strikethrough issues strikeThrough",
+    scenario("strikethrough", multiBlock).commands[0] === "strikeThrough");
 
   // Code is the one hand-rolled format: no execCommand equivalent exists.
   const { editor } = scenario("code", multiBlock);
@@ -543,6 +545,16 @@ export default function run(check) {
   check("fully bold text reads active", r.state("bold") === "active");
   check("its paragraph reads active too", r.state("p") === "active");
   check("and it does not also claim italic", r.state("italic") === "none");
+
+  r = activeCase(() => {
+    const editor = makeEl("div");
+    const p = makeEl("p", { parent: editor });
+    const s = makeEl("s", { parent: p });
+    const t = appendText(s, "struck");
+    return { editor, touched: [t] };
+  });
+  check("fully struck-through text reads active", r.state("strikethrough") === "active");
+  check("and it does not also claim bold", r.state("bold") === "none");
 
   r = activeCase(() => {
     const editor = makeEl("div");

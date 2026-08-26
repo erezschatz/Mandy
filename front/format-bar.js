@@ -60,9 +60,10 @@ function showFormatBar() {
 // One predicate per button, each checking for an ancestor tag between a text
 // node and #editor — the same test the old anchor-only walk made, just run
 // per node instead of once. p/h1/h2/h3 match their own tag directly, the way
-// formatBlock leaves it; bold and italic fold both spellings execCommand can
-// produce; ul/ol/code match on presence anywhere in the chain, nested list or
-// not, which is what the single-node walk always did too.
+// formatBlock leaves it; bold, italic and strikethrough fold every spelling
+// execCommand can produce; ul/ol/code match on presence anywhere in the
+// chain, nested list or not, which is what the single-node walk always did
+// too.
 const FORMAT_PREDICATES = {
   p: (node) => hasAncestorTag(node, "P"),
   h1: (node) => hasAncestorTag(node, "H1"),
@@ -70,6 +71,7 @@ const FORMAT_PREDICATES = {
   h3: (node) => hasAncestorTag(node, "H3"),
   bold: (node) => hasAncestorTag(node, "STRONG", "B"),
   italic: (node) => hasAncestorTag(node, "EM", "I"),
+  strikethrough: (node) => hasAncestorTag(node, "S", "DEL", "STRIKE"),
   ul: (node) => hasAncestorTag(node, "UL"),
   ol: (node) => hasAncestorTag(node, "OL"),
   code: (node) => hasAncestorTag(node, "CODE"),
@@ -333,6 +335,11 @@ function applyFormat(format) {
     case "italic":
       runCommand("italic");
       break;
+    // Cross-browser identical per D4 / TODO 1.4's measurements, so this needs
+    // no normalisation of its own — only the Turndown rule that reads it back.
+    case "strikethrough":
+      runCommand("strikeThrough");
+      break;
     // The list commands toggle: run inside an existing list, they unwrap it.
     case "ul":
       runCommand("insertUnorderedList");
@@ -362,8 +369,9 @@ function applyFormat(format) {
       runCommand("formatBlock", `<${format}>`);
   }
 
-  // Bold and italic leave the bar up so they can be combined on one selection.
-  if (format !== "bold" && format !== "italic") {
+  // Bold, italic and strikethrough leave the bar up so they can be combined on
+  // one selection.
+  if (format !== "bold" && format !== "italic" && format !== "strikethrough") {
     formatBar.classList.remove("visible");
   }
   saveSoon();
@@ -408,6 +416,6 @@ document.querySelectorAll(".format-btn").forEach((btn) => {
 // the default on mousedown over the menu bar — a click that moved focus out of
 // the editor would take the selection with it and every one of these would
 // return having done nothing.
-for (const format of ["p", "h1", "h2", "h3", "bold", "italic", "ul", "ol", "code"]) {
+for (const format of ["p", "h1", "h2", "h3", "bold", "italic", "strikethrough", "ul", "ol", "code"]) {
   onToolbarAction(`format-${format}`, () => applyFormat(format));
 }

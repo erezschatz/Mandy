@@ -586,7 +586,7 @@ the shared global scope — see the load-order section above.
 
 ### execCommand
 
-Eight of the nine formats, plus paste and Tab-indent, go through
+Nine of the ten formats, plus paste and Tab-indent, go through
 `document.execCommand`. [execcommand.js](front/execcommand.js) is the only file
 allowed to call it — `runCommand(command, value)` is the door, and the
 `execcommand` suite scans `front/` to keep it the only one, because the way this
@@ -634,7 +634,7 @@ empty `<div class="toolbar">` and [toolbar.js](front/toolbar.js) fills it from
 It was a row of sixteen buttons until it stopped fitting: four groups plus the
 theme toggle, wrapping onto a second line below about 900px, with split buttons
 bolted on where two actions had to share one slot. Six words — File, Edit,
-Insert, Format, View, Export — hold 24 items and fit one line at 375px.
+Insert, Format, View, Export — hold 26 items and fit one line at 375px.
 
 **The bar is two rows in the app, one in an exported document.** The menus have
 the first to themselves. The second is `.toolbar-content`, the document row: the
@@ -743,8 +743,8 @@ already open — hovering a closed bar must not spring menus at you.
 
 `applyFormat` in [format-bar.js](front/format-bar.js) is the one entry point —
 the bar's own buttons and the Format menu both go through it, so the menu is a
-second way to reach nine formats rather than a second implementation of them.
-Eight of the nine are `execCommand` calls. Code is the exception, and everything
+second way to reach ten formats rather than a second implementation of them.
+Nine of the ten are `execCommand` calls. Code is the exception, and everything
 interesting here is about Code.
 
 **Code is the only format with both a block and an inline spelling**, and
@@ -796,7 +796,7 @@ It used to walk up from `selection.anchorNode` alone, so a selection spanning
 both bold and plain text lit the Bold button up or left it dark purely on which
 end of the drag the browser calls the anchor — never mind that neither answer
 described the selection. It now collects every non-blank text node the range
-touches (`textNodesInRange`) and asks each of the nine `FORMAT_PREDICATES`
+touches (`textNodesInRange`) and asks each of the ten `FORMAT_PREDICATES`
 whether *all*, *some*, or *none* of them carry that format — a text node's own
 formatting cannot be partial, so per-node is the right granularity to fake a
 selection at without a real editing engine, which is also why the test suite

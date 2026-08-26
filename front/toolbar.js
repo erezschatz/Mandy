@@ -69,11 +69,12 @@ const TOOLBAR_MENUS = [
 
   { id: "insertMenu", label: "Insert", variants: ALL, items: [
     { id: "tocInsertBtn", action: "insert-toc", label: "Table of contents", variants: ALL },
+    { action: "insert-hr", label: "Horizontal rule", variants: ALL },
   ] },
 
   // These drive applyFormat in format-bar.js, which the format bar's own
   // buttons already went through — the menu is a second way to reach the same
-  // nine formats, not a second implementation of them.
+  // ten formats, not a second implementation of them.
   { id: "formatMenu", label: "Format", variants: ALL, items: [
     { action: "format-p", label: "Paragraph", variants: ALL },
     { action: "format-h1", label: "Heading 1", variants: ALL },
@@ -82,6 +83,7 @@ const TOOLBAR_MENUS = [
     { separator: true, variants: ALL },
     { action: "format-bold", label: "Bold", shortcut: "Ctrl+B", variants: ALL },
     { action: "format-italic", label: "Italic", shortcut: "Ctrl+I", variants: ALL },
+    { action: "format-strikethrough", label: "Strikethrough", variants: ALL },
     { separator: true, variants: ALL },
     { action: "format-ul", label: "Bullet list", variants: ALL },
     { action: "format-ol", label: "Numbered list", variants: ALL },

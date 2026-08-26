@@ -21,11 +21,11 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
 
 *   **1.4** *(tables also need 2.3, or 1.6 instead; read D4 first)*
     The UI only supports some of the markup MD offers, and not even all of what
-    the README advertises. The format bar has p, h1, h2, h3, bold, italic, ul,
-    ol, code, and the Format menu now reaches the same nine — which is more
-    reachable, not more capable. Missing, still: links, images, tables,
-    blockquotes, h4-h6, strikethrough, inline code, horizontal rules, and
-    indent/outdent — that last one is bound to Tab but has no control, so on
+    the README advertises. The format bar has p, h1, h2, h3, bold, italic,
+    strikethrough, ul, ol, code, and the Format menu now reaches the same ten —
+    which is more reachable, not more capable. Insert has a horizontal rule now
+    too. Missing, still: links, images, tables, blockquotes, h4-h6, inline code,
+    and indent/outdent — that last one is bound to Tab but has no control, so on
     touch there is no way to nest a bullet at all. The Format and Insert menus
     are where they go, and both have room now. They render when imported; there is just no way to
     author them. Tables are worse than the others in that list: it's not just
@@ -35,15 +35,10 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
     Confirmed by hand: editing this very file after `hr: "---"` landed, trying
     to delete the now-obsolete row it made fixed above.
 
-    Two things the browser check already settled for this item. **Strikethrough
-    has no Turndown rule** — it lives in `turndown-plugin-gfm`, which this
-    project does not carry — so `<del>`/`<s>`/`<strike>` are dropped on save
-    today, and a strikethrough control needs a `~~` rule in app.js before it
-    needs a button. And of the controls on the list that *do* have an
-    execCommand, `createLink`, `insertHorizontalRule` and `strikeThrough` all
-    produce identical markup in both engines, so per D4's boundary rule they can
-    use it. Tables, inline code and indent/outdent get written by hand either
-    way.
+    Of the remaining controls that have an execCommand, `createLink` also
+    produces identical markup in both engines per the browser check, so it can
+    use it directly the same way strikethrough and the horizontal rule did.
+    Tables, inline code and indent/outdent get written by hand either way.
 *   **1.5** Links are done except for three loose
     ends. Ctrl/Cmd+click follows a link and jumps to `#anchor` headings,
     `anchorSlug` / `headingAnchors` in app.js resolve slugs live, and
@@ -259,6 +254,29 @@ they matter:
     does the outline show", if that ever stops being "all of them". Until then
     the coupling is documented rather than fixed. (`documentBody` in
     static-export.js, gated on `outlineIsOpen`.)
+
+*   **4.3** *(File)* "Clear" is doing two jobs under one name. Today's
+    `onToolbarAction("clear")` in [app.js](front/app.js) empties the editor,
+    drops the autosave, the sniffed style and the reference-definition map, and
+    resets undo — and file-api.js's own `"clear"` hook piles the file
+    association on top (`setFileMtime(null)`, `setCurrentFile(null)`), on the
+    theory that an empty document should not still claim to be `notes.md`. That
+    is the right behaviour for *starting a new document*, and the wrong one for
+    *emptying the document you have open* — which should read like Ctrl+A then
+    Delete: the content goes, the file you're editing, its undo history and its
+    autosave don't.
+
+    The fix is to split the one action into two: **Clear** becomes an ordinary
+    edit — select-all-and-delete through `runCommand`, so it raises `input` for
+    free and undoes as one step like any other edit, no dialog needed since
+    Ctrl+Z already covers it — and a new **New** takes over Clear's current
+    weight: the confirmation dialog, the full reset (autosave, style, undo,
+    reference map), and file-api.js's association drop. `New` is what "no
+    baggage" means — a document with no more history than the one Marky opens
+    with. Toolbar item and File-menu entry both need adding
+    ([toolbar.js](front/toolbar.js)'s `TOOLBAR_MENUS`), and the unsaved-work
+    guard moves from Clear's handler to New's — Clear no longer has anything to
+    guard, since an ordinary edit is exactly what Ctrl+Z already protects.
 
 ## 5. Architecture
 

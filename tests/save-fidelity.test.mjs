@@ -18,11 +18,25 @@
 import { loadApp, loadSource, makeEl, readFront } from "./dom.mjs";
 
 export default function run(check) {
-  const { options, htmlToMarkdown, isGhostElement } = loadApp();
+  const { options, htmlToMarkdown, isGhostElement, rules } = loadApp();
 
   check(
     "horizontal rules serialise as --- , not Turndown's * * *",
     options.hr === "---",
+  );
+
+  // Turndown ships no strikethrough rule of its own — that lives in
+  // turndown-plugin-gfm, which this project does not carry — so without this
+  // an execCommand("strikeThrough") round-trips to plain text on save.
+  const strike = rules.strikethrough;
+  check("app.js registers a strikethrough rule", !!strike);
+  check("the rule matches <s>", strike.filter({ nodeName: "S" }));
+  check("the rule matches <del>", strike.filter({ nodeName: "DEL" }));
+  check("the rule matches <strike>", strike.filter({ nodeName: "STRIKE" }));
+  check("the rule ignores other elements", !strike.filter({ nodeName: "SPAN" }));
+  check(
+    "the replacement wraps the content in ~~",
+    strike.replacement("struck") === "~~struck~~",
   );
 
   // The two settings that were already deliberate. They are the reason a file

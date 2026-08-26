@@ -374,6 +374,22 @@ turndownService.addRule("mathjax", {
   },
 });
 
+// Turndown ships no strikethrough rule either -- that one lives in
+// turndown-plugin-gfm too -- so execCommand("strikeThrough")'s <s> or <del>
+// fell through to the default and the markup round-tripped as plain text,
+// silently, with the document still looking struck-through on screen right up
+// until save. markdown-it's own strikethrough rule is a core rule, not a
+// plugin, so parsing `~~text~~` back in already worked; only the way out was
+// missing.
+turndownService.addRule("strikethrough", {
+  filter: function (node) {
+    return node.nodeName === "S" || node.nodeName === "DEL" || node.nodeName === "STRIKE";
+  },
+  replacement: function (content) {
+    return "~~" + content + "~~";
+  },
+});
+
 // Turndown 7 ships no table rule -- GFM tables live in turndown-plugin-gfm,
 // which this project does not carry -- so a <table> fell through to the default
 // and every cell came back as its own paragraph. Opening a document containing
@@ -737,6 +753,12 @@ onToolbarAction("clear", async () => {
   // from. The ask() dialog is what stands in for undo here.
   undoReset();
 });
+
+// Cross-browser identical per D4 / TODO 1.4's measurements — including the
+// id="null" Chrome leaves on it, which normaliseEditorMarkup already strips
+// for any <hr> regardless of how it got there — so this needs nothing beyond
+// the command itself. execCommand raises input for free.
+onToolbarAction("insert-hr", () => runCommand("insertHorizontalRule"));
 
 onToolbarAction("paste-md", async () => {
   try {
