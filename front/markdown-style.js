@@ -321,7 +321,7 @@ function wrapMarkdownLine(line, width) {
 // items contain sub-paragraphs is loose by CommonMark's definition, so
 // markdown-it wraps each item in <p> and Turndown puts a blank line back
 // between items the author wrote flush. Matching whole blocks would fail on
-// every such list -- which in this repo's own TODO.md is most of the file.
+// every such list -- which in this repo's own docs/TODO.md is most of the file.
 //
 // Each segment therefore also carries the separator that followed it in its own
 // document, so a restored run of items comes back as tight or loose the way the

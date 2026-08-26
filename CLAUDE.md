@@ -354,7 +354,7 @@ Turndown serialises to its own house style, so a save used to rewrite every
 list, rule, emphasis and line break in the file — spec-legal on both sides, and
 an unmergeable diff. [markdown-style.js](front/markdown-style.js) answers that
 from the source rather than from a house style, in three layers, cheapest last
-(Decision 1 in [CHANGELOG.md](CHANGELOG.md) records why, and what it deliberately does
+(Decision D1 in [docs/DECISIONS.md](docs/DECISIONS.md) records why, and what it deliberately does
 not cover):
 
 1.  **Sniff.** `sniffMarkdownStyle` reads the incoming markdown for the
@@ -405,7 +405,7 @@ the two sides disagree about blank lines. A tight list whose items contain
 sub-paragraphs is *loose* by CommonMark's definition, so markdown-it wraps each
 item in `<p>` and Turndown puts a blank line back between items the author wrote
 flush. Match whole blank-line-separated blocks and every such list fails to
-match — which in this repo's own `TODO.md` is most of the file. Each segment
+match — which in this repo's own `docs/TODO.md` is most of the file. Each segment
 also carries the separator that followed it, so a restored run comes back tight
 or loose the way the author had it.
 
@@ -420,7 +420,7 @@ CLAUDE.md, README.md and welcome.md all round-trip byte-identical. Editing one
 word in CLAUDE.md changes exactly the paragraph it was in.
 
 **One category is deliberately exempt: whitespace nobody can see.** Decision D3
-in [CHANGELOG.md](CHANGELOG.md) is the argument; the mechanics are two functions
+in [docs/DECISIONS.md](docs/DECISIONS.md) is the argument; the mechanics are two functions
 and where they sit.
 
 `normaliseNbsp` converts U+00A0 — and the `&nbsp;` entity, which is how
@@ -607,7 +607,7 @@ allowed to call it — `runCommand(command, value)` is the door, and the
 `execcommand` suite scans `front/` to keep it the only one, because the way this
 regresses is not a broken fix but a new call site that never reaches it.
 
-Decision D4 in [CHANGELOG.md](CHANGELOG.md) is why execCommand stays rather than
+Decision D4 in [docs/DECISIONS.md](docs/DECISIONS.md) is why execCommand stays rather than
 being reimplemented, and carries the boundary rule for new formats. What the code
 does:
 

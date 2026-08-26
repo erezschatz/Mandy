@@ -1,21 +1,25 @@
 # TODO
 
+This is what stands between here and a finished 1.0 — for what comes after
+that, see [ROADMAP.md](ROADMAP.md).
+
 Items are numbered `section.item` so they can point at each other. The numbers
 are labels, not an order and not a priority. An italic *(needs 4.1)* means that
 one has to land first, *(best after …)* is a preference rather than a blocker,
 and *(unblocks …)* marks an item others are waiting on — those are the ones to
 start from. Two more say what kind of item it is: *(undecided)* is a suggestion
 nobody has ruled on yet, so it wants a decision before it wants code — settled
-ones are recorded in [CHANGELOG.md](CHANGELOG.md) — and *(fixed, unverified)*
+ones are recorded in [DECISIONS.md](DECISIONS.md) — and *(fixed, unverified)*
 means the work landed but nobody has watched it happen in a browser, so what is
 left is the checking.
 
 A finished item leaves this file rather than staying in it struck through: what
-was done and why is in [CHANGELOG.md](CHANGELOG.md), which is the better place
+was done and why is in [CHANGELOG.md](../CHANGELOG.md), which is the better place
 to look for it, and a list of open work reads better without seven closed items
-in the way. Numbers are reused when that happens, so a reference in the code or
-in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
-— `grep -rn "TODO [0-9]" .` finds them.
+in the way. An item that turns out not to be 1.0 work at all leaves the same
+way, to [ROADMAP.md](ROADMAP.md) instead. Numbers are reused when that happens,
+so a reference in the code or in [CLAUDE.md](../CLAUDE.md) has to be chased down
+and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
 
 ## 1. Editing
 
@@ -105,7 +109,7 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
 
 *   **1.9** Invisible whitespace: what the cleanup does not reach. Pasted HTML
     is sanitised on the way in and U+00A0 is normalised on the way out (see D3
-    in [CHANGELOG.md](CHANGELOG.md)), which covers everything that reaches the
+    in [DECISIONS.md](DECISIONS.md)), which covers everything that reaches the
     *file*. It does not cover the live DOM in between: type a trailing space,
     let the browser rewrite it to U+00A0, then select that paragraph and paste
     it into Google Docs, and the character goes with it — that path crosses
@@ -114,7 +118,7 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
     that landed: rewriting a text node under the caret can move the caret.
 
 *   **1.10** The floating format bar never appears at a bare caret —
-    `showFormatBar` in [front/format-bar.js](front/format-bar.js) bails out on
+    `showFormatBar` in [front/format-bar.js](../front/format-bar.js) bails out on
     `selection.isCollapsed`, so "make this line H3" or "turn this line into a
     bullet" with no text selected has no path but the Format menu. A hybrid
     mode used to cover this and was dropped, so the gap is real again. The menu
@@ -135,15 +139,15 @@ in [CLAUDE.md](CLAUDE.md) has to be chased down and updated in the same commit
     document, a highlight/navigate UI, and replacement done through
     `runCommand("insertText", …)` or Range manipulation so it stays undoable
     and raises `input` like everything else in
-    [execcommand.js](front/execcommand.js). Comparable in size to 1.7, not to
+    [execcommand.js](../front/execcommand.js). Comparable in size to 1.7, not to
     the one-liners nearby.
 
 ## 2. Save fidelity
 
 Ways the bytes on disk still differ from what was opened, all verified by
 round-tripping real files through the running app.
-[front/markdown-style.js](front/markdown-style.js) is what preserves them;
-Decision D1 in [CHANGELOG.md](CHANGELOG.md) is why, and lists the differences
+[front/markdown-style.js](../front/markdown-style.js) is what preserves them;
+Decision D1 in [DECISIONS.md](DECISIONS.md) is why, and lists the differences
 that are deliberate rather than bugs — as does D3, which is the one whole
 category fidelity deliberately does not extend to. In rough order of how much
 they matter:
@@ -258,12 +262,12 @@ they matter:
 ## 5. Architecture
 
 *   **5.1** Three execCommand divergences that survive normalisation. The
-    decision is settled — D4 in [CHANGELOG.md](CHANGELOG.md): execCommand stays,
-    [front/execcommand.js](front/execcommand.js) normalises what it leaves
+    decision is settled — D4 in [DECISIONS.md](DECISIONS.md): execCommand stays,
+    [front/execcommand.js](../front/execcommand.js) normalises what it leaves
     behind, and new formats follow the boundary rule recorded there. What is
     left here is the residue that normalisation cannot reach, all three measured
     in Chrome 139 and Firefox 154 by
-    [tests/browser-check.html](tests/browser-check.html):
+    [tests/browser-check.html](../tests/browser-check.html):
 
     - **Firefox loses a bullet on outdent.** Shift+Tab on a nested item gives
       `<li>one<br>two</li>` — merged into the item above — where Chrome gives two
@@ -310,29 +314,12 @@ they matter:
 
 ## 6. Product
 
-*   **6.1** *(best last, and at least after 6.3)* Rewrite the README to better
-    fit the project's state. D0 in [CHANGELOG.md](CHANGELOG.md) is the framing
-    to write it from — what the project is *for* is argued there and nowhere in
-    the README, which still describes a markdown editor rather than the case for
-    one.
-*   **6.2** More export options. The set today is markdown, HTML, PDF, DOCX and
-    Editable. Decide what else earns a place — ODT or RTF for word processors
-    that are not Word, plain text, EPUB, a slide deck, an image of a single
-    diagram. The constraint that used to sit beside this one is gone: the export
-    group was the most crowded part of the toolbar, and the Export menu has room
-    for whatever earns it. What remains is that each format is another heavy
-    library behind an `ensure*` loader in lazy-load.js.
-*   **6.3** *(feeds 6.1)* The "collaborative" framing doesn't hold.
-    Collaborative in 2026 means Google Docs — two people editing one document.
-    This is the Word model: pass a file back and forth by mail. Worse, every
-    hop mints a *new* file, because the editable export fuses the document and
-    the application into one artifact, so there is no stable document identity
-    to write back to. You open X, you export Y, and now which one is current?
-    Three routes out: both sides run the full Marky (server + client) and pass
-    plain .md; or the exported file writes back to itself via the File System
-    Access API (Chromium-only, and needs testing from `file://` before anyone
-    designs around it); or shared storage both sides can reach. Failing all of
-    those, describe it honestly as send-for-review, one hop.
+*   **6.1** *(best last, and at least after the collaboration question in
+    [ROADMAP.md](ROADMAP.md) is settled)* Rewrite the README to better fit the
+    project's state. D0 in [DECISIONS.md](DECISIONS.md) is the framing to
+    write it from — what the project is *for* is argued there and nowhere in
+    the README, which still describes a markdown editor rather than the case
+    for one.
 *   **6.4** Mermaid diagrams in the static HTML export keep the light palette
     they were rendered with, since Mermaid isn't shipped with the document.
     Dark-mode readers get a white card behind the diagram as a workaround

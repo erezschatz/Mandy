@@ -913,7 +913,7 @@ function openExternalLink(href) {
     // No base, so a relative href throws and is left inert. That is the
     // documented first cut: resolving ./notes.md against the origin just 404s
     // off the static handler, and opening it in Marky is a bigger feature. See
-    // TODO.md before making relative links do something.
+    // docs/TODO.md before making relative links do something.
     url = new URL(href);
   } catch {
     return;
