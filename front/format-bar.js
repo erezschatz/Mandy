@@ -335,7 +335,7 @@ function applyFormat(format) {
     case "italic":
       runCommand("italic");
       break;
-    // Cross-browser identical per D4 / TODO 1.4's measurements, so this needs
+    // Cross-browser identical per D4 / TODO 1.1's measurements, so this needs
     // no normalisation of its own — only the Turndown rule that reads it back.
     case "strikethrough":
       runCommand("strikeThrough");

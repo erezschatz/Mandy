@@ -59,8 +59,17 @@ Two things follow, and they are why the rest of this file is as long as it is:
 - **The document must be edited as a document, not as text with a preview beside
   it.** A source pane with a live rendering is still a person editing markup —
   it just gives them a nicer view of the consequences. That is the cheap version
-  and it would dissolve most of section 2 of the TODO at a stroke; it is refused
-  because it solves the wrong problem.
+  and it would dissolve the whole save-fidelity problem at a stroke; it is
+  refused because it solves the wrong problem.
+
+  This is where the source-view proposal is closed rather than in TODO.md, where
+  it sat for a while as an undecided item and as the suggested cheap escape
+  hatch for table editing. Both readings are the same mistake: the reason a
+  table cannot be edited structurally is that the editing surface is missing,
+  and answering that with "type the pipes yourself" hands the user back exactly
+  the work this project exists to take off them. A read-only source view is a
+  different and much smaller question — it makes markdown visible without making
+  it a second seat of truth — and nobody has asked for one.
 - **The bytes it saves have to be the bytes it was given.** An editor that
   silently rewrites the file has not taken the source off the human's hands, it
   has just moved the work: now they read a diff of several hundred lines to find
@@ -107,20 +116,22 @@ fit together.
 "Wherever we can manage it" has one real boundary. A block that has actually
 changed cannot be recovered from the source, so it goes through the serialiser
 and comes back in Turndown's spelling. Three of those differences are ones we
-chose and would not undo; the fourth is a bug, filed as TODO 2.1.
+chose and would not undo; the fourth used to be a bug and is now a much smaller
+cost.
 
 | Opened as | An edited block saves as | Why |
 | --- | --- | --- |
 | Setext `===` / `---` headings | `#` / `##` | chosen: `headingStyle: "atx"` |
 | `~~~` fences | ` ``` ` | chosen |
 | Indented code | fenced | chosen: `codeBlockStyle: "fenced"` |
-| `[x][1]` + a definition block | inlined `[x](http://example.com)` | bug — TODO 2.1 |
+| `[x][1]` + a definition block | `[x][1]`, definition intact | fixed |
+| `[x][]` or bare `[x]` + a definition | the explicit `[x][1]` | accepted: the collapsed forms have no DOM node to survive on |
 
 Measured by hand, opening and saving this repo's own files through the running
-app: README.md and welcome.md come back byte-identical, CLAUDE.md and TODO.md
-one character short apiece. Before this, all four came back wholly rewritten.
-That measurement predates D3 and the inline-code fix that came with it, and has
-not been re-taken in a browser since.
+app: README.md and welcome.md come back byte-identical, CLAUDE.md and
+docs/TODO.md one character short apiece. Before this, all four came back
+wholly rewritten. That measurement predates D3 and the inline-code fix that
+came with it, and has not been re-taken in a browser since.
 
 D3 is the one deliberate exception to all of the above.
 
@@ -220,8 +231,8 @@ The boundary rule for new work, which is the operative part of this decision:
 
 `applyFormat` is a single switch statement, which is what makes all of this
 reversible: converting a case is a local change. That is also the answer to
-whether this had to be settled before TODO 1.4 adds ten more controls. It did
-not — but *deciding* was nearly free and discovering later would have cost 1.4
+whether this had to be settled before TODO 1.1 adds ten more controls. It did
+not — but *deciding* was nearly free and discovering later would have cost 1.1
 twice, which is why it was decided anyway.
 
 **The check is the load-bearing part.** [tests/browser-check.html](../tests/browser-check.html)

@@ -26,7 +26,7 @@
 // dead spec's shared legacy looks like rather than one vendor's mistake.
 //
 // See Decision D4 in docs/DECISIONS.md for the full argument, and TODO 5.1 for the
-// browser check that keeps the list below honest.
+// browser check that keeps the list below honest and what is still unverified.
 
 // Tag-based output rather than styled spans. The default was never specified
 // and is per-browser, so without this some engines answer Bold with
@@ -53,7 +53,7 @@ const STYLE_TO_TAG = [
   // which this project does not carry — so this survives on screen and is
   // dropped on save, exactly as the styled span was. Retagging it anyway is
   // still the right move: it is the semantically correct markup, and the day
-  // TODO 1.4 adds a `~~` rule it starts working with no change here.
+  // TODO 1.1 adds a `~~` rule it starts working with no change here.
   [/text-decoration[a-z-]*\s*:[^;]*line-through/i, "DEL"],
 ];
 
@@ -166,7 +166,7 @@ function normaliseEditorMarkup(root) {
     // still puts the <h1> inside the <li>, so the two engines currently
     // disagree about whether the button does anything. Settling that means
     // refusing it in applyFormat, where the selection still exists — normalise
-    // cannot see which item the caret was in. TODO 5.1, deferred to 1.4.
+    // cannot see which item the caret was in. TODO 1.1.
     if (UNWRAPPABLE_AROUND_LIST.has(node.tagName) && holdsListChild(node)) {
       unwrapElement(node);
       changed = true;

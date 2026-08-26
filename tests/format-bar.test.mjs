@@ -526,7 +526,7 @@ export default function run(check) {
   });
   check("formatting as code announces itself with an input event", c.inputs.length === 1);
 
-  // --- the whole selection, not just where it started (TODO 3.1) -----------
+  // --- the whole selection, not just where it started ----------------------
   //
   // updateActiveButtons used to walk up from selection.anchorNode alone, so a
   // selection covering both bold and plain text lit the Bold button up or left

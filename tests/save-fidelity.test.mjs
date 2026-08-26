@@ -101,7 +101,7 @@ export default function run(check) {
   referenceLinkChecks(check);
 }
 
-// TODO 2.1: a reference link and an inline link resolve to the identical
+// A reference link and an inline link resolve to the identical
 // <a href> once markdown-it has parsed them, so without help a save could not
 // tell them apart and quietly rewrote every reference as inline, dropping its
 // [label]: url definition with it. Two halves, tested separately because

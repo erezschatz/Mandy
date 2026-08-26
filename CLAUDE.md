@@ -97,7 +97,8 @@ engines do it). It also found a live bug, where `formatBlock` in a bullet
 destroyed the list in Chrome.
 
 Re-run it when adding a format, and when a browser does something surprising.
-TODO 5.1 records what it currently measures.
+TODO 5.1 records what is still unverified and carries that instruction; TODO 1.1
+holds the two divergences it found that are still open.
 
 ## Architecture
 
@@ -451,7 +452,7 @@ space bullets unevenly. Two things about it:
 
 Neither reaches the live DOM in between, so a U+00A0 the browser writes while you
 type still travels if you select that text and paste it into another application.
-That is TODO 1.9 and is known rather than overlooked.
+That is TODO 1.4 and is known rather than overlooked.
 
 Two Turndown rules in `app.js` exist for the same reason. **`table`** (with
 `tableCell` / `tableRow` / `tableSection`) is not an optimisation: Turndown 7
@@ -635,10 +636,14 @@ does:
   that snapshot in place. Dispatching a second `input` would work and would be
   wrong: one action would cost two Ctrl+Z, the first appearing to do nothing.
 
-Three divergences survive it, all measured rather than assumed, all in TODO 5.1.
-The one to know about is Firefox merging a bullet into the item above on outdent
-— it cannot be normalised, because that markup is indistinguishable from a
-deliberate hard break in a list item.
+Three divergences survived it, all measured rather than assumed. The one with
+teeth — Firefox merging a bullet into the item above on outdent — could not be
+normalised at all, because that markup is indistinguishable from a deliberate
+hard break in a list item, so `outdentListItem` in `app.js` does the move by
+hand in both engines instead of calling `execCommand("outdent")`. TODO 5.1
+carries what is left of it, which is a browser nobody has watched it in. The
+other two are questions about what a block control does inside a list, and wait
+in TODO 1.1 with the rest of block formatting.
 
 ### The menu bar
 
@@ -881,8 +886,9 @@ Three more things worth knowing:
 
 The static export's TOC is gated on `outlineIsOpen()`. That is a placeholder for
 a Settings pane, not a design — the sidebar is chrome for the author and the
-export's TOC is content for the reader, and they should not be one switch
-(TODO 4.2).
+export's TOC is content for the reader, and they should not be one switch. The
+pane that would hold the real control is in
+[docs/ROADMAP.md](docs/ROADMAP.md).
 
 ### Undo
 

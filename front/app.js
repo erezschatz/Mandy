@@ -783,7 +783,7 @@ onToolbarAction("clear", () => {
   runCommand("delete");
 });
 
-// Cross-browser identical per D4 / TODO 1.4's measurements — including the
+// Cross-browser identical per D4 / TODO 1.1's measurements — including the
 // id="null" Chrome leaves on it, which normaliseEditorMarkup already strips
 // for any <hr> regardless of how it got there — so this needs nothing beyond
 // the command itself. execCommand raises input for free.

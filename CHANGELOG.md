@@ -840,3 +840,119 @@ exists to point at. Nothing was renumbered — 6.2 and 6.3 simply stop
 appearing, the way any finished item's number does, available to be reused
 for something unrelated later exactly as `docs/TODO.md`'s own rule already
 allows.
+
+## 2026-08-26 — TODO audited against 1.0, six items moved to ROADMAP
+
+The `docs/` split gave the four files four jobs, and this is the first pass
+that actually held TODO.md to its own: *what stands between here and a finished
+1.0*, nothing else. Read end to end with one question asked of every item —
+does full-time use of Marky wait on this — six answered no.
+
+Moved as-is: **5.2/5.3** (no module system, load order still load-bearing),
+where nothing a user does touches it and the Marky 2.0 rewrite settles it
+either way; **2.4** (block-level segment granularity), whose own text says the
+finer version is "a different and much less safe algorithm"; and **2.2** (the
+source persisted as a second copy in `localStorage`), which 4.1 had quietly
+defused already — once tabs settled on *no budget, no eviction, no per-tab cap*
+for its own 2N copies, shrinking the per-document footprint is an optimisation
+against a wall nobody has hit rather than a fix. The two save-fidelity items
+went into one ROADMAP section that says so out loud: both refine a system that
+already works, and D1 holds today.
+
+Moved as concepts, where the item was really a feature in disguise. **4.2** —
+the static export's TOC following the outline sidebar's toggle — always
+answered itself with "the right home is a Settings pane, which does not exist";
+that pane is now a ROADMAP entry with the two preferences that want it, and the
+coupling stays documented in CLAUDE.md. **1.5's third bullet** — PDF has no
+live links, and needs a different PDF path, which is to say a different
+library — folded into *More export options*, which is the decision it was
+waiting on anyway.
+
+**1.6 was deleted rather than moved.** A source view had sat as *(undecided)*
+since it was filed, and D0 already refuses it at length — a source pane with a
+live rendering is still a person editing markup. Parking it in ROADMAP would
+have kept alive an idea the project's founding decision rules out, so the
+closure went into D0 itself, which is where DECISIONS.md says a reopened
+question belongs. It mattered more than a tidy-up: **1.4's header offered 1.6
+as the escape hatch for table editing** (*"tables also need 2.3, or 1.6
+instead"*), which pointed the most urgent item in the file at the one answer D0
+forbids — the reason a table cannot be edited structurally is that the editing
+surface is missing, and answering that with "type the pipes yourself" hands
+back exactly the work this project exists to take off the user.
+
+**5.1 dissolved into 1.4 except for what is genuinely unverified.** Its first
+divergence — Firefox losing a bullet on outdent — landed on 2026-08-26 and the
+item had not noticed. It is not deleted, because *tested* and *verified* are
+not the same thing here: `tests/list-indent.test.mjs` drives four DOM shapes
+plus the synthetic `input`, and that is real cover since bypassing execCommand
+makes the logic ours rather than an engine's — but it is also exactly why
+`tests/browser-check.html` cannot confirm it, as the check page measures what
+execCommand produces and this path no longer calls it. Nobody has watched
+Shift+Tab unnest a bullet in a real Firefox. So 5.1 became the file's first
+*(fixed, unverified)* item, a marker the legend had been documenting with no
+user, and it keeps the standing re-run instruction. The other two divergences
+were already marked "deferred to 1.4" and moved there in full, since both are
+questions about what a block control does when a list is involved.
+
+**6.1 stopped being unstartable.** It wanted the collaboration question settled
+first — a 1.0 item waiting on an explicitly unscheduled post-1.0 one, which it
+could never get. ROADMAP already supplies the honest description of what ships
+today (send-for-review, one hop), so the README rewrite can say that now and
+change later if real collaboration ever lands.
+
+Four stale cross-references fell out of the audit. D1's table still listed
+reference-style links as *bug — TODO 2.1* eleven days after they were fixed and
+2.1 left the file; the row now says what actually happens, alongside a new one
+for the residual cost (an edited `[x][]` or bare `[x]` saves as the explicit
+`[x][1]`, since the collapsed forms have no DOM node to survive on). D1 also
+still named `TODO.md` at its pre-`docs/` path, and `tests/browser-check.html`
+still pointed at "Decision D4 in CHANGELOG.md" — both missed by the move that
+created `docs/`. CLAUDE.md's execCommand section still opened "Three
+divergences survive it" and named the outdent bug as the one to know about.
+
+TODO.md is 11 items from 15, and every one of them is markdown support, tables,
+tabs, stability or the README.
+
+## 2026-08-26 — TODO items renumbered to close the gaps
+
+The audit above left section 1 running 1.4, 1.5, 1.7, 1.9, 1.10, 1.11 and
+section 2 holding a lone 2.3 — every gap a scar from an item that had been
+finished or moved. The numbers are labels rather than an order, so the gaps
+cost nothing except the constant suggestion that something is missing.
+
+| Was | Is | |
+| --- | --- | --- |
+| 1.4 | **1.1** | the markup the UI cannot author yet, tables worst |
+| 1.5 | **1.2** | the two remaining link gaps |
+| 1.7 | **1.3** | paste without formatting, and the Edit menu reorg |
+| 1.9 | **1.4** | invisible whitespace the cleanup does not reach |
+| 1.10 | **1.5** | no format bar at a bare caret |
+| 1.11 | **1.6** | no search-and-replace |
+| 2.3 | **2.1** | an edited table re-emitted in house style |
+| 6.4 | **6.2** | Mermaid keeps the light palette in the static export |
+
+4.1, 5.1 and 6.1 were already the first of their sections and did not move.
+Section 3 stays empty rather than being closed up: sections are categories, not
+queue positions, and renaming *Interface* from 4 to 3 would shift every item
+under it for no gain.
+
+References were chased down in the same commit, as `docs/TODO.md`'s own rule
+requires — `CLAUDE.md`, `docs/DECISIONS.md`, `docs/ROADMAP.md`,
+`front/app.js`, `front/execcommand.js`, `front/format-bar.js` and
+`tests/browser-check.html`. The rewrite was a single pass over each file rather
+than one replacement per number, because 1.4 → 1.1 and 1.9 → 1.4 would
+otherwise tread on each other. It also needed watching: a naive `\d+\.\d+`
+sweep caught the `font: 14px/1.5` line-height in `tests/browser-check.html` and
+turned it into `14px/1.2`, which is the kind of edit that lands silently and
+reads as a styling tweak six months later.
+
+This changelog is history and keeps the numbers it was written with. Entries
+above this line mean the items as numbered at the time — most visibly the
+2026-08-25 entry titled "(TODO 1.1)", which is the fenced-code-in-a-list-item
+work and has nothing to do with today's 1.1.
+
+Two pointers left dangling by the ROADMAP moves surfaced while renumbering, both
+inside 4.1: its note that the sniffed source is already a second copy of the
+document pointed at the retired 2.2, and its aside about edit/preview/source
+tabs pointed at the deleted 1.6. They now point at ROADMAP's save-fidelity
+section and at D0 respectively.

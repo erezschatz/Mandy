@@ -466,12 +466,12 @@ export default async function run(check) {
 
   // --- the marker follows undo ----------------------------------------------
   //
-  // TODO 1.10: the flag used to only ever latch true on an edit and never
-  // unlatch, so undoing back to a saved document still claimed it was edited.
-  // undo.js's own stack is stubbed out above; `setUndoPosition` stands in for
-  // it, so this drives file-api.js's half of the fix — that a position equal
-  // to the one recorded at the last save reads clean, and anything else does
-  // not — without needing the real stack, which undo.test.mjs already covers.
+  // The flag used to only ever latch true on an edit and never unlatch, so
+  // undoing back to a saved document still claimed it was edited. undo.js's
+  // own stack is stubbed out above; `setUndoPosition` stands in for it, so
+  // this drives file-api.js's half of the fix — that a position equal to the
+  // one recorded at the last save reads clean, and anything else does not —
+  // without needing the real stack, which undo.test.mjs already covers.
 
   r = boot({ savedContent: "<h1>Real work</h1>", savedPath: "/home/erez/notes/plan.md" });
   r.setUndoPosition(0);
@@ -771,9 +771,9 @@ export default async function run(check) {
 
   // --- the file server going away, and coming back --------------------------
   //
-  // TODO 5.4: the startup probe used to be the only check there was, so a
-  // server that died mid-session left the buttons claiming it was still there,
-  // and one brought up after a dead start stayed disabled until a reload.
+  // The startup probe used to be the only check there was, so a server that
+  // died mid-session left the buttons claiming it was still there, and one
+  // brought up after a dead start stayed disabled until a reload.
   // `focus` and `visibilitychange` are the same wake points checkDiskChanged
   // already used, reused here for the same reason: whatever changed while the
   // tab was away is cheapest to notice the moment it comes back.

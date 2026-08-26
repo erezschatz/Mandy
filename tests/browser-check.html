@@ -12,7 +12,7 @@
 
   It exists because execCommand's spec is dead: nothing obliges two engines to
   agree, so the only way to know what they do is to ask them. See Decision D4 in
-  CHANGELOG.md and TODO 5.1.
+  docs/DECISIONS.md, and docs/TODO.md 1.1 and 5.1.
 
   Serve the repo and open this in each browser you care about. It prints a
   report and, if it was loaded over HTTP from the check server, posts a copy
@@ -55,7 +55,7 @@
       html: "<p>one two</p>",
       select: (ed) => wordRange(ed.querySelector("p").firstChild, 0, 3),
       run: () => runCommand("strikeThrough"),
-      // Planning data for TODO 1.4 rather than a current guarantee.
+      // Planning data for TODO 1.1 rather than a current guarantee.
       ok: (out) => /<(s|strike|del)>/.test(out) && !/style=/.test(out),
     },
     {

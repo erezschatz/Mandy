@@ -23,7 +23,7 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
 
 ## 1. Editing
 
-*   **1.4** *(tables also need 2.3, or 1.6 instead; read D4 first)*
+*   **1.1** *(tables also need 2.1; read D4 first)*
     The UI only supports some of the markup MD offers, and not even all of what
     the README advertises. The format bar has p, h1, h2, h3, bold, italic,
     strikethrough, ul, ol, code, and the Format menu now reaches the same ten —
@@ -43,7 +43,29 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     produces identical markup in both engines per the browser check, so it can
     use it directly the same way strikethrough and the horizontal rule did.
     Tables, inline code and indent/outdent get written by hand either way.
-*   **1.5** Links are done except for three loose
+
+    Two execCommand divergences were deferred here rather than fixed where they
+    were found, because both are questions about what a *block* control does
+    when a list is involved, and this is where block formatting gets looked at
+    properly. Both were measured in Chrome 139 and Firefox 154 by
+    [tests/browser-check.html](../tests/browser-check.html):
+
+    - **A heading inside a list item should be a no-op, and currently is only in
+      Chrome.** Chrome wrapped the whole list in the heading, which was
+      destructive and is now unwrapped — so the command does nothing there.
+      Firefox puts the `<h1>` inside the `<li>`, which is what was literally
+      asked for and does round-trip through markdown. Settled: **the no-op is
+      the wanted behaviour, in both engines.** A heading inside a bullet is
+      expressible but it is not something the editor should offer a way to make
+      by accident, and "less havoc than Chrome" is not the same as right. So the
+      fix is to refuse it in `applyFormat` — where the selection still exists,
+      unlike in `normaliseEditorMarkup` — and the refusal wants to be consistent
+      with whatever the other block controls here do about lists.
+    - **`indent` outside a list produces a `<blockquote>`**, with inline styles
+      in Chrome and without in Firefox. Not reachable today: app.js guards Tab
+      to lists only. It is recorded here because the blockquote control on the
+      list above is what will meet it.
+*   **1.2** Links are done except for two loose
     ends. Ctrl/Cmd+click follows a link and jumps to `#anchor` headings,
     `anchorSlug` / `headingAnchors` in app.js resolve slugs live, and
     `static-export.js` stamps real ids into the exported markup. What is still
@@ -61,20 +83,7 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     - **Touch devices have no modifier**, so there is no way to follow a link on
       one, and the hover tooltip never shows either. Wants its own affordance —
       a long-press, or the chip Google Docs shows.
-    - **PDF still has no live links at all**, internal or external. html2pdf
-      rasterises through html2canvas, so pdf-export.js only restyles `A` to
-      blue and nothing survives as a clickable annotation. Heading ids do not
-      help; it needs a different PDF path.
-
-*   **1.6** *(undecided; would unblock 1.4 cheaply)* A source view — see and
-    edit the markdown inside the app. Today the document lives as HTML in
-    `editor.innerHTML` and markdown exists only at the boundaries: markdown-it
-    parses on the way in, Turndown serialises on the way out. Copy MD, Download
-    MD and Save all emit it, so it is reachable, just not visible. Suggested,
-    not agreed — an editable source view makes markdown a second seat of truth
-    and raises which one wins, and where it lives (a tab, a split pane, a mode)
-    is the same question 4.1 asks about tabs.
-*   **1.7** Paste without formatting (Ctrl/Cmd+Shift+V), and the menu reorg it
+*   **1.3** Paste without formatting (Ctrl/Cmd+Shift+V), and the menu reorg it
     comes with. Three parts, and the first is a question rather than work:
     browsers already implement that binding in a `contenteditable` as
     paste-as-plain-text, but the handler in app.js intercepts *every* paste and
@@ -107,7 +116,7 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     cleanup took the pain out of an ordinary paste, so what is left here is
     wanting the text bare, not wanting it repaired.
 
-*   **1.9** Invisible whitespace: what the cleanup does not reach. Pasted HTML
+*   **1.4** Invisible whitespace: what the cleanup does not reach. Pasted HTML
     is sanitised on the way in and U+00A0 is normalised on the way out (see D3
     in [DECISIONS.md](DECISIONS.md)), which covers everything that reaches the
     *file*. It does not cover the live DOM in between: type a trailing space,
@@ -117,7 +126,7 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     debounced `input` or on `copy`, which is fiddlier than either of the two
     that landed: rewriting a text node under the caret can move the caret.
 
-*   **1.10** The floating format bar never appears at a bare caret —
+*   **1.5** The floating format bar never appears at a bare caret —
     `showFormatBar` in [front/format-bar.js](../front/format-bar.js) bails out on
     `selection.isCollapsed`, so "make this line H3" or "turn this line into a
     bullet" with no text selected has no path but the Format menu. A hybrid
@@ -131,7 +140,7 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     bar does everywhere else, so those probably stay menu-only. Needs a
     decision on which subset appears before it's worth building.
 
-*   **1.11** No search-and-replace. Ctrl+F is chrome-level browser UI that
+*   **1.6** No search-and-replace. Ctrl+F is chrome-level browser UI that
     highlights matches in the live DOM but exposes nothing to the page, and
     `window.find()` only moves the selection — it doesn't replace, isn't
     standard, and support is inconsistent. So this is one of the few editor
@@ -139,7 +148,7 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     document, a highlight/navigate UI, and replacement done through
     `runCommand("insertText", …)` or Range manipulation so it stays undoable
     and raises `input` like everything else in
-    [execcommand.js](../front/execcommand.js). Comparable in size to 1.7, not to
+    [execcommand.js](../front/execcommand.js). Comparable in size to 1.3, not to
     the one-liners nearby.
 
 ## 2. Save fidelity
@@ -149,18 +158,9 @@ round-tripping real files through the running app.
 [front/markdown-style.js](../front/markdown-style.js) is what preserves them;
 Decision D1 in [DECISIONS.md](DECISIONS.md) is why, and lists the differences
 that are deliberate rather than bugs — as does D3, which is the one whole
-category fidelity deliberately does not extend to. In rough order of how much
-they matter:
+category fidelity deliberately does not extend to.
 
-*   **2.2** The source is persisted as a second copy of the document.
-    `adoptMarkdownStyle` writes the incoming markdown to
-    `localStorage["markdownSource"]`, because the autosave is HTML and carries
-    no markdown to re-sniff on reload. It roughly doubles what Marky stores,
-    and a document that blows the quota keeps editing and saving but loses byte
-    fidelity across a reload — a `console.warn` and nothing else. Storing the
-    derived style plus block hashes instead of the whole source would be
-    smaller, and could not reconstruct the bytes.
-*   **2.3** *(wanted by 1.4)* An edited table is re-emitted in the `table`
+*   **2.1** *(wanted by 1.1)* An edited table is re-emitted in the `table`
     rule's house style. An untouched one now restores byte-for-byte —
     `normaliseTableRows` takes the rule's cell padding and its fixed three-dash
     delimiter out of the block key, so `|---|---|` and `| --- | --- |` are the
@@ -174,10 +174,6 @@ they matter:
     one-space, or padded to width — which the sniffer can read off the original
     delimiter row. Reachable by typing in a cell, which contenteditable allows
     even though the structural editing above is missing.
-*   **2.4** `markdownSegments` splits on blank lines, list markers, headings
-    and fences. A change anywhere in a fenced block, a table or a multi-line
-    paragraph re-serialises the whole segment. Finer granularity would need to
-    match at line level, which is a different and much less safe algorithm.
 
 ## 4. Interface
 
@@ -198,7 +194,8 @@ they matter:
 
     - **`markdownSource` and `markdownStyle` are per-tab too.** The sniffed
       source is what makes a save byte-faithful, and it is already a second full
-      copy of the document (2.2). N tabs is therefore 2N copies in
+      copy of the document — see the save-fidelity section of
+      [ROADMAP.md](ROADMAP.md). N tabs is therefore 2N copies in
       `localStorage`. Settled: **no budget, no eviction, no per-tab cap.** Each
       tab's `localStorage.setItem` either succeeds or fails on its own, exactly
       as it does today for one document — the browser's quota is not ours to
@@ -231,7 +228,8 @@ they matter:
     the second — `.toolbar-content`, holding the filename and the theme toggle —
     is shaped for a tab bar rather than for one label. `--toolbar-height`
     arithmetic in app.css follows it. (If what was meant is edit/preview/source
-    tabs rather than multiple files, that is 1.6.)
+    tabs rather than multiple files, that is the source view D0 in
+    [DECISIONS.md](DECISIONS.md) refuses.)
 
     **The `(edited, disk changed)` text label becomes a single dot per tab.**
     Settled: a red dot for edited (whether or not the disk also changed — edited
@@ -249,78 +247,52 @@ they matter:
     (Saved!, Reloaded!) are unaffected — the dot is the ambient state between
     actions, not a replacement for the feedback an action already gives.
 
-*   **4.2** *(undecided)* The static HTML export's table of contents follows
-    the outline sidebar's toggle, because that toggle is the only switch that
-    exists. It is the wrong control: the sidebar is chrome for whoever is
-    editing, the export's TOC is content for whoever receives the file, and
-    there is no reason the two should be one decision. The right home is a
-    Settings pane, which does not exist yet — as would "which heading levels
-    does the outline show", if that ever stops being "all of them". Until then
-    the coupling is documented rather than fixed. (`documentBody` in
-    static-export.js, gated on `outlineIsOpen`.)
-
 ## 5. Architecture
 
-*   **5.1** Three execCommand divergences that survive normalisation. The
-    decision is settled — D4 in [DECISIONS.md](DECISIONS.md): execCommand stays,
-    [front/execcommand.js](../front/execcommand.js) normalises what it leaves
-    behind, and new formats follow the boundary rule recorded there. What is
-    left here is the residue that normalisation cannot reach, all three measured
-    in Chrome 139 and Firefox 154 by
-    [tests/browser-check.html](../tests/browser-check.html):
+*   **5.1** *(fixed, unverified)* Firefox losing a bullet on outdent — the one
+    execCommand divergence that had teeth, since it was reachable from a
+    shortcut the app binds and silently cost the user a list item. Shift+Tab on
+    a nested item gave `<li>one<br>two</li>`, merged into the item above, where
+    Chrome gave two siblings; it could not be normalised, because that markup is
+    indistinguishable from a deliberate hard break inside a list item.
+    `outdentListItem` in [front/app.js](../front/app.js) now does the move by
+    hand in both engines rather than calling `execCommand("outdent")` at all.
 
-    - **Firefox loses a bullet on outdent.** Shift+Tab on a nested item gives
-      `<li>one<br>two</li>` — merged into the item above — where Chrome gives two
-      siblings. This is the one with teeth: it is reachable from a shortcut the
-      app binds, and it silently costs the user a list item. It cannot be
-      normalised, because that markup is indistinguishable from a deliberate
-      hard break inside a list item, so it needs a real fix — most likely doing
-      the outdent by hand for the nested case rather than asking for it.
-    - **A heading inside a list item should be a no-op, and currently is only in
-      Chrome.** Chrome wrapped the whole list in the heading, which was
-      destructive and is now unwrapped — so the command does nothing there.
-      Firefox puts the `<h1>` inside the `<li>`, which is what was literally
-      asked for and does round-trip through markdown.
+    What is left is the checking, and it needs a person rather than a suite.
+    `tests/list-indent.test.mjs` drives the resulting DOM directly — the spec
+    nesting shape, Chrome's sibling shape, a middle item carrying its followers,
+    and the synthetic `input` — and that is real cover, because bypassing
+    execCommand means the logic is ours rather than an engine's. But it is also
+    exactly why [tests/browser-check.html](../tests/browser-check.html) cannot
+    confirm this one: the check page measures what execCommand produces, and
+    this path no longer calls it. Nobody has watched Shift+Tab unnest a bullet
+    in a real Firefox.
 
-      Settled: **the no-op is the wanted behaviour, in both engines.** A heading
-      inside a bullet is expressible but it is not something the editor should
-      offer a way to make by accident, and "less havoc than Chrome" is not the
-      same as right. So the fix is to refuse it in `applyFormat` — where the
-      selection still exists, unlike in `normaliseEditorMarkup` — rather than to
-      teach Chrome the Firefox behaviour. Deferred to 1.4, since that is when
-      block formatting gets looked at properly and the refusal wants to be
-      consistent with whatever the other block controls do about lists.
-    - **`indent` outside a list produces a `<blockquote>`**, with inline styles
-      in Chrome and without in Firefox. Not reachable today: app.js guards Tab to
-      lists only. Recorded because the check confirms that guard is still
-      earning its place, and because 1.4's blockquote control will meet it.
+    The check page still stands behind everything else on the execCommand
+    boundary, and the standing instruction belongs here: re-run it when adding a
+    format, and when a browser does something surprising. It is the only thing
+    in the repo that can tell measurement from folklore — the Deno suite has no
+    editing engine, and the first run of this page killed two long-standing
+    beliefs about which engine did what. The two divergences it found that are
+    still open moved to 1.1, where block formatting gets looked at properly.
 
-    Re-run the check page when adding a format, or when a browser does something
-    surprising. It is the only thing in the repo that can tell measurement from
-    folklore — the Deno suite has no editing engine, and the first run of this
-    page killed two long-standing beliefs about which engine did what.
-
-*   **5.2** *(subsumes 5.3)* No module system. Every file in front/ is a plain
-    `<script>`, so every top-level `const` is a shared global and collisions
-    are real bugs, not hypotheticals (`CLOSE` vs `DOC_CLOSE`, `saveFileAs` vs
-    FileSaver's `saveAs`). The fix is `<script type="module">` with real
-    imports, which browsers support natively — but it conflicts with the
-    editable export concatenating every JS file into one inline `<script>`, so
-    it needs import maps or blob URLs. Real work, needs a decision first.
-*   **5.3** *(subsumed by 5.2)* Load order is still load-bearing. toolbar.js
-    must run first because it defines `onToolbarAction`, which every other
-    module calls at load. Click delegation removed the silent bound-to-null
-    failure, not the ordering requirement.
+    Decision D4 in [DECISIONS.md](DECISIONS.md) is why execCommand stays at all,
+    and carries the boundary rule for new formats.
 
 ## 6. Product
 
-*   **6.1** *(best last, and at least after the collaboration question in
-    [ROADMAP.md](ROADMAP.md) is settled)* Rewrite the README to better fit the
-    project's state. D0 in [DECISIONS.md](DECISIONS.md) is the framing to
-    write it from — what the project is *for* is argued there and nowhere in
-    the README, which still describes a markdown editor rather than the case
-    for one.
-*   **6.4** Mermaid diagrams in the static HTML export keep the light palette
+*   **6.1** *(best last)* Rewrite the README to better fit the project's state
+    at release. D0 in [DECISIONS.md](DECISIONS.md) is the framing to write it
+    from — what the project is *for* is argued there and nowhere in the README,
+    which still describes a markdown editor rather than the case for one.
+
+    This used to say it wanted the collaboration question settled first, which
+    made a 1.0 item wait on an explicitly unscheduled one in
+    [ROADMAP.md](ROADMAP.md). It does not have to: that entry already supplies
+    the honest description of what ships today — send-for-review, one hop —
+    which is what the rewrite should say. Real collaboration changing the answer
+    later is a README change later.
+*   **6.2** Mermaid diagrams in the static HTML export keep the light palette
     they were rendered with, since Mermaid isn't shipped with the document.
     Dark-mode readers get a white card behind the diagram as a workaround
     rather than a properly re-rendered dark one.
