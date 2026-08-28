@@ -65,6 +65,15 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
       in Chrome and without in Firefox. Not reachable today: app.js guards Tab
       to lists only. It is recorded here because the blockquote control on the
       list above is what will meet it.
+
+    The standing instruction that came with them, which used to live in 5.1:
+    **re-run [tests/browser-check.html](../tests/browser-check.html) when adding
+    a format, and when a browser does something surprising.** It is the only
+    thing in the repo that can tell measurement from folklore — the Deno suite
+    has no editing engine — and every engine-specific claim in `front/` either
+    came from it or is a guess. Its sibling
+    [tests/list-indent-check.html](../tests/list-indent-check.html) covers the
+    one path that no longer goes through execCommand at all.
 *   **1.2** Links are done except for two loose
     ends. Ctrl/Cmd+click follows a link and jumps to `#anchor` headings,
     `anchorSlug` / `headingAnchors` in app.js resolve slugs live, and
@@ -93,6 +102,16 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     branch already fires and there is nothing to build but the Firefox case.
     Either way the robust shape is a flag set from a `keydown` on `#editor` and
     consumed by the next `paste` event.
+
+    [tests/paste-check.html](../tests/paste-check.html) is how to answer both
+    halves of that, and it needs a person with a real clipboard — a synthetic
+    event proves nothing here, since what is being measured is what the browser
+    puts in the event. Open it in each browser (no server and no app: it reads
+    the clipboard, not `front/`), paste once with each binding, and it reports
+    the flavours offered, which branch app.js would take, and whether the
+    `keydown` for Shift+V reaches the page at all — because if a browser
+    swallows that keystroke, the flag has nothing to hang off and the shape
+    above has to change.
 
     Second, the plain branch has a bug waiting for it. It goes through
     `execCommand("insertText")`, which raises `input` with
@@ -246,38 +265,6 @@ category fidelity deliberately does not extend to.
     already applies to the theme toggle's own title. The transient toasts
     (Saved!, Reloaded!) are unaffected — the dot is the ambient state between
     actions, not a replacement for the feedback an action already gives.
-
-## 5. Architecture
-
-*   **5.1** *(fixed, unverified)* Firefox losing a bullet on outdent — the one
-    execCommand divergence that had teeth, since it was reachable from a
-    shortcut the app binds and silently cost the user a list item. Shift+Tab on
-    a nested item gave `<li>one<br>two</li>`, merged into the item above, where
-    Chrome gave two siblings; it could not be normalised, because that markup is
-    indistinguishable from a deliberate hard break inside a list item.
-    `outdentListItem` in [front/app.js](../front/app.js) now does the move by
-    hand in both engines rather than calling `execCommand("outdent")` at all.
-
-    What is left is the checking, and it needs a person rather than a suite.
-    `tests/list-indent.test.mjs` drives the resulting DOM directly — the spec
-    nesting shape, Chrome's sibling shape, a middle item carrying its followers,
-    and the synthetic `input` — and that is real cover, because bypassing
-    execCommand means the logic is ours rather than an engine's. But it is also
-    exactly why [tests/browser-check.html](../tests/browser-check.html) cannot
-    confirm this one: the check page measures what execCommand produces, and
-    this path no longer calls it. Nobody has watched Shift+Tab unnest a bullet
-    in a real Firefox.
-
-    The check page still stands behind everything else on the execCommand
-    boundary, and the standing instruction belongs here: re-run it when adding a
-    format, and when a browser does something surprising. It is the only thing
-    in the repo that can tell measurement from folklore — the Deno suite has no
-    editing engine, and the first run of this page killed two long-standing
-    beliefs about which engine did what. The two divergences it found that are
-    still open moved to 1.1, where block formatting gets looked at properly.
-
-    Decision D4 in [DECISIONS.md](DECISIONS.md) is why execCommand stays at all,
-    and carries the boundary rule for new formats.
 
 ## 6. Product
 

@@ -1,0 +1,250 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Marky list indent/outdent check</title>
+
+<!--
+  The half tests/list-indent.test.mjs cannot reach, for the one execCommand
+  divergence that had teeth: Firefox merging a bullet into the item above on
+  outdent, which cost the user a list item with no way back.
+
+  tests/browser-check.html cannot answer this one. It measures what execCommand
+  produces, and outdentListItem in front/app.js deliberately no longer calls
+  execCommand at all — so the code under test is ours, and what it needs is a
+  real contenteditable in a real engine rather than a real command.
+
+  It drives the running app in an iframe rather than restaging its parts: the
+  keydown handler, the guards and the DOM surgery are then exactly the ones the
+  user gets. The last case runs raw execCommand("outdent") on the same list and
+  reports it without a verdict — a control, so a green run is measured against
+  the bug still being there rather than against nothing.
+
+  Serve front/ and open this in each browser you care about, the same way its
+  sibling wants to be run. It prints a report, and posts a copy back so a
+  headless run can collect it.
+
+  Measured 2026-08-28 — Chrome 148, Firefox 154, Safari 26.6, all clean, with
+  all three engines' raw execCommand output recorded in CHANGELOG.md.
+-->
+
+<style>body{font:13px/1.5 ui-monospace,monospace;margin:1rem} iframe{width:900px;height:300px}
+pre{white-space:pre-wrap} .bad{color:#b00}</style>
+<h1 id="head">running…</h1>
+<pre id="out"></pre>
+<iframe id="app" src="/"></iframe>
+<script>
+// Only meaningful when something is listening; harmless otherwise.
+const COLLECTOR = "/report";
+const snapshot = Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)]));
+
+// The app is a PWA and app.js is a shell asset, so a stale cache would have
+// this page measuring the previous release. Clear it, then let the iframe load.
+const fresh = async () => {
+  if (navigator.serviceWorker) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((r) => r.unregister()));
+  }
+  if (window.caches) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  }
+  const frame = document.getElementById("app");
+  frame.src = "/?fresh=" + Date.now();
+};
+
+const ready = () => new Promise((resolve) => {
+  const frame = document.getElementById("app");
+  const poll = () => {
+    const win = frame.contentWindow;
+    const doc = win && win.document;
+    if (doc && doc.getElementById("editor") && typeof win.outdentListItem === "function"
+        && typeof win.runCommand === "function") return resolve(win);
+    setTimeout(poll, 100);
+  };
+  frame.addEventListener("load", poll);
+  poll();
+});
+
+function textOf(el) { return [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join("").trim(); }
+
+function firstText(node) {
+  const walk = node.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+  return walk.nextNode();
+}
+
+function setCaret(win, node, offset) {
+  const range = win.document.createRange();
+  range.setStart(node, offset);
+  range.collapse(true);
+  const sel = win.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+// A Tab keypress as the browser would deliver it, on the element the app listens on.
+function pressTab(win, shift) {
+  const ed = win.document.getElementById("editor");
+  const event = new win.KeyboardEvent("keydown", {
+    key: "Tab", code: "Tab", keyCode: 9, which: 9,
+    shiftKey: shift, bubbles: true, cancelable: true,
+  });
+  ed.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+// Structure, described so a report reads without me squinting at markup.
+function shape(el) {
+  return [...el.children].filter(c => /^(UL|OL|LI)$/.test(c.tagName)).map((c) => {
+    const own = textOf(c);
+    const kids = shape(c);
+    return kids.length ? `${c.tagName.toLowerCase()}(${own}${own ? ":" : ""}${kids.join(",")})`
+                       : `${c.tagName.toLowerCase()}(${own})`;
+  });
+}
+
+const results = [];
+function record(name, html, verdict, note) {
+  results.push({ name, html, verdict, note });
+}
+
+(async () => {
+  await fresh();
+  const win = await ready();
+  const doc = win.document;
+  const ed = doc.getElementById("editor");
+  win.focus();
+
+  const inputs = [];
+  ed.addEventListener("input", () => inputs.push(1));
+
+  // Runs one case: install the fixture, put the caret in the numbered text
+  // node, press the key, report what came back.
+  function run({ name, fixture, caretText, shift, expect, note }) {
+    ed.innerHTML = fixture;
+    ed.focus();
+    const texts = [];
+    const walk = doc.createTreeWalker(ed, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n.textContent.trim()) texts.push(n);
+    const target = texts.find(t => t.textContent.trim() === caretText);
+    if (!target) return record(name, ed.innerHTML, "NO-CARET", `no text node "${caretText}"`);
+    setCaret(win, target, 1);
+    inputs.length = 0;
+    let prevented;
+    try { prevented = pressTab(win, shift); }
+    catch (e) { return record(name, String(e), "THREW", note); }
+    const state = {
+      html: ed.innerHTML,
+      shape: shape(ed).join(" "),
+      prevented,
+      inputs: inputs.length,
+      br: /<br/i.test(ed.innerHTML),
+      selText: win.getSelection().anchorNode && win.getSelection().anchorNode.textContent,
+      collapsed: win.getSelection().isCollapsed,
+    };
+    const failure = expect(state);
+    record(name, state.shape, failure ? "PROBLEM" : "ok", failure || note, state);
+    results[results.length - 1].state = state;
+  }
+
+  // 1. The regression itself: the spec nesting shape, Shift+Tab on the child.
+  run({
+    name: "shift-tab unnests a nested bullet (spec shape)",
+    fixture: "<ul><li>one<ul><li>two</li></ul></li></ul>",
+    caretText: "two", shift: true,
+    expect: (s) => s.shape !== "ul(li(one),li(two))" ? `shape ${s.shape}`
+      : s.br ? "a <br> appeared — the Firefox merge" : null,
+  });
+
+  // 2. The same list in the shape execCommand's own indent leaves behind.
+  run({
+    name: "shift-tab unnests from the sibling shape too",
+    fixture: "<ul><li>one</li><ul><li>two</li></ul></ul>",
+    caretText: "two", shift: true,
+    expect: (s) => s.shape !== "ul(li(one),li(two))" ? `shape ${s.shape}` : null,
+  });
+
+  // 3. A middle item takes the items below it with it.
+  run({
+    name: "an outdented middle item carries its followers",
+    fixture: "<ul><li>a<ul><li>b</li><li>c</li><li>d</li></ul></li></ul>",
+    caretText: "b", shift: true,
+    expect: (s) => s.shape !== "ul(li(a),li(b:ul(li(c),li(d))))" ? `shape ${s.shape}` : null,
+  });
+
+  // 4. The synthetic input event, which autosave/undo/dirty all hang off.
+  run({
+    name: "outdent raises input, and keeps the caret",
+    fixture: "<ul><li>one<ul><li>two</li></ul></li></ul>",
+    caretText: "two", shift: true,
+    expect: (s) => s.inputs !== 1 ? `${s.inputs} input events`
+      : (s.selText || "").trim() !== "two" ? `caret landed on "${s.selText}"`
+      : !s.collapsed ? "caret not collapsed" : null,
+  });
+
+  // 5. Guard: nothing to unnest into, so Tab stays Tab.
+  run({
+    name: "shift-tab on a top-level item lets focus leave",
+    fixture: "<ul><li>one</li><li>two</li></ul>",
+    caretText: "two", shift: true,
+    expect: (s) => s.prevented ? "keypress swallowed" : s.shape !== "ul(li(one),li(two))" ? `shape ${s.shape}` : null,
+  });
+
+  // 6. The other half of the pair, so the round trip is real.
+  run({
+    name: "tab indents a later item",
+    fixture: "<ul><li>one</li><li>two</li></ul>",
+    caretText: "two", shift: false,
+    expect: (s) => !s.prevented ? "keypress not swallowed"
+      : s.shape !== "ul(li(one:ul(li(two))))" ? `shape ${s.shape}` : null,
+  });
+
+  // 7. Guard: markdown cannot write a first item nested under nothing.
+  run({
+    name: "tab on the first item does nothing",
+    fixture: "<ul><li>one</li><li>two</li></ul>",
+    caretText: "one", shift: false,
+    expect: (s) => s.prevented ? "keypress swallowed"
+      : s.shape !== "ul(li(one),li(two))" ? `shape ${s.shape}` : null,
+  });
+
+  // 8. Control, not a test: what execCommand("outdent") does to the same list
+  //    in this engine. This is the divergence the page exists for, measured
+  //    rather than remembered.
+  ed.innerHTML = "<ul><li>one<ul><li>two</li></ul></li></ul>";
+  ed.focus();
+  setCaret(win, firstText(ed.querySelector("ul ul li")), 1);
+  let raw = "", rawShape = "";
+  try { doc.execCommand("outdent"); raw = ed.innerHTML; rawShape = shape(ed).join(" "); }
+  catch (e) { raw = String(e); }
+  // Said in words, because the three engines fail this three different ways
+  // and a reader should not have to parse markup to see which one they got.
+  const oneItem = ed.querySelectorAll("li").length === 1;
+  record("CONTROL: raw execCommand(\"outdent\")", rawShape, "—",
+    oneItem && /<br/i.test(raw) ? "merges the bullet into the one above (<br>) — the bug this exists for"
+    : /<li[^>]*>[^<]*<li/i.test(raw) ? "leaves an <li> inside an <li> — normaliseEditorMarkup unpicks that one"
+    : "see raw");
+  results[results.length - 1].raw = raw;
+
+
+  const report = {
+    agent: navigator.userAgent,
+    when: new Date().toISOString(),
+    problems: results.filter(r => r.verdict !== "ok" && r.verdict !== "—").length,
+    results,
+  };
+  document.getElementById("out").textContent = JSON.stringify(report, null, 2);
+  document.getElementById("head").textContent =
+    `${report.problems} problems — ${navigator.userAgent}`;
+  document.title = `check: ${report.problems} problems`;
+
+  // Leave the user's autosave exactly as it was found; the app in the iframe has
+  // been writing to it on a debounce all through this. The iframe goes first
+  // and that ordering is the whole point: a debounced save still pending when
+  // the keys are put back lands after them, and the app is then holding this
+  // page's scratch document the next time it is opened.
+  document.getElementById("app").remove();
+  localStorage.clear();
+  for (const [key, value] of Object.entries(snapshot)) localStorage.setItem(key, value);
+
+  try { fetch(COLLECTOR, { method: "POST", body: JSON.stringify(report) }); } catch {}
+})();
+</script>

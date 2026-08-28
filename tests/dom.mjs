@@ -13,6 +13,15 @@ export function readFront(file) {
   return readFileSync(new URL(file, FRONT), "utf8");
 }
 
+// The `:scope > a, :scope > b` form, and only that: every part must be a
+// direct-child selector, or there is nothing here that can answer honestly.
+function childMatching(node, selector) {
+  const parts = String(selector).split(",").map((part) => part.trim());
+  if (!parts.every((part) => part.startsWith(":scope >"))) return null;
+  const tags = parts.map((part) => part.slice(":scope >".length).trim().toUpperCase());
+  return node.children.find((child) => tags.includes(child.tagName)) || null;
+}
+
 export function makeEl(tag = "div", { parent = null, text = "" } = {}) {
   const node = {
     tagName: tag.toUpperCase(),
@@ -163,7 +172,12 @@ export function makeEl(tag = "div", { parent = null, text = "" } = {}) {
       return false;
     },
 
-    querySelector: () => null,
+    // Enough of a selector engine for the one form the sources use on an
+    // element: `:scope > ul, :scope > ol`, i.e. "a child of mine, of one of
+    // these tags". Anything else still answers null rather than guessing.
+    querySelector(selector) {
+      return childMatching(node, selector);
+    },
     querySelectorAll: () => [],
     focus() {},
     select() {},
@@ -227,7 +241,10 @@ export function markdownitStub(inlineRules = [], renderRules = {}) {
 // TurndownService is a recorder here: no suite needs conversion, only the rules.
 export function loadApp() {
   const noop = () => {};
-  const el = () => makeEl("div");
+  // Honours the tag: outdentListItem builds a sublist of the same kind as the
+  // one it came out of, so a stub that answers DIV to everything cannot tell
+  // an <ol> that stayed an <ol> from one that did not.
+  const el = (tag = "div") => makeEl(tag);
   const rules = {};
   const opts = {};
   const opened = [];

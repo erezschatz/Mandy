@@ -25,8 +25,9 @@
 // comment in app.js that calls it Chrome's is out of date, and this is what a
 // dead spec's shared legacy looks like rather than one vendor's mistake.
 //
-// See Decision D4 in docs/DECISIONS.md for the full argument, and TODO 5.1 for the
-// browser check that keeps the list below honest and what is still unverified.
+// See Decision D4 in docs/DECISIONS.md for the full argument, and TODO 1.1 for
+// the browser check that keeps the list below honest and the divergences that
+// are still open.
 
 // Tag-based output rather than styled spans. The default was never specified
 // and is per-browser, so without this some engines answer Bold with

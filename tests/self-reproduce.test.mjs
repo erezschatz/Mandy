@@ -23,9 +23,15 @@ function runExport({ inlined }) {
   let fetchCalls = 0;
   let handler = null;
 
+  // The template writes the payload between a newline and an indented closing
+  // tag, so a real element's textContent gives back more than went in. Handing
+  // over a clean string here hid six bytes of whitespace accreting onto the
+  // bundle at every hop, which a browser showed and this suite did not.
+  const asWritten = (payload) => `\n${payload}\n    `;
+
   const byId = {
-    "app-style": inlined ? { textContent: INLINE_CSS } : null,
-    "app-script": inlined ? { textContent: INLINE_JS } : null,
+    "app-style": inlined ? { textContent: asWritten(INLINE_CSS) } : null,
+    "app-script": inlined ? { textContent: asWritten(INLINE_JS) } : null,
   };
 
   loadSource("html-export.js", {

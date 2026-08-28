@@ -54,6 +54,18 @@ function editableFilename() {
   return `${slug}-editable-${Date.now()}.html`;
 }
 
+// The template below writes each payload between a newline and an indented
+// closing tag, so textContent hands back six bytes more than went in. Taking
+// exactly those bytes off — rather than trimming whitespace generally — is
+// what makes every generation's bundle byte-identical to its parent's: a plain
+// trim would also eat the newline the bundle itself ends with, so the chain
+// would settle one hop later than it should. Without either, six bytes of
+// template accrete onto the bundle on every hop, which only a real DOM shows:
+// the test stub had no template around its textContent to give back.
+function unwrapInline(text) {
+  return text.replace(/^\n/, "").replace(/\n {4}$/, "");
+}
+
 onToolbarAction("export-editable", async () => {
   const currentContent = editor.innerHTML;
   const currentText = editor.textContent || "";
@@ -101,8 +113,8 @@ onToolbarAction("export-editable", async () => {
   const inlinedScript = document.getElementById("app-script");
 
   if (inlinedStyle && inlinedScript) {
-    cssContent = inlinedStyle.textContent;
-    jsContent = inlinedScript.textContent;
+    cssContent = unwrapInline(inlinedStyle.textContent);
+    jsContent = unwrapInline(inlinedScript.textContent);
   } else {
     try {
       const responses = await Promise.all(ASSETS.map((url) => fetch(url)));

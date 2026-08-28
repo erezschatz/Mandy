@@ -8,9 +8,9 @@ Marky allows you to create markdown documents and export them as **fully editabl
 
 ### Import Your Content
 
-- **Paste from Clipboard** - Click "Paste MD" to load markdown directly from your clipboard
+- **Paste from Clipboard** - **Edit → Paste markdown** loads markdown directly from your clipboard
 - **Open Local Files** - Browse your computer and open any `.md`, `.markdown`, or `.txt` file directly (requires the local server, see [For Developers](#-for-developers))
-- **Reload from Disk** - The caret beside "Open" re-reads the file, picking up anything another tool, script or agent wrote to it - and it is also how you throw local changes away. Marky checks the file whenever you come back to the window, and marks the filename `(disk changed)` when it no longer matches what you have open
+- **Reload from Disk** - **File → Reload from disk** re-reads the file, picking up anything another tool, script or agent wrote to it - and it is also how you throw local changes away. Marky checks the file whenever you come back to the window, and marks the filename `(disk changed)` when it no longer matches what you have open
 
 ### Edit with Ease
 
@@ -19,15 +19,16 @@ Marky allows you to create markdown documents and export them as **fully editabl
 - **Live Updates** - Changes appear instantly as you type
 - **Auto-Save** - Your work is automatically saved to your browser every second
 - **Dark Mode** - Toggle between light and dark themes, or let it follow your system preference
-- **Document Outline** - Click "Outline" for a sidebar of the document's headings; click any of them to jump there. It follows how your headings actually nest rather than the numbers in them, so a document that uses H6 for a caption under an H1 does not draw a five-deep staircase. The caret beside it offers **Insert Table of Contents**, which writes a real linked list into the document itself - the one you want when the file is going to be read on GitHub rather than in Marky
-- **Clear Document** - Start fresh with a single click
+- **Document Outline** - **View → Outline sidebar** lists the document's headings; click any of them to jump there. It follows how your headings actually nest rather than the numbers in them, so a document that uses H6 for a caption under an H1 does not draw a five-deep staircase. **Insert → Table of contents** is the related but separate thing: it writes a real linked list into the document itself - the one you want when the file is going to be read on GitHub rather than in Marky
+- **Menu Bar** - Six menus - File, Edit, Insert, Format, View and Export - hold every action; the Format menu reaches the same formats as the floating bar, which is how you format with nothing selected
+- **New and Clear** - **File → New document** starts over: blank document, no file attached, and it asks first if you have unsaved work. **Edit → Clear document** is an ordinary edit that empties the text and leaves the file you have open alone - one Ctrl+Z takes it back
 
 ### Export Your Work
 
-- **Save to Disk** - Write your work straight back to the file you opened. The caret beside "Save"
-  offers Save As. If the file changed underneath you since you opened it, Marky asks before
-  overwriting it
-- **Copy to Clipboard** - Copy the rendered content as plain-text markdown with one click
+- **Save to Disk** - Write your work straight back to the file you opened, with
+  **File → Save As…** for anywhere else. If the file changed underneath you since you opened it,
+  Marky asks before overwriting it
+- **Copy to Clipboard** - **Edit → Copy markdown** puts the rendered content on the clipboard as plain-text markdown
 - **Export as HTML** - Generate a standalone, self-contained HTML page of the document alone. If the outline sidebar is open, the exported page carries a table of contents of its own
 - **Export as Editable** - Generate an HTML file with the editor bundled in, so recipients can modify it directly in their browser and send it back to you. No markdown knowledge required at their end. The file is completely self-contained - one HTML file that runs entirely in the browser, with nothing to install and no sign-up - and fully capable: they can export it to markdown, PDF, DOCX or HTML, and re-export another editable copy to pass along
 - **Export as PDF** - Generate professional, print-ready PDF documents with one click. Images are automatically optimized to ensure reasonable file sizes while maintaining quality
@@ -86,10 +87,10 @@ Make your workflow even faster:
 ## Quick Start Guide
 
 1. **Start the server** - `npm run serve`, then open <http://localhost:9130>
-2. **Open a file** - Click "Open" and pick any markdown file on your machine
+2. **Open a file** - **File → Open…** and pick any markdown file on your machine
 3. **Start typing** - Your content appears formatted in real-time
 4. **Select text** - Use the formatting toolbar for quick styling
-5. **Save your work** - Click "Save" or press Ctrl+S to write it back to disk
+5. **Save your work** - **File → Save** or press Ctrl+S to write it back to disk
 
 That's it! No tutorials needed.
 
@@ -104,11 +105,11 @@ Unlike other markdown editors:
 ## Pro Tips
 
 - Select any text to see the formatting toolbar appear above it
-- Use the "Paste MD" button to quickly load markdown from anywhere
+- Use **Edit → Paste markdown** to quickly load markdown from anywhere
 - Your work auto-saves to localStorage - but download important files as a backup
-- Click "Clear" to start fresh with a new document
+- **File → New document** starts fresh; **Edit → Clear document** just empties the one you have open
 - Toggle dark mode in the toolbar or let it automatically match your system theme
-- **Collaborative HTML Workflow**: Use **Editable** (not **HTML**, which is read-only) and share the result with colleagues. They can open it in any browser, edit the content directly, save their changes, and send the modified HTML back to you. Open their file in a browser and hit **Copy MD** to get their changes back as markdown - Marky's Open dialog only accepts `.md`, `.markdown` and `.txt`, so it cannot open the returned HTML directly.
+- **Collaborative HTML Workflow**: Use **Export → Editable copy…** (not **HTML page…**, which is read-only) and share the result with colleagues. They can open it in any browser, edit the content directly, save their changes, and send the modified HTML back to you. Open their file in a browser and use **Edit → Copy markdown** to get their changes back as markdown - Marky's Open dialog only accepts `.md`, `.markdown` and `.txt`, so it cannot open the returned HTML directly.
 
 ## For Developers
 
@@ -122,7 +123,7 @@ server/   Deno file server: serves front/ and exposes the local file API
 ### Running locally
 
 The server serves the editor **and** gives it read/write access to your local
-markdown files, which is what the Open/Save buttons use. Requires
+markdown files, which is what the File menu's Open and Save use. Requires
 [Deno](https://deno.com/).
 
 ```bash
@@ -135,7 +136,7 @@ changes, or set `MARKY_PORT` to pick another port. The server binds to
 or `.txt` file your user account can reach.
 
 If the server is not running the editor still loads — the service worker serves
-it from cache — but Open and Save disable themselves, carets included, since
+it from cache — but Open, Save, Save As and Reload disable themselves, since
 there is nothing to read or write through. The clipboard and the HTML/PDF/DOCX exports keep working.
 
 ### Running it permanently with pm2
@@ -167,7 +168,7 @@ npm test
 No framework and nothing to install — the suites load the real `front/` sources
 into a scope with a hand-rolled DOM stub ([tests/dom.mjs](tests/dom.mjs)) and
 drive them, so a suite breaks when the code it names changes. `tests/run.mjs`
-runs all eight and exits non-zero on failure; import a suite directly to run
+runs all thirteen and exits non-zero on failure; import a suite directly to run
 just that one.
 
 They deliberately cover the things that fail **silently** — where the document
@@ -184,6 +185,11 @@ opened yet, is wrong:
 | `static-export` | What the document-only export contains, including heading anchor ids. |
 | `self-reproduce` | An exported document re-exports offline, handing its successor byte-identical CSS and JS. |
 | `file-path` | The open file, the last browsed directory, the `(edited)` marker surviving a reload, and Reload / the disk-changed marker against a fake disk. |
+| `outline` | The depth algorithm, the inline allowlist, and the shape of the list Insert TOC writes. |
+| `notify` | That no source has slipped back to `alert()`, and that dismissing a dialog is not the same as agreeing with it. |
+| `undo` | The coalescing rules and, above all, that history never survives a document boundary. |
+| `execcommand` | The normalisation between execCommand and the file, and the source scan that keeps `runCommand` the only call site. |
+| `list-indent` | Tab and Shift+Tab in a list: the guards, and the unnesting Marky does by hand because no engine does it right. |
 
 Type-check the server separately with `cd server && deno task check`.
 
@@ -200,7 +206,7 @@ caches it on first run, so the first `npm run serve` on a new machine needs
 network access; after that it runs from Deno's cache. Everything else the server
 uses is `node:fs`, `node:path` and `node:os`.
 
-**Frontend** — no framework, but six libraries from CDN, version-pinned:
+**Frontend** — no framework, but seven libraries from CDN, version-pinned:
 
 | Library | Loaded | For |
 | --- | --- | --- |
@@ -209,9 +215,10 @@ uses is `node:fs`, `node:path` and `node:os`.
 | Mermaid 11 | on first diagram | rendering fenced `mermaid` blocks |
 | MathJax 3 | on first equation | rendering `$…$` / `$$…$$` |
 | html2pdf 0.10 | on first PDF export | PDF |
-| FileSaver 2 | on first DOCX export | DOCX |
+| docx 7.1 | on first DOCX export | building the Word file |
+| FileSaver 2 | on first DOCX export | handing it to the browser |
 
-The four lazy ones load through the `ensure*` loaders in
+The five lazy ones load through the `ensure*` loaders in
 [front/lazy-load.js](front/lazy-load.js) — Mermaid alone is 3.4 MB, so none of
 them are paid for unless used. The service worker caches cross-origin URLs
 cache-first (they are immutable at those versions), so after one visit the

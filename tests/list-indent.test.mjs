@@ -121,6 +121,42 @@ export default function run(check) {
     check("the earlier sibling's own sublist survives", owner.children.includes(sublist));
   }
 
+  // Two followers, because one cannot show an order. This is the case the
+  // suite was missing: the followers came back reversed, in both engines,
+  // and only tests/list-indent-check.html run in a real browser caught it.
+  {
+    const outer = makeEl("ul", { parent: editor });
+    const owner = makeEl("li", { parent: outer, text: "parent" });
+    const sublist = makeEl("ul", { parent: owner });
+    const b = makeEl("li", { parent: sublist, text: "b" });
+    const c = makeEl("li", { parent: sublist, text: "c" });
+    const d = makeEl("li", { parent: sublist, text: "d" });
+    press(b, tabEvent({ shift: true }));
+    const moved = b.children.find((child) => child.tagName === "UL");
+    check("both followers move under the outdented item", !!moved &&
+      moved.children.includes(c) && moved.children.includes(d));
+    check("and keep the order the document had them in", !!moved &&
+      moved.children.indexOf(c) < moved.children.indexOf(d));
+  }
+
+  // The same, for an item that already had children of its own: those were
+  // nested under it and the followers were beside it, so the followers go
+  // below them rather than in front of them.
+  {
+    const outer = makeEl("ul", { parent: editor });
+    const owner = makeEl("li", { parent: outer, text: "parent" });
+    const sublist = makeEl("ul", { parent: owner });
+    const b = makeEl("li", { parent: sublist, text: "b" });
+    const own = makeEl("ul", { parent: b });
+    const x = makeEl("li", { parent: own, text: "x" });
+    const c = makeEl("li", { parent: sublist, text: "c" });
+    press(b, tabEvent({ shift: true }));
+    check("the item keeps its own sublist rather than gaining a second",
+      b.children.filter((child) => child.tagName === "UL").length === 1);
+    check("its own children come first, the followers after",
+      own.children.indexOf(x) < own.children.indexOf(c));
+  }
+
   // Every outdent raises input, same as an execCommand would have.
   check("Shift+Tab raises input for autosave/undo/outline to hear", inputs.length > 0);
 

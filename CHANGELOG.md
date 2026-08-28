@@ -956,3 +956,131 @@ inside 4.1: its note that the sniffed source is already a second copy of the
 document pointed at the retired 2.2, and its aside about edit/preview/source
 tabs pointed at the deleted 1.6. They now point at ROADMAP's save-fidelity
 section and at D0 respectively.
+
+## 2026-08-28 — Shift+Tab watched in three engines, and the bug that was waiting there (TODO 5.1 closed)
+
+TODO 5.1 had been the file's one *(fixed, unverified)* item since 2026-08-26:
+`outdentListItem` stopped calling `execCommand("outdent")` and did the move by
+hand, and nobody had watched it happen. The checking is done, and it was worth
+doing — it found a second bug in the same function.
+
+The verification needed a page of its own.
+[tests/browser-check.html](tests/browser-check.html) could not answer this one,
+for the reason 5.1 gave: it measures what execCommand *produces*, and this path
+deliberately no longer calls execCommand. So
+[tests/list-indent-check.html](tests/list-indent-check.html) joins it. It drives
+the running app in an iframe rather than restaging its parts, so the handler,
+the guards and the DOM surgery under test are the ones the user gets, and it
+ends with a control: raw `execCommand("outdent")` on the same list, reported
+without a verdict, so a green run is measured against the bug still being there
+rather than against nothing.
+
+The control earns its place. All three engines still mangle that list, three
+different ways:
+
+| | raw `execCommand("outdent")` on `<ul><li>one<ul><li>two</li></ul></li></ul>` |
+| --- | --- |
+| Firefox 154 | `<ul><li>one<br>two</li></ul>` — the bullet is gone |
+| Chrome 148 | `<ul><li>one<li><span style="font-family: …">two</span></li></li></ul>` |
+| Safari 26.6 | `<ul><li>one<li>two<br></li></li></ul>` |
+
+Firefox is the one with teeth and it has not moved: two bullets go in, one comes
+out, and the markup it leaves is indistinguishable from a deliberate hard break,
+which is why `normaliseEditorMarkup` cannot repair it after the fact. The other
+two are the `<li>`-inside-`<li>` shape that normalisation does unpick. Through
+Shift+Tab as the app binds it, all three engines produce `<ul><li>one</li>
+<li>two</li></ul>` — and Safari is measured here for the first time.
+
+**The bug the suite could not see: an outdented item's followers came back
+reversed.** Outdent the first of three nested bullets and `b`, `c`, `d` became
+`b` with `d`, `c` under it. The loop collected the following siblings in
+document order and then prepended each one, which reverses a run — and puts them
+in front of the item's own sublist, when they belong after it. It is one word's
+worth of fix, `appendChild` for `insertBefore(node, subList.firstChild)`, and it
+was invisible to `tests/list-indent.test.mjs` because that suite's follower case
+had exactly one follower. One follower cannot show an order. It has two now, and
+a second case for an item that already had children of its own.
+
+Two gaps in the test stub were what let it hide, both now closed:
+`document.createElement` answered DIV to every tag, so a suite could not tell an
+`<ol>` that stayed an `<ol>` from one that did not, and `querySelector` answered
+null to everything, so the "does this item already have a sublist" branch was
+never the one under test. [tests/dom.mjs](tests/dom.mjs) now honours the tag and
+understands the one selector form the sources actually use on an element,
+`:scope > ul, :scope > ol` — and refuses anything else rather than guessing.
+
+## 2026-08-28 — An exported document hands on its bundle byte-for-byte
+
+The self-reproduce suite's stated property is a fixpoint: what generation N+1
+hands its successor must be byte-identical to what generation N handed it. In a
+real browser it was not. Each hop added six bytes to the CSS and six to the JS.
+
+The template writes each payload between a newline and an indented closing tag,
+so `textContent` gives back `\n` + bundle + `\n    ` — and that was inlined
+verbatim into the next generation, which read it back with another layer of
+template around it, forever. Harmless whitespace, but the invariant the suite
+existed to defend was false, and the suite could not see it: its stub handed
+`getElementById("app-style").textContent` back as a clean string, with no
+template around it to give back.
+
+`unwrapInline` in [front/html-export.js](front/html-export.js) takes off exactly
+the bytes the template adds. Deliberately not a `trim()`: the bundle ends with
+the trailing newline of the last file concatenated into it, so trimming would
+eat that too and settle the chain one hop later than it should. The stub now
+wraps its payload the way the template does, so the check is against what a DOM
+really returns; measured in the browser afterwards, generation N+1's CSS and JS
+match generation N's exactly, with zero network calls on the way.
+
+## 2026-08-28 — The welcome document and the README catch up with the menu bar
+
+Both still described the row of buttons the menu bar replaced, which made the
+first thing a new user reads a tour of an interface that is not there. The
+welcome document told them to click a **Clear** button to start fresh — and
+Clear had since been split in two, so the one action it named now does the other
+thing: **New document** starts over, **Clear document** empties the text and
+leaves the file alone. It also talked about "the caret beside Open" and "the
+caret beside Save", which were split buttons that no longer exist, and named
+**Copy MD**, **Paste MD**, **HTML**, **PDF**, **DOCX** and **Editable** as
+buttons rather than as items in Edit and Export.
+
+[front/welcome.md](front/welcome.md) now walks the six menus, in the labels
+`TOOLBAR_MENUS` actually renders, and mentions the two things it never did: the
+filename line under the menus with its *(edited)* and *(disk changed)* marks,
+and that the Format menu is how you format with nothing selected — which is the
+answer to TODO 1.5's gap that exists today. It still round-trips through the
+app byte-identically, which is the property that lets it be edited as an
+ordinary document rather than as markup.
+
+The README had the same button-era language in eight places, plus three counts
+that had drifted: it said the suite runs "all eight" when there are thirteen,
+listed eight of them in its table, and described "six libraries from CDN" with
+`docx` missing from the list of seven. All corrected. What it does *not* do is
+the rewrite TODO 6.1 wants — that one is about the case the README makes for
+the project, argued in D0 and still absent from it, rather than about which
+buttons exist.
+
+## 2026-08-28 — A third check page, for the one question a machine cannot answer
+
+[tests/paste-check.html](tests/paste-check.html) settles the question TODO 1.3
+opens with: on Ctrl/Cmd+Shift+V, does the browser still put a `text/html`
+flavour in the paste event? It matters because app.js's paste handler prefers
+`text/html` whenever the clipboard offers one, so if the flavour survives that
+binding the app overrides the very thing the user asked for.
+
+It needs a person, and not for the usual reason. A synthetic `ClipboardEvent`
+carries whatever `DataTransfer` you build for it, so driving this from script
+measures the script — the thing under test is what the *browser* puts in the
+event, which takes a real clipboard and a real keystroke. So the page reports
+rather than asserts: the flavours offered, which of app.js's two branches would
+take them, and a verdict per browser.
+
+It also measures the second half of 1.3's proposed fix. The plan there is a flag
+set from a `keydown` on `#editor` and read by the next `paste`, which assumes
+the keydown arrives at all — a browser that swallows Shift+V as a chrome-level
+binding would leave the flag nothing to hang off. The page says which happened,
+so the shape can be checked before it is built rather than after.
+
+Unlike [tests/browser-check.html](tests/browser-check.html) and
+[tests/list-indent-check.html](tests/list-indent-check.html), it needs no server
+and no app — it reads the clipboard, not `front/`, so it opens from the file
+itself.

@@ -1178,7 +1178,8 @@ function isNested(item) {
 // merges the item into the one above it (<li>one<br>two</li>) instead of
 // unnesting it, silently losing a bullet with no way back, and that markup is
 // indistinguishable from a deliberate hard break so normaliseEditorMarkup
-// cannot repair it after the fact — see TODO 5.1. So this does the move by
+// cannot repair it after the fact — see tests/list-indent-check.html, which
+// still measures all three engines doing it. So this does the move by
 // hand instead of asking execCommand for it, in both browsers: `item` leaves
 // its list and becomes a sibling of the <li> it was nested under, and any
 // items that followed it in that list move with it, becoming its own nested
@@ -1218,9 +1219,15 @@ function outdentListItem(item) {
       subList = document.createElement(innerList.tagName);
       item.appendChild(subList);
     }
+    // Appended in document order, and after whatever the item already had
+    // nested under it: `following` were siblings of `item`, so they sit below
+    // it on screen, and below its own sublist with it. Prepending each in turn
+    // got both of those backwards — it reversed the run, which needs two
+    // followers to be visible at all and so had no test until a real browser
+    // showed it.
     for (const node of following) {
       innerList.removeChild(node);
-      subList.insertBefore(node, subList.firstChild);
+      subList.appendChild(node);
     }
   }
 

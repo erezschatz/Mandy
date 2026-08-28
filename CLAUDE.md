@@ -97,8 +97,25 @@ engines do it). It also found a live bug, where `formatBlock` in a bullet
 destroyed the list in Chrome.
 
 Re-run it when adding a format, and when a browser does something surprising.
-TODO 5.1 records what is still unverified and carries that instruction; TODO 1.1
-holds the two divergences it found that are still open.
+TODO 1.1 carries that instruction now, along with the two divergences it found
+that are still open.
+
+There are two other pages beside it, same idea and same reason. The first:
+
+[tests/list-indent-check.html](tests/list-indent-check.html) is its sibling, for
+the one path this page cannot reach: `outdentListItem` no longer calls
+execCommand at all, so what needs watching there is our own DOM surgery in a
+real editing engine rather than a command's output. It drives the running app in
+an iframe, and ends with a control — raw `execCommand("outdent")` on the same
+list — so a green run is measured against the bug still being there. Chrome 148,
+Firefox 154 and Safari 26.6 all mangle that list, three different ways, and all
+three come out right through Shift+Tab.
+
+[tests/paste-check.html](tests/paste-check.html) is the third, and the only one
+that cannot be run by a machine at all: it measures what a browser puts in a
+paste event for Ctrl+Shift+V, which needs a real clipboard and a real
+keystroke. It answers the question TODO 1.3 opens with. Unlike the other two it
+needs no server and no app — open the file itself.
 
 ## Architecture
 
@@ -640,10 +657,12 @@ Three divergences survived it, all measured rather than assumed. The one with
 teeth — Firefox merging a bullet into the item above on outdent — could not be
 normalised at all, because that markup is indistinguishable from a deliberate
 hard break in a list item, so `outdentListItem` in `app.js` does the move by
-hand in both engines instead of calling `execCommand("outdent")`. TODO 5.1
-carries what is left of it, which is a browser nobody has watched it in. The
-other two are questions about what a block control does inside a list, and wait
-in TODO 1.1 with the rest of block formatting.
+hand in both engines instead of calling `execCommand("outdent")` — watched
+since in Chrome, Firefox and Safari by
+[tests/list-indent-check.html](tests/list-indent-check.html), which also found
+that the followers of an outdented item were coming back reversed. The other two
+are questions about what a block control does inside a list, and wait in TODO
+1.1 with the rest of block formatting.
 
 ### The menu bar
 
