@@ -701,6 +701,15 @@
         border-color: var(--accent-blue);
       }
 
+      /* Hidden by mode rather than removed — setBarMode in format-bar.js drops
+         the inline formats when the bar is raised at a bare caret, where they
+         would have nothing to act on. Spelled out because .format-btn's own
+         display: flex beats the browser's [hidden] { display: none }, so the
+         property alone would set an attribute and change nothing on screen. */
+      .format-bar [hidden] {
+        display: none;
+      }
+
       .separator {
         width: 1px;
         height: 24px;

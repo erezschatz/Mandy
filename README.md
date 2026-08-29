@@ -15,12 +15,12 @@ Marky allows you to create markdown documents and export them as **fully editabl
 ### Edit with Ease
 
 - **WYSIWYG Editing** - See your formatted text as you type, no preview pane needed
-- **Formatting Toolbar** - Select any text to reveal formatting options (headings, bold, italic, lists, code blocks)
+- **Formatting Toolbar** - Select any text to reveal formatting options (headings, bold, italic, lists, code blocks). Put the cursor at the start of a line with nothing selected and you get a shorter bar with just the whole-line ones - headings, lists and a code block
 - **Live Updates** - Changes appear instantly as you type
 - **Auto-Save** - Your work is automatically saved to your browser every second
 - **Dark Mode** - Toggle between light and dark themes, or let it follow your system preference
 - **Document Outline** - **View → Outline sidebar** lists the document's headings; click any of them to jump there. It follows how your headings actually nest rather than the numbers in them, so a document that uses H6 for a caption under an H1 does not draw a five-deep staircase. **Insert → Table of contents** is the related but separate thing: it writes a real linked list into the document itself - the one you want when the file is going to be read on GitHub rather than in Marky
-- **Menu Bar** - Six menus - File, Edit, Insert, Format, View and Export - hold every action; the Format menu reaches the same formats as the floating bar, which is how you format with nothing selected
+- **Menu Bar** - Six menus - File, Edit, Insert, Format, View and Export - hold every action; the Format menu reaches the same ten formats as the floating bar, and is the way to reach the inline ones without selecting anything
 - **New and Clear** - **File → New document** starts over: blank document, no file attached, and it asks first if you have unsaved work. **Edit → Clear document** is an ordinary edit that empties the text and leaves the file you have open alone - one Ctrl+Z takes it back
 
 ### Export Your Work
@@ -89,7 +89,7 @@ Make your workflow even faster:
 1. **Start the server** - `npm run serve`, then open <http://localhost:9130>
 2. **Open a file** - **File → Open…** and pick any markdown file on your machine
 3. **Start typing** - Your content appears formatted in real-time
-4. **Select text** - Use the formatting toolbar for quick styling
+4. **Select text** - Use the formatting toolbar for quick styling, or put the cursor at the start of a line to restyle the whole line
 5. **Save your work** - **File → Save** or press Ctrl+S to write it back to disk
 
 That's it! No tutorials needed.

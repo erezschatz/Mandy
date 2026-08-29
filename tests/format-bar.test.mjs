@@ -278,6 +278,118 @@ function activeCase(build) {
   };
 }
 
+// Drives showFormatBar at a bare caret, against a bar carrying the same
+// children index.html ships — four block buttons, a rule, the three inline
+// ones, a rule, then the lists and code. Built rather than listed because both
+// halves under test are about that shape: which buttons a mode drops, and
+// which rules are left dividing nothing once it has.
+const BAR_ITEMS = ["p", "h1", "h2", "h3", null, "bold", "italic", "strikethrough",
+  null, "ul", "ol", "code"];
+
+function caretCase(build, { windowWidth = 1000, toolbarHeight = 69, barWidth = 200, barHeight = 40 } = {}) {
+  const editor = makeEl("div");
+  const toolbar = makeEl();
+  toolbar.getBoundingClientRect = () => ({ left: 0, top: 0, width: 0, height: toolbarHeight });
+
+  const bar = makeEl();
+  let visible = false;
+  bar.classList = {
+    add: (name) => {
+      if (name === "visible") visible = true;
+    },
+    remove: () => {
+      visible = false;
+    },
+    contains: () => visible,
+  };
+  Object.defineProperty(bar, "offsetWidth", { get: () => (visible ? barWidth : 0) });
+  Object.defineProperty(bar, "offsetHeight", { get: () => (visible ? barHeight : 0) });
+
+  const buttons = {};
+  const separators = [];
+  for (const format of BAR_ITEMS) {
+    const el = makeEl(format ? "button" : "div", { parent: bar });
+    el.classList = trackedClassList();
+    if (format) {
+      el.setAttribute("data-format", format);
+      buttons[format] = el;
+    } else {
+      separators.push(el);
+    }
+  }
+
+  const selection = build(editor);
+
+  loadSource(
+    "format-bar.js",
+    {
+      document: {
+        createElement: (t) => makeEl(t),
+        querySelector: (sel) => {
+          if (sel === ".toolbar") return toolbar;
+          const m = sel.match(/data-format="([a-z0-9]+)"/);
+          return (m && buttons[m[1]]) || null;
+        },
+        querySelectorAll: (sel) => (sel === ".format-btn" ? Object.values(buttons) : []),
+        addEventListener() {},
+        execCommand() {},
+        documentElement: { clientWidth: windowWidth, scrollTop: 0 },
+      },
+      runCommand: () => {},
+      window: { pageYOffset: 0, getSelection: () => selection },
+      editor,
+      formatBar: bar,
+      localStorage: { setItem() {} },
+      Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
+      setTimeout: () => {},
+      onToolbarAction: () => {},
+    },
+    "; showFormatBar();",
+  );
+
+  return {
+    visible,
+    left: parseFloat(bar.style.left),
+    top: parseFloat(bar.style.top),
+    shown: BAR_ITEMS.filter((f) => f && !buttons[f].hidden),
+    rules: separators.filter((s) => !s.hidden).length,
+    // Where the visible rule sits, counted in visible buttons before it: the
+    // question is not just "one rule" but "one rule in the right place".
+    ruleAfter: (() => {
+      let count = 0;
+      for (const item of bar.children) {
+        const format = item.getAttribute("data-format");
+        if (format) {
+          if (!item.hidden) count++;
+        } else if (!item.hidden) return count;
+      }
+      return -1;
+    })(),
+    state: (format) => {
+      const cl = buttons[format].classList;
+      if (cl.contains("active")) return "active";
+      if (cl.contains("mixed")) return "mixed";
+      return "none";
+    },
+  };
+}
+
+// A collapsed selection parked at `container`/`offset`. `rect` is what the
+// range measures — zero-height stands for the empty-block case, where engines
+// give a caret no line box to hang off.
+function caretAt(container, offset, rect = { left: 120, top: 300, bottom: 320, width: 0, height: 20 }) {
+  return {
+    rangeCount: 1,
+    isCollapsed: true,
+    getRangeAt: () => ({
+      startContainer: container,
+      startOffset: offset,
+      commonAncestorContainer: container,
+      getBoundingClientRect: () => rect,
+    }),
+  };
+}
+
 export default function run(check) {
   for (const [label, selection] of [
     ["multi-line selection", multiBlock],
@@ -625,4 +737,135 @@ export default function run(check) {
   });
   check("a blank touched node does not turn active into mixed",
     r.state("bold") === "active");
+
+  // --- the caret bar ---------------------------------------------------------
+  //
+  // The bar used to bail on isCollapsed, so "make this line an H3" with nothing
+  // selected had no route but the Format menu. At a bare caret it is a row
+  // control now — which is why it appears only at the start of a row, and only
+  // for the formats that have a row to act on.
+
+  const paragraphAt = (text, offset, rect) => (editor) => {
+    const p = makeEl("p", { parent: editor });
+    const node = appendText(p, text);
+    return caretAt(node, offset, rect);
+  };
+
+  let k = caretCase(paragraphAt("line one", 0));
+  check("a caret at the start of a row raises the bar", k.visible);
+
+  k = caretCase(paragraphAt("line one", 4));
+  check("a caret in the middle of a row does not", !k.visible);
+
+  k = caretCase(paragraphAt("line one", 8));
+  check("nor does one at the end of a row", !k.visible);
+
+  // Whitespace ahead of the caret is still the start of the row: nothing on
+  // screen tells it apart from nothing at all.
+  k = caretCase(paragraphAt("   indented", 2));
+  check("whitespace ahead of the caret still counts as the start", k.visible);
+
+  // The caret is two elements deep but no text precedes it, which is what the
+  // row-start question is actually asking.
+  k = caretCase((editor) => {
+    const p = makeEl("p", { parent: editor });
+    const strong = makeEl("strong", { parent: p });
+    const node = appendText(strong, "bold opener");
+    return caretAt(node, 0);
+  });
+  check("a caret inside an inline element at the row's start still raises it",
+    k.visible);
+
+  k = caretCase((editor) => {
+    const p = makeEl("p", { parent: editor });
+    const strong = makeEl("strong", { parent: p });
+    appendText(strong, "bold opener");
+    const node = appendText(p, " and the rest");
+    return caretAt(node, 0);
+  });
+  check("but not one after it, where text already precedes the caret", !k.visible);
+
+  // The empty block the browser leaves after Enter. The container is the block
+  // itself and the range measures nothing, so the block's own rect has to
+  // stand in or the bar lands at the document origin.
+  k = caretCase((editor) => {
+    const p = makeEl("p", { parent: editor });
+    p.getBoundingClientRect = () => ({ left: 64, top: 400, bottom: 424, width: 500, height: 24 });
+    return caretAt(p, 0, { left: 0, top: 0, bottom: 0, width: 0, height: 0 });
+  });
+  check("an empty row raises the bar", k.visible);
+  check("and it is placed from the row rather than the document origin",
+    k.left === 64 && k.top === 400 - 40 - 10);
+
+  // --- which buttons a caret gets -------------------------------------------
+
+  k = caretCase(paragraphAt("line one", 0));
+  check("the caret bar offers the block formats",
+    k.shown.join(",") === "p,h1,h2,h3,ul,ol,code");
+  check("and no inline one",
+    !k.shown.includes("bold") && !k.shown.includes("italic") &&
+      !k.shown.includes("strikethrough"));
+
+  // Dropping the inline group leaves its two rules dividing nothing from
+  // nothing. Both would render — the bar's separators are ordinary divs — as a
+  // double gap where the buttons used to be.
+  check("one rule survives, not the two the inline group sat between",
+    k.rules === 1);
+  check("and it divides the block formats from the lists", k.ruleAfter === 4);
+
+  // Left-aligned to the row. Centring a zero-width rect would clamp the bar to
+  // the window edge and leave it there whichever row the caret was in.
+  check("the caret bar is left-aligned to the row", k.left === 120);
+
+  // --- and what a selection still gets --------------------------------------
+
+  k = caretCase((editor) => {
+    const p = makeEl("p", { parent: editor });
+    const node = appendText(p, "line one");
+    return {
+      rangeCount: 1,
+      isCollapsed: false,
+      getRangeAt: () => ({
+        startContainer: node,
+        startOffset: 0,
+        commonAncestorContainer: node,
+        intersectsNode: () => true,
+        getBoundingClientRect: () => ({ left: 400, top: 300, bottom: 320, width: 100 }),
+      }),
+    };
+  });
+  check("a selection still gets all ten formats", k.shown.length === 10);
+  check("and both rules", k.rules === 2);
+  check("and is still centred rather than left-aligned", k.left === 350);
+
+  // --- active state at a caret ----------------------------------------------
+  //
+  // A collapsed range touches no text node, so the selection-side walk reports
+  // nothing and every button would read dark — including the one naming the
+  // block the caret is sitting in.
+
+  k = caretCase((editor) => {
+    const h1 = makeEl("h1", { parent: editor });
+    const node = appendText(h1, "Title");
+    return caretAt(node, 0);
+  });
+  check("a caret in a heading lights that heading", k.state("h1") === "active");
+  check("and leaves the others dark", k.state("h2") === "none" && k.state("p") === "none");
+
+  k = caretCase((editor) => {
+    const ul = makeEl("ul", { parent: editor });
+    const li = makeEl("li", { parent: ul });
+    const node = appendText(li, "item");
+    return caretAt(node, 0);
+  });
+  check("a caret in a bullet lights the bullet list", k.state("ul") === "active");
+
+  // The empty row again: there is no text node for the caret to be in, so the
+  // block itself has to answer for it.
+  k = caretCase((editor) => {
+    const h2 = makeEl("h2", { parent: editor });
+    h2.getBoundingClientRect = () => ({ left: 64, top: 400, bottom: 424, width: 500, height: 24 });
+    return caretAt(h2, 0, { left: 0, top: 0, bottom: 0, width: 0, height: 0 });
+  });
+  check("an empty heading still lights its own button", k.state("h2") === "active");
 }

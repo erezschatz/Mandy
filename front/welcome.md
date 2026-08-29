@@ -5,8 +5,10 @@ and see your formatted text in real-time!
 
 ## ✨ Quick Start
 
-**Select text** to see formatting options appear above it. With nothing
-selected, the **Format** menu reaches the same ten formats.
+**Select text** to see formatting options appear above it. Put the cursor at
+the start of a line and a shorter bar appears with the formats that act on the
+whole line — headings, lists and a code block. The **Format** menu always
+reaches all ten.
 
 Everything else lives in the six menus:
 

@@ -784,7 +784,75 @@ already open — hovering a closed bar must not spring menus at you.
 the bar's own buttons and the Format menu both go through it, so the menu is a
 second way to reach ten formats rather than a second implementation of them.
 Nine of the ten are `execCommand` calls. Code is the exception, and everything
-interesting here is about Code.
+interesting about *what a format does* is about Code. Everything interesting
+about *when the bar is there at all* is the caret bar below it.
+
+**The bar appears at a bare caret too, and it is a different bar there.**
+`showFormatBar` used to bail on `selection.isCollapsed`, so "make this line an
+H3" with nothing selected had no route but the Format menu — a discoverability
+gap rather than a functional one, since `applyFormat` never required a
+selection. Three decisions settle what it does instead:
+
+- **It appears only at the start of a row.** `atBlockStart` asks whether any of
+  the block's text precedes the caret. Whitespace does not count, because
+  nothing on screen tells it apart from nothing at all; and the question is
+  about text rather than nodes, so a caret inside a `<strong>` that opens the
+  line is still at the start. A caret dropped mid-line raises nothing — a bar
+  that trailed the caret around the document would have no way to be dismissed,
+  and it would be offering the same block formats the Format menu already
+  reaches from exactly there.
+- **It offers block formats only** — `CARET_FORMATS`: p, h1, h2, h3, ul, ol and
+  code. Bold, italic, strikethrough and an inline code span have nothing to act
+  on but selected text; at a caret they could only toggle *typing state*, which
+  is a different affordance wearing the same button. `p` is in the list because
+  it is the only way back out of a heading, and a bar that could make one but
+  not unmake it would send the user to the menu for the return trip — which is
+  the gap this variant exists to close.
+- **So `code` means the block at a caret**, and that needed no new code: a
+  collapsed range already reads as the whole block in `coversWholeBlocks`. One
+  button still, with the selection deciding which of markdown's two code
+  constructs it means, exactly as it does everywhere else.
+
+Three mechanics behind it, each wrong in a way that shows:
+
+- **Buttons are hidden rather than removed**, and `collapseSeparators` takes
+  the rules that no longer divide anything with them — the same problem
+  `visibleItems` solves for the menu bar and the same answer. Dropping the
+  inline group strands *both* of the bar's separators, which then render as a
+  double gap instead of as a divider. Hidden rather than removed because the
+  bar's markup is hand-written in `index.html` and again in `html-export.js`,
+  so rebuilding it here would make this a third copy to keep in step. The
+  `.format-bar [hidden]` rule is spelled out in `app.css` because
+  `.format-btn`'s own `display: flex` beats the browser's
+  `[hidden] { display: none }` — the property alone sets an attribute and
+  changes nothing on screen.
+- **The mode is set inside the measure-after-showing window.** Hiding three
+  buttons changes the width every positioning line below reads, so `setBarMode`
+  runs between `classList.add("visible")` and `offsetWidth` — for the same
+  reason the class is added before the measurement at all.
+- **An empty row has no geometry.** A collapsed range is zero-width by
+  definition, and in the `<p><br></p>` a browser leaves after Enter it measures
+  0×0 at the document origin — measured in Chrome, not assumed. `barRect` falls
+  back to the block's own rect there, which is exact rather than approximate:
+  the caret is at its start, so the block's left edge is the caret's. The caret
+  bar is left-aligned to the row for the related reason — centring on a
+  zero-width rect would clamp it to the window edge and leave it in the same
+  place whichever row the caret was in.
+
+`updateActiveButtons` needed the same split. A collapsed range touches no text
+node — `intersectsNode` asks a boundary question there and the engines do not
+agree on it — so `caretNodes` hands it the node the caret is in, or the block
+itself when the row is empty and there is no text node to be in. That is the
+whole answer rather than an approximation, since every format the caret bar
+offers is an ancestor test.
+
+**The caret bar stays up after a format; the selection bar still does not.** Its
+formats compose — h2, then a bullet — and the caret has not moved, so the
+condition that raised it still holds. It is re-shown rather than merely left
+alone, because the row it points at has just changed height and its active
+states have changed with it. If the command left the caret somewhere that is no
+longer a row start, `showFormatBar` hides the bar itself, so there is one rule
+about when it is up rather than two.
 
 **Code is the only format with both a block and an inline spelling**, and
 markdown draws that line as sharply as HTML does: ` ``` ` fences a block, single

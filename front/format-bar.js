@@ -9,20 +9,146 @@ function toolbarClearance() {
   return toolbar ? toolbar.getBoundingClientRect().height : 0;
 }
 
+// The formats the bar offers at a bare caret: block-level only, and that is
+// the whole distinction. Each of these acts on the row the caret is in, so it
+// has something to do without a selection. Bold, italic, strikethrough and an
+// inline code span have nothing to act on but selected text — at a caret they
+// could only toggle *typing state*, which is a different affordance wearing
+// the same button, so they wait until there is a selection.
+//
+// `p` is in the list although the spec this was written from stopped at the
+// headings, the lists and code: it is the only way back out of a heading, and
+// a bar that can turn a row into an H1 but not back again would send the user
+// to the Format menu for the return trip — which is the discoverability gap
+// this variant exists to close.
+const CARET_FORMATS = ["p", "h1", "h2", "h3", "ul", "ol", "code"];
+
+function hideFormatBar() {
+  formatBar.classList.remove("visible");
+}
+
+// Whether the caret sits before all of its row's text.
+//
+// Walked rather than measured with a Range, for two reasons. The question is
+// about text and not about nodes — `<p><strong>|x</strong></p>` is the start
+// of the row even though the caret is an element deep — and a range from the
+// block's start to the caret needs cloneRange/setEnd, which is more editing
+// engine than this decision is worth.
+//
+// Whitespace ahead of the caret still counts as the start, because nothing on
+// screen tells it apart from nothing at all.
+function atBlockStart(range) {
+  const block = blockAncestor(range.startContainer);
+  if (!block) return false;
+
+  const container = range.startContainer;
+  const offset = range.startOffset;
+  let before = "";
+  let reached = false;
+
+  (function walk(node) {
+    if (reached) return;
+    if (node === container) {
+      reached = true;
+      if (node.nodeType === Node.TEXT_NODE) {
+        before += (node.textContent || "").slice(0, offset);
+      } else {
+        // An element container counts child nodes, not characters.
+        const kids = node.childNodes || [];
+        for (let i = 0; i < offset && i < kids.length; i++) {
+          before += kids[i].textContent || "";
+        }
+      }
+      return;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+      before += node.textContent || "";
+      return;
+    }
+    for (const child of node.childNodes || []) {
+      walk(child);
+      if (reached) return;
+    }
+  })(block);
+
+  return !before.trim();
+}
+
+// What the bar is being positioned against.
+//
+// A selection is measured by its own rect, and a zero-width one means the
+// selection has no geometry to hang off — a range inside a collapsed or
+// not-yet-laid-out node — so there is nothing to point at.
+//
+// A caret is zero-width by definition, so width tells us nothing there. Height
+// does: in an empty block — `<p><br></p>`, which is what the browser leaves
+// after Enter — engines answer 0×0 at the document origin rather than giving
+// the caret a line box. The block's own rect is the honest fallback, and an
+// exact one: the caret is at its start, so the block's left edge is the
+// caret's.
+function barRect(range, caret) {
+  const rect = range.getBoundingClientRect();
+  if (!caret) return rect.width === 0 ? null : rect;
+  if (rect.height > 0) return rect;
+  const block = blockAncestor(range.startContainer);
+  return block ? block.getBoundingClientRect() : null;
+}
+
+// Buttons a mode does not offer are hidden rather than removed: the bar's
+// markup is hand-written in index.html and again in html-export.js, so
+// rebuilding it here would make this a third copy to keep in step.
+//
+// Read off `data-format` rather than the class, because that is the attribute
+// that says which of the two lists a button belongs to — and it is what tells
+// a button from a separator without asking the bar about its own layout.
+function setBarMode(caret) {
+  const items = Array.from(formatBar.children || []);
+  for (const item of items) {
+    const format = item.getAttribute && item.getAttribute("data-format");
+    if (!format) continue;
+    item.hidden = caret && !CARET_FORMATS.includes(format);
+  }
+  collapseSeparators(items);
+}
+
+// A rule that no longer divides two visible groups goes with them. Same problem
+// `visibleItems` solves for the menu bar and the same answer: filtering by mode
+// strands separators — leading, trailing and doubled — and a stranded rule
+// reads as a gap in the bar rather than as a divider.
+function collapseSeparators(items) {
+  let pending = null;
+  let seen = false;
+  for (const item of items) {
+    const isButton = !!(item.getAttribute && item.getAttribute("data-format"));
+    if (isButton) {
+      if (item.hidden) continue;
+      if (pending) pending.hidden = false;
+      pending = null;
+      seen = true;
+      continue;
+    }
+    item.hidden = true;
+    if (seen) pending = item;
+  }
+}
+
 function showFormatBar() {
   const selection = window.getSelection();
-  if (!selection.rangeCount || selection.isCollapsed) {
-    formatBar.classList.remove("visible");
-    return;
-  }
+  if (!selection.rangeCount) return hideFormatBar();
 
   const range = selection.getRangeAt(0);
-  const rect = range.getBoundingClientRect();
+  const caret = !!selection.isCollapsed;
 
-  if (rect.width === 0) {
-    formatBar.classList.remove("visible");
-    return;
-  }
+  // At a bare caret the bar is a row control rather than a selection control,
+  // so it appears only where a row control makes sense: ahead of the row's
+  // text. A caret dropped into the middle of a line raises nothing — the bar
+  // would trail the caret around the document with no way to dismiss it, and
+  // it would be offering the same block formats the Format menu already
+  // reaches from exactly there.
+  if (caret && !atBlockStart(range)) return hideFormatBar();
+
+  const rect = barRect(range, caret);
+  if (!rect) return hideFormatBar();
 
   const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
 
@@ -31,7 +157,11 @@ function showFormatBar() {
   // to sit above — so it covered the text — and no width to centre or clamp,
   // which is why it ran off the right edge and then snapped into place on the
   // next selectionchange. Nothing paints between here and the writes below.
+  //
+  // The mode is set in the same window and for the same reason: hiding three
+  // buttons changes the width every line below this reads.
   formatBar.classList.add("visible");
+  setBarMode(caret);
   const barWidth = formatBar.offsetWidth;
   const barHeight = formatBar.offsetHeight;
 
@@ -45,9 +175,14 @@ function showFormatBar() {
   // Centred on the selection, but never past either edge: a selection at the
   // right margin used to push half the bar out of the window. The second
   // Math.max keeps the clamp sane if the bar is wider than the window.
+  //
+  // A caret is left-aligned to the row instead. Centring on a zero-width rect
+  // would put half the bar in the margin and then clamp it to the window edge,
+  // so it would sit in the same place whichever row the caret was in.
+  const wanted = caret ? rect.left : rect.left + rect.width / 2 - barWidth / 2;
   const rightmost = document.documentElement.clientWidth - barWidth - BAR_EDGE;
   const left = Math.min(
-    Math.max(rect.left + rect.width / 2 - barWidth / 2, BAR_EDGE),
+    Math.max(wanted, BAR_EDGE),
     Math.max(rightmost, BAR_EDGE),
   );
 
@@ -77,8 +212,12 @@ const FORMAT_PREDICATES = {
   code: (node) => hasAncestorTag(node, "CODE"),
 };
 
-function hasAncestorTag(textNode, ...tags) {
-  let node = textNode.parentElement;
+// Takes an element as well as a text node, because the caret's stand-in for a
+// selection can be either. From a text node the walk starts at its parent, as
+// it always did; from an element it starts at the element, whose own tag is
+// the answer for a caret sitting in an empty heading.
+function hasAncestorTag(start, ...tags) {
+  let node = start.nodeType === Node.TEXT_NODE ? start.parentElement : start;
   while (node && node !== editor) {
     if (tags.includes(node.tagName)) return true;
     node = node.parentElement;
@@ -122,11 +261,26 @@ function formatState(nodes, predicate) {
   return all ? "all" : any ? "mixed" : "none";
 }
 
+// What stands in for the selection at a caret. A collapsed range touches no
+// text node — intersectsNode asks a boundary question there and the engines do
+// not agree on the answer — so the node the caret is in speaks for it. That is
+// the whole answer rather than an approximation: the caret bar offers block
+// formats only, and every one of those is an ancestor test.
+function caretNodes(range) {
+  const node = range.startContainer;
+  if (node && node.nodeType === Node.TEXT_NODE) return [node];
+  const block = blockAncestor(node);
+  return block ? [block] : [];
+}
+
 function updateActiveButtons() {
   const selection = window.getSelection();
   if (!selection.rangeCount) return;
 
-  const nodes = textNodesInRange(selection.getRangeAt(0));
+  const range = selection.getRangeAt(0);
+  const nodes = selection.isCollapsed
+    ? caretNodes(range)
+    : textNodesInRange(range);
 
   document.querySelectorAll(".format-btn").forEach((btn) => {
     btn.classList.remove("active", "mixed");
@@ -328,6 +482,10 @@ function applyFormat(format) {
   const range = selection.getRangeAt(0);
   if (!editor.contains(range.commonAncestorContainer)) return;
 
+  // Read before the command runs: every branch below can move the selection,
+  // and what the bar does afterwards depends on which bar it was.
+  const caret = !!selection.isCollapsed;
+
   switch (format) {
     case "bold":
       runCommand("bold");
@@ -371,8 +529,18 @@ function applyFormat(format) {
 
   // Bold, italic and strikethrough leave the bar up so they can be combined on
   // one selection.
-  if (format !== "bold" && format !== "italic" && format !== "strikethrough") {
-    formatBar.classList.remove("visible");
+  //
+  // The caret bar stays up for the same reason and is re-shown rather than
+  // merely left alone: its formats compose — h2, then a bullet — and the caret
+  // has not moved, so the condition that raised it still holds. Re-showing is
+  // what repositions it, since the row it is pointing at has just changed
+  // height, and what re-reads the active states off the new block. If the
+  // command left the caret somewhere that is no longer the start of a row,
+  // showFormatBar hides the bar itself.
+  if (caret) {
+    showFormatBar();
+  } else if (format !== "bold" && format !== "italic" && format !== "strikethrough") {
+    hideFormatBar();
   }
   saveSoon();
 }
@@ -384,7 +552,7 @@ document.addEventListener("selectionchange", () => {
     if (editor.contains(range.commonAncestorContainer)) {
       showFormatBar();
     } else {
-      formatBar.classList.remove("visible");
+      hideFormatBar();
     }
   }
 });
@@ -395,7 +563,7 @@ document.addEventListener("click", (e) => {
     e.target !== editor &&
     !editor.contains(e.target)
   ) {
-    formatBar.classList.remove("visible");
+    hideFormatBar();
   }
 });
 
@@ -407,8 +575,8 @@ document.querySelectorAll(".format-btn").forEach((btn) => {
   });
 });
 
-// The Format menu reaches the same nine formats. Registered from one list
-// rather than nine calls so the menu spec and the bar cannot drift apart: an
+// The Format menu reaches the same ten formats. Registered from one list
+// rather than ten calls so the menu spec and the bar cannot drift apart: an
 // action named in toolbar.js with no format behind it here would render as a
 // dead control, which is exactly what the toolbar suite checks for.
 //

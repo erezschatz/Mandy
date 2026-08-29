@@ -1084,3 +1084,93 @@ Unlike [tests/browser-check.html](tests/browser-check.html) and
 [tests/list-indent-check.html](tests/list-indent-check.html), it needs no server
 and no app — it reads the clipboard, not `front/`, so it opens from the file
 itself.
+
+## 2026-08-29 — The format bar at a bare caret (TODO 1.5)
+
+`showFormatBar` bailed on `selection.isCollapsed`, so "make this line an H3"
+with nothing selected had no route but the Format menu. That was always a
+discoverability gap rather than a functional one — `applyFormat` never required
+a selection, and `formatBlock` and the list commands act fine on a collapsed
+one — which is why 1.5 sat as *(undecided)*: what it needed first was a ruling
+on which buttons a caret should get, since the obvious answer of "all of them"
+is wrong.
+
+The ruling, and it is the whole design: **the caret bar is a row control.** It
+appears when the caret is ahead of its row's text and offers only the formats
+that have a row to act on — Paragraph, H1, H2, H3, Bullet list, Numbered list
+and Code block. Bold, italic, strikethrough and an inline code span wait for a
+selection, because at a caret they could only toggle *typing state*, which is a
+different affordance wearing the same button. Paragraph is in the list although
+the ruling stopped at the headings, the lists and code: it is the only way back
+out of a heading, and a bar that could make one but not unmake it would send
+the user to the Format menu for the return trip, which is the gap being closed.
+
+A caret in the *middle* of a row raises nothing. A bar that trailed the caret
+around the document would have no way to be dismissed, and it would be offering
+the block formats the Format menu already reaches from exactly there — so the
+row-start rule is what keeps the new bar from being the old one with the
+restraint taken off. `atBlockStart` decides it, and asks about text rather than
+nodes: a caret inside a `<strong>` that opens the line is at the start of the
+row, and leading whitespace does not count, because nothing on screen tells it
+apart from nothing at all. It is a position, not a gesture — the same caret
+always gets the same bar, however it got there.
+
+Code needed nothing new. `coversWholeBlocks` has read a collapsed range as the
+whole block since the day it was written, so the one Code button already means
+the fenced block at a caret and the inline span across a partial selection,
+which is exactly the split the ruling asks for.
+
+Four mechanics, all of which show on screen when they are wrong:
+
+- **The dropped buttons are hidden, not removed**, and `collapseSeparators`
+  takes the rules that no longer divide anything with them. Dropping the inline
+  group strands *both* of the bar's separators, which render as a double gap
+  rather than as a divider — the same problem `visibleItems` solves for the menu
+  bar, and the same answer. Hidden rather than removed because the bar's markup
+  is hand-written in `index.html` and again in `html-export.js`; rebuilding it
+  in JS would make `format-bar.js` a third copy to keep in step.
+- **`app.css` spells out `.format-bar [hidden]`**, because `.format-btn`'s own
+  `display: flex` beats the browser's `[hidden] { display: none }`. Without it
+  the property sets an attribute and changes nothing on screen.
+- **`setBarMode` runs inside the measure-after-showing window**, between
+  `classList.add("visible")` and the `offsetWidth` read. Hiding three buttons
+  changes the width every positioning line below it depends on.
+- **An empty row has no geometry to hang off.** A collapsed range is zero-width
+  by definition, and in the `<p><br></p>` a browser leaves after Enter it
+  measures 0×0 at the document origin — measured in Chrome rather than assumed.
+  `barRect` falls back to the block's own rect, which is exact rather than a
+  guess: the caret is at the block's start, so the block's left edge is the
+  caret's. The caret bar is left-aligned to the row for the related reason, since
+  centring on a zero-width rect would clamp it to the window edge and leave it
+  in the same place whichever row the caret was in.
+
+`updateActiveButtons` needed its own version of the split. A collapsed range
+touches no text node — `intersectsNode` asks a boundary question there and the
+engines do not agree — so the selection-side walk reported nothing and every
+button read dark, including the one naming the block the caret was sitting in.
+`caretNodes` hands it the node the caret is in instead, or the block itself when
+the row is empty and there is no text node to be in; `hasAncestorTag` took an
+element as well as a text node to make that work, which is what lights H2 on an
+empty heading.
+
+Last, **the caret bar stays up after a format where the selection bar closes.**
+Its formats compose — H2, then a bullet — and the caret has not moved, so the
+condition that raised it still holds. It is re-shown rather than merely left
+alone, because the row it points at has just changed height and its active
+states have changed with it. If the command left the caret somewhere that is no
+longer a row start, `showFormatBar` hides it, so there is still one rule about
+when the bar is up rather than two.
+
+Twenty checks in the `format-bar` suite cover it: the row-start rule including
+the inline-element and leading-whitespace cases, the empty-row fallback and its
+arithmetic, which buttons each mode renders, that exactly one rule survives the
+filter and that it is the one between the block formats and the lists, the
+left-alignment, and the active states at a caret. The selection path is checked
+alongside each of them, because the thing most likely to break here is the bar
+that already worked. Watched in Chrome as well: the empty row really does report
+a 0×0 rect, which is the measurement the fallback exists for.
+
+What this does not close is the rest of 1.5's neighbourhood. Touch has no caret
+to speak of and no hover, so it is still served by the Format menu alone — the
+same gap TODO 1.2 records for following a link.
+
