@@ -43,7 +43,7 @@ function makeLink(href) {
 
 export default function run(check) {
   const app = loadApp();
-  const { anchorSlug, headingAnchors, openExternalLink, opened, byId } = app;
+  const { anchorSlug, headingAnchors, openExternalLink, normaliseLinkHref, opened, byId } = app;
   const editor = byId.get("editor");
   const onClick = editor.listeners.click[0];
 
@@ -149,6 +149,31 @@ export default function run(check) {
 
   openExternalLink("mailto:erez@example.com");
   check("mailto is allowed", opened.length === before + 1);
+
+  // --- authoring: the href the Insert > Link dialog hands to createLink ----
+
+  // A bare domain typed into the dialog is almost never a relative path, so it
+  // gets a scheme. This is the one transformation insertLink makes; everything
+  // else is passed through, because markdown puts no constraint on an href.
+  check("a bare domain gains https://",
+    normaliseLinkHref("example.com") === "https://example.com");
+  check("so does one with a path",
+    normaliseLinkHref("example.com/a/b") === "https://example.com/a/b");
+  check("an explicit scheme is left alone",
+    normaliseLinkHref("http://example.com") === "http://example.com");
+  check("mailto is left alone",
+    normaliseLinkHref("mailto:erez@example.com") === "mailto:erez@example.com");
+  check("a #anchor is left alone", normaliseLinkHref("#section") === "#section");
+  check("a root-relative path is left alone",
+    normaliseLinkHref("/notes.md") === "/notes.md");
+  check("a ./ relative path is left alone",
+    normaliseLinkHref("./notes.md") === "./notes.md");
+  check("surrounding space is trimmed",
+    normaliseLinkHref("  example.com  ") === "https://example.com");
+  check("an empty address is empty — the caller reads that as unlink/none",
+    normaliseLinkHref("   ") === "");
+  check("a single word with no dot is not forced to a domain",
+    normaliseLinkHref("notes") === "notes");
 
   // --- the tooltip ---------------------------------------------------------
 

@@ -789,6 +789,97 @@ onToolbarAction("clear", () => {
 // the command itself. execCommand raises input for free.
 onToolbarAction("insert-hr", () => runCommand("insertHorizontalRule"));
 
+// Insert / edit a link. Four cases, and only the first has an execCommand:
+//
+//   - text selected, not already a link   createLink, which the browser check
+//                                         measured identical in both engines
+//   - a bare caret                        insert the address as its own link
+//   - the caret is inside a link          retarget it by setting href directly
+//   - the caret is inside a link,         unlink it
+//     address left empty
+//
+// createLink inside an existing <a> is the one combination the browser check
+// does not cover and the engines disagree on — Chrome nests a second anchor —
+// so the retarget and unlink cases are done by hand. The direct-mutation ones
+// dispatch a synthetic `input`, the same convention insertToc and the format
+// bar's Code branch already follow, so undo, autosave and the dirty flag hear
+// them. createLink and insertHTML raise it themselves through runCommand.
+function linkAncestor(node) {
+  let el = node && node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  while (el && el !== editor) {
+    if (el.tagName === "A") return el;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function attrEscape(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// A bare "example.com" is almost never meant as a relative path, so give it a
+// scheme. Anything already carrying one, an #anchor, or a path is left exactly
+// as typed — markdown puts no other constraint on an href.
+function normaliseLinkHref(value) {
+  const href = value.trim();
+  if (!href) return "";
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return href;
+  if (/^[#/]|^\.\.?\//.test(href)) return href;
+  if (/^[^\s/]+\.[^\s/]/.test(href)) return `https://${href}`;
+  return href;
+}
+
+async function insertLink() {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return;
+  const live = selection.getRangeAt(0);
+  if (!editor.contains(live.commonAncestorContainer)) return;
+
+  const range = live.cloneRange();
+  const existing = linkAncestor(range.commonAncestorContainer);
+  const answer = await askForInput("Link address", {
+    title: existing ? "Edit link" : "Insert link",
+    placeholder: "https://example.com",
+    value: existing ? existing.getAttribute("href") || "" : "",
+    confirmLabel: existing ? "Update" : "Insert",
+  });
+  if (answer === null) return; // backed out — leave the link alone
+
+  const href = normaliseLinkHref(answer);
+
+  if (existing) {
+    if (href) existing.setAttribute("href", href);
+    else unwrapLink(existing);
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    return;
+  }
+
+  if (!href) return;
+
+  // The dialog took focus, and the selection went with it.
+  editor.focus();
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  if (range.collapsed) {
+    runCommand("insertHTML", `<a href="${attrEscape(href)}">${attrEscape(href)}</a>`);
+    return;
+  }
+  runCommand("createLink", href);
+}
+
+function unwrapLink(link) {
+  const parent = link.parentNode;
+  while (link.firstChild) parent.insertBefore(link.firstChild, link);
+  parent.removeChild(link);
+}
+
+onToolbarAction("insert-link", insertLink);
+
 onToolbarAction("paste-md", async () => {
   try {
     const clipboardText = await navigator.clipboard.readText();
@@ -1356,6 +1447,13 @@ document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "P" && toolbarButton("export-pdf")) {
     e.preventDefault();
     runToolbarAction("export-pdf");
+  }
+  // Ctrl/Cmd+K for a link, the way every editor binds it. insertLink is a
+  // no-op unless the selection is in the editor, so an unfocused window just
+  // loses the keystroke rather than acting on nothing.
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === "k") {
+    e.preventDefault();
+    runToolbarAction("insert-link");
   }
   // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y live in undo.js: execCommand's stack is
   // discarded by every innerHTML assignment in this file.

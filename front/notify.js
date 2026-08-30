@@ -293,3 +293,135 @@ function ask(message, options = {}) {
     if (focus) focus.focus();
   });
 }
+
+/**
+ * A modal that asks for one line of text — a URL, a name. Resolves to the
+ * trimmed string on confirm (which may be `""` if the field was left empty),
+ * or to `dismiss` (default `null`) when closed by Escape, the backdrop or the
+ * close button. A caller distinguishes "cleared it on purpose" from "backed
+ * out" by testing `result === null`.
+ *
+ * Separate from ask() rather than an option on it because the return contract
+ * differs — ask() resolves to an action's `value`, this resolves to what was
+ * typed — and the modal scaffold is deliberately a second copy: both builders
+ * live in this file, which is the one place Marky's dialogs are built.
+ */
+function askForInput(message, options = {}) {
+  const {
+    title = "",
+    severity = "info",
+    placeholder = "",
+    value = "",
+    confirmLabel = "OK",
+    cancelLabel = "Cancel",
+    dismiss = null,
+  } = options;
+
+  return new Promise((resolve) => {
+    const previous = document.activeElement;
+    let settled = false;
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "notify-backdrop";
+
+    const panel = document.createElement("div");
+    panel.className = `notify-dialog notify-${severity}`;
+    panel.setAttribute("role", "alertdialog");
+    panel.setAttribute("aria-modal", "true");
+
+    const close = (result) => {
+      if (settled) return;
+      settled = true;
+      backdrop.remove();
+      if (previous && previous.focus) previous.focus();
+      resolve(result);
+    };
+
+    const header = document.createElement("div");
+    header.className = "notify-dialog-header";
+    header.appendChild(notifyIcon(severity));
+
+    const heading = document.createElement("h2");
+    heading.className = "notify-dialog-title";
+    heading.textContent = title || "Marky";
+    header.appendChild(heading);
+
+    const dismissBtn = document.createElement("button");
+    dismissBtn.className = "notify-close";
+    dismissBtn.type = "button";
+    dismissBtn.title = "Close";
+    dismissBtn.setAttribute("aria-label", "Close");
+    dismissBtn.innerHTML = "&times;";
+    dismissBtn.addEventListener("click", () => close(dismiss));
+    header.appendChild(dismissBtn);
+    panel.appendChild(header);
+
+    // The label wraps the field so clicking the prompt text focuses it, and so
+    // there is no id to collide with a second dialog open at the same time.
+    const label = document.createElement("label");
+    label.className = "notify-dialog-message";
+    label.textContent = message;
+
+    const field = document.createElement("input");
+    field.type = "text";
+    field.className = "notify-dialog-input";
+    field.placeholder = placeholder;
+    field.value = value;
+    label.appendChild(field);
+    panel.appendChild(label);
+
+    const submit = () => close(field.value.trim());
+
+    const row = document.createElement("div");
+    row.className = "notify-dialog-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "notify-btn notify-btn-quiet";
+    cancelBtn.type = "button";
+    cancelBtn.textContent = cancelLabel;
+    cancelBtn.addEventListener("click", () => close(dismiss));
+    const okBtn = document.createElement("button");
+    okBtn.className = "notify-btn notify-btn-primary";
+    okBtn.type = "button";
+    okBtn.textContent = confirmLabel;
+    okBtn.addEventListener("click", submit);
+    row.appendChild(cancelBtn);
+    row.appendChild(okBtn);
+    panel.appendChild(row);
+    backdrop.appendChild(panel);
+
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) close(dismiss);
+    });
+
+    const focusables = [field, cancelBtn, okBtn];
+    backdrop.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close(dismiss);
+        return;
+      }
+      if (event.key === "Enter" && event.target === field) {
+        event.preventDefault();
+        submit();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      // Modal: Tab cycles the field and the two buttons, never the toolbar.
+      const at = focusables.indexOf(document.activeElement);
+      const step = event.shiftKey ? -1 : 1;
+      const next = (at + step + focusables.length) % focusables.length;
+      event.preventDefault();
+      focusables[next].focus();
+    });
+
+    document.body.appendChild(backdrop);
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => backdrop.classList.add("is-in"));
+    } else {
+      backdrop.classList.add("is-in");
+    }
+
+    field.focus();
+    if (field.select) field.select();
+  });
+}

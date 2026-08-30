@@ -98,7 +98,7 @@ destroyed the list in Chrome.
 
 Re-run it when adding a format, and when a browser does something surprising.
 TODO 1.1 carries that instruction now, along with the two divergences it found
-that are still open.
+that are still open (TODO 1.1.5).
 
 There are two other pages beside it, same idea and same reason. The first:
 
@@ -666,7 +666,7 @@ since in Chrome, Firefox and Safari by
 [tests/list-indent-check.html](tests/list-indent-check.html), which also found
 that the followers of an outdented item were coming back reversed. The other two
 are questions about what a block control does inside a list, and wait in TODO
-1.1 with the rest of block formatting.
+1.1.5 with the rest of block formatting.
 
 ### The menu bar
 
@@ -1057,6 +1057,12 @@ test suite scans the sources to keep it that way.
   right. Non-blocking, returns a function that dismisses it.
 - `ask(message, { title, severity, actions, dismiss })` — a modal, resolving to
   the chosen action's `value` or to `dismiss` (default `null`).
+- `askForInput(message, { title, placeholder, value, confirmLabel, dismiss })` —
+  a modal with one text field, resolving to the trimmed string on confirm (which
+  may be `""`) or to `dismiss` (default `null`) when backed out. A deliberate
+  second copy of the modal scaffold rather than an option on `ask()`: the return
+  contracts differ, and this file is already where the dialogs are built. Insert
+  → Link… is the only caller so far.
 
 Why it exists at all is worth keeping: `alert()` blocks the page, ignores the
 theme, and can say nothing but OK. The one that forced the issue is that Chrome

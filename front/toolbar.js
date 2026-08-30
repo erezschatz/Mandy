@@ -85,6 +85,7 @@ const TOOLBAR_MENUS = [
   ] },
 
   { id: "insertMenu", label: "Insert", variants: ALL, items: [
+    { action: "insert-link", label: "Link\u2026", shortcut: "Ctrl+K", variants: ALL },
     { id: "tocInsertBtn", action: "insert-toc", label: "Table of contents", variants: ALL },
     { action: "insert-hr", label: "Horizontal rule", variants: ALL },
     { separator: true, variants: ALL },

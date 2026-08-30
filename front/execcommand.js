@@ -167,7 +167,7 @@ function normaliseEditorMarkup(root) {
     // still puts the <h1> inside the <li>, so the two engines currently
     // disagree about whether the button does anything. Settling that means
     // refusing it in applyFormat, where the selection still exists — normalise
-    // cannot see which item the caret was in. TODO 1.1.
+    // cannot see which item the caret was in. TODO 1.1.5.
     if (UNWRAPPABLE_AROUND_LIST.has(node.tagName) && holdsListChild(node)) {
       unwrapElement(node);
       changed = true;

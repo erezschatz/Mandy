@@ -23,57 +23,88 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
 
 ## 1. Editing
 
-*   **1.1** *(tables also need 2.1; read D4 first)*
+*   **1.1** *(read D4 first)*
     The UI only supports some of the markup MD offers, and not even all of what
     the README advertises. The format bar has p, h1, h2, h3, bold, italic,
-    strikethrough, ul, ol, code, and the Format menu now reaches the same ten —
-    which is more reachable, not more capable. Insert has a horizontal rule now
-    too. Missing, still: links, images, tables, blockquotes, h4-h6, inline code,
-    and indent/outdent — that last one is bound to Tab but has no control, so on
-    touch there is no way to nest a bullet at all. The Format and Insert menus
-    are where they go, and both have room now. They render when imported; there is just no way to
-    author them. Tables are worse than the others in that list: it's not just
-    that there's no control to insert one, an *existing* table — already in the
-    document, already rendered — cannot be edited either. No way to add or
-    remove a row or column once markdown-it has rendered the `<table>`.
-    Confirmed by hand: editing this very file after `hr: "---"` landed, trying
-    to delete the now-obsolete row it made fixed above.
+    strikethrough, ul, ol, code, and the Format menu reaches the same ten —
+    which is more reachable, not more capable. Insert has a horizontal rule and,
+    since 1.1.1, a link. Missing, still: images, tables, blockquotes, h4-h6,
+    inline code, and indent/outdent. They render when imported; there is just no
+    way to author them. The Format and Insert menus are where they go, and both
+    have room. D4 carries the boundary rule for which formats may use execCommand
+    and which get written by hand.
 
-    Of the remaining controls that have an execCommand, `createLink` also
-    produces identical markup in both engines per the browser check, so it can
-    use it directly the same way strikethrough and the horizontal rule did.
-    Tables, inline code and indent/outdent get written by hand either way.
-
-    Two execCommand divergences were deferred here rather than fixed where they
-    were found, because both are questions about what a *block* control does
-    when a list is involved, and this is where block formatting gets looked at
-    properly. Both were measured in Chrome 139 and Firefox 154 by
-    [tests/browser-check.html](../tests/browser-check.html):
-
-    - **A heading inside a list item should be a no-op, and currently is only in
-      Chrome.** Chrome wrapped the whole list in the heading, which was
-      destructive and is now unwrapped — so the command does nothing there.
-      Firefox puts the `<h1>` inside the `<li>`, which is what was literally
-      asked for and does round-trip through markdown. Settled: **the no-op is
-      the wanted behaviour, in both engines.** A heading inside a bullet is
-      expressible but it is not something the editor should offer a way to make
-      by accident, and "less havoc than Chrome" is not the same as right. So the
-      fix is to refuse it in `applyFormat` — where the selection still exists,
-      unlike in `normaliseEditorMarkup` — and the refusal wants to be consistent
-      with whatever the other block controls here do about lists.
-    - **`indent` outside a list produces a `<blockquote>`**, with inline styles
-      in Chrome and without in Firefox. Not reachable today: app.js guards Tab
-      to lists only. It is recorded here because the blockquote control on the
-      list above is what will meet it.
-
-    The standing instruction that came with them, which used to live in 5.1:
-    **re-run [tests/browser-check.html](../tests/browser-check.html) when adding
-    a format, and when a browser does something surprising.** It is the only
-    thing in the repo that can tell measurement from folklore — the Deno suite
-    has no editing engine — and every engine-specific claim in `front/` either
-    came from it or is a guess. Its sibling
+    **Standing instruction, for every slice below:** re-run
+    [tests/browser-check.html](../tests/browser-check.html) when adding a format,
+    and when a browser does something surprising. It is the only thing in the
+    repo that can tell measurement from folklore — the Deno suite has no editing
+    engine — and every engine-specific claim in `front/` either came from it or
+    is a guess. Its sibling
     [tests/list-indent-check.html](../tests/list-indent-check.html) covers the
     one path that no longer goes through execCommand at all.
+
+    The slices are roughly in order of increasing cost. 1.1.1 (links) landed —
+    see CHANGELOG.md.
+
+    *   **1.1.2** *(h4-h6)* `formatBlock`, exactly as h1-h3 already do. No new
+        engine behaviour; the only open question is whether six heading buttons
+        want a level picker instead, which is a layout call.
+
+    *   **1.1.3** *(indent / outdent controls)* The engine work is done:
+        `outdentListItem` in app.js does the outdent by hand in all three
+        engines, watched by
+        [tests/list-indent-check.html](../tests/list-indent-check.html), and
+        Tab / Shift+Tab are bound. What is missing is a *control* — on touch
+        there is no way to nest a bullet at all. Wire a button in Insert or
+        Format to the path that already exists.
+
+    *   **1.1.4** *(inline code)* No execCommand; written by hand. Partly
+        reachable already — the format bar's Code button produces inline
+        `<code>` for a partial selection (see the format-bar section of
+        CLAUDE.md) — so the slice is a dedicated control plus confirming the
+        caret, whole-block and partial cases all behave.
+
+    *   **1.1.5** *(block controls inside a list)* Two execCommand divergences
+        were deferred here from where they were found, because both are
+        questions about what a *block* control does when a list is involved.
+        Measured in Chrome 139 and Firefox 154 by
+        [tests/browser-check.html](../tests/browser-check.html):
+
+        - **A heading inside a list item should be a no-op, and currently is
+          only in Chrome.** Chrome wrapped the whole list in the heading, which
+          was destructive and is now unwrapped — so the command does nothing
+          there. Firefox puts the `<h1>` inside the `<li>`, which is what was
+          literally asked for and does round-trip through markdown. Settled:
+          **the no-op is the wanted behaviour, in both engines.** A heading
+          inside a bullet is expressible but not something the editor should
+          offer a way to make by accident, and "less havoc than Chrome" is not
+          the same as right. The fix is to refuse it in `applyFormat` — where
+          the selection still exists, unlike in `normaliseEditorMarkup`.
+        - **`indent` outside a list produces a `<blockquote>`**, with inline
+          styles in Chrome and without in Firefox. Not reachable today: app.js
+          guards Tab to lists only. Recorded because the blockquote control
+          (1.1.6) is what will meet it.
+
+        This slice is the consistency rule the hand-written block controls
+        (1.1.6) should follow, so settle it alongside or just before them.
+
+    *   **1.1.6** *(blockquotes)* Written by hand. Meets the `indent`-outside-a-
+        list divergence in 1.1.5, and wants that slice's "what does a block
+        control do to a list" answer settled first.
+
+    *   **1.1.7** *(images)* Written by hand — an insertion at the caret plus a
+        prompt for src and alt. An image is a leaf, so there is no structural-
+        editing story the way tables have one; simpler than 1.1.8 despite also
+        being hand-rolled.
+
+    *   **1.1.8** *(tables — also needs 2.1)* Worse than everything above. Not
+        just that there is no control to insert one: an *existing* table —
+        already in the document, already rendered from markdown-it's `<table>` —
+        cannot be edited either. No way to add or remove a row or column.
+        Confirmed by hand: editing this very file after `hr: "---"` landed,
+        trying to delete the now-obsolete row it made fixed above. Insert is
+        hand-written; structural editing is a small grid-surgery layer; and an
+        edited table's bytes are 2.1's problem.
 *   **1.2** Links are done except for two loose
     ends. Ctrl/Cmd+click follows a link and jumps to `#anchor` headings,
     `anchorSlug` / `headingAnchors` in app.js resolve slugs live, and
@@ -142,7 +173,7 @@ Decision D1 in [DECISIONS.md](DECISIONS.md) is why, and lists the differences
 that are deliberate rather than bugs — as does D3, which is the one whole
 category fidelity deliberately does not extend to.
 
-*   **2.1** *(wanted by 1.1)* An edited table is re-emitted in the `table`
+*   **2.1** *(wanted by 1.1.8)* An edited table is re-emitted in the `table`
     rule's house style. An untouched one now restores byte-for-byte —
     `normaliseTableRows` takes the rule's cell padding and its fixed three-dash
     delimiter out of the block key, so `|---|---|` and `| --- | --- |` are the

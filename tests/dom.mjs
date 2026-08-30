@@ -351,7 +351,7 @@ export function loadApp() {
       " renderRules: __renderRules, mathSpan, options: __opts, opened: __opened," +
       " scrolled: __scrolled, commands: __commands, selection: __selection," +
       " documentElement: __root, byId: __byId," +
-      " htmlToMarkdown, anchorSlug, headingAnchors, openExternalLink," +
+      " htmlToMarkdown, anchorSlug, headingAnchors, openExternalLink, normaliseLinkHref," +
       " slugifyTitle, isBlankContent, sniffMarkdownStyle, reflowMarkdown," +
       " adoptMarkdownStyle, normaliseNbsp, isGhostElement," +
       " scanReferenceDefinitions, normalizeReferenceLabel, appendReferenceDefinitions," +

@@ -366,7 +366,7 @@ inline script before the stylesheet is read. The theme toggle gained a tooltip
 that moves with the theme, being the only control left in the bar that is not a
 word.
 
-## 2026-08-23 — One door for execCommand, and a browser check behind it
+## 2026-08-23 — `c66d7a5` — One door for execCommand, and a browser check behind it
 
 [front/execcommand.js](front/execcommand.js) arrived: `runCommand` is now the
 only place in `front/` that calls `document.execCommand`, and a source scan in
@@ -422,7 +422,7 @@ above as `<li>one<br>two</li>` instead of making it a sibling, which loses a
 bullet. It cannot be normalised — that markup is indistinguishable from a
 deliberate hard break in a list item — so it needs a real fix.
 
-## 2026-08-23 — Code formatting tells a span from a block
+## 2026-08-23 — `c66d7a5` — Code formatting tells a span from a block
 
 Two bugs in `format-bar.js`, both of which came from the same missing idea: that
 the *extent* of a selection means something.
@@ -462,7 +462,7 @@ them unless the selection covered a whole line — would read as a broken button
 rather than a precise one. Code is the only format that reads the extent, because
 it is the only one with an inline counterpart to read it for.
 
-## 2026-08-23 — The editable export is a nerfed Marky
+## 2026-08-23 — `58d4dca` — The editable export is a nerfed Marky
 
 PDF and Word left the exported document: `pdf-export.js` and `docx-export.js`
 dropped out of `ASSETS`, and their menu items became `variants: ["app"]`. An
@@ -486,7 +486,7 @@ binding in a document that cannot answer it.
 `ensureHtml2Pdf` and `ensureDocx` stay in `lazy-load.js`, which is shared and has
 no variants — unreachable in an export rather than absent from it.
 
-## 2026-08-23 — Invisible whitespace, and the unsaved-work guard
+## 2026-08-23 — `21d9699` — Invisible whitespace, and the unsaved-work guard
 
 Three TODO items, two of which turned out to be one.
 
@@ -528,7 +528,7 @@ from the dirty flag and takes the browser's own wording.
 An exported document ships no `file-api.js` and has no file to be dirty against,
 so it gets the plain question rather than a second implementation of the guard.
 
-## 2026-08-24 — The dirty flag follows undo
+## 2026-08-24 — `aaa42a6` — The dirty flag follows undo
 
 TODO 1.10. `file-api.js` latched `isDirty` true on the editor's `input` event
 and never unlatched it, so undoing an edit back to the document as it was at
@@ -563,7 +563,7 @@ return to either, for the same reason — undo's stack does not survive one — 
 restored flag says there is nothing unsaved; otherwise the document stays
 dirty until the next real save, same as before this landed.
 
-## 2026-08-24 — The file-server liveness check runs more than once
+## 2026-08-24 — `f18bea8` — The file-server liveness check runs more than once
 
 TODO 5.4. Open/Save/Reload/Save As used to be disabled by a single probe of
 `/api/home` in a startup IIFE, and never touched again. A server that died
@@ -585,7 +585,7 @@ original only ever disabled, so it became idempotent in both directions,
 guarded the same way `setDirty`/`setDiskChanged` are against writing the DOM
 when nothing changed.
 
-## 2026-08-24 — Paste Markdown inserts instead of replacing
+## 2026-08-24 — `5125a43` — Paste Markdown inserts instead of replacing
 
 TODO 1.8. `onToolbarAction("paste-md")` assigned `editor.innerHTML` outright —
 a leftover from the serverless model, where replacing the document from the
@@ -604,7 +604,7 @@ assignment site at all: the `undo` suite's count of them dropped from six to
 five, catching a regression to the old behaviour the same way it catches a new
 site skipping the choice.
 
-## 2026-08-24 — The format bar reads the whole selection, not just where it started
+## 2026-08-24 — `0f23b0a` — The format bar reads the whole selection, not just where it started
 
 TODO 3.1. `updateActiveButtons` walked up from `selection.anchorNode` alone,
 so which end of the drag the browser happens to call the anchor decided
@@ -626,7 +626,7 @@ in the Deno suite — a stub range's `intersectsNode` just names which nodes are
 "touched," and `tests/format-bar.test.mjs` builds the mixed/all/none trees
 directly rather than simulating a drag.
 
-## 2026-08-24 — Reference-style links survive a save
+## 2026-08-24 — `0f23b0a` — Reference-style links survive a save
 
 TODO 2.1. `[text][label]` and `[text](url)` resolve to the identical
 `link_open` token once markdown-it has parsed them — same href, same title,
@@ -683,7 +683,7 @@ TODO no longer has to carry it.
 
 ---
 
-## 2026-08-25 — A fenced code block inside a list item (TODO 1.1)
+## 2026-08-25 — `2e05e10` — A fenced code block inside a list item (TODO 1.1)
 
 The one gap `coversWholeBlocks` left: a whole bullet used to fall back to
 inline `<code>`, because a `<pre>` in place of the `<li>` is invalid markup.
@@ -706,7 +706,7 @@ code) and still do.
 
 ---
 
-## 2026-08-26 — Firefox no longer loses a bullet on outdent (TODO 5.1)
+## 2026-08-26 — `7bf7172` — Firefox no longer loses a bullet on outdent (TODO 5.1)
 
 The one execCommand divergence TODO 5.1 called out as having teeth: Shift+Tab
 on a nested item merged it into the item above in Firefox
@@ -735,7 +735,7 @@ than asserting an execCommand name that no longer gets called, and
 `nextElementSibling`, `document.createRange`, and `removeAllRanges`/`addRange`
 on the stub selection.
 
-## 2026-08-26 — Strikethrough and horizontal rule (TODO 1.4)
+## 2026-08-26 — `7a5968c` — Strikethrough and horizontal rule (TODO 1.4)
 
 Two of the formats TODO 1.4 already knew were cheap: the browser check had
 already confirmed `strikeThrough` and `insertHorizontalRule` produce identical
@@ -762,7 +762,7 @@ bar. `CLAUDE.md`'s format counts (ten now, not nine) and the menu-item count
 (26, not 24) were updated alongside it, and TODO 1.4's missing-formats list
 dropped both.
 
-## 2026-08-26 — New and Clear are two different weights now (TODO 4.3)
+## 2026-08-26 — `362c30f` — New and Clear are two different weights now (TODO 4.3)
 
 Clear was doing two jobs under one name. `onToolbarAction("clear")` in
 `app.js` emptied the editor, dropped the autosave, the sniffed style and the
@@ -806,7 +806,7 @@ site-count comment was relabelled, not the count itself, since renaming an
 action is not adding an `editor.innerHTML` assignment site.
 
 
-## 2026-08-26 — TODO, DECISIONS and ROADMAP move into `docs/`
+## 2026-08-26 — `f316439` — TODO, DECISIONS and ROADMAP move into `docs/`
 
 The 2026-08-24 entry above folded `DECISIONS.md` into this file on the theory
 that decisions were few enough to live at the end of it. Four more landed
@@ -841,7 +841,7 @@ appearing, the way any finished item's number does, available to be reused
 for something unrelated later exactly as `docs/TODO.md`'s own rule already
 allows.
 
-## 2026-08-26 — TODO audited against 1.0, six items moved to ROADMAP
+## 2026-08-26 — `323fcca` — TODO audited against 1.0, six items moved to ROADMAP
 
 The `docs/` split gave the four files four jobs, and this is the first pass
 that actually held TODO.md to its own: *what stands between here and a finished
@@ -913,7 +913,7 @@ divergences survive it" and named the outdent bug as the one to know about.
 TODO.md is 11 items from 15, and every one of them is markdown support, tables,
 tabs, stability or the README.
 
-## 2026-08-26 — TODO items renumbered to close the gaps
+## 2026-08-26 — `323fcca` — TODO items renumbered to close the gaps
 
 The audit above left section 1 running 1.4, 1.5, 1.7, 1.9, 1.10, 1.11 and
 section 2 holding a lone 2.3 — every gap a scar from an item that had been
@@ -957,7 +957,7 @@ document pointed at the retired 2.2, and its aside about edit/preview/source
 tabs pointed at the deleted 1.6. They now point at ROADMAP's save-fidelity
 section and at D0 respectively.
 
-## 2026-08-28 — Shift+Tab watched in three engines, and the bug that was waiting there (TODO 5.1 closed)
+## 2026-08-28 — `7a8876c` — Shift+Tab watched in three engines, and the bug that was waiting there (TODO 5.1 closed)
 
 TODO 5.1 had been the file's one *(fixed, unverified)* item since 2026-08-26:
 `outdentListItem` stopped calling `execCommand("outdent")` and did the move by
@@ -1009,7 +1009,7 @@ never the one under test. [tests/dom.mjs](tests/dom.mjs) now honours the tag and
 understands the one selector form the sources actually use on an element,
 `:scope > ul, :scope > ol` — and refuses anything else rather than guessing.
 
-## 2026-08-28 — An exported document hands on its bundle byte-for-byte
+## 2026-08-28 — `7a8876c` — An exported document hands on its bundle byte-for-byte
 
 The self-reproduce suite's stated property is a fixpoint: what generation N+1
 hands its successor must be byte-identical to what generation N handed it. In a
@@ -1031,7 +1031,7 @@ wraps its payload the way the template does, so the check is against what a DOM
 really returns; measured in the browser afterwards, generation N+1's CSS and JS
 match generation N's exactly, with zero network calls on the way.
 
-## 2026-08-28 — The welcome document and the README catch up with the menu bar
+## 2026-08-28 — `7a8876c` — The welcome document and the README catch up with the menu bar
 
 Both still described the row of buttons the menu bar replaced, which made the
 first thing a new user reads a tour of an interface that is not there. The
@@ -1059,7 +1059,7 @@ the rewrite TODO 6.1 wants — that one is about the case the README makes for
 the project, argued in D0 and still absent from it, rather than about which
 buttons exist.
 
-## 2026-08-28 — A third check page, for the one question a machine cannot answer
+## 2026-08-28 — `7a8876c` — A third check page, for the one question a machine cannot answer
 
 [tests/paste-check.html](tests/paste-check.html) settles the question TODO 1.3
 opens with: on Ctrl/Cmd+Shift+V, does the browser still put a `text/html`
@@ -1085,7 +1085,7 @@ Unlike [tests/browser-check.html](tests/browser-check.html) and
 and no app — it reads the clipboard, not `front/`, so it opens from the file
 itself.
 
-## 2026-08-29 — The format bar at a bare caret (TODO 1.5)
+## 2026-08-29 — `305a1a5` — The format bar at a bare caret (TODO 1.5)
 
 `showFormatBar` bailed on `selection.isCollapsed`, so "make this line an H3"
 with nothing selected had no route but the Format menu. That was always a
@@ -1174,3 +1174,127 @@ What this does not close is the rest of 1.5's neighbourhood. Touch has no caret
 to speak of and no hover, so it is still served by the Format menu alone — the
 same gap TODO 1.2 records for following a link.
 
+
+## 2026-08-30 — `2ab7a88` — Paste without formatting, measured rather than predicted (TODO 1.3)
+
+TODO 1.3 opened with a question rather than a task: browsers already implement
+Ctrl/Cmd+Shift+V in a `contenteditable` as paste-as-plain-text, but the `paste`
+handler in `app.js` intercepts every paste and prefers `text/html` whenever the
+clipboard offers one — so if the browser still handed over an HTML flavour on
+that binding, the app was overriding the very thing the user asked for.
+
+[tests/paste-check.html](tests/paste-check.html) was built to answer it and sat
+unrun until now. **Chrome 152 and Firefox 154 both offer `text/plain` alone on
+that binding**, so the plain branch already fired and the paste already arrived
+bare in both. Nothing to build. That is the opposite of what the item predicted
+— it expected Chrome to be clean and named Firefox as the case that would need
+the work — which is the whole argument for having a page that measures instead
+of a paragraph that reasons. The item also never mentioned Safari, though three
+engines had been available since the list-indent check; WebKit is still
+unmeasured and is all that keeps 1.3 open.
+
+The second half of the page earned its place too. Both engines deliver the
+`keydown` for Shift+V to the page, so the fallback shape 1.3 proposed — a flag
+set from a `keydown` on `#editor` and consumed by the next `paste` event — is
+known to be workable if WebKit turns out to differ, rather than assumed.
+
+### The undo stack could not tell a paste from typing
+
+The measurement is what promoted this from a bug waiting for a feature to a bug
+in the shipping app: since Ctrl+Shift+V already worked in both engines, the
+plain branch was live. It inserts through `execCommand("insertText")`, which
+raises `input` reporting the same `insertText` a keystroke reports — there is no
+flavour of that event that says "this came from the clipboard". So a plain paste
+in the middle of a sentence coalesced into the typing around it, and one Ctrl+Z
+took back both.
+
+`undoBreak()` in [undo.js](front/undo.js) is the fix, and it is the caller
+saying what the event cannot. It sets a one-shot flag that the next `input`
+consumes: that edit does not merge into what came before it, and — because a
+broken step reports no type at all afterwards — nothing typed after it merges
+into the paste either. Isolated on both sides, spent immediately, so it costs
+exactly one step rather than turning every subsequent keystroke into its own
+undo.
+
+Three checks in the `undo` suite cover both sides and the spending, and a fourth
+scans `app.js` for the call, because the way this regresses is not a broken flag
+but a paste path that quietly stops asking for it.
+
+### Edit is the selection's menu
+
+The third part of 1.3, and the reason the first two came with a menu change at
+all. Edit held *Copy markdown* and *Paste markdown*, which act on the whole
+document; adding an ordinary Cut, Copy and Paste beside them would have given
+two pairs of near-identical names meaning entirely different things, in one
+menu, four lines apart.
+
+So the actions moved rather than being renamed, and where each one went is the
+argument for it. **Edit** gets Cut, Copy, Paste and Paste without formatting —
+everything here now acts on the selection. *Copy markdown* went to **Export**,
+where copying the document as markdown is an export to the clipboard rather
+than to a file, which is what it always was. *Paste markdown* went to
+**Insert**, which reads honestly since it stopped replacing the document and
+started inserting at the caret. The menu each one sits in is what tells them
+apart; the labels never needed to change.
+
+Cut and Copy are `execCommand` and needed nothing else — `mousedown` is already
+prevented over the bar, so the click does not blur the editor and take the
+selection with it, and Cut raises `input` so undo, autosave and the dirty flag
+pick it up for free.
+
+**Paste is the exception, and it is a browser restriction rather than a
+choice.** `execCommand("paste")` is refused in web content, so the two Paste
+items read `navigator.clipboard` themselves — the same thing *Paste markdown*
+has always had to do. Rather than a second sanitise-and-insert path beside the
+`paste` listener's, the listener's body was pulled out into
+`insertPastedContent` and `insertPlainText` and both routes now share it: the
+menu differs from the keyboard only in where the clipboard comes from, and
+cannot drift into pasting differently. Reading the clipboard is a permission the
+app may not have, and both items report a failure by pointing at the keystroke,
+which never needed it.
+
+The toolbar suite picked up eight checks with no new test code, since it derives
+them from the spec and both bundle lists — every one of the four new actions has
+a handler in a script each variant ships.
+
+## 2026-08-30 — Links can be authored, not just imported (TODO 1.1.1)
+
+The first slice of TODO 1.1. Links rendered when a document was opened and
+Ctrl/Cmd+click already followed them, but there was no way to make one — the
+README advertised a feature the UI could not reach. **Insert → Link…**
+(`Ctrl/Cmd+K`) is that way now.
+
+The dialog is `askForInput` in [notify.js](front/notify.js), a new sibling to
+`ask()`: a modal with one text field, resolving to the trimmed string on
+confirm or to `null` when it is dismissed. It is a second copy of the modal
+scaffold rather than an option on `ask()`, because the return contracts differ
+— `ask()` resolves to an action's `value`, this to what was typed — and
+notify.js is already the one place the app's dialogs are built. Escape, the
+backdrop and the × back out; Enter in the field confirms; Tab cycles the field
+and the two buttons and never escapes the modal.
+
+`insertLink` in [app.js](front/app.js) has four cases and only the first uses
+execCommand:
+
+- **text selected** → `runCommand("createLink", href)`. The browser check
+  already measured this identical in Chrome and Firefox (it has a `createLink`
+  case), so it needs no normalisation of its own.
+- **a bare caret** → `insertHTML` of an `<a>` whose text is the address, since
+  `createLink` on a collapsed selection does nothing useful in either engine.
+- **caret inside a link** → set `href` directly. `createLink` inside an
+  existing `<a>` is the one combination the browser check does *not* cover and
+  the engines disagree on — Chrome nests a second anchor — so this and the
+  next case are hand-rolled and dispatch a synthetic `input`, the convention
+  `insertToc` and the Code branch already follow.
+- **caret inside a link, address left empty** → unwrap the `<a>`.
+
+`normaliseLinkHref` makes exactly one transformation: a bare `example.com`
+gains an `https://` scheme, because at a caret it would otherwise save as a
+relative link nobody meant. Anything already carrying a scheme, an `#anchor`
+or a path is passed through untouched — markdown puts no other constraint on
+an href. It is a pure function and the `links` suite covers it directly (ten
+checks); the toolbar suite picked up the handler-exists checks from the spec
+with no new code.
+
+`sw.js` is at `v1.23`. Still open in 1.1: images, tables, blockquotes, h4–h6,
+inline code and indent/outdent controls.
