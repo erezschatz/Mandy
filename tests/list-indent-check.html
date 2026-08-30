@@ -18,9 +18,15 @@
   reports it without a verdict — a control, so a green run is measured against
   the bug still being there rather than against nothing.
 
-  Serve front/ and open this in each browser you care about, the same way its
-  sibling wants to be run. It prints a report, and posts a copy back so a
-  headless run can collect it.
+  How to run it: `npm run serve`, then open
+  http://localhost:9130/tests/list-indent-check.html in each browser you care
+  about. The server serves this file by a small route of its own — it is not
+  under front/ — and the <iframe src="/"> below then loads the app from the
+  same origin, which is the whole mechanism: this page reads outdentListItem
+  and runCommand straight out of the app's window, so a cross-origin frame
+  would be useless. A file:// open cannot work at all, and the guard below
+  says so if the app has not come up after ten seconds. Reports POST to
+  /report, which the server prints for a headless run.
 
   Measured 2026-08-28 — Chrome 148, Firefox 154, Safari 26.6, all clean, with
   all three engines' raw execCommand output recorded in CHANGELOG.md.
@@ -51,13 +57,20 @@ const fresh = async () => {
   frame.src = "/?fresh=" + Date.now();
 };
 
-const ready = () => new Promise((resolve) => {
+const ready = () => new Promise((resolve, reject) => {
   const frame = document.getElementById("app");
+  // The app has ten seconds to boot in the frame. Past that it is not coming —
+  // a file:// open, or the /tests/ route missing from the server — and hanging
+  // on "running…" forever tells the reader nothing.
+  const deadline = Date.now() + 10000;
   const poll = () => {
     const win = frame.contentWindow;
     const doc = win && win.document;
     if (doc && doc.getElementById("editor") && typeof win.outdentListItem === "function"
         && typeof win.runCommand === "function") return resolve(win);
+    if (Date.now() > deadline) return reject(new Error(
+      "the app did not load in the iframe. Run this through the server — " +
+      "`npm run serve`, then http://localhost:9130/tests/list-indent-check.html"));
     setTimeout(poll, 100);
   };
   frame.addEventListener("load", poll);
@@ -246,5 +259,9 @@ function record(name, html, verdict, note) {
   for (const [key, value] of Object.entries(snapshot)) localStorage.setItem(key, value);
 
   try { fetch(COLLECTOR, { method: "POST", body: JSON.stringify(report) }); } catch {}
-})();
+})().catch((err) => {
+  document.getElementById("head").textContent = String(err.message || err);
+  document.getElementById("head").className = "bad";
+  document.title = "check: could not run";
+});
 </script>

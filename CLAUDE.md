@@ -82,11 +82,18 @@ They cover the invariants that fail *silently* rather than loudly:
 ### The browser check
 
 [tests/browser-check.html](tests/browser-check.html) is not part of `npm test`
-and cannot be: it needs a real editing engine. Serve the repo, open it in each
-browser, and it runs the real execCommand cases in a real `contenteditable`,
-reporting the markup each engine produces before and after
-`normaliseEditorMarkup`. Loaded over HTTP it also POSTs the report to `/report`,
-which is how a headless run collects it.
+and cannot be: it needs a real editing engine. It loads `front/execcommand.js`
+and pulls in nothing else, so it runs the real execCommand cases in a real
+`contenteditable` and reports the markup each engine produces before and after
+`normaliseEditorMarkup`. Run it with `npm run serve`, then open
+`http://localhost:9130/tests/browser-check.html` in each browser. The two
+check pages live in `tests/`, outside `FRONT_DIR` where the static handler
+looks, so `server.ts` has a two-name route (`CHECK_PAGES`) that serves just
+them, plus a `POST /report` sink that prints each report for a headless run.
+Not a file:// double click: Firefox refuses a script from outside the page's
+own directory, and a page open off disk cannot reach the `/tests/` route or
+`/report` anyway — the page prints one line saying so rather than eleven
+`runCommand is not defined` throws.
 
 **It is the only thing in the repo that can tell measurement from folklore.**
 Every engine-specific claim in `front/` and in the metafiles either came from
@@ -106,10 +113,13 @@ There are two other pages beside it, same idea and same reason. The first:
 the one path this page cannot reach: `outdentListItem` no longer calls
 execCommand at all, so what needs watching there is our own DOM surgery in a
 real editing engine rather than a command's output. It drives the running app in
-an iframe, and ends with a control — raw `execCommand("outdent")` on the same
-list — so a green run is measured against the bug still being there. Chrome 148,
-Firefox 154 and Safari 26.6 all mangle that list, three different ways, and all
-three come out right through Shift+Tab.
+an `<iframe src="/">` — served through the same `/tests/` route, so the frame is
+same-origin and this page reads `outdentListItem` straight out of the app's
+window — and ends with a control, raw `execCommand("outdent")` on the same list,
+so a green run is measured against the bug still being there. Same run recipe as
+its sibling; if the app has not booted in the frame after ten seconds it says
+so instead of hanging. Chrome 148, Firefox 154 and Safari 26.6 all mangle that
+list, three different ways, and all three come out right through Shift+Tab.
 
 [tests/paste-check.html](tests/paste-check.html) is the third, and the only one
 that cannot be run by a machine at all: it measures what a browser puts in a

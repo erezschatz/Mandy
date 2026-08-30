@@ -15,9 +15,16 @@
   docs/DECISIONS.md, and docs/TODO.md 1.1. Its sibling list-indent-check.html
   covers the outdent path, which no longer goes through execCommand at all.
 
-  Serve the repo and open this in each browser you care about. It prints a
-  report and, if it was loaded over HTTP from the check server, posts a copy
-  back so a headless run can collect it.
+  How to run it: `npm run serve`, then open
+  http://localhost:9130/tests/browser-check.html in each browser you care
+  about. The server has a small route for this file and its sibling (it is not
+  under front/, where the static handler looks), and a /report sink they POST
+  their JSON back to for a headless run.
+
+  Not a file:// double click. Chrome and Safari would run it, but Firefox
+  refuses a <script> from outside the page's own directory, and there is no
+  point in a check that a third of the browsers it exists for cannot take. If
+  the script does not load, the guard below says so in one line.
 -->
 
 <style>
@@ -30,6 +37,13 @@
 <div id="editor" contenteditable="true"></div>
 <pre id="report">running…</pre>
 
+<!--
+  Served from front/ by the /tests/ route, so front/execcommand.js is at the
+  root. This 404'd for a long time because the page was opened straight off
+  disk, where "/execcommand.js" is nothing and every case threw "runCommand is
+  not defined" with no hint why. The guard below turns that into a sentence;
+  the fix is to run it through the server (see the note up top).
+-->
 <script src="/execcommand.js"></script>
 <script>
   // Each case sets the editor up, selects something, runs a command, and
@@ -171,25 +185,36 @@
     }
   }
 
-  const results = CASES.map((testCase) => {
+  // execcommand.js not on the page — almost always a file:// open, where
+  // Firefox refuses the ../front/ script. One sentence beats eleven identical
+  // "runCommand is not defined" throws.
+  if (typeof runCommand !== "function") {
+    document.getElementById("report").textContent =
+      "front/execcommand.js did not load. Run this through the server — " +
+      "`npm run serve`, then http://localhost:9130/tests/browser-check.html — " +
+      "not as a file:// off disk.";
+    document.title = "check: execcommand.js did not load";
+  } else {
+    const results = CASES.map((testCase) => {
+      try {
+        return runCase(testCase);
+      } catch (error) {
+        return { name: testCase.name, verdict: "THREW", raw: String(error) };
+      }
+    });
+
+    const report = {
+      agent: navigator.userAgent,
+      results,
+      problems: results.filter((r) => r.verdict !== "ok" && r.verdict !== "—").length,
+    };
+
+    document.getElementById("report").textContent = JSON.stringify(report, null, 2);
+    document.title = `check: ${report.problems} problems`;
+
+    // Only meaningful when something is listening on /report; harmless otherwise.
     try {
-      return runCase(testCase);
-    } catch (error) {
-      return { name: testCase.name, verdict: "THREW", raw: String(error) };
-    }
-  });
-
-  const report = {
-    agent: navigator.userAgent,
-    results,
-    problems: results.filter((r) => r.verdict !== "ok" && r.verdict !== "—").length,
-  };
-
-  document.getElementById("report").textContent = JSON.stringify(report, null, 2);
-  document.title = `check: ${report.problems} problems`;
-
-  // Only meaningful when served by the check server; harmless from file://.
-  try {
-    fetch("/report", { method: "POST", body: JSON.stringify(report) });
-  } catch {}
+      fetch("/report", { method: "POST", body: JSON.stringify(report) });
+    } catch {}
+  }
 </script>
