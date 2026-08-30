@@ -5,6 +5,6 @@
     "dev": "deno run --allow-read --allow-write --allow-net --allow-sys=homedir --allow-env=MARKY_PORT --watch src/main.ts"
   },
   "imports": {
-    "hono": "npm:hono@^4.13.3"
+    "hono": "npm:hono@^4.13.5"
   }
 }

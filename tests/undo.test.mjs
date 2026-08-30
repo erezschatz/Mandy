@@ -49,9 +49,9 @@ function harness({ html = "<p>start</p>" } = {}) {
     onToolbarAction: (action, fn) => actions.set(action, fn),
     runToolbarAction: (action) => actions.get(action)?.(),
     console,
-  }, "; return { undo, redo, undoReset, undoTextOffset, undoLocateOffset," +
-     " undoDepth: () => undoStack.length, redoDepth: () => redoStack.length," +
-     " undoPosition };");
+  }, "; return { undo, redo, undoReset, undoBreak, undoTextOffset," +
+     " undoLocateOffset, undoDepth: () => undoStack.length," +
+     " redoDepth: () => redoStack.length, undoPosition };");
 
   return {
     ...api, editor, actions, heard,
@@ -91,6 +91,12 @@ export default function run(check) {
   check(
     "app.js no longer drives execCommand undo",
     !/execCommand\("(undo|redo)"\)/.test(readFront("app.js")),
+  );
+  // The plain-paste branch raises `insertText`, exactly as typing does, so the
+  // explicit break is the only thing keeping a paste out of the run around it.
+  check(
+    "app.js breaks coalescing before the plain-text paste",
+    /undoBreak\(\);\s*\n\s*runCommand\("insertText"/.test(readFront("app.js")),
   );
   // Load order: undo.js binds to `editor`, which app.js defines.
   const bundle = [...readFront("index.html").matchAll(/src="\/([a-z-]+\.js)"/g)].map((m) => m[1]);
@@ -154,6 +160,46 @@ export default function run(check) {
   check("a programmatic edit never joins the typing before it", h.undoDepth() === 2);
   h.undo();
   check("and is undoable on its own", h.editor.innerHTML === "<p>starta</p>");
+
+  // --- the break ------------------------------------------------------------
+  //
+  // The one edit the allowlist cannot tell apart on its own: a plain paste goes
+  // in through execCommand("insertText") and so reports the same inputType a
+  // keystroke does. Chrome 152 and Firefox 154 both strip text/html on
+  // Ctrl/Cmd+Shift+V (measured by tests/paste-check.html), so that binding
+  // lands in app.js's plain branch — which means this is the live path, not a
+  // hypothetical one.
+
+  h = harness();
+  h.undoReset();
+  h.type("a");
+  h.undoBreak();
+  h.type("pasted");
+  check("a broken step does not join the typing before it", h.undoDepth() === 2);
+  h.undo();
+  check("so one undo takes back the paste alone",
+    h.editor.innerHTML === "<p>starta</p>");
+
+  h = harness();
+  h.undoReset();
+  h.type("a");
+  h.undoBreak();
+  h.type("pasted");
+  h.type("b");
+  check("and nothing typed after it merges in either", h.undoDepth() === 3);
+
+  // The flag is consumed by the edit it isolates rather than left standing.
+  // "b" starts its own step because nothing merges into a broken one; "c"
+  // merging into "b" is what says the break is spent — were it still set,
+  // every keystroke after a paste would be its own undo for the rest of the
+  // session.
+  h = harness();
+  h.undoReset();
+  h.undoBreak();
+  h.type("a");
+  h.type("b");
+  h.type("c");
+  check("the break is spent on the edit it isolates", h.undoDepth() === 2);
 
   // --- redo ----------------------------------------------------------------
 

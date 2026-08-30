@@ -114,8 +114,12 @@ three come out right through Shift+Tab.
 [tests/paste-check.html](tests/paste-check.html) is the third, and the only one
 that cannot be run by a machine at all: it measures what a browser puts in a
 paste event for Ctrl+Shift+V, which needs a real clipboard and a real
-keystroke. It answers the question TODO 1.3 opens with. Unlike the other two it
-needs no server and no app — open the file itself.
+keystroke. It answered the question TODO 1.3 opened with: Chrome 152 and Firefox
+154 both offer `text/plain` alone on that binding, so the plain branch in
+`app.js` already fires and there was nothing to build for either — the opposite
+of what the item predicted. Safari is still unmeasured; its binding is
+Cmd+Shift+Option+V. Unlike the other two it needs no server and no app — open
+the file itself.
 
 ## Architecture
 
@@ -673,7 +677,28 @@ empty `<div class="toolbar">` and [toolbar.js](front/toolbar.js) fills it from
 It was a row of sixteen buttons until it stopped fitting: four groups plus the
 theme toggle, wrapping onto a second line below about 900px, with split buttons
 bolted on where two actions had to share one slot. Six words — File, Edit,
-Insert, Format, View, Export — hold 26 items and fit one line at 375px.
+Insert, Format, View, Export — hold 30 items and fit one line at 375px.
+
+**Edit is the selection's menu, and that is what decides where the two markdown
+clipboard actions live.** Once Edit gained an ordinary Cut / Copy / Paste /
+Paste without formatting, *Copy markdown* and *Paste markdown* sitting beside
+them made two pairs of near-identical names meaning entirely different things —
+one pair acting on the selection, the other on the whole document. So *Copy
+markdown* moved to **Export**, where copying the document as markdown is an
+export to the clipboard rather than to a file, and *Paste markdown* moved to
+**Insert**, which is what it does: it inserts at the caret, and has done since
+it stopped replacing the document. Nothing was renamed — the menu each one sits
+in is what tells them apart.
+
+Cut and Copy are `execCommand` and need nothing else, since `mousedown` is
+prevented over the bar and the selection survives the click. **Paste is the
+exception, and it is a browser restriction rather than a choice:**
+`execCommand("paste")` is refused in web content, so the two Paste items read
+`navigator.clipboard` themselves and share `insertPastedContent` /
+`insertPlainText` with the editor's own `paste` listener rather than
+reimplementing the sanitise-and-insert path. Reading the clipboard is a
+permission the app may not have, so both report failure by pointing at the
+keyboard, which never needed it.
 
 **The bar is two rows in the app, one in an exported document.** The menus have
 the first to themselves. The second is `.toolbar-content`, the document row: the

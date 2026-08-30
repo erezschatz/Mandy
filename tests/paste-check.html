@@ -20,6 +20,11 @@
 
   Unlike browser-check.html and list-indent-check.html, this one needs no
   server and no app: open the file directly in each browser you care about.
+
+  Measured 2026-08-30 — Chrome 152 and Firefox 154 both offer text/plain alone
+  on Shift+V, and both deliver the keydown to the page. So the plain branch
+  already fires in Blink and Gecko and there is nothing to build for either.
+  Safari is still unmeasured; its binding is Cmd+Shift+Option+V.
 -->
 
 <style>

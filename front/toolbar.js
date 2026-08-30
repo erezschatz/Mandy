@@ -63,12 +63,20 @@ const TOOLBAR_MENUS = [
     { id: "downloadBtn", action: "download-md", label: "Download markdown", shortcut: "Ctrl+S", variants: ["export"] },
   ] },
 
+  // Edit is the selection's menu: everything here acts on what is selected in
+  // the document. The two whole-document clipboard actions that used to sit
+  // here have moved out — "Copy markdown" to Export, "Paste markdown" to
+  // Insert — because side by side with a plain Copy and Paste they were two
+  // pairs of near-identical names meaning entirely different things, and the
+  // menu is where the distinction has to be legible.
   { id: "editMenu", label: "Edit", variants: ALL, items: [
     { id: "undoBtn", action: "undo", label: "Undo", shortcut: "Ctrl+Z", variants: ALL },
     { id: "redoBtn", action: "redo", label: "Redo", shortcut: "Ctrl+Shift+Z", variants: ALL },
     { separator: true, variants: ALL },
-    { id: "copyBtn", action: "copy-md", label: "Copy markdown", variants: ALL },
-    { id: "pasteBtn", action: "paste-md", label: "Paste markdown", variants: ALL },
+    { action: "cut", label: "Cut", shortcut: "Ctrl+X", variants: ALL },
+    { action: "copy", label: "Copy", shortcut: "Ctrl+C", variants: ALL },
+    { action: "paste", label: "Paste", shortcut: "Ctrl+V", variants: ALL },
+    { action: "paste-plain", label: "Paste without formatting", shortcut: "Ctrl+Shift+V", variants: ALL },
     { separator: true, variants: ALL },
     // An ordinary edit now — select all, delete — rather than the
     // document-replacing action it used to be, so it lives here rather than
@@ -79,6 +87,11 @@ const TOOLBAR_MENUS = [
   { id: "insertMenu", label: "Insert", variants: ALL, items: [
     { id: "tocInsertBtn", action: "insert-toc", label: "Table of contents", variants: ALL },
     { action: "insert-hr", label: "Horizontal rule", variants: ALL },
+    { separator: true, variants: ALL },
+    // Reads honestly here: it inserts the clipboard's markdown at the caret
+    // rather than replacing the document, which is what it used to do back
+    // when it lived in Edit next to Clear.
+    { id: "pasteBtn", action: "paste-md", label: "Paste markdown", variants: ALL },
   ] },
 
   // These drive applyFormat in format-bar.js, which the format bar's own
@@ -107,6 +120,10 @@ const TOOLBAR_MENUS = [
   ] },
 
   { id: "exportMenu", label: "Export", variants: ALL, items: [
+    // Export to the clipboard rather than to a file, which is what "copy as
+    // markdown" has always meant — the odd one out only while it sat in Edit.
+    { id: "copyBtn", action: "copy-md", label: "Copy markdown", variants: ALL },
+    { separator: true, variants: ALL },
     { id: "htmlBtn", action: "export-html", label: "HTML page\u2026", variants: ALL },
     // App-only, and the one place the export set is deliberately shorter than
     // the app's. PDF and DOCX are terminal formats: nobody edits a PDF and

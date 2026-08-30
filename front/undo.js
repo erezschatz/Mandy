@@ -43,6 +43,8 @@ const UNDO_LIMIT = 100;
 // (Enter, bold, paste, a formatBlock) is a deliberate act and earns its own
 // step. `inputType` is what makes that distinction available; a synthetic event
 // has none, so a programmatic edit never coalesces into the typing before it.
+// The exception is an execCommand insert, which reports the same `insertText` a
+// keystroke does however it was triggered — that is what `undoBreak()` is for.
 const UNDO_COALESCE_MS = 600;
 const UNDO_COALESCING = new Set([
   "insertText",
@@ -61,6 +63,8 @@ let undoCurrent = null;
 let undoApplying = false;
 let undoLastType = null;
 let undoLastTime = 0;
+// Set by undoBreak(), cleared by the input event it isolates.
+let undoBreakOnce = false;
 
 // ── Selection, as a character offset ─────────────────────────────────────────
 //
@@ -237,6 +241,19 @@ function undoRefresh() {
   undoCurrent = undoSnapshot();
 }
 
+/**
+ * Keep the next edit out of the run of typing around it. For a programmatic
+ * insert that arrives as `insertText` and so is indistinguishable from a
+ * keystroke — paste-without-formatting is the one that needs it, since it goes
+ * in through execCommand("insertText") like any typed character. Without this
+ * a plain paste lands in the middle of whatever the user was typing and one
+ * Ctrl+Z takes back both. Isolates the step on both sides: nothing before it
+ * merges in, and nothing typed after it merges into the paste.
+ */
+function undoBreak() {
+  undoBreakOnce = true;
+}
+
 function undo() {
   if (!undoStack.length) return false;
   redoStack.push(undoCurrent || undoSnapshot());
@@ -258,6 +275,7 @@ editor.addEventListener("input", (event) => {
   const type = event && event.inputType;
   const now = Date.now();
   const coalesce =
+    !undoBreakOnce &&
     UNDO_COALESCING.has(type) &&
     type === undoLastType &&
     now - undoLastTime < UNDO_COALESCE_MS;
@@ -270,8 +288,11 @@ editor.addEventListener("input", (event) => {
   // Any fresh edit invalidates the redo branch, coalesced or not.
   redoStack = [];
   undoCurrent = undoSnapshot();
-  undoLastType = type;
+  // A broken step is also one nothing may merge *into*, so the type it reports
+  // must not match whatever comes next either.
+  undoLastType = undoBreakOnce ? null : type;
   undoLastTime = now;
+  undoBreakOnce = false;
 });
 
 // Registered as toolbar actions rather than bound to keys alone: the Edit menu

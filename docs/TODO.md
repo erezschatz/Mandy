@@ -92,48 +92,25 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     - **Touch devices have no modifier**, so there is no way to follow a link on
       one, and the hover tooltip never shows either. Wants its own affordance —
       a long-press, or the chip Google Docs shows.
-*   **1.3** Paste without formatting (Ctrl/Cmd+Shift+V), and the menu reorg it
-    comes with. Three parts, and the first is a question rather than work:
-    browsers already implement that binding in a `contenteditable` as
-    paste-as-plain-text, but the handler in app.js intercepts *every* paste and
-    prefers `text/html` whenever the clipboard offers one — so if the browser
-    still hands over an HTML flavour we override the user's request. Check in a
-    real browser first: if Chrome strips `text/html` for that binding the plain
-    branch already fires and there is nothing to build but the Firefox case.
-    Either way the robust shape is a flag set from a `keydown` on `#editor` and
-    consumed by the next `paste` event.
+*   **1.3** *(fixed, unverified in WebKit)*
+    Paste without formatting is built; what is left is one measurement.
 
-    [tests/paste-check.html](../tests/paste-check.html) is how to answer both
-    halves of that, and it needs a person with a real clipboard — a synthetic
-    event proves nothing here, since what is being measured is what the browser
-    puts in the event. Open it in each browser (no server and no app: it reads
-    the clipboard, not `front/`), paste once with each binding, and it reports
-    the flavours offered, which branch app.js would take, and whether the
-    `keydown` for Shift+V reaches the page at all — because if a browser
-    swallows that keystroke, the flag has nothing to hang off and the shape
-    above has to change.
+    [tests/paste-check.html](../tests/paste-check.html) settled the question
+    this item opened with — whether the browser still puts a `text/html`
+    flavour in the event on Ctrl/Cmd+Shift+V, in which case app.js's preference
+    for HTML would override the user's request. **Measured 2026-08-30: Chrome
+    152 and Firefox 154 both offer `text/plain` alone**, so the plain branch
+    already fires and there was nothing to build for either. That is the
+    opposite of what this item predicted, which is the whole argument for the
+    check pages. Both engines also deliver the `keydown` for Shift+V to the
+    page, so if WebKit does keep the HTML flavour, the shape to reach for is a
+    flag set from a `keydown` on `#editor` and consumed by the next `paste`
+    event — now known to be workable rather than assumed.
 
-    Second, the plain branch has a bug waiting for it. It goes through
-    `execCommand("insertText")`, which raises `input` with
-    `inputType: "insertText"` — and that is in `UNDO_COALESCING`, so a plain
-    paste within 600ms of typing merges into the keystroke before it and one
-    Ctrl+Z takes back both. The paste path should break coalescing explicitly.
-
-    Third, the Edit menu. It currently holds *Copy markdown* and *Paste
-    markdown*, which are whole-document operations, and adding selection-level
-    Cut / Copy / Paste beside them gives two pairs of near-identical names
-    meaning entirely different things. The split that resolves it: **Edit** gets
-    Cut, Copy, Paste and Paste without formatting; *Copy markdown* moves to
-    **Export**, where "copy as markdown" is what it has always meant; *Paste
-    markdown* moves to **Insert**, which reads honestly now that it inserts
-    rather than replaces. Cut and Copy can go through `execCommand`, which
-    raises `input`, so undo and the dirty flag pick them up for nothing.
-    `mousedown` is already prevented over the bar, so the editor's selection
-    survives the click.
-
-    Note that this is now a convenience rather than a fix: the whitespace
-    cleanup took the pain out of an ordinary paste, so what is left here is
-    wanting the text bare, not wanting it repaired.
+    **What is left: run the page in Safari.** Its binding is
+    Cmd+Shift+Option+V rather than Cmd+Shift+V, so press both and see which one
+    the page logs as a plain-text paste. If WebKit strips the flavour like the
+    other two, this item closes with no further code.
 
 *   **1.4** Invisible whitespace: what the cleanup does not reach. Pasted HTML
     is sanitised on the way in and U+00A0 is normalised on the way out (see D3
@@ -153,8 +130,8 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     document, a highlight/navigate UI, and replacement done through
     `runCommand("insertText", …)` or Range manipulation so it stays undoable
     and raises `input` like everything else in
-    [execcommand.js](../front/execcommand.js). Comparable in size to 1.3, not to
-    the one-liners nearby.
+    [execcommand.js](../front/execcommand.js). A feature in its own right, not
+    one of the one-liners nearby.
 
 ## 2. Save fidelity
 

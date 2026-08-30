@@ -1030,12 +1030,27 @@ function sanitisePastedHtml(html) {
   return container.innerHTML;
 }
 
-editor.addEventListener("paste", (e) => {
-  e.preventDefault();
+// The plain half of a paste, and the whole of Paste without formatting.
+//
+// This is what Ctrl/Cmd+Shift+V lands in: Chrome 152 and Firefox 154 both strip
+// text/html for that binding (measured by tests/paste-check.html), so a plain
+// paste arrives here rather than in the branch above. execCommand raises it as
+// `insertText`, which is exactly what a keystroke raises, so without the break
+// a paste in the middle of a sentence would be undone together with the
+// sentence.
+//
+// The character only, never the entity: in text/plain an "&nbsp;" is six
+// characters somebody actually copied.
+function insertPlainText(text) {
+  if (!text || !text.trim()) return;
+  undoBreak();
+  runCommand("insertText", text.replace(/\u00a0/g, " "));
+}
 
-  const html = e.clipboardData.getData("text/html");
-  const text = e.clipboardData.getData("text/plain");
-
+// Shared by the paste event and the Edit menu's Paste, so the two cannot
+// disagree about what a paste does — the menu reads the clipboard through the
+// async API instead of an event, and that is the only difference between them.
+function insertPastedContent(html, text) {
   if (html && html.trim()) {
     const clean = sanitisePastedHtml(html);
     // A fragment that was nothing but wrappers sanitises to nothing. Falling
@@ -1046,11 +1061,58 @@ editor.addEventListener("paste", (e) => {
       return;
     }
   }
+  insertPlainText(text);
+}
 
-  // The character only, never the entity: in text/plain an "&nbsp;" is six
-  // characters somebody actually copied.
-  if (text && text.trim()) {
-    runCommand("insertText", text.replace(/\u00a0/g, " "));
+editor.addEventListener("paste", (e) => {
+  e.preventDefault();
+  insertPastedContent(
+    e.clipboardData.getData("text/html"),
+    e.clipboardData.getData("text/plain"),
+  );
+});
+
+// Cut and Copy go through execCommand, which is enough on its own: it acts on
+// the editor's live selection, and `mousedown` is prevented over the toolbar so
+// clicking the menu item does not blur the editor and take that selection with
+// it. Cut raises `input` for free, so undo, autosave and the dirty flag pick it
+// up the way any other edit is picked up.
+onToolbarAction("cut", () => runCommand("cut"));
+onToolbarAction("copy", () => runCommand("copy"));
+
+// Paste cannot: execCommand("paste") is refused in web content in every engine,
+// so the menu has to read the clipboard itself. That is a permission the app
+// may not have — paste-md has always had the same problem and reports it the
+// same way — and the keyboard route works regardless, which is what the message
+// points at.
+onToolbarAction("paste", async () => {
+  try {
+    const items = await navigator.clipboard.read();
+    let html = "";
+    let text = "";
+    for (const item of items) {
+      if (!html && item.types.includes("text/html")) {
+        html = await (await item.getType("text/html")).text();
+      }
+      if (!text && item.types.includes("text/plain")) {
+        text = await (await item.getType("text/plain")).text();
+      }
+    }
+    insertPastedContent(html, text);
+  } catch (err) {
+    notify("Unable to read the clipboard. Press Ctrl+V to paste instead.", {
+      severity: "error",
+    });
+  }
+});
+
+onToolbarAction("paste-plain", async () => {
+  try {
+    insertPlainText(await navigator.clipboard.readText());
+  } catch (err) {
+    notify("Unable to read the clipboard. Press Ctrl+Shift+V to paste instead.", {
+      severity: "error",
+    });
   }
 });
 
