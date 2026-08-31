@@ -66,10 +66,11 @@ They cover the invariants that fail *silently* rather than loudly:
   can only assert what we do with the output. That half is
   [tests/browser-check.html](tests/browser-check.html), which is not part of
   `npm test` — see below.
-- **undo** — the coalescing rules, the redo branch, and above all that history
-  does not survive `undoReset()`. Also counts the `editor.innerHTML` assignment
-  sites, because the way this regresses is not a broken stack but a new
-  assignment that never tells the stack about it.
+- **undo** — the coalescing rules, the redo branch, that history does not
+  survive `undoReset()`, and that `undoPark()`/`undoAdopt()` carry it across a
+  tab switch whole rather than merging two tabs' stacks. Also counts the
+  `editor.innerHTML` assignment sites, because the way this regresses is not a
+  broken stack but a new assignment that never tells the stack about it.
 - **save-fidelity** — the serialiser options app.js asks for, and then
   `markdown-style.js` directly: the sniffers, and every guard in the re-wrapper.
   That second half is the one that writes into the user's file. It also covers
@@ -130,6 +131,20 @@ keystroke. It answered the question TODO 1.3 opened with: Chrome 152 and Firefox
 of what the item predicted. Safari is still unmeasured; its binding is
 Cmd+Shift+Option+V. Unlike the other two it needs no server and no app — open
 the file itself.
+
+## Making a change
+
+- **Every change lands in [CHANGELOG.md](CHANGELOG.md) as part of the change
+  itself.** Add a dated entry in the prose style the file already uses, with no
+  commit hash in the header yet; once it is committed, backfill the header to
+  `## DATE — HASH — Title`. This holds for docs, comments and metafiles too — a
+  change with no CHANGELOG entry is unfinished.
+- **Do not run tests for a change that touches no code.** Nothing in `tests/`
+  loads a CHANGELOG entry, a comment, a doc or a `docs/` file, so `npm test`
+  proves nothing about one — skip it. When code does change, run only the suite
+  that names the file you touched (import it directly, per the Tests section
+  above) rather than the whole `npm test`, unless the change reaches across
+  enough of `front/` that only the full run covers it.
 
 ## Architecture
 
@@ -1028,13 +1043,22 @@ and getting it wrong corrupts the document.
 
 Four things worth knowing:
 
-- **`undoReset()` is the only API, and it marks a document boundary.** History
-  never crosses one. Undo after an Open must not hand back the previous file's
-  text, because that text would then be sitting under the new file's path, one
-  Ctrl+S away from being written there. Every site that assigns
-  `editor.innerHTML` picks a side — reset, or raise an `input` event and be
-  undoable — and the `undo` suite counts those sites so a new one cannot skip
-  the choice.
+- **`undoReset()`, `undoPark()` and `undoAdopt()` are the whole API, and they
+  turn on a document boundary.** History never crosses one. Undo after an Open
+  must not hand back the previous file's text, because that text would then be
+  sitting under the new file's path, one Ctrl+S away from being written there.
+  Every site that assigns `editor.innerHTML` picks a side — `undoReset()`, or
+  raise an `input` event and be undoable — and the `undo` suite counts those
+  sites so a new one cannot skip the choice. The one sanctioned crossing is a
+  **tab switch**, where the outgoing document is set aside rather than replaced:
+  the seven pieces of history state are collapsed into one detachable `history`
+  object, `undoPark()` hands it back for the caller to keep on the outgoing tab
+  and leaves a fresh one in place, and `undoAdopt(bundle)` installs the incoming
+  tab's — `undoAdopt(null)` being exactly `undoReset()`. The bundle moves whole
+  and the two stacks are never merged, so an undo in one tab cannot reach
+  another's content. The caller swaps `editor.innerHTML` before adopting: adopt
+  trusts the bundle matches what is on screen and never re-snapshots, the same
+  ordering `undoReset()` needs against the content settling first.
 - **A programmatic edit announces itself with a synthetic `input` event.** That
   was already the convention for autosave and the dirty flag, which is why
   `insertToc` needed no change at all to become undoable. `paste-md` needs

@@ -1298,3 +1298,90 @@ with no new code.
 
 `sw.js` is at `v1.23`. Still open in 1.1: images, tables, blockquotes, h4–h6,
 inline code and indent/outdent controls.
+
+## 2026-08-31 — `0da618a` — A new icon and logo, and the menubar goes teal
+
+The hand-drawn "M" favicon was replaced with the project's actual mark — a teal
+blob with a gold dot, traced to vector, transparent, on a `0 0 1095 1095`
+viewBox. `favicon.svg` and `icon-maskable.svg` took the new art, and the three
+`favicon-*.png` sizes were re-rasterised from it (and fell to about a third of
+their weight on the way).
+
+**The OS window chrome and the in-app menu bar are two different surfaces, and
+they were being conflated.** `<meta name="theme-color">` and the manifest's
+`theme_color` tint the browser/OS title bar; `--bg-toolbar` in `app.css`
+colours the menu row inside the page. The title bar went to white (`#ffffff`)
+so the new transparent icon's dark-teal mark stays visible against it, and the
+menu row — light theme only — went to the brand teal `#0c4c4a`. The dark
+theme's toolbar stays near-black.
+
+`icon-maskable.svg` was rebuilt with a full-bleed background, and that
+background is **white rather than the brand teal**: the mark is itself `#0c4c4a`
+and would disappear on it. The art is left full-size; the mobile safe-zone
+question waits for the tab work.
+
+**The welcome document leads with the banner lockup now**, and its headings lost
+their emoji. The image ships as a 480px-wide raster rather than the icon SVG, so
+`#editor img { max-width: 100% }` controls its size — an SVG with a viewBox but
+no intrinsic dimensions renders at the browser's ~300px default, which is
+enormous at the top of the page. It is theme-swapped: `welcome-banner-dark.png`,
+a light-cyan recolour of the lockup on `#1a1a1a`, is shown under
+`[data-theme="dark"]` by a CSS `content: url()` rule keyed on the `src`.
+markdown-it runs with `html: false`, so there is no class hook and no
+`<picture>` to reach for; the swap stays presentational and the document keeps a
+single `<img>`. The dark file's background matches `--bg-editor` so it blends
+rather than sitting in a card.
+
+`sw.js` is at `v1.24`, with `welcome-banner.png` and `welcome-banner-dark.png`
+added to `SHELL_ASSETS`.
+
+## 2026-08-31 — `d604beb` — Undo history becomes a detachable bundle (TODO 4.1)
+
+The first slice of tabbed view, and nothing changes for a single document —
+this is groundwork.
+
+[undo.js](front/undo.js) kept its history in seven module-level variables, and
+`undoReset()` was the only thing that could end one. It is called at every site
+that assigns `editor.innerHTML`, and the `undo` suite counts those sites so a
+new one cannot skip the choice between forgetting the history and raising an
+`input` event to stay undoable. A tab switch is neither: the document leaving
+the screen is not replaced or edited, only set aside, and its history has to
+come back untouched when the user returns to it.
+
+So the seven variables collapsed into one `history` object, and two functions
+join `undoReset()`:
+
+- **`undoPark()`** detaches the current `history`, leaves a fresh one in its
+  place, and hands the old one back for the caller to keep on the outgoing tab.
+- **`undoAdopt(bundle)`** installs a bundle as the live history.
+  `undoAdopt(null)` is exactly `undoReset()` — a fresh baseline from whatever is
+  in the editor — for a tab with no history of its own yet.
+
+The bundle moves as a unit and the two stacks are never merged, so an undo in
+one tab cannot reach another tab's content. One ordering rule: the caller swaps
+`editor.innerHTML` to the incoming document before calling `undoAdopt`, because
+adopt trusts the bundle matches what is on screen and never re-snapshots — the
+same constraint `undoReset()` already carries against running before the content
+settles.
+
+Every existing caller — [file-api.js](front/file-api.js),
+[execcommand.js](front/execcommand.js), [app.js](front/app.js) — uses a
+signature that did not change. The `undo` suite picked up eleven checks in a new
+park/adopt group: parking carries the stack out and leaves an empty one,
+adopting restores exact depth and the position ids `file-api.js` reads to follow
+the dirty flag, and draining one tab's history never surfaces another's markup.
+
+`sw.js` is at `v1.25`.
+
+## 2026-08-31 — Two workflow rules, and the cache bump `d604beb` missed
+
+[CLAUDE.md](CLAUDE.md) gained a "Making a change" section with two rules: every
+change goes in this file as part of itself — hash-less first, header backfilled
+once committed — and tests are not run for a change that touches no code, and
+otherwise only the suite naming the touched file rather than the whole
+`npm test`.
+
+`d604beb` edited `undo.js`, a `SHELL_ASSETS` entry, without moving `VERSION`, so
+`sw.js` goes to `v1.25` here to retire the stale cached copy. The CHANGELOG
+entry for `0da618a` — the icon/logo commit, which had gone in without one — was
+written at the same time.

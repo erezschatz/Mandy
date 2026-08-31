@@ -31,6 +31,14 @@
 // from writing the old document into the new file's path. Every site that
 // assigns editor.innerHTML has to pick a side, and tests/undo.test.mjs counts
 // them so a new one cannot quietly skip the decision.
+//
+// `undoPark()` / `undoAdopt()` are the one sanctioned crossing of that line,
+// for a tab switch — where the outgoing document is neither replaced nor edited
+// but set aside to be returned to. Park detaches the whole history bundle for
+// the caller to keep on the outgoing tab; adopt installs the incoming tab's
+// bundle, or — given null — is exactly `undoReset()`. The bundle moves as a
+// unit and the two stacks are never merged, which is what keeps an undo in one
+// tab from ever reaching another tab's content.
 
 // Deep enough that nobody reaches the end of it in normal editing, small enough
 // that a large document cannot run the tab out of memory: each snapshot is a
@@ -52,19 +60,42 @@ const UNDO_COALESCING = new Set([
   "deleteContentForward",
 ]);
 
-let undoStack = [];
-let redoStack = [];
-// The state the editor is in right now. Pushed onto the undo stack when the
-// next change arrives — which is why it has to be kept up to date even for
-// changes that coalesce and push nothing.
-let undoCurrent = null;
+// The history is one detachable bundle, so a tab switch can set the whole thing
+// aside and bring another back (undoPark / undoAdopt). Everything describing
+// "the document's past" lives in here; `undoApplying` below does not — it is a
+// re-entrancy guard on the current call, not document state.
+//
+// `nextId` identifies a state, not a position in the stack: a stack index goes
+// stale the moment UNDO_LIMIT shifts everything down by one, and would then
+// match whatever state has slid into that slot rather than the one that was
+// there. An id minted once and never reused cannot — it is only ever revisited
+// by literally undoing or redoing back to it, never recreated by two unrelated
+// edits landing on the same id. file-api.js reads it (undoPosition) to know
+// whether undo has brought the document back to the position it was last saved
+// from. Ids are only ever compared within one bundle, so each document counting
+// from zero is fine, and `undoReset()` deliberately lets it keep climbing so a
+// savepoint id is never reused inside a bundle's life.
+function freshHistory() {
+  return {
+    undoStack: [],
+    redoStack: [],
+    // The state the editor is in right now. Pushed onto the undo stack when the
+    // next change arrives — which is why it has to be kept up to date even for
+    // changes that coalesce and push nothing.
+    current: null,
+    nextId: 0,
+    lastType: null,
+    lastTime: 0,
+    // Set by undoBreak(), cleared by the input event it isolates.
+    breakOnce: false,
+  };
+}
+
+let history = freshHistory();
+
 // Guards the listener against the input event `applyUndoSnapshot` raises for
 // everyone else's benefit. Without it an undo would record itself as an edit.
 let undoApplying = false;
-let undoLastType = null;
-let undoLastTime = 0;
-// Set by undoBreak(), cleared by the input event it isolates.
-let undoBreakOnce = false;
 
 // ── Selection, as a character offset ─────────────────────────────────────────
 //
@@ -179,17 +210,12 @@ function undoRestoreSelection(saved) {
 
 // ── The stack ────────────────────────────────────────────────────────────────
 
-// Identifies a state, not a position in the stack: a stack index goes stale
-// the moment UNDO_LIMIT shifts everything down by one, and would then match
-// whatever state has slid into that slot rather than the one that was there.
-// An id minted once and never reused cannot — it is only ever revisited by
-// literally undoing or redoing back to it, never recreated by two unrelated
-// edits landing on the same id. file-api.js uses this to know whether undo has
-// brought the document back to the position it was last saved from.
-let undoNextId = 0;
-
 function undoSnapshot() {
-  return { html: editor.innerHTML, selection: undoCaptureSelection(), id: undoNextId++ };
+  return {
+    html: editor.innerHTML,
+    selection: undoCaptureSelection(),
+    id: history.nextId++,
+  };
 }
 
 // The id of the document's current state. Undo and redo hand back a snapshot
@@ -197,7 +223,7 @@ function undoSnapshot() {
 // undoSnapshot() again — that is what makes a round trip back to a state
 // reproduce its original id instead of getting a new one.
 function undoPosition() {
-  return undoCurrent ? undoCurrent.id : null;
+  return history.current ? history.current.id : null;
 }
 
 function applyUndoSnapshot(snapshot) {
@@ -212,8 +238,8 @@ function applyUndoSnapshot(snapshot) {
   editor.dispatchEvent(new Event("input", { bubbles: true }));
   undoApplying = false;
 
-  undoCurrent = snapshot;
-  undoLastType = null;
+  history.current = snapshot;
+  history.lastType = null;
 }
 
 /**
@@ -223,11 +249,11 @@ function applyUndoSnapshot(snapshot) {
  * baseline is the document as the user will actually see it.
  */
 function undoReset() {
-  undoStack = [];
-  redoStack = [];
-  undoCurrent = undoSnapshot();
-  undoLastType = null;
-  undoLastTime = 0;
+  history.undoStack = [];
+  history.redoStack = [];
+  history.current = undoSnapshot();
+  history.lastType = null;
+  history.lastTime = 0;
 }
 
 /**
@@ -238,7 +264,7 @@ function undoReset() {
  * two Ctrl+Z, the first of which would appear to do nothing.
  */
 function undoRefresh() {
-  undoCurrent = undoSnapshot();
+  history.current = undoSnapshot();
 }
 
 /**
@@ -251,48 +277,75 @@ function undoRefresh() {
  * merges in, and nothing typed after it merges into the paste.
  */
 function undoBreak() {
-  undoBreakOnce = true;
+  history.breakOnce = true;
+}
+
+/**
+ * Detach the whole history and leave a fresh one in its place. For a tab
+ * switch: stash the returned bundle on the outgoing tab, swap editor.innerHTML
+ * to the incoming document, then undoAdopt that tab's stored bundle. Nothing
+ * here touches the editor — the content swap is the caller's.
+ */
+function undoPark() {
+  const parked = history;
+  history = freshHistory();
+  return parked;
+}
+
+/**
+ * Install a history bundle as the live one. A bundle is trusted to match the
+ * content the caller has already put on screen — nothing is re-snapshotted, so
+ * the editor must be swapped first, exactly as undoReset() has to run after the
+ * content settles. `undoAdopt(null)` is `undoReset()`: a fresh baseline taken
+ * from whatever is in the editor now, for a tab with no history of its own yet.
+ */
+function undoAdopt(bundle) {
+  if (bundle) {
+    history = bundle;
+    return;
+  }
+  undoReset();
 }
 
 function undo() {
-  if (!undoStack.length) return false;
-  redoStack.push(undoCurrent || undoSnapshot());
-  applyUndoSnapshot(undoStack.pop());
+  if (!history.undoStack.length) return false;
+  history.redoStack.push(history.current || undoSnapshot());
+  applyUndoSnapshot(history.undoStack.pop());
   return true;
 }
 
 function redo() {
-  if (!redoStack.length) return false;
-  undoStack.push(undoCurrent || undoSnapshot());
-  applyUndoSnapshot(redoStack.pop());
+  if (!history.redoStack.length) return false;
+  history.undoStack.push(history.current || undoSnapshot());
+  applyUndoSnapshot(history.redoStack.pop());
   return true;
 }
 
 editor.addEventListener("input", (event) => {
   if (undoApplying) return;
-  if (!undoCurrent) undoCurrent = undoSnapshot();
+  if (!history.current) history.current = undoSnapshot();
 
   const type = event && event.inputType;
   const now = Date.now();
   const coalesce =
-    !undoBreakOnce &&
+    !history.breakOnce &&
     UNDO_COALESCING.has(type) &&
-    type === undoLastType &&
-    now - undoLastTime < UNDO_COALESCE_MS;
+    type === history.lastType &&
+    now - history.lastTime < UNDO_COALESCE_MS;
 
   if (!coalesce) {
-    undoStack.push(undoCurrent);
-    if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+    history.undoStack.push(history.current);
+    if (history.undoStack.length > UNDO_LIMIT) history.undoStack.shift();
   }
 
   // Any fresh edit invalidates the redo branch, coalesced or not.
-  redoStack = [];
-  undoCurrent = undoSnapshot();
+  history.redoStack = [];
+  history.current = undoSnapshot();
   // A broken step is also one nothing may merge *into*, so the type it reports
   // must not match whatever comes next either.
-  undoLastType = undoBreakOnce ? null : type;
-  undoLastTime = now;
-  undoBreakOnce = false;
+  history.lastType = history.breakOnce ? null : type;
+  history.lastTime = now;
+  history.breakOnce = false;
 });
 
 // Registered as toolbar actions rather than bound to keys alone: the Edit menu

@@ -3,8 +3,9 @@
 // it worth replacing rather than working around.
 //
 // Two halves, and they fail differently. The behavioural half drives the real
-// stack: coalescing, the redo branch, and above all that history does not
-// survive a document being replaced. The source half counts the innerHTML
+// stack: coalescing, the redo branch, that history does not survive a document
+// being replaced, and that undoPark/undoAdopt move it across a tab switch whole
+// rather than merging two tabs' stacks. The source half counts the innerHTML
 // assignment sites, because the way this regresses is not a broken stack, it is
 // a seventh assignment added somewhere that never tells the stack about it —
 // after which undo hands back text from a document you are no longer editing.
@@ -49,9 +50,10 @@ function harness({ html = "<p>start</p>" } = {}) {
     onToolbarAction: (action, fn) => actions.set(action, fn),
     runToolbarAction: (action) => actions.get(action)?.(),
     console,
-  }, "; return { undo, redo, undoReset, undoBreak, undoTextOffset," +
-     " undoLocateOffset, undoDepth: () => undoStack.length," +
-     " redoDepth: () => redoStack.length, undoPosition };");
+  }, "; return { undo, redo, undoReset, undoBreak, undoPark, undoAdopt," +
+     " undoTextOffset, undoLocateOffset," +
+     " undoDepth: () => history.undoStack.length," +
+     " redoDepth: () => history.redoStack.length, undoPosition };");
 
   return {
     ...api, editor, actions, heard,
@@ -286,6 +288,51 @@ export default function run(check) {
   h.undo();
   check("but undo works normally again straight away",
     h.editor.innerHTML === "<p>a completely different file</p>");
+
+  // --- parking history across a tab switch --------------------------------
+  //
+  // A tab switch is neither a reset nor an edit: the outgoing document's
+  // history is set aside whole and brought back untouched, while the incoming
+  // document's own history — or a fresh one — takes over. The bundle moves as a
+  // unit; the two stacks are never merged, which is what stops an undo in one
+  // tab from ever reaching another tab's content.
+
+  h = harness();
+  h.undoReset();
+  h.type("a"); h.advance(700); h.type("b");
+  const tabA = h.undoPark();
+  check("parking hands back a bundle carrying the stack",
+    tabA.undoStack.length === 2);
+  check("and leaves a fresh empty history in its place", h.undoDepth() === 0);
+
+  // The incoming tab: swap the content first, then adopt.
+  h.editor.innerHTML = "<p>second document</p>";
+  h.undoAdopt(null);
+  check("adopt(null) is a reset — fresh baseline, no history", h.undoDepth() === 0);
+  const bFile = h.undoPosition();
+  check("with a position of its own, not the parked tab's", bFile !== null);
+  h.type("c");
+  h.undo();
+  check("the incoming tab undoes normally",
+    h.editor.innerHTML === "<p>second document</p>");
+  const tabB = h.undoPark();
+
+  // Back to A: its depth, its redo branch, its position ids — all intact.
+  h.editor.innerHTML = "<p>startab</p>";
+  h.undoAdopt(tabA);
+  check("adopting a bundle restores its exact depth", h.undoDepth() === 2);
+  h.undo();
+  check("and its steps still walk back", h.editor.innerHTML === "<p>starta</p>");
+  h.undo();
+  check("all the way", h.editor.innerHTML === "<p>start</p>");
+  check("with the redo branch it was parked with", h.redoDepth() === 2);
+
+  // The wall between tabs: draining A's stack never yields B's content.
+  while (h.undo()) { /* drain */ }
+  check("draining one tab's history cannot surface another's html",
+    h.editor.innerHTML === "<p>start</p>");
+  h.undoAdopt(tabB);
+  check("and B's own history is still where it was left", h.redoDepth() === 1);
 
   // --- an undo has to reach everyone else ----------------------------------
 
