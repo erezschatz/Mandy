@@ -1,9 +1,11 @@
-# 👋 Welcome to Marky
+![Marky](/welcome-banner.png)
+
+# Welcome to Marky
 
 A simple markdown editor that edits the files on your own machine. Start typing
 and see your formatted text in real-time!
 
-## ✨ Quick Start
+## Quick Start
 
 **Select text** to see formatting options appear above it. Put the cursor at
 the start of a line and a shorter bar appears with the formats that act on the
@@ -33,7 +35,7 @@ Below the menus is the file you have open. It says *(edited)* while your copy
 has changes you have not saved, and *(disk changed)* when something else has
 written to the file since you opened it.
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
 - **Ctrl+S** (Cmd+S on Mac) — Save
 - **Ctrl+Shift+S** (Cmd+Shift+S on Mac) — Save as
@@ -48,7 +50,7 @@ written to the file since you opened it.
   points at. A plain click still puts the caret in the text, so link text stays
   editable.
 
-## 🔄 Two Kinds of HTML Export
+## Two Kinds of HTML Export
 
 **HTML page…** gives you the document on its own: a single, standalone, styled
 page, the same way PDF and Word do. That is the one you want for sharing

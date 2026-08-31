@@ -11,7 +11,7 @@
         /* Backgrounds */
         --bg-primary: #ffffff;
         --bg-secondary: #f5f5f5;
-        --bg-toolbar: #2c3e50;
+        --bg-toolbar: #0c4c4a;
         --bg-editor: #ffffff;
         --bg-editor-focus: #fafafa;
         --bg-format-bar: #ffffff;
@@ -579,6 +579,15 @@
         height: auto;
         display: block;
         margin: 1rem 0;
+      }
+
+      /* The welcome banner ships as a light lockup; swap in the
+         light-on-dark version under the dark theme. Keyed on the src so the
+         document keeps a single <img> and the swap stays presentational —
+         markdown-it runs with html:false, so there is no class hook or
+         <picture> to reach for. */
+      [data-theme="dark"] #editor img[src$="welcome-banner.png"] {
+        content: url("/welcome-banner-dark.png");
       }
 
       #editor hr {
