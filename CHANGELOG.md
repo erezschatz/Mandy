@@ -1386,7 +1386,7 @@ otherwise only the suite naming the touched file rather than the whole
 entry for `0da618a` — the icon/logo commit, which had gone in without one — was
 written at the same time.
 
-## 2026-09-02 — `3ea6d66` — Rebrand: Marky becomes Mandy
+## 2026-09-02 — `f022926` — Rebrand: Marky becomes Mandy
 
 Every user-facing and in-source occurrence of "Marky"/"marky" became
 "Mandy"/"mandy": window titles, the manifest `name`/`short_name`, PWA meta tags,
@@ -1418,8 +1418,7 @@ in this line of commits.
 The README's "Check out the GitHub repository" link — the one for bug reports,
 feature requests and contributions — pointed at `Tommertom/marky`, the upstream
 fork source, rather than at this project's own repo; it now points at
-`erezschatz/marky` (to be updated again when the repo itself moves). The fork
-attribution link at the top still points at `Tommertom/marky`, which is correct.
+`erezschatz/mandy`.
 
 The README's intro gained a line on the rename itself — "Marky was where this
 started. Mandy is where it learned to give your files back exactly as it found
