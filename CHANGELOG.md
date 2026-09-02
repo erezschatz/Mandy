@@ -1431,3 +1431,20 @@ regenerated with the new wordmark — the logo mark, teal/mint/amber palette and
 set in Poppins ExtraBold, the closest match to the original; the banners are now
 flat vector renders rather than the previous textured raster, so they are also
 about a tenth of the file size.
+
+## 2026-09-02 — Packaging Mandy: two items recorded, no code
+
+[docs/TODO.md](docs/TODO.md) gained **6.3** — ship Mandy as a single executable
+via `deno compile`, the binary starting the server and opening the browser. The
+item spells out the parts that are not the `compile` call: baking in the
+permission set, carrying `front/` with `--include` and keeping `FRONT_DIR`
+resolvable inside the binary, and opening the browser. Packaging, not
+architecture.
+
+[docs/ROADMAP.md](docs/ROADMAP.md) gained **A desktop build** — Deno Desktop,
+which is `deno compile` plus a webview and a native bundler (`.dmg` / `.msi` /
+`.AppImage` / `.deb`). Recorded as post-1.0 for two reasons: it is a Deno 2.9
+feature still marked experimental, and its default OS-webview backend is a
+fourth rendering engine to reconcile against the contenteditable folklore
+`browser-check.html` exists to measure. The "unidentified developer" warning is
+explicitly *not* one of the blockers.

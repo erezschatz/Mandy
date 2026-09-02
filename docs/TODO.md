@@ -277,3 +277,21 @@ category fidelity deliberately does not extend to.
     they were rendered with, since Mermaid isn't shipped with the document.
     Dark-mode readers get a white card behind the diagram as a workaround
     rather than a properly re-rendered dark one.
+*   **6.3** *(no urgency)* Ship Mandy as a single executable. `deno compile`
+    bundles the runtime, the Hono server and `front/` into one binary per
+    platform, so "install Deno, run it under pm2" becomes "download this, run
+    it". The binary starts the server on a free port and opens the default
+    browser at it; Mandy already runs server-optional, so nothing else in the
+    app has to know it was launched this way.
+
+    The work is not the `compile` call, it is what the call assumes. The
+    `--allow-read` / `--allow-write` / `--allow-net` / `--allow-sys` set that
+    `server/deno.json` spells out has to be baked in. `front/` has to be carried
+    into the binary with `--include`, and `FRONT_DIR` — which resolves against
+    `import.meta.dirname` today — has to still find it from inside a compiled
+    binary's virtual filesystem. And something has to open the browser, which is
+    the one thing the server has never had to do.
+
+    Packaging, not architecture: no new rendering engine, no experimental API,
+    no change to what Mandy is. The desktop-app version of the same idea — a
+    window, and the costs that come with one — is in [ROADMAP.md](ROADMAP.md).

@@ -49,6 +49,42 @@ as a clickable annotation. Heading ids do not help — it needs a different PDF
 path, which is to say a different library, which is the decision this section
 is about anyway.
 
+## A desktop build
+
+`deno compile` gets Mandy to a single binary (TODO 6.3). Deno Desktop is that
+plus a webview and a native bundler: `deno desktop` produces a `.dmg`, `.msi`,
+`.AppImage` or `.deb`, cross-compiled from one machine, with `Deno.autoUpdate()`
+for patches. Because Mandy is already a `Deno.serve` server feeding a browser,
+the port maps almost directly — the app boots the same server on an ephemeral
+port and points the webview at it, and the file API comes along unchanged.
+
+Two things keep it here rather than in TODO, and neither is the macOS
+"unidentified developer" warning — that is a signing-certificate cost, and an
+acceptable one.
+
+- **It is new and says so.** Deno 2.9, "experimental and subject to change".
+  Installer authoring, cross-signing and the auto-update path are all fresh
+  surface.
+- **The webview is a fourth rendering engine.** The default backend is the OS
+  webview — WebKitGTK on Linux, WebView2 on Windows, WebKit on macOS — so the
+  packaged app inherits *that* engine's contenteditable behaviour, on top of the
+  three [tests/browser-check.html](../tests/browser-check.html) already tracks
+  because engine behaviour is folklore here until measured. WebKitGTK is
+  historically the roughest of them for contenteditable. The bundled-Chromium
+  backend removes the divergence and re-raises the question of why not just
+  Electron, at Electron's size.
+
+A packaged app also makes the service worker redundant-to-conflicting — the
+assets are already local — so the offline path would need conditioning on the
+build.
+
+Underneath all of it is whether this is an audience Mandy is for. The editable
+HTML export is already the zero-install answer for someone *receiving* a
+document; a desktop build serves a different person, the one who wants a
+standing local editor and no terminal. These are the questions a real product
+settles before it ships an installer. Mandy is not structured as one yet, which
+is why this is here and unscheduled.
+
 ## Real collaboration, not send-and-hope
 
 The "collaborative" framing in the README doesn't hold. Collaborative in 2026

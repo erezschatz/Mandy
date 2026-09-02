@@ -231,7 +231,7 @@ editor boots offline; a *first* visit still needs the network.
 Adding a dependency, npm or Deno, is a decision worth flagging rather than a
 routine one.
 
-Built with vanilla JavaScript and modern web standards. Check out the [GitHub repository](https://github.com/erezschatz/marky) to:
+Built with vanilla JavaScript and modern web standards. Check out the [GitHub repository](https://github.com/erezschatz/mandy) to:
 - Report bugs or issues
 - Suggest new features
 - Contribute code improvements
