@@ -13,7 +13,7 @@
 // html-export.js hand-writes the .container markup too, and markup kept in two
 // places drifts. Same reasoning as the toolbar.
 
-const OUTLINE_KEY = "marky-outline";
+const OUTLINE_KEY = "mandy-outline";
 
 // Same 1s as the autosave: an outline that re-renders per keystroke flickers,
 // and re-measures the document while someone is still typing the heading.

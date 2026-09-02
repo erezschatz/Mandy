@@ -1,6 +1,6 @@
 function generatePDFFilename() {
   const firstHeading = editor.querySelector("h1");
-  const title = slugifyTitle(firstHeading && firstHeading.textContent, "marky");
+  const title = slugifyTitle(firstHeading && firstHeading.textContent, "mandy");
   return `${title}-${Date.now()}.pdf`;
 }
 

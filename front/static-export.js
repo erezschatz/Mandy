@@ -109,7 +109,7 @@ function documentBody() {
   // nothing can reach Turndown.
   headingAnchors(clone, true);
 
-  // Follows the sidebar toggle, which is the only switch there is until Marky
+  // Follows the sidebar toggle, which is the only switch there is until Mandy
   // grows a Settings pane. Built from the clone, so its hrefs and the ids just
   // stamped above come out of the same function over the same nodes and cannot
   // drift apart.
@@ -162,7 +162,7 @@ onToolbarAction("export-html", async () => {
     console.error("[Export] Could not read app.css:", err);
     notify(
       `Export failed: ${err.message}. ` +
-        "Exporting only works from the running Marky app.",
+        "Exporting only works from the running Mandy app.",
       { severity: "error" },
     );
     return;

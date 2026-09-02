@@ -560,8 +560,8 @@ async function generateDOCX() {
 
   const doc = new docx.Document({
     title: title,
-    creator: "Marky Markdown Editor",
-    description: "Document created with Marky",
+    creator: "Mandy Markdown Editor",
+    description: "Document created with Mandy",
     numbering: {
       config: [
         {

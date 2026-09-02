@@ -31,7 +31,7 @@ export const router = new Hono();
 router.get('/api/home', (c: Context) => c.json({ home: HOME_DIR }));
 
 // Lists directories plus markdown files, so the dialog can walk anywhere the
-// user can while still only offering files Marky can actually open.
+// user can while still only offering files Mandy can actually open.
 router.get('/api/browse', async (c: Context) => {
   const requestedPath = c.req.query('path') || HOME_DIR;
   const resolvedPath = path.resolve(requestedPath);

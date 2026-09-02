@@ -5,7 +5,7 @@ finished 1.0; once that list is empty, this is where work continues. Nothing
 here is scheduled — an item lands when a decision behind it is made and
 someone starts it, the same as TODO.md, just on the other side of the line.
 
-## Marky 2.0
+## Mandy 2.0
 
 The rewrite that Decision D4 in [DECISIONS.md](DECISIONS.md) only ever treats
 rather than cures — read that decision first for the argument against doing
@@ -58,7 +58,7 @@ because the editable export fuses the document and the application into one
 artifact, so there is no stable document identity to write back to. You open
 X, you export Y, and now which one is current?
 
-Three routes out: both sides run the full Marky (server + client) and pass
+Three routes out: both sides run the full Mandy (server + client) and pass
 plain `.md`; or the exported file writes back to itself via the File System
 Access API (Chromium-only, and needs testing from `file://` before anyone
 designs around it); or shared storage both sides can reach. Failing all of
@@ -96,7 +96,7 @@ and neither of these is a case where it does not.
 **The source is persisted as a second copy of the document.**
 `adoptMarkdownStyle` writes the incoming markdown to
 `localStorage["markdownSource"]`, because the autosave is HTML and carries no
-markdown to re-sniff on reload. It roughly doubles what Marky stores, and a
+markdown to re-sniff on reload. It roughly doubles what Mandy stores, and a
 document that blows the quota keeps editing and saving but loses byte fidelity
 across a reload — a `console.warn` and nothing else. Storing the derived style
 plus block hashes instead of the whole source would be smaller, and could not
@@ -133,6 +133,6 @@ into one inline `<script>`, so it needs import maps or blob URLs. Real work,
 needs a decision first.
 
 It is here rather than in TODO.md because nothing a user does touches it, and
-because the Marky 2.0 rewrite above would settle it either way: a rewrite that
+because the Mandy 2.0 rewrite above would settle it either way: a rewrite that
 holds the document as a model has a module boundary problem to solve regardless,
 and solving it twice would be the waste.

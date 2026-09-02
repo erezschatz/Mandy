@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Marky Markdown Editor",
-  "short_name": "Marky",
+  "name": "Mandy Markdown Editor",
+  "short_name": "Mandy",
   "description": "A WYSIWYG markdown editor that edits local files through its own file server",
   "start_url": "/",
   "scope": "/",

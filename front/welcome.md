@@ -1,6 +1,6 @@
-![Marky](/welcome-banner.png)
+![Mandy](/welcome-banner.png)
 
-# Welcome to Marky
+# Welcome to Mandy
 
 A simple markdown editor that edits the files on your own machine. Start typing
 and see your formatted text in real-time!
@@ -62,7 +62,7 @@ edits returned, not just eyes on the page.
 
 ## LaTeX and Mermaid Support
 
-Marky renders LaTeX math and Mermaid diagrams. Write LaTeX with `$$...$$` for
+Mandy renders LaTeX math and Mermaid diagrams. Write LaTeX with `$$...$$` for
 block math or `$...$` inline. Mermaid goes in a fenced code block tagged
 `mermaid`.
 

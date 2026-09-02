@@ -1,6 +1,6 @@
 # Decisions
 
-Questions that came up while building Marky, were argued out, and are settled.
+Questions that came up while building Mandy, were argued out, and are settled.
 They are here rather than in [TODO.md](TODO.md) because they are not work
 waiting to happen, and rather than in [CLAUDE.md](../CLAUDE.md) because that
 describes how the code works — this is why it works that way, and what
@@ -140,7 +140,7 @@ D3 is the one deliberate exception to all of the above.
 In CommonMark `>` opens a container, not a line. Consecutive `>` lines are one
 paragraph inside one blockquote, so the newline between them renders as a
 space: `> one\n> two` is a single line on screen. People who write markdown in
-GitHub comment boxes expect two lines, and ask why Marky disagrees.
+GitHub comment boxes expect two lines, and ask why Mandy disagrees.
 
 GitHub gets that by setting markdown-it's `breaks: true`, which is an extension
 rather than CommonMark. Taking it would apply to every paragraph in the
@@ -171,7 +171,7 @@ behind, which renders as a hairline and spaces bullets unevenly with nothing on
 screen to grab.
 
 Preserving those bytes faithfully is preserving damage. So the promise is
-narrowed and stated rather than quietly hedged: Marky gives a file back byte for
+narrowed and stated rather than quietly hedged: Mandy gives a file back byte for
 byte *except* for invisible whitespace and empty elements, which it removes.
 
 Two things keep the exception from eating D1. The normalisation runs on the HTML
@@ -184,7 +184,7 @@ still keeps everything markdown can express.
 It is worth saying out loud in the README rather than burying: this is a feature,
 not a fidelity bug.
 
-## D4. execCommand stays, and Marky normalises after it
+## D4. execCommand stays, and Mandy normalises after it
 
 Deprecated is a worse position than removed, and that is the right way round to
 worry about it. Removed would be a migration with a deadline. Deprecated means
@@ -202,12 +202,12 @@ Three options were on the table.
 
 **Reimplement the commands.** Own every mutation, drop execCommand entirely. The
 argument against is not cost, it is aim: the half that would be replaced is the
-frozen, predictable half. What actually moves underneath Marky is contenteditable
+frozen, predictable half. What actually moves underneath Mandy is contenteditable
 — selection behaviour, IME, touch handles, autocorrect, mobile keyboards — and
 that is under active development and would be untouched by the exercise. It is
 expensive and pointed at the wrong target.
 
-**Carry on and fix things as they surface.** What Marky did until now, which
+**Carry on and fix things as they surface.** What Mandy did until now, which
 produced exactly one workaround (`isNested` in app.js) and a comment
 misattributing a shared bug to one vendor for months.
 
@@ -223,7 +223,7 @@ it.
 The boundary rule for new work, which is the operative part of this decision:
 
 - A format with no execCommand behind it is written bespoke. There is no choice,
-  and Marky has been doing it since inline code.
+  and Mandy has been doing it since inline code.
 - A format that has one uses it, unless the browser check puts it on the list of
   divergences that survive to the file.
 - Existing call sites stay until they demonstrate a problem. Migrating on
@@ -238,12 +238,12 @@ twice, which is why it was decided anyway.
 **The check is the load-bearing part.** [tests/browser-check.html](../tests/browser-check.html)
 runs the real commands in a real contenteditable and reports what came out. The
 Deno suite structurally cannot do this — it has no editing engine, so it can only
-assert what Marky does with the output — which means every engine-specific claim
+assert what Mandy does with the output — which means every engine-specific claim
 in the codebase is either measured by that page or is folklore. Two long-standing
 beliefs died the first time it ran. Re-run it when adding a format, and when a
 browser does something surprising.
 
-**On Marky 2.0.** Everything above is a treatment rather than a cure, and the
+**On Mandy 2.0.** Everything above is a treatment rather than a cure, and the
 cure is known: hold the document as a model in JS, render to the DOM, and treat
 contenteditable as an input method whose changes are intercepted and
 reinterpreted rather than accepted. That retires this decision, `undo.js`'s

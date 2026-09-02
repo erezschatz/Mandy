@@ -1,4 +1,4 @@
-// Marky's answer to "does a save owe the file the bytes it arrived with?".
+// Mandy's answer to "does a save owe the file the bytes it arrived with?".
 //
 // Turndown serialises to its own house style, so opening a document and
 // changing one word rewrote every list, rule and emphasis in it -- a diff that

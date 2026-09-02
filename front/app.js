@@ -541,7 +541,7 @@ turndownService.addRule("listItem", {
 // the editable export's bundle alike.
 //
 // The trims are load-bearing, not tidiness: a title starting with an emoji
-// ("👋 Welcome to Marky") strips to a leading space, which then becomes a
+// ("👋 Welcome to Mandy") strips to a leading space, which then becomes a
 // leading hyphen in the filename.
 function slugifyTitle(text, fallback) {
   const slug = (text || "")
@@ -690,7 +690,7 @@ onToolbarAction("copy-md", async (button) => {
 });
 
 // New is what "no baggage" means: a document with no more history than the
-// one Marky opens with. This used to be what Clear did — see the comment on
+// one Mandy opens with. This used to be what Clear did — see the comment on
 // the "clear" handler below for why the two split (CHANGELOG.md, "New and
 // Clear are two different weights now").
 onToolbarAction("new", async () => {
@@ -973,7 +973,7 @@ function headingAnchors(root, stamp = false) {
   return anchors;
 }
 
-// An href out of a document Marky did not write — a file off disk, or an
+// An href out of a document Mandy did not write — a file off disk, or an
 // editable export that arrived by mail. `javascript:` through window.open would
 // run in the app's own origin, next to the file API, so this is an allowlist
 // rather than a blocklist.
@@ -1003,7 +1003,7 @@ function openExternalLink(href) {
   try {
     // No base, so a relative href throws and is left inert. That is the
     // documented first cut: resolving ./notes.md against the origin just 404s
-    // off the static handler, and opening it in Marky is a bigger feature. See
+    // off the static handler, and opening it in Mandy is a bigger feature. See
     // docs/TODO.md before making relative links do something.
     url = new URL(href);
   } catch {

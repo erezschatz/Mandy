@@ -224,7 +224,7 @@ function ask(message, options = {}) {
 
     const heading = document.createElement("h2");
     heading.className = "notify-dialog-title";
-    heading.textContent = title || "Marky";
+    heading.textContent = title || "Mandy";
     header.appendChild(heading);
 
     const dismissBtn = document.createElement("button");
@@ -304,7 +304,7 @@ function ask(message, options = {}) {
  * Separate from ask() rather than an option on it because the return contract
  * differs — ask() resolves to an action's `value`, this resolves to what was
  * typed — and the modal scaffold is deliberately a second copy: both builders
- * live in this file, which is the one place Marky's dialogs are built.
+ * live in this file, which is the one place Mandy's dialogs are built.
  */
 function askForInput(message, options = {}) {
   const {
@@ -343,7 +343,7 @@ function askForInput(message, options = {}) {
 
     const heading = document.createElement("h2");
     heading.className = "notify-dialog-title";
-    heading.textContent = title || "Marky";
+    heading.textContent = title || "Mandy";
     header.appendChild(heading);
 
     const dismissBtn = document.createElement("button");

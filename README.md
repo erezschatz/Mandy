@@ -1,8 +1,12 @@
-# Marky - Simple & Free Markdown Editor
+# Mandy - Simple & Free Markdown Editor
 
 A WYSIWYG markdown editor that runs on your own machine and edits your own markdown files.
 
-Marky allows you to create markdown documents and export them as **fully editable HTML files** that anyone can modify and return to you. Perfect for spec-driven AI development and stakeholder reviews.
+Mandy allows you to create markdown documents and export them as **fully editable HTML files** that anyone can modify and return to you. Perfect for spec-driven AI development and stakeholder reviews.
+
+Originally forked from [Tommertom/marky](https://github.com/Tommertom/marky) and retains much of that code, mostly at conversion and rendering engine level.
+
+Marky was where this started. Mandy is where it learned to give your files back exactly as it found them. The new name is a promise, not a coat of paint.
 
 ## What You Can Do
 
@@ -10,7 +14,7 @@ Marky allows you to create markdown documents and export them as **fully editabl
 
 - **Paste from Clipboard** - **Edit → Paste markdown** loads markdown directly from your clipboard
 - **Open Local Files** - Browse your computer and open any `.md`, `.markdown`, or `.txt` file directly (requires the local server, see [For Developers](#-for-developers))
-- **Reload from Disk** - **File → Reload from disk** re-reads the file, picking up anything another tool, script or agent wrote to it - and it is also how you throw local changes away. Marky checks the file whenever you come back to the window, and marks the filename `(disk changed)` when it no longer matches what you have open
+- **Reload from Disk** - **File → Reload from disk** re-reads the file, picking up anything another tool, script or agent wrote to it - and it is also how you throw local changes away. Mandy checks the file whenever you come back to the window, and marks the filename `(disk changed)` when it no longer matches what you have open
 
 ### Edit with Ease
 
@@ -19,7 +23,7 @@ Marky allows you to create markdown documents and export them as **fully editabl
 - **Live Updates** - Changes appear instantly as you type
 - **Auto-Save** - Your work is automatically saved to your browser every second
 - **Dark Mode** - Toggle between light and dark themes, or let it follow your system preference
-- **Document Outline** - **View → Outline sidebar** lists the document's headings; click any of them to jump there. It follows how your headings actually nest rather than the numbers in them, so a document that uses H6 for a caption under an H1 does not draw a five-deep staircase. **Insert → Table of contents** is the related but separate thing: it writes a real linked list into the document itself - the one you want when the file is going to be read on GitHub rather than in Marky
+- **Document Outline** - **View → Outline sidebar** lists the document's headings; click any of them to jump there. It follows how your headings actually nest rather than the numbers in them, so a document that uses H6 for a caption under an H1 does not draw a five-deep staircase. **Insert → Table of contents** is the related but separate thing: it writes a real linked list into the document itself - the one you want when the file is going to be read on GitHub rather than in Mandy
 - **Menu Bar** - Six menus - File, Edit, Insert, Format, View and Export - hold every action; the Format menu reaches the same ten formats as the floating bar, and is the way to reach the inline ones without selecting anything
 - **New and Clear** - **File → New document** starts over: blank document, no file attached, and it asks first if you have unsaved work. **Edit → Clear document** is an ordinary edit that empties the text and leaves the file you have open alone - one Ctrl+Z takes it back
 
@@ -27,7 +31,7 @@ Marky allows you to create markdown documents and export them as **fully editabl
 
 - **Save to Disk** - Write your work straight back to the file you opened, with
   **File → Save As…** for anywhere else. If the file changed underneath you since you opened it,
-  Marky asks before overwriting it
+  Mandy asks before overwriting it
 - **Copy to Clipboard** - **Edit → Copy markdown** puts the rendered content on the clipboard as plain-text markdown
 - **Export as HTML** - Generate a standalone, self-contained HTML page of the document alone. If the outline sidebar is open, the exported page carries a table of contents of its own
 - **Export as Editable** - Generate an HTML file with the editor bundled in, so recipients can modify it directly in their browser and send it back to you. No markdown knowledge required at their end. The file is completely self-contained - one HTML file that runs entirely in the browser, with nothing to install and no sign-up - and fully capable: they can export it to markdown, PDF, DOCX or HTML, and re-export another editable copy to pass along
@@ -94,7 +98,7 @@ Make your workflow even faster:
 
 That's it! No tutorials needed.
 
-## Why Marky?
+## Why Mandy?
 
 Unlike other markdown editors:
 - **Editable HTML exports** - Share documents that recipients can modify and return
@@ -109,7 +113,7 @@ Unlike other markdown editors:
 - Your work auto-saves to localStorage - but download important files as a backup
 - **File → New document** starts fresh; **Edit → Clear document** just empties the one you have open
 - Toggle dark mode in the toolbar or let it automatically match your system theme
-- **Collaborative HTML Workflow**: Use **Export → Editable copy…** (not **HTML page…**, which is read-only) and share the result with colleagues. They can open it in any browser, edit the content directly, save their changes, and send the modified HTML back to you. Open their file in a browser and use **Edit → Copy markdown** to get their changes back as markdown - Marky's Open dialog only accepts `.md`, `.markdown` and `.txt`, so it cannot open the returned HTML directly.
+- **Collaborative HTML Workflow**: Use **Export → Editable copy…** (not **HTML page…**, which is read-only) and share the result with colleagues. They can open it in any browser, edit the content directly, save their changes, and send the modified HTML back to you. Open their file in a browser and use **Edit → Copy markdown** to get their changes back as markdown - Mandy's Open dialog only accepts `.md`, `.markdown` and `.txt`, so it cannot open the returned HTML directly.
 
 ## For Developers
 
@@ -131,7 +135,7 @@ npm run serve
 ```
 
 Then open <http://localhost:9130>. Use `npm run dev` for auto-restart on
-changes, or set `MARKY_PORT` to pick another port. The server binds to
+changes, or set `MANDY_PORT` to pick another port. The server binds to
 `127.0.0.1` only, and the file API will read and write any `.md`, `.markdown`,
 or `.txt` file your user account can reach.
 
@@ -189,7 +193,7 @@ opened yet, is wrong:
 | `notify` | That no source has slipped back to `alert()`, and that dismissing a dialog is not the same as agreeing with it. |
 | `undo` | The coalescing rules and, above all, that history never survives a document boundary. |
 | `execcommand` | The normalisation between execCommand and the file, and the source scan that keeps `runCommand` the only call site. |
-| `list-indent` | Tab and Shift+Tab in a list: the guards, and the unnesting Marky does by hand because no engine does it right. |
+| `list-indent` | Tab and Shift+Tab in a list: the guards, and the unnesting Mandy does by hand because no engine does it right. |
 
 Type-check the server separately with `cd server && deno task check`.
 
@@ -198,7 +202,7 @@ Type-check the server separately with `cd server && deno task check`.
 There is nothing to `npm install` — which is not the same as there being no
 dependencies. There is no `node_modules`, no lockfile to maintain and no build
 step; `package.json` exists only to hold the `serve`, `dev` and `test` scripts.
-What Marky actually depends on is fetched at runtime instead:
+What Mandy actually depends on is fetched at runtime instead:
 
 **Server** — [Hono](https://hono.dev/), pinned in
 [server/deno.json](server/deno.json) as `npm:hono@^4.12.23`. Deno resolves and
@@ -227,7 +231,7 @@ editor boots offline; a *first* visit still needs the network.
 Adding a dependency, npm or Deno, is a decision worth flagging rather than a
 routine one.
 
-Built with vanilla JavaScript and modern web standards. Check out the [GitHub repository](https://github.com/Tommertom/marky) to:
+Built with vanilla JavaScript and modern web standards. Check out the [GitHub repository](https://github.com/erezschatz/marky) to:
 - Report bugs or issues
 - Suggest new features
 - Contribute code improvements

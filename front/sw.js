@@ -1,4 +1,4 @@
-// Marky service worker.
+// Mandy service worker.
 //
 // Strategy, and why:
 //   same-origin  → network-first, cache as fallback. Cache-first would serve a
@@ -8,9 +8,9 @@
 //                  and they are the heavy ones worth never re-fetching.
 //   /api/*       → never touched. Those are live file reads and writes.
 
-const VERSION = "v1.25";
-const SHELL_CACHE = `marky-shell-${VERSION}`;
-const RUNTIME_CACHE = `marky-runtime-${VERSION}`;
+const VERSION = "v1.26";
+const SHELL_CACHE = `mandy-shell-${VERSION}`;
+const RUNTIME_CACHE = `mandy-runtime-${VERSION}`;
 
 // The app shell: everything needed to boot the editor with no network.
 const SHELL_ASSETS = [

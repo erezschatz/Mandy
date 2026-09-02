@@ -136,7 +136,7 @@ onToolbarAction("export-editable", async () => {
     } catch (err) {
       console.error("[Export] Could not fetch external files:", err);
       notify(
-        `Export failed: ${err.message}. Exporting only works from the running Marky app.`,
+        `Export failed: ${err.message}. Exporting only works from the running Mandy app.`,
         { severity: "error" },
       );
       return;

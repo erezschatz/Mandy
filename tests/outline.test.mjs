@@ -249,8 +249,8 @@ export default function run(check) {
   // stops being a link at all, so the inner one has to go.
   const withLink = heading((h) => {
     const link = makeEl("a");
-    link.appendChild(makeText("Marky"));
-    link.textContent = "Marky";
+    link.appendChild(makeText("Mandy"));
+    link.textContent = "Mandy";
     h.appendChild(link);
     h.appendChild(makeText(" and friends"));
   });
@@ -259,7 +259,7 @@ export default function run(check) {
     "a link inside a heading flattens to its text",
     flattened.children.every((c) => c.nodeType === 3) &&
       flattened.children.map((c) => c.textContent).join("") ===
-        "Marky and friends",
+        "Mandy and friends",
   );
 
   // The allowlist's point: something nobody anticipated degrades to readable
@@ -337,12 +337,12 @@ export default function run(check) {
   check("open is stamped on the root", outlineIsOpen() === true);
   check(
     "and remembered under its own key",
-    ctx.store.get("marky-outline") === "open",
+    ctx.store.get("mandy-outline") === "open",
   );
 
   setOutlineOpen(false);
   check("closed is stamped too", outlineIsOpen() === false);
-  check("and remembered", ctx.store.get("marky-outline") === "closed");
+  check("and remembered", ctx.store.get("mandy-outline") === "closed");
 
   // One observer on the editor, not an input listener: the document also
   // changes from Open, Reload, Clear, paste and the welcome fetch.

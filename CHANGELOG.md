@@ -1,6 +1,6 @@
 # Changelog
 
-Everything done to Marky since it was forked. The fork point is `a01ba0d`
+Everything done to Mandy since it was forked. The fork point is `a01ba0d`
 (2026-03-13), the last upstream commit; `7620cbc` below is the first commit of
 this line of work and everything after it is ours.
 
@@ -221,7 +221,7 @@ changed)`.
 
 The flag has teeth in one place. `confirmOverwrite` re-stats before a save that
 would write over the open file, because overwriting a file that moved on destroys
-whatever moved it and Marky has no merge to offer. A Save As to any *other* path
+whatever moved it and Mandy has no merge to offer. A Save As to any *other* path
 is not gated on it — the baseline says nothing about a file we never read. Reload
 arrived as the discard path as much as the refresh one, and is the one action that
 confirms when there are edits to lose. Split buttons arrived to hold the pairs:
@@ -357,7 +357,7 @@ reserved height was short and the page jumped on every load.
 
 The bar then became two rows — the menus, then a document row holding the filename
 and the theme toggle, which is where the tab bar goes — and lost the things that
-were only taking up space: the `<h1>` reading "Marky Markdown Editor", which
+were only taking up space: the `<h1>` reading "Mandy Markdown Editor", which
 repeated what the browser tab says and was the page's only `h1` when that belongs
 to the document, and the GitHub link, which pointed away from the app from a bar
 that is about the document. An exported document has neither a file on disk nor a
@@ -374,7 +374,7 @@ the new `execcommand` suite keeps it that way. It sets `styleWithCSS` off once
 at load, runs the command, and normalises what the engine left behind.
 
 `styleWithCSS` had never been set. Its default was never specified and is
-per-browser, so which of tags-or-styled-spans Marky got was whatever the engine
+per-browser, so which of tags-or-styled-spans Mandy got was whatever the engine
 felt like — and Turndown has no rule for `<span style="font-weight:bold">`, so it
 drops the span and keeps the text. Bold would have disappeared on save with
 nothing wrong on screen until the file was reopened.
@@ -396,7 +396,7 @@ one action cost two Ctrl+Z, the first of which would appear to do nothing.
 
 **[tests/browser-check.html](tests/browser-check.html) is new, and it is why any
 of the above says anything specific.** The Deno suite has no editing engine, so
-it can only assert what Marky does with execCommand's output and never what that
+it can only assert what Mandy does with execCommand's output and never what that
 output is — that half was always going to be manual. The page runs the real
 commands in a real contenteditable and reports the markup before and after
 normalisation. Measured in Chrome 139 and Firefox 154, it moved the cases that
@@ -462,7 +462,7 @@ them unless the selection covered a whole line — would read as a broken button
 rather than a precise one. Code is the only format that reads the extent, because
 it is the only one with an inline counterpart to read it for.
 
-## 2026-08-23 — `58d4dca` — The editable export is a nerfed Marky
+## 2026-08-23 — `58d4dca` — The editable export is a nerfed Mandy
 
 PDF and Word left the exported document: `pdf-export.js` and `docx-export.js`
 dropped out of `ASSETS`, and their menu items became `variants: ["app"]`. An
@@ -816,12 +816,12 @@ oldest-first, and a reader after "what changed recently" had to scroll past a
 standing rationale document to get out the bottom. `docs/DECISIONS.md` is
 back, holding D0 through D4 verbatim.
 
-The split surfaced a real gap while it was happening: D4 ends with "On Marky
+The split surfaced a real gap while it was happening: D4 ends with "On Mandy
 2.0", a sketch of the editor rewrite that would retire it — and that paragraph
 was never a decision or a piece of history, it was a plan with nowhere to
 live. `docs/ROADMAP.md` is new for exactly that: what comes after 1.0, as
 opposed to `docs/TODO.md`'s what stands between here and 1.0. It opens with the
-Marky 2.0 sketch, and TODO 6.2 (more export options) and TODO 6.3 (the
+Mandy 2.0 sketch, and TODO 6.2 (more export options) and TODO 6.3 (the
 "collaborative" framing not holding up) moved in beside it — neither was ever
 work that blocks 1.0, they were just filed in the only list that existed at
 the time.
@@ -846,10 +846,10 @@ allows.
 The `docs/` split gave the four files four jobs, and this is the first pass
 that actually held TODO.md to its own: *what stands between here and a finished
 1.0*, nothing else. Read end to end with one question asked of every item —
-does full-time use of Marky wait on this — six answered no.
+does full-time use of Mandy wait on this — six answered no.
 
 Moved as-is: **5.2/5.3** (no module system, load order still load-bearing),
-where nothing a user does touches it and the Marky 2.0 rewrite settles it
+where nothing a user does touches it and the Mandy 2.0 rewrite settles it
 either way; **2.4** (block-level segment granularity), whose own text says the
 finer version is "a different and much less safe algorithm"; and **2.2** (the
 source persisted as a second copy in `localStorage`), which 4.1 had quietly
@@ -1385,3 +1385,50 @@ otherwise only the suite naming the touched file rather than the whole
 `sw.js` goes to `v1.25` here to retire the stale cached copy. The CHANGELOG
 entry for `0da618a` — the icon/logo commit, which had gone in without one — was
 written at the same time.
+
+## 2026-09-02 — `3ea6d66` — Rebrand: Marky becomes Mandy
+
+Every user-facing and in-source occurrence of "Marky"/"marky" became
+"Mandy"/"mandy": window titles, the manifest `name`/`short_name`, PWA meta tags,
+the welcome document, README and the `docs/` prose, every code comment, the
+`package.json`/`package-lock.json` name, `ecosystem.config.cjs`, and the pm2
+process name. The `MARKY_PORT` environment variable is now `MANDY_PORT`
+(`server/`, `deno.json`, `ecosystem.config.cjs`, and both READMEs).
+
+Three things carry state and so change behaviour, not just spelling: the
+`localStorage` keys (`marky-theme`, `marky-outline`, `marky-current-file`,
+`marky-last-dir`, `marky-dirty`, `marky-file-mtime`) are now `mandy-*`, so an
+existing user loads once with their stored theme, outline state and file
+association reset; the service-worker cache prefixes (`marky-shell-*`,
+`marky-runtime-*`) are now `mandy-*`, retired on `activate` like any renamed
+cache; and `VERSION` goes to `v1.26` to force that retirement. The test suites
+that assert those key names moved with them.
+
+References to the upstream project keep the name Marky: the `Tommertom/marky`
+GitHub URL, and D0 in [docs/DECISIONS.md](docs/DECISIONS.md) ("Marky was the
+starting point"). The README now says so explicitly — "Originally forked from
+Tommertom/marky and retains much of that code, mostly at conversion and
+rendering engine level". The GitHub remote URL and branch are left untouched for
+now — that move happens separately.
+
+[LICENSE.md](LICENSE.md) keeps Tommertom's `Copyright (c) 2025 Tommertom` line,
+as MIT requires, and adds `Copyright (c) 2026 Erez Schatz` below it for the work
+in this line of commits.
+
+The README's "Check out the GitHub repository" link — the one for bug reports,
+feature requests and contributions — pointed at `Tommertom/marky`, the upstream
+fork source, rather than at this project's own repo; it now points at
+`erezschatz/marky` (to be updated again when the repo itself moves). The fork
+attribution link at the top still points at `Tommertom/marky`, which is correct.
+
+The README's intro gained a line on the rename itself — "Marky was where this
+started. Mandy is where it learned to give your files back exactly as it found
+them. The new name is a promise, not a coat of paint." — sitting under the fork
+attribution.
+
+The two welcome banners (`welcome-banner.png`, `welcome-banner-dark.png`) were
+regenerated with the new wordmark — the logo mark, teal/mint/amber palette and
+480×273 dimensions are unchanged, only "Marky" became "Mandy". The wordmark is
+set in Poppins ExtraBold, the closest match to the original; the banners are now
+flat vector renders rather than the previous textured raster, so they are also
+about a tenth of the file size.

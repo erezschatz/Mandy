@@ -1,4 +1,4 @@
-// pm2 process definition for the Marky file server.
+// pm2 process definition for the Mandy file server.
 //
 // Must stay .cjs: package.json sets "type": "module", and pm2 loads ecosystem
 // files as CommonJS.
@@ -10,7 +10,7 @@
 module.exports = {
   apps: [
     {
-      name: "marky",
+      name: "mandy",
       script: "deno",
       interpreter: "none",
       args: [
@@ -19,18 +19,18 @@ module.exports = {
         "--allow-write",
         "--allow-net",
         "--allow-sys=homedir",
-        "--allow-env=MARKY_PORT",
+        "--allow-env=MANDY_PORT",
         "server/src/main.ts",
       ],
       // The server resolves front/ relative to its own source file, so cwd is
       // not load-bearing; it is set here only so the script path resolves.
       cwd: __dirname,
       env: {
-        MARKY_PORT: 9130,
+        MANDY_PORT: 9130,
       },
       autorestart: true,
       // Off deliberately: this serves your documents, and a restart mid-save is
-      // not worth the convenience. Use `npm run dev` when editing Marky itself.
+      // not worth the convenience. Use `npm run dev` when editing Mandy itself.
       watch: false,
     },
   ],

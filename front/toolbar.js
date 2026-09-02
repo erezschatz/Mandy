@@ -326,7 +326,7 @@ function focusItem(step, from) {
   items[next].focus();
 }
 
-// There is no app title in the bar. It was an <h1> reading "Marky Markdown
+// There is no app title in the bar. It was an <h1> reading "Mandy Markdown
 // Editor" and it cost a third of the toolbar's width to say something the tab
 // already says — and it took the page's only h1 with it, which belonged to the
 // document rather than to the chrome.

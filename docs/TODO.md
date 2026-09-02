@@ -115,7 +115,7 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
       rendered and then ignored: `openExternalLink` builds a `URL` with no base,
       so a relative href throws and is dropped. Resolving it against the origin
       would just 404 off the static handler. The behaviour that would make a
-      linked set of markdown files navigable is opening it in Marky through the
+      linked set of markdown files navigable is opening it in Mandy through the
       file API, resolved against the directory of the open file — a good deal
       more work than a `window.open`. Following a link means replacing the open
       document, so it now has `openFile` and the dirty/mtime tracking to build

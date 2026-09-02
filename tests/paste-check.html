@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Marky paste-without-formatting check</title>
+<title>Mandy paste-without-formatting check</title>
 
 <!--
   The question TODO 1.3 opens with, which only a person with a real clipboard
@@ -58,7 +58,7 @@
 <div id="target" contenteditable="true">Click here, then paste.</div>
 
 <table id="log">
-  <thead><tr><th>Paste</th><th>Flavours offered</th><th>Marky would take</th><th>What that means</th></tr></thead>
+  <thead><tr><th>Paste</th><th>Flavours offered</th><th>Mandy would take</th><th>What that means</th></tr></thead>
   <tbody></tbody>
 </table>
 
@@ -126,9 +126,9 @@
     const parts = [];
     if (seen.plain && seen.shift) {
       parts.push(seen.plain.takesHtml && !seen.shift.takesHtml
-        ? "<b>This browser strips text/html for Shift+V.</b> Marky's plain branch already fires; nothing to build for it."
+        ? "<b>This browser strips text/html for Shift+V.</b> Mandy's plain branch already fires; nothing to build for it."
         : seen.shift.takesHtml
-        ? "<b>This browser keeps text/html for Shift+V.</b> Marky needs to notice the binding itself."
+        ? "<b>This browser keeps text/html for Shift+V.</b> Mandy needs to notice the binding itself."
         : "Both pastes came through bare — copy formatted content and try again.");
     }
     if (seen.shift) {

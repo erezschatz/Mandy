@@ -100,7 +100,7 @@ export default async function run(check) {
   let downloadName = null;
   let handler = null;
   // The static export's TOC follows the sidebar toggle, which is the only
-  // switch there is until Marky grows a Settings pane.
+  // switch there is until Mandy grows a Settings pane.
   let outlineOpen = false;
 
   // The real one from app.js, not a stub: the leading-hyphen bug lived in this
@@ -162,10 +162,10 @@ export default async function run(check) {
   check("title comes from the first h1", written.includes("<title>Quarterly Report</title>"));
   check("filename is slugged from the title", /^quarterly-report-\d+\.html$/.test(downloadName));
 
-  // An emoji-led title ("👋 Welcome to Marky") strips to a leading space, which
-  // used to survive as a leading hyphen: "-welcome-to-marky-1234.html".
+  // An emoji-led title ("👋 Welcome to Mandy") strips to a leading space, which
+  // used to survive as a leading hyphen: "-welcome-to-mandy-1234.html".
   check("emoji-led titles do not leave a leading hyphen",
-    slugifyTitle("👋 Welcome to Marky", "document") === "welcome-to-marky");
+    slugifyTitle("👋 Welcome to Mandy", "document") === "welcome-to-mandy");
   check("trailing punctuation does not leave a trailing hyphen",
     slugifyTitle("Report — Q4!", "document") === "report-q4");
   check("runs of separators collapse",

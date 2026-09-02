@@ -8,7 +8,7 @@
 // is not that they drift apart from here, it is that they are already apart and
 // nobody is going to fix it.
 //
-// Marky's answer is not to reimplement the commands. It is to normalise what
+// Mandy's answer is not to reimplement the commands. It is to normalise what
 // they leave behind, in one place, and only for the differences that actually
 // survive to the file — which is a much shorter list than it first looks,
 // because Turndown flattens most of them on the way out. <b> and <strong> are

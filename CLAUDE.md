@@ -11,7 +11,7 @@ npm test        # deno run --allow-read tests/run.mjs
 ```
 
 Type-check the server: `cd server && deno task check`.
-`MARKY_PORT` overrides the port. `pm2 start ecosystem.config.cjs` runs it supervised.
+`MANDY_PORT` overrides the port. `pm2 start ecosystem.config.cjs` runs it supervised.
 
 There is no linter and no build step, and no installable dependencies —
 `package.json` exists only to hold the scripts, and Deno fetches Hono itself.
@@ -316,7 +316,7 @@ and reports them in the same toolbar label: `plan.md (edited, disk changed)`.
   once at startup — a page load has already missed the `focus` event for the tab
   it loads into.
 
-Both flags are persisted (`marky-dirty`, `marky-file-mtime`) and restored only
+Both flags are persisted (`mandy-dirty`, `mandy-file-mtime`) and restored only
 alongside the content, for the same reason the path is: autosave carries unsaved
 edits across a browser reload, and a baseline that reset to null would make the
 first check call a file nobody has touched changed.
@@ -329,7 +329,7 @@ not know when that document was read.
 
 The flag has teeth in one place: `confirmOverwrite` re-stats before a save that
 would write over the open file, because overwriting a file that moved on destroys
-whatever moved it and Marky has no merge to offer. A Save As to any *other* path
+whatever moved it and Mandy has no merge to offer. A Save As to any *other* path
 is not gated on it — the baseline says nothing about a file we never read.
 
 `reloadFile` is the discard path as much as the refresh one, so it is the one
@@ -608,7 +608,7 @@ from `<style id="app-style">` + `<script id="app-script">`, falling back to
 `fetch` only when those are absent (i.e. when running in the app). Rename either
 id and re-export silently degrades to a fetch of nothing.
 
-**The exported document is a nerfed Marky, not Marky.** What ships is an editable
+**The exported document is a nerfed Mandy, not Mandy.** What ships is an editable
 *document*; the application around it is the means, not the deliverable. Four
 modules are deliberately excluded from `ASSETS`, for two different reasons.
 
@@ -736,7 +736,7 @@ toggle, so it gets no second row at all rather than an empty band.
 There is no GitHub link. It pointed away from the app from a bar that should be
 about the document, and it was the tallest thing in that bar.
 
-**There is no app title.** It was an `<h1>` reading "Marky Markdown Editor", it
+**There is no app title.** It was an `<h1>` reading "Mandy Markdown Editor", it
 cost a third of the bar's width to repeat what the tab already says, and it was
 the page's only `<h1>` — which belongs to the document, not to the chrome.
 

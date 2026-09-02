@@ -58,10 +58,10 @@ function boot({
   // `visibilitychange` on document, and no name is claimed by both.
   const listeners = {};
   if (savedContent !== undefined) store.set("markdownContent", savedContent);
-  if (savedPath !== undefined) store.set("marky-current-file", savedPath);
-  if (savedDir !== undefined) store.set("marky-last-dir", savedDir);
-  if (savedDirty !== undefined) store.set("marky-dirty", savedDirty);
-  if (savedMtime !== undefined) store.set("marky-file-mtime", savedMtime);
+  if (savedPath !== undefined) store.set("mandy-current-file", savedPath);
+  if (savedDir !== undefined) store.set("mandy-last-dir", savedDir);
+  if (savedDirty !== undefined) store.set("mandy-dirty", savedDirty);
+  if (savedMtime !== undefined) store.set("mandy-file-mtime", savedMtime);
 
   const toolbar = makeEl();
   toolbar.className = "toolbar";
@@ -328,10 +328,10 @@ export default async function run(check) {
 
   r = boot({ savedContent: "<p><br></p>", savedPath: "/home/erez/notes/plan.md" });
   check("path dropped when the content is blank", !r.path);
-  check("stale path key removed from storage", !r.store.has("marky-current-file"));
+  check("stale path key removed from storage", !r.store.has("mandy-current-file"));
 
   r = boot({ savedPath: "/home/erez/notes/plan.md" });
-  check("path dropped when nothing was saved", !r.store.has("marky-current-file"));
+  check("path dropped when nothing was saved", !r.store.has("mandy-current-file"));
 
   r = boot({ savedContent: "<h1>x</h1>" });
   check("a missing path is handled", r.path === null);
@@ -358,9 +358,9 @@ export default async function run(check) {
   r.fill("<h1>Real work</h1>");
   await r.newDocument();
   check("new asks before discarding", /removes all content/.test(r.asked.at(-1) || ""));
-  check("new drops the persisted path", !r.store.has("marky-current-file"));
+  check("new drops the persisted path", !r.store.has("mandy-current-file"));
   check("new keeps the last directory",
-    r.store.get("marky-last-dir") === "/home/erez/projects/docs");
+    r.store.get("mandy-last-dir") === "/home/erez/projects/docs");
 
   // The ordering this suite exists to protect, from the other side: a cancelled
   // New must leave the file association alone. file-api.js's hook decides
@@ -378,7 +378,7 @@ export default async function run(check) {
   check("a cancelled new keeps the file open",
     r.pathNow() === "/home/erez/notes/plan.md");
   check("and keeps it persisted",
-    r.store.get("marky-current-file") === "/home/erez/notes/plan.md");
+    r.store.get("mandy-current-file") === "/home/erez/notes/plan.md");
   confirmAnswer = true;
 
   // --- Clear is not New ------------------------------------------------------
@@ -401,7 +401,7 @@ export default async function run(check) {
     r.commands.includes("delete"));
   check("clear keeps the file open", r.pathNow() === "/home/erez/notes/plan.md");
   check("and keeps it persisted",
-    r.store.get("marky-current-file") === "/home/erez/notes/plan.md");
+    r.store.get("mandy-current-file") === "/home/erez/notes/plan.md");
 
   // --- a remembered directory that no longer exists ------------------------
   //
@@ -415,7 +415,7 @@ export default async function run(check) {
     r.browsed.join() === "/home/erez/gone,");
   check("and the dialog lands on home", r.dirNow() === HOME);
   check("and the stale directory is forgotten",
-    r.store.get("marky-last-dir") === HOME);
+    r.store.get("mandy-last-dir") === HOME);
 
   r = boot({ savedDir: "/home/erez/notes", realDirs: [HOME, "/home/erez/notes"] });
   await r.showOpenDialog();
@@ -439,7 +439,7 @@ export default async function run(check) {
 
   // Autosave survives a reload, so the flag has to as well — otherwise the
   // toolbar reopens showing a clean filename over unsaved edits.
-  check("the edited flag is persisted", r.store.get("marky-dirty") === "1");
+  check("the edited flag is persisted", r.store.get("mandy-dirty") === "1");
 
   r = boot({
     savedContent: "<h1>Real work</h1>",
@@ -450,13 +450,13 @@ export default async function run(check) {
 
   await r.saveFile("/home/erez/notes/plan.md");
   check("saving clears the marker", r.labelNow() === "plan.md");
-  check("and drops the persisted flag", !r.store.has("marky-dirty"));
+  check("and drops the persisted flag", !r.store.has("mandy-dirty"));
 
   r = boot({ savedContent: "<h1>Real work</h1>", savedPath: "/home/erez/notes/plan.md" });
   r.type();
   await r.newDocument();
   check("new drops the marker with the path", r.labelNow() === "");
-  check("new drops the persisted flag", !r.store.has("marky-dirty"));
+  check("new drops the persisted flag", !r.store.has("mandy-dirty"));
 
   // Nothing to be out of step with when no file is open, so the marker would
   // be a bare "(edited)" hanging next to the app title.
@@ -487,7 +487,7 @@ export default async function run(check) {
   r.type(); // what applyUndoSnapshot's synthetic input event triggers
   check("undoing back to the saved position clears it again",
     r.labelNow() === "plan.md");
-  check("and drops the persisted flag too", !r.store.has("marky-dirty"));
+  check("and drops the persisted flag too", !r.store.has("mandy-dirty"));
 
   r.setUndoPosition(2);
   r.type();
@@ -532,7 +532,7 @@ export default async function run(check) {
   check("reload re-reads the open file", r.reads.includes(`read:${OPEN}`));
   check("and the document comes from disk", r.html() === "# Fresh");
   check("and the file's mtime becomes the new baseline", r.mtimeNow() === T2);
-  check("which is persisted like the path", r.store.get("marky-file-mtime") === T2);
+  check("which is persisted like the path", r.store.get("mandy-file-mtime") === T2);
   check("and the marker clears", r.labelNow() === "plan.md");
 
   r = boot({ savedContent: "<h1>Real work</h1>" });
@@ -600,10 +600,10 @@ export default async function run(check) {
   r = changedUnderneath();
   await settle();
   await r.newDocument();
-  check("new drops the persisted baseline", !r.store.has("marky-file-mtime"));
+  check("new drops the persisted baseline", !r.store.has("mandy-file-mtime"));
 
   r = boot({ savedContent: "<p><br></p>", savedPath: OPEN, savedMtime: T1 });
-  check("and a blank document never restores one", !r.store.has("marky-file-mtime"));
+  check("and a blank document never restores one", !r.store.has("mandy-file-mtime"));
 
   // The flag with teeth: a save over a file that moved on destroys whatever
   // moved it, and there is no merge on offer.

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Marky - Markdown Editor</title>
+    <title>Mandy - Markdown Editor</title>
     <meta
       name="description"
       content="A WYSIWYG markdown editor that edits local files through its own file server."
@@ -23,10 +23,10 @@
 
     <!-- Installable app -->
     <link rel="manifest" href="/manifest.json" />
-    <meta name="application-name" content="Marky" />
+    <meta name="application-name" content="Mandy" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Marky" />
+    <meta name="apple-mobile-web-app-title" content="Mandy" />
     <meta
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"
@@ -36,7 +36,7 @@
     <script>
       (function () {
         // Get saved preference
-        const saved = localStorage.getItem("marky-theme");
+        const saved = localStorage.getItem("mandy-theme");
 
         // Get system preference
         const systemPrefersDark =
@@ -54,7 +54,7 @@
         // would render full-width and then shift once the column appeared.
         document.documentElement.setAttribute(
           "data-outline",
-          localStorage.getItem("marky-outline") === "open" ? "open" : "closed",
+          localStorage.getItem("mandy-outline") === "open" ? "open" : "closed",
         );
       })();
     </script>

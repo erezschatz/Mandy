@@ -1,5 +1,5 @@
 const ThemeManager = (function () {
-  const STORAGE_KEY = "marky-theme";
+  const STORAGE_KEY = "mandy-theme";
   const THEME_ATTR = "data-theme";
   const LIGHT = "light";
   const DARK = "dark";

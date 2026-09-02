@@ -12,10 +12,10 @@ const dialogSaveRow = document.getElementById("dialogSaveRow");
 const dialogFilename = document.getElementById("dialogFilename");
 const dialogSaveConfirm = document.getElementById("dialogSaveConfirm");
 
-const FILE_PATH_KEY = "marky-current-file";
-const LAST_DIR_KEY = "marky-last-dir";
-const DIRTY_KEY = "marky-dirty";
-const MTIME_KEY = "marky-file-mtime";
+const FILE_PATH_KEY = "mandy-current-file";
+const LAST_DIR_KEY = "mandy-last-dir";
+const DIRTY_KEY = "mandy-dirty";
+const MTIME_KEY = "mandy-file-mtime";
 
 let currentFilePath = null;
 // Edited since the last open or save. Autosave is unaware of the file on disk,
@@ -453,7 +453,7 @@ async function checkDiskChanged() {
 }
 
 // The one place the flag has teeth. Writing over a file that changed after we
-// read it destroys those changes, and Marky has no merge to offer — so this is
+// read it destroys those changes, and Mandy has no merge to offer — so this is
 // the last point at which the choice is still the user's.
 async function confirmOverwrite(filePath) {
   if (filePath !== currentFilePath || !fileMtime) return "overwrite";
@@ -476,7 +476,7 @@ async function confirmOverwrite(filePath) {
   // check above returns early.
   return ask(
     `${name} changed on disk since you opened it. Saving replaces whatever ` +
-      "changed it, and Marky has no merge to offer.",
+      "changed it, and Mandy has no merge to offer.",
     {
       title: "Overwrite the newer file?",
       severity: "warn",
@@ -569,7 +569,7 @@ function setServerAvailable(available) {
     btn.disabled = !available;
     btn.style.opacity = available ? "" : "0.5";
     btn.style.cursor = available ? "" : "not-allowed";
-    btn.title = available ? "" : "Unavailable: the Marky file server is not running";
+    btn.title = available ? "" : "Unavailable: the Mandy file server is not running";
   }
 }
 
@@ -587,7 +587,7 @@ async function checkServerAvailable() {
     // A static host may rewrite unknown paths to index.html and answer 200,
     // so only a well-formed JSON reply counts as "the server is there".
     const data = await res.json();
-    if (typeof data.home !== "string") throw new Error("Not the Marky server");
+    if (typeof data.home !== "string") throw new Error("Not the Mandy server");
     setServerAvailable(true);
   } catch {
     setServerAvailable(false);
