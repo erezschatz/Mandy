@@ -1,5 +1,7 @@
 # Mandy - Simple & Free Markdown Editor
 
+![CI](https://github.com/erezschatz/mandy/actions/workflows/ci.yml/badge.svg)
+
 A WYSIWYG markdown editor that runs on your own machine and edits your own markdown files.
 
 Mandy allows you to create markdown documents and export them as **fully editable HTML files** that anyone can modify and return to you. Perfect for spec-driven AI development and stakeholder reviews.

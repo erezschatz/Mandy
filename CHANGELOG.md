@@ -1448,3 +1448,16 @@ feature still marked experimental, and its default OS-webview backend is a
 fourth rendering engine to reconcile against the contenteditable folklore
 `browser-check.html` exists to measure. The "unidentified developer" warning is
 explicitly *not* one of the blockers.
+
+## 2026-09-02 — `aa37dde` — Run the tests on push, show the result on the README
+
+`.github/workflows/ci.yml` runs the two checks that were previously local-only
+on every push to `main` and every pull request: `tests/run.mjs` (which already
+exits non-zero on a failed check) and `deno task check` on the server. It
+installs Deno and nothing else — no Node, no `npm ci` — since the npm scripts
+are only wrappers and Deno fetches Hono itself.
+
+The README gained one badge under the title, `ci.yml/badge.svg`, which reflects
+that workflow's last run on `main`: green when the suite passes, red when it
+does not, and a click through to the run either way. No test count, no coverage
+percentage — nothing that stays green by not measuring anything.
