@@ -1449,7 +1449,7 @@ fourth rendering engine to reconcile against the contenteditable folklore
 `browser-check.html` exists to measure. The "unidentified developer" warning is
 explicitly *not* one of the blockers.
 
-## 2026-09-02 — `aa37dde` — Run the tests on push, show the result on the README
+## 2026-09-02 — `62d8cc7` — Run the tests on push, show the result on the README
 
 `.github/workflows/ci.yml` runs the two checks that were previously local-only
 on every push to `main` and every pull request: `tests/run.mjs` (which already
