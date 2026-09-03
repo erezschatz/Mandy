@@ -203,6 +203,39 @@ export default function run(check) {
   check("an <li> nested in an <li> becomes its sibling",
     !first.children.includes(second) && changed === true);
 
+  // Pasting cut bullets from one list into another leaves an <li> orphaned
+  // outside any list — a direct child of the editor, or of a stray wrapper.
+  // Outside a list it renders unindented and contenteditable's Enter and
+  // Backspace both refuse to act on it, so the bullet is frozen until reload.
+  ({ normaliseEditorMarkup, editor } = load());
+  const listB = nest(el("ul"), nest(el("li"), makeText("b1")));
+  const orphan1 = nest(el("li"), makeText("pasted 1"));
+  const orphan2 = nest(el("li"), makeText("pasted 2"));
+  editor.appendChild(listB);
+  editor.appendChild(orphan1);
+  editor.appendChild(orphan2);
+  changed = normaliseEditorMarkup(editor);
+  check("an orphan <li> after a list is adopted into it",
+    listB.children.includes(orphan1) && !editor.children.includes(orphan1));
+  check("and a run of orphans coalesces into the same list, in order",
+    listB.children.includes(orphan2) &&
+      listB.children.indexOf(orphan1) < listB.children.indexOf(orphan2) &&
+      changed === true);
+
+  ({ normaliseEditorMarkup, editor } = load());
+  const soloItem = nest(el("li"), makeText("all alone"));
+  editor.appendChild(soloItem);
+  changed = normaliseEditorMarkup(editor);
+  check("an orphan <li> with no list to join is wrapped in one",
+    editor.children[0].tagName === "UL" &&
+      editor.children[0].children.includes(soloItem) && changed === true);
+
+  ({ normaliseEditorMarkup, editor } = load());
+  const okItem2 = nest(el("li"), makeText("fine"));
+  editor.appendChild(nest(el("ul"), okItem2));
+  check("an <li> already inside a list is left alone",
+    normaliseEditorMarkup(editor) === false);
+
   // Chrome stamps id="null" on a rule inserted with no id given.
   ({ normaliseEditorMarkup, editor } = load());
   const rule = el("hr", { id: "null" });
@@ -217,11 +250,69 @@ export default function run(check) {
   check("a real id on a rule is kept",
     normaliseEditorMarkup(editor) === false && realRule.getAttribute("id") === "intro");
 
+  // --- the block Enter leaves behind -------------------------------------
+  //
+  // Chrome and Safari synthesise a <div> when Enter exits a heading or a list.
+  // defaultParagraphSeparator (set at load, checked below) makes it a <p> at
+  // the source; this is the backstop for paste and for an engine that ignores
+  // the hint. blockAncestor in format-bar.js does not know <div>, so the line
+  // after a heading stopped raising the caret bar until this ran.
+
+  ({ normaliseEditorMarkup, editor } = load());
+  text = makeText("after a heading");
+  editor.appendChild(nest(el("div"), text));
+  changed = normaliseEditorMarkup(editor);
+  check("a bare <div> child of the editor becomes <p>",
+    editor.children[0].tagName === "P" && changed === true);
+  check("carrying its text across rather than rebuilding it",
+    editor.children[0].children[0] === text);
+
+  // Deeper down it can be loose-list markup, so it is left alone.
+  ({ normaliseEditorMarkup, editor } = load());
+  const looseItem = nest(el("li"), nest(el("div"), makeText("para in item")));
+  editor.appendChild(nest(el("ul"), looseItem));
+  check("a <div> inside an <li> is left alone",
+    normaliseEditorMarkup(editor) === false &&
+      looseItem.children[0].tagName === "DIV");
+
+  // Chrome's list-exit strands the new block as a direct child of the <ul>.
+  ({ normaliseEditorMarkup, editor } = load());
+  const exitedList = nest(el("ul"), nest(el("li"), makeText("item")));
+  const stray = nest(el("p"), makeText("new line"));
+  exitedList.appendChild(stray);
+  editor.appendChild(exitedList);
+  changed = normaliseEditorMarkup(editor);
+  check("a <p> stranded in a <ul> is lifted out after the list",
+    editor.children[1] === stray && !exitedList.children.includes(stray) &&
+      changed === true);
+
+  ({ normaliseEditorMarkup, editor } = load());
+  const exitedList2 = nest(el("ul"), nest(el("li"), makeText("item")));
+  const strayDiv = nest(el("div"), makeText("new line"));
+  exitedList2.appendChild(strayDiv);
+  editor.appendChild(exitedList2);
+  normaliseEditorMarkup(editor);
+  check("a <div> stranded in a <ul> is retagged and lifted out",
+    editor.children[1].tagName === "P" &&
+      !exitedList2.children.some((c) => c.tagName === "P" || c.tagName === "DIV"));
+
+  // A <div> wrapped around a list is unwrapped, like a <p> around one — the
+  // only <div> that legitimately holds a list is a mermaid wrapper, excused
+  // first by isProtectedNode.
+  ({ normaliseEditorMarkup, editor } = load());
+  const wrappedList = nest(el("ul"), nest(el("li"), makeText("one")));
+  editor.appendChild(nest(el("div"), wrappedList));
+  changed = normaliseEditorMarkup(editor);
+  check("a <div> wrapped around a list is unwrapped",
+    editor.children[0] === wrappedList && changed === true);
+
   // --- the wrapper ---------------------------------------------------------
 
   let api = load();
   check("styleWithCSS is turned off at load",
     api.commands.includes("styleWithCSS:false"));
+  check("defaultParagraphSeparator is set to p at load",
+    api.commands.includes("defaultParagraphSeparator"));
 
   api = load();
   api.runCommand("bold");

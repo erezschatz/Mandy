@@ -1461,3 +1461,68 @@ The README gained one badge under the title, `ci.yml/badge.svg`, which reflects
 that workflow's last run on `main`: green when the suite passes, red when it
 does not, and a click through to the run either way. No test count, no coverage
 percentage — nothing that stays green by not measuring anything.
+
+## 2026-09-03 — The block Enter leaves behind
+
+Pressing Enter to exit a heading or a list made Chrome and Safari synthesise a
+`<div>` — there is no block of the same kind to split, so the browser fell back
+to the `defaultParagraphSeparator`, which was never set and defaults to `div`.
+Nothing in `front/` recognised that `<div>` as a block: `blockAncestor` in
+`format-bar.js` lists `P`/`H1`–`H3`/`LI`/`PRE` and nothing else, so `atBlockStart`
+returned false for the line after a heading and the caret format bar stopped
+appearing there — a bare caret or a click on that line raised nothing, though
+selecting its text still brought up the selection bar, which does not go through
+`blockAncestor`. The same fallback is what produced the occasional indented line
+on leaving a bulleted list: Chrome's list-exit strands the new block as a direct
+child of the `<ul>`, sometimes inside leftover nesting.
+
+Two changes, both in `execcommand.js`:
+
+- `defaultParagraphSeparator` is set to `p` at load, next to `styleWithCSS`.
+  Chrome and Safari now create `<p>` on heading- and list-exit; Firefox already
+  did. This is what actually restores the caret bar.
+- `normaliseEditorMarkup` gained a backstop for paste and for any engine that
+  ignores the hint: a bare `<div>` that is a direct child of `#editor` is
+  retagged to `<p>`, and a `<div>` or `<p>` stranded as a direct child of
+  `<ul>`/`<ol>` is retagged if needed and lifted out to sit after the list.
+  `DIV` joined `UNWRAPPABLE_AROUND_LIST` so a `<div>` wrapped around a list is
+  unwrapped like a `<p>` around one already was — the only `<div>` that
+  legitimately holds a list is a mermaid wrapper, which `isProtectedNode`
+  excuses first. Deeper `<div>`s, inside an `<li>` or a `<blockquote>`, are
+  left alone: there they can be loose-list markup the structure needs.
+
+Verified by hand in Firefox 154: the line after a heading now raises the caret
+bar, and leaving a bulleted list no longer lands indented. Documents already
+carrying the old `<div>` soup need one reopen to clear it — the normalisation
+only runs on `runCommand`, not on load. Chrome and Safari unverified.
+
+The non-deterministic *indent* on list-exit — which would need a hand-rolled
+Enter handler for an empty `<li>`, the way `outdentListItem` already hand-rolls
+Shift+Tab — is left for a follow-up if `defaultParagraphSeparator` plus the
+backstop do not settle it in Chrome and Safari too.
+
+## 2026-09-03 — The bullet a cross-list paste strands
+
+Cutting two bullets from one list and pasting them into another left one item
+unindented and frozen: Enter and Backspace both did nothing on it, and only a
+save and reload put it right. `execCommand("insertHTML")` splicing an `<li>` (or
+a bare `<ul>` fragment) into an existing `<li>` is one of the most
+engine-divergent things there is, and a common result is an `<li>` orphaned
+outside any list — a direct child of `#editor` or of a stray wrapper. There it
+renders at the wrong indent, and contenteditable's Enter and Backspace no-op on
+it because they cannot find a list context; the recovery on reload is Turndown
+flattening it to a plain list item and markdown-it rebuilding a clean
+`<ul><li>`. `normaliseEditorMarkup` repaired an `<li>` inside an `<li>` but had
+no rule for one outside a list at all.
+
+It has one now, in `execcommand.js`: an `<li>` whose parent is neither a list
+nor an `<li>` is adopted into an adjacent sibling `<ul>`/`<ol>` — the one it was
+just cut away from — or, failing that, wrapped in a fresh `<ul>`. A run of
+orphans coalesces in order, because the walk reaches them one at a time and each
+sees the list the previous one just joined or created as its own previous
+sibling.
+
+Not verified in a browser — the exact markup a cross-list paste produces is
+engine-specific and was not captured — so this is a sound backstop rather than a
+confirmed fix for the reported case. `tests/browser-check.html` does not cover
+paste; confirming it wants the post-paste DOM from a real repro.

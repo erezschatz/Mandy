@@ -43,6 +43,20 @@ try {
   // it, and normaliseEditorMarkup is the backstop either way.
 }
 
+// The block a browser synthesises when Enter leaves a heading or a list —
+// there is no existing block of the same kind to split, so it falls back to
+// this. Chrome and Safari default it to <div>; Firefox already uses <p>. An
+// unrecognised <div> is worse than cosmetic: blockAncestor in format-bar.js
+// does not list it, so the caret bar stops appearing on the line after a
+// heading, and Turndown serialises a bare <div> less cleanly than a paragraph.
+// normaliseEditorMarkup below is the backstop for paste and for any engine
+// that ignores this hint.
+try {
+  document.execCommand("defaultParagraphSeparator", false, "p");
+} catch {
+  // Same story as styleWithCSS above.
+}
+
 // Styles that have a markdown spelling, and the element that spells them.
 // Anything else a span carries — colour, font size, a background — has no
 // markdown at all, so the span is unwrapped rather than retagged: Turndown
@@ -60,8 +74,10 @@ const STYLE_TO_TAG = [
 
 // Blocks that have no business containing a list, and are unwrapped when they
 // do. <li> and <blockquote> are deliberately absent: a list inside either of
-// those is ordinary, correct markup.
-const UNWRAPPABLE_AROUND_LIST = new Set(["P", "H1", "H2", "H3", "H4", "H5", "H6"]);
+// those is ordinary, correct markup. <div> is here because the only <div> that
+// legitimately holds a list is a mermaid wrapper, which isProtectedNode has
+// already excused before this set is consulted.
+const UNWRAPPABLE_AROUND_LIST = new Set(["P", "H1", "H2", "H3", "H4", "H5", "H6", "DIV"]);
 
 function holdsListChild(node) {
   for (const child of node.children || []) {
@@ -185,11 +201,68 @@ function normaliseEditorMarkup(root) {
       return;
     }
 
+    // An <li> that ended up outside any list — parent is #editor, a <div>, a
+    // <p>. execCommand("insertHTML") splicing an <li> or a bare <ul> fragment
+    // into an existing <li>, which is what pasting cut bullets from one list
+    // into another does, is one of the most engine-divergent operations there
+    // is, and orphaning an item is a common result. It renders at the wrong
+    // indent and — worse — contenteditable's Enter and Backspace both no-op on
+    // it, because they cannot find a list context to act in, so the bullet is
+    // frozen until a save and reload rebuilds the markup from the file. Adopt
+    // it into an adjacent sibling list, or wrap it in a fresh one. Consecutive
+    // orphans coalesce: the walk reaches them in order, and each sees the list
+    // the one before it just joined or created as its own previous sibling.
+    if (
+      node.tagName === "LI" &&
+      node.parentElement &&
+      node.parentElement.tagName !== "UL" &&
+      node.parentElement.tagName !== "OL"
+    ) {
+      const prev = node.previousElementSibling;
+      const next = node.nextElementSibling;
+      const isList = (el) => el && (el.tagName === "UL" || el.tagName === "OL");
+      if (isList(prev)) {
+        node.parentElement.removeChild(node);
+        prev.appendChild(node);
+      } else if (isList(next)) {
+        node.parentElement.removeChild(node);
+        next.insertBefore(node, next.firstChild);
+      } else {
+        const list = document.createElement("ul");
+        node.parentElement.replaceChild(list, node);
+        list.appendChild(node);
+      }
+      changed = true;
+      return;
+    }
+
     // Chrome stamps id="null" on a rule inserted with no id. Harmless in
     // markdown, which carries no attributes, but it travels into the HTML
     // exports and it is not something the author wrote.
     if (node.tagName === "HR" && node.getAttribute && node.getAttribute("id") === "null") {
       node.removeAttribute("id");
+      changed = true;
+      return;
+    }
+
+    // The block a browser leaves behind when Enter exits a heading or a list.
+    // Two shapes, both from contenteditable and neither anything markdown-it
+    // or the author ever writes: a bare <div> where a paragraph belongs, and a
+    // block stranded as a direct child of <ul>/<ol> with no <li> around it —
+    // Chrome's list-exit, which is also where the "new line came out indented"
+    // bug lives. The <div> is retagged to <p>; a stranded block is lifted out
+    // to sit after the list. Deeper <div>s are left alone: inside an <li> or a
+    // <blockquote> they can be loose-list markup the author's structure needs.
+    if (node.tagName === "DIV" || node.tagName === "P") {
+      const parent = node.parentElement;
+      const inList =
+        parent && (parent.tagName === "UL" || parent.tagName === "OL");
+      if (!inList && !(node.tagName === "DIV" && parent === editor)) return;
+      const fixed = node.tagName === "DIV" ? retagElement(node, "P") : node;
+      if (inList) {
+        parent.removeChild(fixed);
+        parent.insertAdjacentElement("afterend", fixed);
+      }
       changed = true;
       return;
     }
