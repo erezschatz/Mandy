@@ -108,21 +108,30 @@ Re-run it when adding a format, and when a browser does something surprising.
 TODO 1.1 carries that instruction now, along with the two divergences it found
 that are still open (TODO 1.1.5).
 
-There are two other pages beside it, same idea and same reason. The first:
+There are three other pages beside it, same idea and same reason. The first two
+watch our own hand-rolled list surgery in a real editing engine rather than a
+command's output, and both drive the running app in an `<iframe src="/">` —
+served through the same `/tests/` route, so the frame is same-origin and the
+page reads app internals straight out of its window. `CHECK_PAGES` in
+`server.ts` is the literal set of names that route serves; a new check page has
+to be added there.
 
-[tests/list-indent-check.html](tests/list-indent-check.html) is its sibling, for
-the one path this page cannot reach: `outdentListItem` no longer calls
-execCommand at all, so what needs watching there is our own DOM surgery in a
-real editing engine rather than a command's output. It drives the running app in
-an `<iframe src="/">` — served through the same `/tests/` route, so the frame is
-same-origin and this page reads `outdentListItem` straight out of the app's
-window — and ends with a control, raw `execCommand("outdent")` on the same list,
-so a green run is measured against the bug still being there. Same run recipe as
-its sibling; if the app has not booted in the frame after ten seconds it says
-so instead of hanging. Chrome 148, Firefox 154 and Safari 26.6 all mangle that
-list, three different ways, and all three come out right through Shift+Tab.
+[tests/list-indent-check.html](tests/list-indent-check.html) is for the path
+`outdentListItem` opened when it stopped calling execCommand. It ends with a
+control, raw `execCommand("outdent")` on the same list, so a green run is
+measured against the bug still being there. Chrome 148, Firefox 154 and Safari
+26.6 all mangle that list, three different ways, and all three come out right
+through Shift+Tab.
 
-[tests/paste-check.html](tests/paste-check.html) is the third, and the only one
+[tests/list-empty-item-check.html](tests/list-empty-item-check.html) is for the
+keydown handler in `app.js` that does Enter and Backspace on an empty `<li>` by
+hand — contenteditable's own handling splits the list and strands `<p><br></p>`
+blocks, which the Deno suite cannot see and only a real engine can confirm gone.
+It reports the resulting shape, the blank-paragraph count and where the caret
+landed. Not yet run in a browser. Same run recipe as its sibling; if the app has
+not booted in the frame after ten seconds it says so instead of hanging.
+
+[tests/paste-check.html](tests/paste-check.html) is the last, and the only one
 that cannot be run by a machine at all: it measures what a browser puts in a
 paste event for Ctrl+Shift+V, which needs a real clipboard and a real
 keystroke. It answered the question TODO 1.3 opened with: Chrome 152 and Firefox

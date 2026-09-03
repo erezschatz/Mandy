@@ -153,14 +153,20 @@ router.post('/api/file', async (c: Context) => {
 
 // ── The browser checks ───────────────────────────────────────────────────────
 //
-// tests/browser-check.html and tests/list-indent-check.html measure what a real
-// engine does with execCommand — the half the Deno suite has no editing engine
-// to reach. They live in tests/, so the static handler below (pinned to
-// FRONT_DIR) cannot serve them, and list-indent-check.html needs the app on its
-// own origin: its <iframe src="/"> reads straight into the running app's window.
-// So serve exactly those two files, GET only, name matched by a literal set —
-// nothing here takes a path from the request.
-const CHECK_PAGES = new Set(['browser-check.html', 'list-indent-check.html']);
+// tests/browser-check.html, tests/list-indent-check.html and
+// tests/list-empty-item-check.html measure what a real engine does with
+// execCommand and with our own hand-rolled list surgery — the half the Deno
+// suite has no editing engine to reach. They live in tests/, so the static
+// handler below (pinned to FRONT_DIR) cannot serve them, and the two
+// list-*-check pages need the app on their own origin: their <iframe src="/">
+// reads straight into the running app's window. So serve exactly these files,
+// GET only, name matched by a literal set — nothing here takes a path from the
+// request.
+const CHECK_PAGES = new Set([
+  'browser-check.html',
+  'list-indent-check.html',
+  'list-empty-item-check.html',
+]);
 const TESTS_DIR = path.resolve(SERVER_DIR, '../../tests');
 
 router.get('/tests/:name', async (c: Context) => {

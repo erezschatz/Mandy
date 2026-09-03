@@ -164,6 +164,25 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     [execcommand.js](../front/execcommand.js). A feature in its own right, not
     one of the one-liners nearby.
 
+*   **1.6** *(bug, unfixed)* Undo does not always come back clean. Reported:
+    open a file, press Enter at the end of an `<li>` (one edit), then Ctrl+Z.
+    The `(edited)` marker stays lit, and the caret jumps to the top of the
+    document rather than back to where the edit was.
+
+    Both halves point at the same place. `file-api.js` clears `(edited)` when
+    undo returns to `cleanPosition` — the `undoPosition()` id recorded at the
+    last open/save — so if the flag stays, the id undo landed on is not the one
+    `markClean()` stored. Either the Enter's snapshot bookkeeping is off, or the
+    caret restore (`undoTextOffset` / `undoLocateOffset` in
+    [undo.js](../front/undo.js), a character offset across element boundaries)
+    is miscounting for a caret at the end of a list item and the snapshot it
+    lands on is not the baseline. The caret-to-top symptom is the same
+    miscount showing directly: offset 0.
+
+    Not yet reproduced in isolation. Candidate to fold in with the empty-`<li>`
+    keydown work if it turns out to share a cause; recorded separately because
+    it is an `undo.js` question, not a list-markup one, and might be neither.
+
 ## 2. Save fidelity
 
 Ways the bytes on disk still differ from what was opened, all verified by

@@ -1,0 +1,237 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mandy empty-bullet Enter/Backspace check</title>
+
+<!--
+  The half tests/list-indent.test.mjs cannot reach for the empty-bullet
+  keydown handler in front/app.js: what a real editing engine does when the
+  handler calls preventDefault and then rebuilds the list by hand.
+
+  The handler exists because contenteditable's own Enter/Backspace on an empty
+  <li> is a lottery — Chrome splits the <ul> and strands <p><br></p> blocks
+  between the halves, Backspace lands the caret at the start of the next item
+  rather than the end of the previous one, and one Enter can move the caret two
+  rows down. Every one of those was a bug report. The Deno suite drives the DOM
+  outcome; only a browser can confirm the caret lands where the handler put it
+  and that no stray blocks appear.
+
+  Same mechanism as tests/list-indent-check.html: drive the running app in an
+  <iframe src="/"> so the keydown handler, the guards and the DOM surgery are
+  exactly the ones the user gets. Served by the /tests/ route in server.ts,
+  same origin as the frame, so this page reads results straight out of the
+  app's window.
+
+  How to run it: `npm run serve`, then open
+  http://localhost:9130/tests/list-empty-item-check.html in each browser. A
+  file:// open cannot work — the guard below says so after ten seconds. Reports
+  POST to /report, which the server prints for a headless run.
+-->
+
+<style>body{font:13px/1.5 ui-monospace,monospace;margin:1rem} iframe{width:900px;height:300px}
+pre{white-space:pre-wrap} .bad{color:#b00}</style>
+<h1 id="head">running…</h1>
+<pre id="out"></pre>
+<iframe id="app" src="/"></iframe>
+<script>
+const COLLECTOR = "/report";
+const snapshot = Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)]));
+
+const fresh = async () => {
+  if (navigator.serviceWorker) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((r) => r.unregister()));
+  }
+  if (window.caches) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  }
+  document.getElementById("app").src = "/?fresh=" + Date.now();
+};
+
+const ready = () => new Promise((resolve, reject) => {
+  const frame = document.getElementById("app");
+  const deadline = Date.now() + 10000;
+  const poll = () => {
+    const win = frame.contentWindow;
+    const doc = win && win.document;
+    if (doc && doc.getElementById("editor") && typeof win.listItemAtCaret === "function")
+      return resolve(win);
+    if (Date.now() > deadline) return reject(new Error(
+      "the app did not load in the iframe. Run this through the server — " +
+      "`npm run serve`, then http://localhost:9130/tests/list-empty-item-check.html"));
+    setTimeout(poll, 100);
+  };
+  frame.addEventListener("load", poll);
+  poll();
+});
+
+// Structure of #editor, tags only, so a report reads without squinting at markup.
+function shape(el) {
+  return [...el.children].map((c) => {
+    if (!/^(UL|OL|LI|P)$/.test(c.tagName)) return c.tagName.toLowerCase();
+    const own = [...c.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join("").trim();
+    const kids = /^(UL|OL)$/.test(c.tagName) ? shape(c) : [];
+    return kids.length ? `${c.tagName.toLowerCase()}(${own}${own ? ":" : ""}${kids.join(",")})`
+                       : `${c.tagName.toLowerCase()}(${own})`;
+  });
+}
+
+function setCaret(win, node, offset) {
+  const range = win.document.createRange();
+  range.setStart(node, offset);
+  range.collapse(true);
+  const sel = win.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function pressKey(win, key) {
+  const ed = win.document.getElementById("editor");
+  const event = new win.KeyboardEvent("keydown", {
+    key, code: key, bubbles: true, cancelable: true,
+  });
+  ed.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+const results = [];
+function record(name, shapeStr, verdict, note, extra) {
+  results.push({ name, shape: shapeStr, verdict, note, ...extra });
+}
+
+(async () => {
+  await fresh();
+  const win = await ready();
+  const doc = win.document;
+  const ed = doc.getElementById("editor");
+  win.focus();
+
+  const inputs = [];
+  ed.addEventListener("input", () => inputs.push(1));
+
+  // Installs the fixture, drops the caret in the nth <li> (which is expected to
+  // be the empty one), presses the key, reports what came back.
+  function run({ name, fixture, emptyIndex, key, expect }) {
+    ed.innerHTML = fixture;
+    ed.focus();
+    const items = [...ed.querySelectorAll("li")];
+    const gap = items[emptyIndex];
+    if (!gap) return record(name, ed.innerHTML, "NO-ITEM", `no <li> #${emptyIndex}`);
+    setCaret(win, gap, 0);
+    inputs.length = 0;
+    let prevented;
+    try { prevented = pressKey(win, key); }
+    catch (e) { return record(name, String(e), "THREW"); }
+    const sel = win.getSelection();
+    const caretIn = sel.anchorNode &&
+      (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode);
+    const state = {
+      shape: shape(ed).join(" "),
+      html: ed.innerHTML,
+      prevented,
+      inputs: inputs.length,
+      blanks: (ed.innerHTML.match(/<p><br\s*\/?><\/p>/gi) || []).length,
+      caretTag: caretIn && caretIn.tagName,
+      caretText: caretIn && (caretIn.textContent || "").trim().slice(0, 20),
+    };
+    const failure = expect(state);
+    record(name, state.shape, failure ? "PROBLEM" : "ok", failure, { state });
+  }
+
+  // Backspace on an empty middle bullet: one list, the bullet gone, caret at
+  // the end of the bullet above.
+  run({
+    name: "Backspace on an empty middle bullet just deletes it",
+    fixture: "<ul><li>a</li><li><br></li><li>c</li></ul>",
+    emptyIndex: 1, key: "Backspace",
+    expect: (s) => !s.prevented ? "key not swallowed"
+      : s.shape !== "ul(li(a),li(c))" ? `shape ${s.shape}`
+      : s.blanks ? `${s.blanks} stray <p><br></p>`
+      : s.caretText !== "a" ? `caret landed in "${s.caretText}" (${s.caretTag})` : null,
+  });
+
+  // Enter on an empty middle bullet: the list splits around one paragraph.
+  run({
+    name: "Enter on an empty middle bullet splits the list once",
+    fixture: "<ul><li>a</li><li><br></li><li>c</li></ul>",
+    emptyIndex: 1, key: "Enter",
+    expect: (s) => !s.prevented ? "key not swallowed"
+      : s.blanks !== 1 ? `${s.blanks} blank paragraphs, expected 1`
+      : s.shape !== "ul(li(a)) p() ul(li(c))" ? `shape ${s.shape}`
+      : s.caretTag !== "P" ? `caret in ${s.caretTag}, expected P` : null,
+  });
+
+  // Enter on the trailing empty bullet: paragraph after the list, nothing else.
+  run({
+    name: "Enter on a trailing empty bullet leaves one paragraph after the list",
+    fixture: "<ul><li>a</li><li><br></li></ul>",
+    emptyIndex: 1, key: "Enter",
+    expect: (s) => s.blanks !== 1 ? `${s.blanks} blank paragraphs`
+      : s.shape !== "ul(li(a)) p()" ? `shape ${s.shape}` : null,
+  });
+
+  // Enter on the only bullet: the list goes.
+  run({
+    name: "Enter on the only empty bullet drops the list",
+    fixture: "<ul><li><br></li></ul>",
+    emptyIndex: 0, key: "Enter",
+    expect: (s) => s.shape !== "p()" ? `shape ${s.shape}` : s.blanks !== 1 ? `${s.blanks} blanks` : null,
+  });
+
+  // Backspace on the first empty bullet: paragraph above, the rest intact.
+  run({
+    name: "Backspace on the first empty bullet lifts a paragraph above the list",
+    fixture: "<ul><li><br></li><li>b</li></ul>",
+    emptyIndex: 0, key: "Backspace",
+    expect: (s) => s.shape !== "p() ul(li(b))" ? `shape ${s.shape}` : null,
+  });
+
+  // A nested empty bullet outdents one level rather than leaving the list.
+  run({
+    name: "Enter on a nested empty bullet outdents one level",
+    fixture: "<ul><li>parent<ul><li><br></li></ul></li></ul>",
+    emptyIndex: 1, key: "Enter",
+    expect: (s) => !s.prevented ? "key not swallowed"
+      : /ul.*ul/.test(s.shape) ? `still nested: ${s.shape}` : null,
+  });
+
+  // Control: the same two keystrokes with the handler bypassed, i.e. what the
+  // engine does on its own. No verdict — this is the behaviour the handler
+  // exists to replace, measured rather than remembered.
+  for (const [key, idx, fx] of [
+    ["Backspace", 1, "<ul><li>a</li><li><br></li><li>c</li></ul>"],
+    ["Enter", 1, "<ul><li>a</li><li><br></li><li>c</li></ul>"],
+  ]) {
+    ed.innerHTML = fx;
+    ed.focus();
+    const gap = [...ed.querySelectorAll("li")][idx];
+    setCaret(win, gap, 0);
+    // execCommand path the engine would take with no handler: delete then the
+    // native paragraph insert. Only a rough stand-in — the real comparison is
+    // eyeballing the app without this file's app.js loaded — but it records the
+    // engine's list-splitting tendency.
+    win.document.execCommand(key === "Backspace" ? "delete" : "insertParagraph");
+    record(`CONTROL: raw ${key}`, shape(ed).join(" "), "—",
+      (ed.innerHTML.match(/<p><br\s*\/?><\/p>/gi) || []).length + " blank paragraphs");
+  }
+
+  const report = {
+    agent: navigator.userAgent,
+    when: new Date().toISOString(),
+    problems: results.filter(r => r.verdict === "PROBLEM" || r.verdict === "THREW" || r.verdict === "NO-ITEM").length,
+    results,
+  };
+  document.getElementById("out").textContent = JSON.stringify(report, null, 2);
+  document.getElementById("head").textContent = `${report.problems} problems — ${navigator.userAgent}`;
+  document.title = `check: ${report.problems} problems`;
+
+  document.getElementById("app").remove();
+  localStorage.clear();
+  for (const [key, value] of Object.entries(snapshot)) localStorage.setItem(key, value);
+  try { fetch(COLLECTOR, { method: "POST", body: JSON.stringify(report) }); } catch {}
+})().catch((err) => {
+  document.getElementById("head").textContent = String(err.message || err);
+  document.getElementById("head").className = "bad";
+  document.title = "check: could not run";
+});
+</script>

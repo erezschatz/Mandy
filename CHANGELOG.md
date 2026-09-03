@@ -1526,3 +1526,62 @@ Not verified in a browser — the exact markup a cross-list paste produces is
 engine-specific and was not captured — so this is a sound backstop rather than a
 confirmed fix for the reported case. `tests/browser-check.html` does not cover
 paste; confirming it wants the post-paste DOM from a real repro.
+
+## 2026-09-03 — Enter and Backspace on an empty bullet, done by hand
+
+Enter at the end of a bullet to make a new one, Backspace to remove it, Enter
+again — and the caret dropped *two* lines instead of one, cyclically. Two
+captured `#editor` snapshots showed the cause: contenteditable's own handling of
+an empty `<li>` is a lottery. At the end of a list Chrome leaves an empty
+`<ul></ul>` behind; in the middle it *splits* the `<ul>` into two and strands a
+`<p><br></p>` between the halves, then the next Enter adds its own. Backspace
+also lands the caret at the start of the *next* item rather than the end of the
+one before.
+
+The first attempt at this — `pruneEmptyLists`, an `input` listener that dropped
+empty `<ul>`/`<ol>` — was reverted: it fixed neither reported case, because the
+visible damage is the stray `<p><br></p>` blocks, not the empty list beside
+them, and those are byte-identical to a blank line somebody wanted.
+
+So the same call `outdentListItem` made for Shift+Tab: stop asking
+contenteditable and do the move by hand. `app.js` gained a `keydown` handler for
+Enter and Backspace on an empty `<li>`:
+
+- **Backspace with a bullet directly above** — the empty item is removed and the
+  caret goes to the end of that bullet. No split, no stray paragraph.
+- **A nested empty item** — Enter, and a first-item Backspace, outdent it one
+  level through `outdentListItem` rather than leaving the list outright.
+- **Top level** — Enter splits the list at the caret around a single new
+  paragraph (bullets above stay, bullets below become a fresh list after it);
+  Backspace lifts the paragraph above the list and leaves the rest intact. Empty
+  halves are dropped.
+
+Each path raises a synthetic `input`, so autosave, the dirty flag, undo and the
+outline all see it, and one keystroke stays one undo step.
+
+Covered by the `list-indent` Deno suite (47 checks) for the DOM outcome, and by
+the new [tests/list-empty-item-check.html](tests/list-empty-item-check.html) —
+served through `server.ts`'s `CHECK_PAGES` route, same shape as
+`list-indent-check.html` — for the caret landing and the stray-block count in a
+real engine.
+
+**Unverified in any browser.** Deferred to hand-testing on macOS (Chrome,
+Firefox, Safari) via the check page and the reported repro. The Deno suite
+pins the DOM surgery; whether a real engine keeps the caret where the handler
+puts it, and whether `preventDefault` fully suppresses the native split, is
+still unmeasured.
+
+That is the fourth contenteditable list-editing bug (after the Enter `<div>`,
+the cross-list paste orphan and this one's own two faces). The line drawn with
+the user: if a fifth turns up, the fix is one caret-aware list normaliser, not
+another per-symptom rule.
+
+## 2026-09-03 — Record the undo/`(edited)` bug — TODO 1.6
+
+Reported alongside the empty-bullet work but a separate fault: open a file, one
+edit (an Enter at the end of an `<li>`), Ctrl+Z — and `(edited)` stays lit while
+the caret jumps to the top of the document. Both symptoms point at undo not
+landing back on the baseline snapshot / miscounting the caret offset for a caret
+at the end of a list item. [docs/TODO.md](docs/TODO.md) gained **1.6** with the
+detail; not reproduced in isolation yet, and it is an `undo.js` question rather
+than a list-markup one.

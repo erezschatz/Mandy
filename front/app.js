@@ -1429,6 +1429,123 @@ editor.addEventListener("keydown", (e) => {
   runCommand("indent");
 });
 
+// Whether the caret's <li> holds nothing — no text, no nested list, no image.
+// The <br> a browser parks in an otherwise empty block does not count.
+function listItemIsEmpty(item) {
+  if ((item.textContent || "").trim()) return false;
+  for (const child of item.children || []) {
+    if (child.nodeType === 1 && child.tagName !== "BR") return false;
+  }
+  return true;
+}
+
+function listHasItem(list) {
+  for (const child of list.children || []) {
+    if (child.nodeType === 1 && child.tagName === "LI") return true;
+  }
+  return false;
+}
+
+// Same explicit-Range dance outdentListItem uses: contenteditable does not
+// reliably keep the visible caret with nodes that have just moved, so it is put
+// back by hand rather than trusted.
+function caretToStartOf(target) {
+  const selection = window.getSelection();
+  if (!selection || !document.createRange) return;
+  const range = document.createRange();
+  range.setStart(target, 0);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function caretToEndOf(target) {
+  const selection = window.getSelection();
+  if (!selection || !document.createRange) return;
+  const kids = target.childNodes || target.children || [];
+  const last = kids[kids.length - 1];
+  const range = document.createRange();
+  if (last && last.nodeType === 3) range.setStart(last, (last.textContent || "").length);
+  else range.setStart(target, kids.length);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+// Enter and Backspace on an empty bullet, done by hand.
+//
+// Left to contenteditable, both are a lottery: Chrome splits the <ul> and
+// strands blank <p><br></p> blocks between the halves, Backspace drops the
+// caret at the start of the *next* item instead of the end of the one before,
+// and a single Enter can move the caret two rows down — every one of those was
+// a bug report. execCommand has no clean primitive for it, so this is the call
+// outdentListItem already made for Shift+Tab: do the move ourselves in one
+// deterministic shape, and raise `input` so autosave, the dirty flag, undo and
+// the outline all hear it.
+editor.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== "Backspace") return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing) return;
+
+  const item = listItemAtCaret();
+  if (!item || !listItemIsEmpty(item)) return;
+
+  const list = item.parentElement;
+  if (!list || (list.tagName !== "UL" && list.tagName !== "OL")) return;
+
+  // Backspace with a bullet directly above: the empty item just goes, and the
+  // caret lands at the end of that bullet — where the user expected it, and
+  // where contenteditable would not have put it.
+  const prev = item.previousElementSibling;
+  if (e.key === "Backspace" && prev && prev.tagName === "LI") {
+    e.preventDefault();
+    list.removeChild(item);
+    caretToEndOf(prev);
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    return;
+  }
+
+  // A nested empty item outdents one level rather than leaving the list
+  // outright — Enter and a first-item Backspace both. outdentListItem is
+  // exactly that move, and already raises `input` and restores the caret.
+  if (isNested(item)) {
+    e.preventDefault();
+    outdentListItem(item);
+    return;
+  }
+
+  // Top level: leave the list for a paragraph. Enter splits the list at the
+  // caret — items above stay, items below become a fresh list after the new
+  // paragraph. Backspace (only reached on the first item) puts the paragraph
+  // before the list and leaves the rest of it intact.
+  e.preventDefault();
+  const para = document.createElement("p");
+  para.appendChild(document.createElement("br"));
+
+  const followers = [];
+  for (let s = item.nextElementSibling; s; s = s.nextElementSibling) followers.push(s);
+
+  list.removeChild(item);
+
+  if (e.key === "Backspace") {
+    list.parentNode.insertBefore(para, list);
+  } else {
+    list.insertAdjacentElement("afterend", para);
+    if (followers.length) {
+      const rest = document.createElement(list.tagName === "OL" ? "ol" : "ul");
+      for (const s of followers) {
+        list.removeChild(s);
+        rest.appendChild(s);
+      }
+      para.insertAdjacentElement("afterend", rest);
+    }
+  }
+
+  if (!listHasItem(list)) list.parentNode.removeChild(list);
+
+  caretToStartOf(para);
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+});
+
 document.addEventListener("keydown", (e) => {
   // Save/open bind to the blob fallbacks only where those buttons are rendered,
   // i.e. in exported documents. In the app itself file-api.js owns Ctrl+S and

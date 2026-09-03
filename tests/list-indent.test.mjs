@@ -182,4 +182,121 @@ export default function run(check) {
   makeEl("li", { parent: orphan.parentNode }); // give it a previous sibling
   r = press(orphan.parentNode.children[1]);
   check("a list outside the editor is ignored", r.command === null && !r.prevented);
+
+  // --- Enter and Backspace on an empty bullet ---------------------------
+  //
+  // Left to contenteditable these split the <ul> and strand blank paragraphs
+  // between the halves. The handler does the move by hand in one shape. This
+  // suite drives the DOM outcome; the caret landing is browser-only and lives
+  // in tests/list-empty-item-check.html.
+
+  const onEmptyLi = editor.listeners.keydown[1];
+  const keyEvent = (key) => ({
+    key, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false,
+    isComposing: false, prevented: false,
+    preventDefault() { this.prevented = true; },
+  });
+  const pressKey = (node, key) => {
+    selection.anchorNode = node;
+    inputs.length = 0;
+    const e = keyEvent(key);
+    onEmptyLi(e);
+    return { prevented: e.prevented, inputs: inputs.length };
+  };
+
+  // Backspace on an empty item with a bullet above it: just delete it. No
+  // split, no stray paragraph — the mid-list bug in one line.
+  {
+    editor.children.length = 0;
+    const ul = makeEl("ul", { parent: editor });
+    const a = makeEl("li", { parent: ul, text: "a" });
+    const gap = makeEl("li", { parent: ul }); // empty
+    const c = makeEl("li", { parent: ul, text: "c" });
+    const out = pressKey(gap, "Backspace");
+    check("Backspace on an empty middle bullet swallows the key", out.prevented);
+    check("the empty bullet is gone", !ul.children.includes(gap));
+    check("the bullets around it stay in one list",
+      ul.children.includes(a) && ul.children.includes(c) && editor.children.length === 1);
+    check("and it raises input", out.inputs === 1);
+  }
+
+  // Enter on an empty middle item splits the list around a paragraph.
+  {
+    editor.children.length = 0;
+    const ul = makeEl("ul", { parent: editor });
+    const a = makeEl("li", { parent: ul, text: "a" });
+    const gap = makeEl("li", { parent: ul });
+    const c = makeEl("li", { parent: ul, text: "c" });
+    const out = pressKey(gap, "Enter");
+    check("Enter on an empty middle bullet swallows the key", out.prevented);
+    check("the first half keeps the bullets above", ul.children.includes(a) && !ul.children.includes(gap));
+    check("a paragraph follows it", editor.children[1].tagName === "P");
+    check("and the bullets below become a fresh list after the paragraph",
+      editor.children[2].tagName === "UL" && editor.children[2].children.includes(c));
+    check("Enter raises input too", out.inputs === 1);
+  }
+
+  // Enter on the last empty item: paragraph after the list, no second list.
+  {
+    editor.children.length = 0;
+    const ul = makeEl("ul", { parent: editor });
+    makeEl("li", { parent: ul, text: "a" });
+    const gap = makeEl("li", { parent: ul });
+    pressKey(gap, "Enter");
+    check("Enter on a trailing empty bullet leaves just a paragraph after the list",
+      editor.children.length === 2 && editor.children[1].tagName === "P");
+  }
+
+  // Enter on the only item: the list goes entirely.
+  {
+    editor.children.length = 0;
+    const ul = makeEl("ul", { parent: editor });
+    const only = makeEl("li", { parent: ul });
+    pressKey(only, "Enter");
+    check("Enter on the only empty bullet drops the list",
+      editor.children.length === 1 && editor.children[0].tagName === "P");
+  }
+
+  // Backspace on the first empty item: paragraph before, the rest of the list intact.
+  {
+    editor.children.length = 0;
+    const ul = makeEl("ul", { parent: editor });
+    const gap = makeEl("li", { parent: ul });
+    const b = makeEl("li", { parent: ul, text: "b" });
+    pressKey(gap, "Backspace");
+    check("Backspace on the first empty bullet lifts a paragraph above the list",
+      editor.children[0].tagName === "P" && editor.children[1].tagName === "UL" &&
+        editor.children[1].children.includes(b));
+  }
+
+  // A nested empty item outdents one level instead of leaving the list.
+  {
+    editor.children.length = 0;
+    const outer = makeEl("ul", { parent: editor });
+    const owner = makeEl("li", { parent: outer, text: "parent" });
+    const sub = makeEl("ul", { parent: owner });
+    const gap = makeEl("li", { parent: sub });
+    const out = pressKey(gap, "Enter");
+    check("Enter on a nested empty bullet swallows the key", out.prevented);
+    check("the item moves out to the outer list", gap.parentNode === outer);
+    check("the emptied sublist is removed", !owner.children.includes(sub));
+  }
+
+  // Left alone: a bullet with text, a caret outside any list, a modified key.
+  {
+    editor.children.length = 0;
+    const ul = makeEl("ul", { parent: editor });
+    const full = makeEl("li", { parent: ul, text: "words" });
+    check("Enter on a non-empty bullet is left to the browser",
+      pressKey(full, "Enter").prevented === false);
+
+    const p = makeEl("p", { parent: editor, text: "prose" });
+    check("Enter in a paragraph is left alone", pressKey(p, "Enter").prevented === false);
+
+    const gap = makeEl("li", { parent: ul });
+    const ctrl = { ...keyEvent("Backspace"), ctrlKey: true };
+    selection.anchorNode = gap;
+    onEmptyLi(ctrl);
+    check("Ctrl+Backspace on an empty bullet is not ours", ctrl.prevented === false);
+  }
 }
