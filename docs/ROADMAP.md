@@ -32,6 +32,17 @@ rediscovering them:
   makes it tractable and contradicts what this project is. That is a call to make
   deliberately, not to discover three months in.
 
+**When this stops being post-1.0.** Twice now a cluster of contenteditable bugs
+has forced a piece of its behaviour to be replaced with hand-rolled DOM surgery
+— `outdentListItem` for Shift+Tab, then the empty-`<li>` Enter/Backspace handler
+in `app.js` (see CHANGELOG). Each is a small, tested island, but each also
+widens the input surface this rewrite has to reproduce exactly, so past a point
+writing more of them is doing the rewrite in the worst order. The rule, kept as
+an option rather than a commitment: **a third such cluster reclassifies this
+from a roadmap item to a 1.0 blocker.** At that point the hand-rolls are no
+longer buying time, they are the spec — and it is cheaper to build the model
+than to keep discovering it one keystroke at a time.
+
 ## More export options
 
 The set today is markdown, HTML, PDF, DOCX and Editable. Decide what else earns

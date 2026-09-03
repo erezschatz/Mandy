@@ -1585,3 +1585,13 @@ landing back on the baseline snapshot / miscounting the caret offset for a caret
 at the end of a list item. [docs/TODO.md](docs/TODO.md) gained **1.6** with the
 detail; not reproduced in isolation yet, and it is an `undo.js` question rather
 than a list-markup one.
+
+## 2026-09-03 — An escalation rule for the Mandy 2.0 rewrite
+
+[docs/ROADMAP.md](docs/ROADMAP.md)'s "Mandy 2.0" section gained one: twice now a
+cluster of contenteditable bugs has forced a piece of its behaviour to be
+replaced with hand-rolled DOM surgery (`outdentListItem`, then the empty-`<li>`
+handler). Recorded as an option, not a commitment — **a third such cluster
+reclassifies the model rewrite from a roadmap item to a 1.0 blocker**, on the
+argument that past that point the hand-rolls are the input-layer spec rather
+than a way of deferring it. No code.
