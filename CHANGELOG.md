@@ -1462,7 +1462,7 @@ that workflow's last run on `main`: green when the suite passes, red when it
 does not, and a click through to the run either way. No test count, no coverage
 percentage — nothing that stays green by not measuring anything.
 
-## 2026-09-03 — The block Enter leaves behind
+## 2026-09-03 — `c0b8f8a` — The block Enter leaves behind
 
 Pressing Enter to exit a heading or a list made Chrome and Safari synthesise a
 `<div>` — there is no block of the same kind to split, so the browser fell back
@@ -1501,7 +1501,7 @@ Enter handler for an empty `<li>`, the way `outdentListItem` already hand-rolls
 Shift+Tab — is left for a follow-up if `defaultParagraphSeparator` plus the
 backstop do not settle it in Chrome and Safari too.
 
-## 2026-09-03 — The bullet a cross-list paste strands
+## 2026-09-03 — `c0b8f8a` — The bullet a cross-list paste strands
 
 Cutting two bullets from one list and pasting them into another left one item
 unindented and frozen: Enter and Backspace both did nothing on it, and only a
