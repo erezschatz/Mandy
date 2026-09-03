@@ -1527,7 +1527,7 @@ engine-specific and was not captured — so this is a sound backstop rather than
 confirmed fix for the reported case. `tests/browser-check.html` does not cover
 paste; confirming it wants the post-paste DOM from a real repro.
 
-## 2026-09-03 — Enter and Backspace on an empty bullet, done by hand
+## 2026-09-03 — `6981344` — Enter and Backspace on an empty bullet, done by hand
 
 Enter at the end of a bullet to make a new one, Backspace to remove it, Enter
 again — and the caret dropped *two* lines instead of one, cyclically. Two
@@ -1576,7 +1576,7 @@ the cross-list paste orphan and this one's own two faces). The line drawn with
 the user: if a fifth turns up, the fix is one caret-aware list normaliser, not
 another per-symptom rule.
 
-## 2026-09-03 — Record the undo/`(edited)` bug — TODO 1.6
+## 2026-09-03 — `6981344` — Record the undo/`(edited)` bug — TODO 1.6
 
 Reported alongside the empty-bullet work but a separate fault: open a file, one
 edit (an Enter at the end of an `<li>`), Ctrl+Z — and `(edited)` stays lit while
