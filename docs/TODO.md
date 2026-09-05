@@ -29,10 +29,10 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     strikethrough, ul, ol, code, and the Format menu reaches those plus h4-h6
     and list indent/outdent, which have no room on the smaller bar — more
     reachable, not more capable. Insert has a horizontal rule and, since 1.1.1,
-    a link. Missing, still: images, tables, blockquotes, and inline code. They
-    render when imported; there is just no way to author them. The Format and
-    Insert menus are where they go, and both have room. D4 carries the boundary
-    rule for which formats may use execCommand and which get written by hand.
+    a link. Missing, still: images, tables and blockquotes. They render when
+    imported; there is just no way to author them. The Format and Insert menus
+    are where they go, and both have room. D4 carries the boundary rule for
+    which formats may use execCommand and which get written by hand.
 
     **Standing instruction, for every slice below:** re-run
     [tests/browser-check.html](../tests/browser-check.html) when adding a format,
@@ -44,14 +44,9 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     one path that no longer goes through execCommand at all.
 
     The slices are roughly in order of increasing cost. 1.1.1 (links), 1.1.2
-    (h4-h6, plus the 1.1.5 heading-in-list refusal bundled with it) and 1.1.3
-    (indent/outdent controls) landed — see CHANGELOG.md.
-
-    *   **1.1.4** *(inline code)* No execCommand; written by hand. Partly
-        reachable already — the format bar's Code button produces inline
-        `<code>` for a partial selection (see the format-bar section of
-        CLAUDE.md) — so the slice is a dedicated control plus confirming the
-        caret, whole-block and partial cases all behave.
+    (h4-h6, plus the 1.1.5 heading-in-list refusal bundled with it), 1.1.3
+    (indent/outdent controls) and 1.1.4 (inline code, verified rather than
+    rebuilt) landed — see CHANGELOG.md.
 
     *   **1.1.5** *(block controls inside a list)* One execCommand divergence
         remains here, of the two originally found — the other (the

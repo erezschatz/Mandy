@@ -1656,3 +1656,29 @@ whichever slice next introduces something new to measure.
 `front/welcome.md` and [CLAUDE.md](CLAUDE.md) updated to match: the "ten
 formats" counts become twelve-of-thirteen (Code stays hand-rolled), and the
 welcome document's own description of the Format menu and caret bar.
+
+## 2026-09-05 — TODO 1.1.4 closed: inline code verified, not rebuilt
+
+Asked first, rather than guessed: 1.1.4's own text called for "a dedicated
+control" for inline code, but [CLAUDE.md](CLAUDE.md) already documents Code as
+deliberately a *single* button whose inline-vs-block choice comes from the
+selection, "rather than from a second button" — a two-button version of this
+existed once and was the bug ("the button used to get it wrong, turning the
+whole paragraph into a fenced block over two selected words"). Adding a real
+second control would have quietly reopened that decision. Confirmed with the
+user first: read as verification only, no new control.
+
+Every case 1.1.4 named — caret, whole-block and partial selection — was driven
+for real against the running app rather than the Deno stub, since `toggleCode`
+is hand-rolled DOM surgery with no execCommand to fall back on and the stub has
+no editing engine to catch what only a real `Range`/`Selection` would: a caret
+converts its own block, a partial selection wraps only the selected text in
+inline `<code>` without disturbing the rest of the paragraph, a whole-paragraph
+selection converts the block, the same three shapes hold inside a bullet
+(inline in place, or a `<pre>` nested in the `<li>` rather than replacing it),
+toggling either shape back off restores plain text, and selecting across two
+bullets declines with the "Select inside a single block" notice rather than
+collapsing the list. All matched the documented behaviour; nothing in
+`front/` changed. `docs/TODO.md` drops 1.1.4 and its "missing: … inline code"
+mention accordingly — the gap was discoverability of an existing capability,
+not a missing one, and no code closes that kind of gap.
