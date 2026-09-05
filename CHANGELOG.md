@@ -1657,7 +1657,7 @@ whichever slice next introduces something new to measure.
 formats" counts become twelve-of-thirteen (Code stays hand-rolled), and the
 welcome document's own description of the Format menu and caret bar.
 
-## 2026-09-05 — TODO 1.1.4 closed: inline code verified, not rebuilt
+## 2026-09-05 — `7b210d7` — TODO 1.1.4 closed: inline code verified, not rebuilt
 
 Asked first, rather than guessed: 1.1.4's own text called for "a dedicated
 control" for inline code, but [CLAUDE.md](CLAUDE.md) already documents Code as
