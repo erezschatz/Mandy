@@ -103,6 +103,12 @@ const TOOLBAR_MENUS = [
     { action: "format-h1", label: "Heading 1", variants: ALL },
     { action: "format-h2", label: "Heading 2", variants: ALL },
     { action: "format-h3", label: "Heading 3", variants: ALL },
+    // TODO 1.1.2: same formatBlock call as h1-h3, just with no room on the
+    // floating format bar — six heading buttons there is the level-picker
+    // question that item left open, so these landed in the menu only.
+    { action: "format-h4", label: "Heading 4", variants: ALL },
+    { action: "format-h5", label: "Heading 5", variants: ALL },
+    { action: "format-h6", label: "Heading 6", variants: ALL },
     { separator: true, variants: ALL },
     { action: "format-bold", label: "Bold", shortcut: "Ctrl+B", variants: ALL },
     { action: "format-italic", label: "Italic", shortcut: "Ctrl+I", variants: ALL },
@@ -111,6 +117,13 @@ const TOOLBAR_MENUS = [
     { action: "format-ul", label: "Bullet list", variants: ALL },
     { action: "format-ol", label: "Numbered list", variants: ALL },
     { action: "format-code", label: "Code block", variants: ALL },
+    { separator: true, variants: ALL },
+    // TODO 1.1.3: the engine-side move (outdentListItem, Tab/Shift+Tab) was
+    // already there with no control reaching it outside a keypress, which left
+    // touch with no way to nest a bullet at all. Not part of applyFormat's ten
+    // — these call app.js's indent/outdent handlers directly, same as Tab does.
+    { action: "indent-list-item", label: "Indent list item", shortcut: "Tab", variants: ALL },
+    { action: "outdent-list-item", label: "Outdent list item", shortcut: "Shift+Tab", variants: ALL },
   ] },
 
   { id: "viewMenu", label: "View", variants: ALL, items: [

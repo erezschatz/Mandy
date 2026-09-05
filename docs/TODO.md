@@ -26,13 +26,13 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
 *   **1.1** *(read D4 first)*
     The UI only supports some of the markup MD offers, and not even all of what
     the README advertises. The format bar has p, h1, h2, h3, bold, italic,
-    strikethrough, ul, ol, code, and the Format menu reaches the same ten —
-    which is more reachable, not more capable. Insert has a horizontal rule and,
-    since 1.1.1, a link. Missing, still: images, tables, blockquotes, h4-h6,
-    inline code, and indent/outdent. They render when imported; there is just no
-    way to author them. The Format and Insert menus are where they go, and both
-    have room. D4 carries the boundary rule for which formats may use execCommand
-    and which get written by hand.
+    strikethrough, ul, ol, code, and the Format menu reaches those plus h4-h6
+    and list indent/outdent, which have no room on the smaller bar — more
+    reachable, not more capable. Insert has a horizontal rule and, since 1.1.1,
+    a link. Missing, still: images, tables, blockquotes, and inline code. They
+    render when imported; there is just no way to author them. The Format and
+    Insert menus are where they go, and both have room. D4 carries the boundary
+    rule for which formats may use execCommand and which get written by hand.
 
     **Standing instruction, for every slice below:** re-run
     [tests/browser-check.html](../tests/browser-check.html) when adding a format,
@@ -43,20 +43,9 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     [tests/list-indent-check.html](../tests/list-indent-check.html) covers the
     one path that no longer goes through execCommand at all.
 
-    The slices are roughly in order of increasing cost. 1.1.1 (links) landed —
-    see CHANGELOG.md.
-
-    *   **1.1.2** *(h4-h6)* `formatBlock`, exactly as h1-h3 already do. No new
-        engine behaviour; the only open question is whether six heading buttons
-        want a level picker instead, which is a layout call.
-
-    *   **1.1.3** *(indent / outdent controls)* The engine work is done:
-        `outdentListItem` in app.js does the outdent by hand in all three
-        engines, watched by
-        [tests/list-indent-check.html](../tests/list-indent-check.html), and
-        Tab / Shift+Tab are bound. What is missing is a *control* — on touch
-        there is no way to nest a bullet at all. Wire a button in Insert or
-        Format to the path that already exists.
+    The slices are roughly in order of increasing cost. 1.1.1 (links), 1.1.2
+    (h4-h6, plus the 1.1.5 heading-in-list refusal bundled with it) and 1.1.3
+    (indent/outdent controls) landed — see CHANGELOG.md.
 
     *   **1.1.4** *(inline code)* No execCommand; written by hand. Partly
         reachable already — the format bar's Code button produces inline
@@ -64,22 +53,12 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
         CLAUDE.md) — so the slice is a dedicated control plus confirming the
         caret, whole-block and partial cases all behave.
 
-    *   **1.1.5** *(block controls inside a list)* Two execCommand divergences
-        were deferred here from where they were found, because both are
-        questions about what a *block* control does when a list is involved.
+    *   **1.1.5** *(block controls inside a list)* One execCommand divergence
+        remains here, of the two originally found — the other (the
+        heading-in-list no-op) is settled and landed; see CHANGELOG.md.
         Measured in Chrome 139 and Firefox 154 by
         [tests/browser-check.html](../tests/browser-check.html):
 
-        - **A heading inside a list item should be a no-op, and currently is
-          only in Chrome.** Chrome wrapped the whole list in the heading, which
-          was destructive and is now unwrapped — so the command does nothing
-          there. Firefox puts the `<h1>` inside the `<li>`, which is what was
-          literally asked for and does round-trip through markdown. Settled:
-          **the no-op is the wanted behaviour, in both engines.** A heading
-          inside a bullet is expressible but not something the editor should
-          offer a way to make by accident, and "less havoc than Chrome" is not
-          the same as right. The fix is to refuse it in `applyFormat` — where
-          the selection still exists, unlike in `normaliseEditorMarkup`.
         - **`indent` outside a list produces a `<blockquote>`**, with inline
           styles in Chrome and without in Firefox. Not reachable today: app.js
           guards Tab to lists only. Recorded because the blockquote control
@@ -88,16 +67,31 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
         This slice is the consistency rule the hand-written block controls
         (1.1.6) should follow, so settle it alongside or just before them.
 
+        **Standing check, for 1.1.6 and 1.1.8 specifically:** both are new
+        hand-rolled DOM surgery, same family as `outdentListItem` and the
+        empty-`<li>` Enter/Backspace handler — which ROADMAP.md's "Mandy 2.0"
+        section counts as two such clusters already, with a standing rule that
+        **a third reclassifies the rewrite from a roadmap item to a 1.0
+        blocker.** Before writing either slice, check ROADMAP.md for the
+        current count and re-read that rule; if either slice's hand-rolling
+        turns up its own contenteditable divergence needing a bespoke fix,
+        stop and raise it rather than landing a third cluster quietly. This
+        line exists so that check survives being asked for as "do 1.1.6" or
+        "do 1.1.8" alone, the way the 1.1.5 cross-reference above almost
+        didn't.
+
     *   **1.1.6** *(blockquotes)* Written by hand. Meets the `indent`-outside-a-
         list divergence in 1.1.5, and wants that slice's "what does a block
-        control do to a list" answer settled first.
+        control do to a list" answer settled first. *(third-cluster check
+        above applies here.)*
 
     *   **1.1.7** *(images)* Written by hand — an insertion at the caret plus a
         prompt for src and alt. An image is a leaf, so there is no structural-
         editing story the way tables have one; simpler than 1.1.8 despite also
         being hand-rolled.
 
-    *   **1.1.8** *(tables — also needs 2.1)* Worse than everything above. Not
+    *   **1.1.8** *(tables — also needs 2.1)* Worse than everything above.
+        *(third-cluster check above applies here too.)* Not
         just that there is no control to insert one: an *existing* table —
         already in the document, already rendered from markdown-it's `<table>` —
         cannot be edited either. No way to add or remove a row or column.

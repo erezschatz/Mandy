@@ -475,12 +475,27 @@ function toggleCode(range) {
   for (const extra of blocks.slice(1)) extra.remove();
 }
 
+// TODO 1.1.5: a heading inside a list item is expressible in both HTML and
+// markdown, but not something the editor should offer a way to make by
+// accident — Chrome already refused it after normaliseEditorMarkup unwrapped
+// the list it used to swallow, Firefox never did. Settled as a no-op in both
+// engines rather than "whichever is less destructive," and refused here,
+// where the selection still exists, rather than after the fact.
+function headingTargetsListItem(format, range) {
+  if (!/^h[1-6]$/.test(format)) return false;
+  const node = range.commonAncestorContainer;
+  const start = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  const item = start && start.closest && start.closest("li");
+  return !!(item && editor.contains(item));
+}
+
 function applyFormat(format) {
   const selection = window.getSelection();
   if (!selection.rangeCount) return;
 
   const range = selection.getRangeAt(0);
   if (!editor.contains(range.commonAncestorContainer)) return;
+  if (headingTargetsListItem(format, range)) return;
 
   // Read before the command runs: every branch below can move the selection,
   // and what the bar does afterwards depends on which bar it was.
@@ -584,6 +599,10 @@ document.querySelectorAll(".format-btn").forEach((btn) => {
 // the default on mousedown over the menu bar — a click that moved focus out of
 // the editor would take the selection with it and every one of these would
 // return having done nothing.
-for (const format of ["p", "h1", "h2", "h3", "bold", "italic", "strikethrough", "ul", "ol", "code"]) {
+// h4-h6 (TODO 1.1.2) are Format-menu-only — see toolbar.js — but they still go
+// through the one applyFormat entry point everything else here does; the
+// default `formatBlock` branch already handles any tag name, so no new case
+// was needed for them, only the registration.
+for (const format of ["p", "h1", "h2", "h3", "h4", "h5", "h6", "bold", "italic", "strikethrough", "ul", "ol", "code"]) {
   onToolbarAction(`format-${format}`, () => applyFormat(format));
 }

@@ -1595,3 +1595,64 @@ handler). Recorded as an option, not a commitment — **a third such cluster
 reclassifies the model rewrite from a roadmap item to a 1.0 blocker**, on the
 argument that past that point the hand-rolls are the input-layer spec rather
 than a way of deferring it. No code.
+
+## 2026-09-05 — Cross-reference the escalation rule and a bundled fix, so scoped work can't miss them
+
+Two near-misses, closed the same way. Asking for "1.1.2" alone would not have
+surfaced that 1.1.5's heading-in-list refusal was cheap enough to land with it
+rather than wait for 1.1.6 — the two items had no link between them. And the
+escalation rule `faf13bb` recorded in [docs/ROADMAP.md](docs/ROADMAP.md) had no
+forward pointer from the two TODO slices (1.1.6, 1.1.8) it exists to gate, so
+"do 1.1.6" alone could have landed a third hand-rolled DOM-surgery cluster
+without anyone re-reading the rule first.
+
+[docs/TODO.md](docs/TODO.md) 1.1.2 now names the bundled fix explicitly, and
+1.1.5 gained a standing check pointing at 1.1.6 and 1.1.8, spelling out what to
+verify (the current cluster count) before writing either. ROADMAP.md's
+escalation-rule paragraph gained a line back to that check. No code.
+
+## 2026-09-05 — Six heading levels, a list indent control, and the heading-in-list refusal (TODO 1.1.2, 1.1.3, 1.1.5)
+
+Three slices from [docs/TODO.md](docs/TODO.md)'s markdown-authoring list, taken
+together because the third was cheap enough to bundle with the first rather
+than wait for 1.1.6, per the note added above.
+
+**1.1.2 (h4-h6).** Same `formatBlock` call h1-h3 already made — no new engine
+behaviour, so no new case in `applyFormat`'s switch, just three more names in
+its registration loop. They land in the Format menu only, not the floating
+format bar: six heading buttons on the smaller bar was the layout question
+1.1.2 left open, and this answers it by not growing the bar at all.
+
+**1.1.3 (indent / outdent controls).** The engine-side move was already there —
+`outdentListItem` and `runCommand("indent")`, bound to Tab / Shift+Tab — with no
+control reaching it outside a keypress, so touch had no way to nest a bullet.
+The two guards Tab already used (`item.previousElementSibling` for indent,
+`isNested(item)` for outdent) came out of the keydown handler into
+`canIndentListItem` / `canOutdentListItem`, so the new **Indent list item** /
+**Outdent list item** menu items ask the identical question a keypress does
+rather than re-deriving it, and the keydown handler now calls the same two
+functions instead of inlining the checks.
+
+**1.1.5, first bullet (heading-in-list refusal).** Settled but unfixed until
+now: a heading inside a list item is expressible in both HTML and markdown, but
+not something the editor should offer a way to make by accident, so both
+engines should no-op rather than Chrome unwrapping the list (already fixed by
+`normaliseEditorMarkup`) or Firefox nesting the heading in the `<li>` (which
+round-trips fine and was exactly the problem). `applyFormat` now refuses any
+`h1`-`h6` format whose range lands inside an `<li>`, before calling
+`formatBlock` at all — where the selection still exists, per the decision's own
+argument for not fixing this in `normaliseEditorMarkup` after the fact. The
+second bullet (`indent` outside a list producing a stray `<blockquote>`) stays
+open in 1.1.5 for 1.1.6 to meet.
+
+No new engine behaviour anywhere in this — h4-h6 is the same `formatBlock` path
+already measured for h1-h3, indent/outdent reuse code already watched by
+[tests/list-indent-check.html](tests/list-indent-check.html), and the heading
+refusal is a guard ahead of a call that, when it fires at all now, is on formats
+already measured. [tests/browser-check.html](tests/browser-check.html) was not
+re-run for this reason; TODO 1.1's standing instruction still applies to
+whichever slice next introduces something new to measure.
+
+`front/welcome.md` and [CLAUDE.md](CLAUDE.md) updated to match: the "ten
+formats" counts become twelve-of-thirteen (Code stays hand-rolled), and the
+welcome document's own description of the Format menu and caret bar.

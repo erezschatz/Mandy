@@ -657,7 +657,7 @@ the shared global scope — see the load-order section above.
 
 ### execCommand
 
-Nine of the ten formats, plus paste and Tab-indent, go through
+Twelve of the thirteen formats, plus paste and Tab-indent, go through
 `document.execCommand`. [execcommand.js](front/execcommand.js) is the only file
 allowed to call it — `runCommand(command, value)` is the door, and the
 `execcommand` suite scans `front/` to keep it the only one, because the way this
@@ -840,11 +840,28 @@ already open — hovering a closed bar must not spring menus at you.
 ### The format bar
 
 `applyFormat` in [format-bar.js](front/format-bar.js) is the one entry point —
-the bar's own buttons and the Format menu both go through it, so the menu is a
-second way to reach ten formats rather than a second implementation of them.
-Nine of the ten are `execCommand` calls. Code is the exception, and everything
-interesting about *what a format does* is about Code. Everything interesting
-about *when the bar is there at all* is the caret bar below it.
+the bar's own buttons and the Format menu both go through it for the ten the
+bar can show; the menu is a second way to reach those, not a second
+implementation of them, and reaches three more (Heading 4–6) that only it has
+room for — see the menu-bar section below. Twelve of the thirteen are
+`execCommand` calls. Code is the exception, and everything interesting about
+*what a format does* is about Code. Everything interesting about *when the bar
+is there at all* is the caret bar below it.
+
+The Format menu also carries **Indent**/**Outdent list item** (TODO 1.1.3),
+which is not part of this count: they call `outdentListItem` and
+`runCommand("indent")` in `app.js` directly, the same path Tab and Shift+Tab
+already used, rather than going through `applyFormat`.
+
+**A heading targeting a list item is refused, not attempted.** `applyFormat`
+checks for it before calling `formatBlock` at all (TODO 1.1.5's settled
+answer): a heading nested in a bullet is expressible in both HTML and
+markdown, but not something the editor should offer a way to make by
+accident. Chrome and Firefox used to disagree about what happens if you try —
+Chrome ended up unwrapping the list into destruction, `normaliseEditorMarkup`
+then made that a no-op, Firefox just nested the heading inside the `<li>` —
+and the settled behaviour is the no-op in both, done here where the selection
+still exists rather than after the fact in `normaliseEditorMarkup`.
 
 **The bar appears at a bare caret too, and it is a different bar there.**
 `showFormatBar` used to bail on `selection.isCollapsed`, so "make this line an

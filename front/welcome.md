@@ -10,7 +10,8 @@ and see your formatted text in real-time!
 **Select text** to see formatting options appear above it. Put the cursor at
 the start of a line and a shorter bar appears with the formats that act on the
 whole line — headings, lists and a code block. The **Format** menu always
-reaches all ten.
+reaches those, plus Heading 4–6 and indenting a list item, which have no room
+on the smaller bar.
 
 Everything else lives in the six menus:
 
@@ -24,8 +25,9 @@ Everything else lives in the six menus:
   empties the text but keeps the file you have open. Undo takes it back.
 - **Insert** — a **Table of contents** built from your headings, or a
   **Horizontal rule**.
-- **Format** — **Paragraph** and **Heading 1**–**3**, **Bold**, **Italic**,
-  **Strikethrough**, **Bullet list**, **Numbered list** and **Code block**.
+- **Format** — **Paragraph** and **Heading 1**–**6**, **Bold**, **Italic**,
+  **Strikethrough**, **Bullet list**, **Numbered list**, **Code block**, and
+  **Indent**/**Outdent list item** for nesting a bullet without a keyboard.
 - **View** — the **Outline sidebar**, which lists your headings and jumps to
   them.
 - **Export** — **HTML page…**, **PDF…**, **Word document…**, and **Editable

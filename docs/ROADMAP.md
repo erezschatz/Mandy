@@ -43,6 +43,11 @@ from a roadmap item to a 1.0 blocker.** At that point the hand-rolls are no
 longer buying time, they are the spec — and it is cheaper to build the model
 than to keep discovering it one keystroke at a time.
 
+TODO 1.1.5 carries a standing check against this rule at 1.1.6 (blockquotes)
+and 1.1.8 (tables) — the two remaining slices that are new hand-rolled DOM
+surgery in the same family as the two clusters above. Update the count here if
+either lands a third.
+
 ## More export options
 
 The set today is markdown, HTML, PDF, DOCX and Editable. Decide what else earns

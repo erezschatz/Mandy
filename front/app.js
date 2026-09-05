@@ -1404,6 +1404,19 @@ function outdentListItem(item) {
   editor.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+// Same two guards Tab and Shift+Tab use below, pulled out so the toolbar
+// control (TODO 1.1.3) can ask the identical question a keypress does rather
+// than re-deriving it: a first item can't nest under nothing (markdown has no
+// way to write it, and Turndown would emit an indent that parses back as a
+// code block), and outdent only applies where there is a level to leave.
+function canIndentListItem(item) {
+  return !!(item && item.previousElementSibling);
+}
+
+function canOutdentListItem(item) {
+  return !!(item && isNested(item));
+}
+
 // Tab indents a bullet instead of moving focus — but only inside a list, and
 // only where the nesting is expressible: markdown cannot write a first item
 // nested under nothing, and Turndown would emit an indent that parses back as
@@ -1418,15 +1431,30 @@ editor.addEventListener("keydown", (e) => {
   if (!item) return;
 
   if (e.shiftKey) {
-    if (!isNested(item)) return;
+    if (!canOutdentListItem(item)) return;
     e.preventDefault();
     outdentListItem(item);
     return;
   }
 
-  if (!item.previousElementSibling) return;
+  if (!canIndentListItem(item)) return;
   e.preventDefault();
   runCommand("indent");
+});
+
+// TODO 1.1.3: the engine-side move above had no control reaching it outside
+// Tab / Shift+Tab, so touch had no way to nest a bullet at all. These are that
+// control's handlers — same guards, same calls, just reached from the Format
+// menu instead of a keypress. A caret outside a list, or one a guard rejects,
+// is a silent no-op, the same as pressing Tab does in either of those cases.
+onToolbarAction("indent-list-item", () => {
+  const item = listItemAtCaret();
+  if (canIndentListItem(item)) runCommand("indent");
+});
+
+onToolbarAction("outdent-list-item", () => {
+  const item = listItemAtCaret();
+  if (canOutdentListItem(item)) outdentListItem(item);
 });
 
 // Whether the caret's <li> holds nothing — no text, no nested list, no image.
