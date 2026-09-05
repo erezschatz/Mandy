@@ -177,13 +177,13 @@ function normaliseEditorMarkup(root) {
     // differently on the next reload, and the second one is destructive: the
     // list stops being a list.
     //
-    // Unwrapping makes the command a no-op, and a no-op is the *wanted*
-    // behaviour rather than a fallback: a heading inside a bullet is not
-    // something the editor should offer a way to make by accident. Firefox
-    // still puts the <h1> inside the <li>, so the two engines currently
-    // disagree about whether the button does anything. Settling that means
-    // refusing it in applyFormat, where the selection still exists — normalise
-    // cannot see which item the caret was in. TODO 1.1.5.
+    // Unwrapping makes the command a no-op here, which is the backstop for
+    // Chrome rather than the real fix: normalise cannot see which item the
+    // caret was in, so it cannot refuse the command, only clean up after it.
+    // The actual refusal — a heading inside a bullet is not something the
+    // editor should offer a way to make by accident, in either engine — is
+    // `headingTargetsListItem` in format-bar.js, checked in `applyFormat`
+    // before `formatBlock` is ever called (TODO 1.1.5, settled and landed).
     if (UNWRAPPABLE_AROUND_LIST.has(node.tagName) && holdsListChild(node)) {
       unwrapElement(node);
       changed = true;

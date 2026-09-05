@@ -46,39 +46,28 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     The slices are roughly in order of increasing cost. 1.1.1 (links), 1.1.2
     (h4-h6, plus the 1.1.5 heading-in-list refusal bundled with it), 1.1.3
     (indent/outdent controls) and 1.1.4 (inline code, verified rather than
-    rebuilt) landed — see CHANGELOG.md.
+    rebuilt) landed — see CHANGELOG.md. 1.1.5's other bullet (what a block
+    control does to content outside a list) is also settled now, as D5 in
+    [DECISIONS.md](DECISIONS.md): indent stays list-only, permanently, so it
+    needed no code and left no slice behind.
 
-    *   **1.1.5** *(block controls inside a list)* One execCommand divergence
-        remains here, of the two originally found — the other (the
-        heading-in-list no-op) is settled and landed; see CHANGELOG.md.
-        Measured in Chrome 139 and Firefox 154 by
-        [tests/browser-check.html](../tests/browser-check.html):
+    **Standing check, for 1.1.6 and 1.1.8 specifically:** both are new
+    hand-rolled DOM surgery, same family as `outdentListItem` and the
+    empty-`<li>` Enter/Backspace handler — which ROADMAP.md's "Mandy 2.0"
+    section counts as two such clusters already, with a standing rule that
+    **a third reclassifies the rewrite from a roadmap item to a 1.0 blocker.**
+    Before writing either slice, check ROADMAP.md for the current count and
+    re-read that rule; if either slice's hand-rolling turns up its own
+    contenteditable divergence needing a bespoke fix, stop and raise it rather
+    than landing a third cluster quietly. This line used to live inside 1.1.5,
+    which is now closed — moved here, to 1.1's own overview, rather than into
+    either slice alone, so closing one does not strand it for the other the
+    way it nearly got stranded when 1.1.5 closed.
 
-        - **`indent` outside a list produces a `<blockquote>`**, with inline
-          styles in Chrome and without in Firefox. Not reachable today: app.js
-          guards Tab to lists only. Recorded because the blockquote control
-          (1.1.6) is what will meet it.
-
-        This slice is the consistency rule the hand-written block controls
-        (1.1.6) should follow, so settle it alongside or just before them.
-
-        **Standing check, for 1.1.6 and 1.1.8 specifically:** both are new
-        hand-rolled DOM surgery, same family as `outdentListItem` and the
-        empty-`<li>` Enter/Backspace handler — which ROADMAP.md's "Mandy 2.0"
-        section counts as two such clusters already, with a standing rule that
-        **a third reclassifies the rewrite from a roadmap item to a 1.0
-        blocker.** Before writing either slice, check ROADMAP.md for the
-        current count and re-read that rule; if either slice's hand-rolling
-        turns up its own contenteditable divergence needing a bespoke fix,
-        stop and raise it rather than landing a third cluster quietly. This
-        line exists so that check survives being asked for as "do 1.1.6" or
-        "do 1.1.8" alone, the way the 1.1.5 cross-reference above almost
-        didn't.
-
-    *   **1.1.6** *(blockquotes)* Written by hand. Meets the `indent`-outside-a-
-        list divergence in 1.1.5, and wants that slice's "what does a block
-        control do to a list" answer settled first. *(third-cluster check
-        above applies here.)*
+    *   **1.1.6** *(blockquotes)* Written by hand. D5 settled the one question
+        it was waiting on — indent never doubles as a way to make a quote, in
+        or out of a list — so this is unblocked. *(third-cluster check above
+        applies here.)*
 
     *   **1.1.7** *(images)* Written by hand — an insertion at the caret plus a
         prompt for src and alt. An image is a leaf, so there is no structural-

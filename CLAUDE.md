@@ -105,8 +105,12 @@ engines do it). It also found a live bug, where `formatBlock` in a bullet
 destroyed the list in Chrome.
 
 Re-run it when adding a format, and when a browser does something surprising.
-TODO 1.1 carries that instruction now, along with the two divergences it found
-that are still open (TODO 1.1.5).
+TODO 1.1 carries that instruction now. The two divergences it found are both
+resolved rather than open: the heading-inside-a-list no-op is fixed in
+`applyFormat` (see the format-bar section below), and D5 in
+[docs/DECISIONS.md](docs/DECISIONS.md) settled `indent`-outside-a-list as a
+permanent no-op rather than something a future control needs to reconcile
+itself against.
 
 There are three other pages beside it, same idea and same reason. The first two
 watch our own hand-rolled list surgery in a real editing engine rather than a
@@ -699,8 +703,10 @@ hand in both engines instead of calling `execCommand("outdent")` — watched
 since in Chrome, Firefox and Safari by
 [tests/list-indent-check.html](tests/list-indent-check.html), which also found
 that the followers of an outdented item were coming back reversed. The other two
-are questions about what a block control does inside a list, and wait in TODO
-1.1.5 with the rest of block formatting.
+were questions about what a block control does inside a list, both now settled:
+a heading inside a list item is refused in `applyFormat` (below), and D5 in
+[docs/DECISIONS.md](docs/DECISIONS.md) settled `indent` outside a list as a
+permanent no-op rather than a way to make a blockquote.
 
 ### The menu bar
 

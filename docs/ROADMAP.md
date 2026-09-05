@@ -43,10 +43,12 @@ from a roadmap item to a 1.0 blocker.** At that point the hand-rolls are no
 longer buying time, they are the spec — and it is cheaper to build the model
 than to keep discovering it one keystroke at a time.
 
-TODO 1.1.5 carries a standing check against this rule at 1.1.6 (blockquotes)
-and 1.1.8 (tables) — the two remaining slices that are new hand-rolled DOM
-surgery in the same family as the two clusters above. Update the count here if
-either lands a third.
+TODO 1.1's own overview carries a standing check against this rule at 1.1.6
+(blockquotes) and 1.1.8 (tables) — the two remaining slices that are new
+hand-rolled DOM surgery in the same family as the two clusters above. It used
+to live inside 1.1.5, which has since closed; moved up rather than into either
+slice alone, so closing one does not strand the check for the other. Update the
+count here if either lands a third.
 
 ## More export options
 

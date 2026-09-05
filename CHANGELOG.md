@@ -1682,3 +1682,39 @@ collapsing the list. All matched the documented behaviour; nothing in
 `front/` changed. `docs/TODO.md` drops 1.1.4 and its "missing: … inline code"
 mention accordingly — the gap was discoverability of an existing capability,
 not a missing one, and no code closes that kind of gap.
+
+## 2026-09-05 — D5: indent stays list-only, and TODO 1.1.5 closes
+
+The last open question from TODO 1.1.5 was never a coding task — it was the
+"settle before or alongside 1.1.6" decision the item said it was. Measured
+behaviour: execCommand's own `indent`, used outside a list, turns the current
+block into a `<blockquote>` (with Chrome adding inline styles Firefox does
+not). Not reachable today — `app.js` guards Tab, and the indent control added
+in 1.1.3, to lists only — but 1.1.6 (blockquotes, hand-written) would have had
+to decide whether to meet that native behaviour or bury it.
+
+Asked the user rather than picked a side, since [DECISIONS.md](docs/DECISIONS.md)
+entries are meant to stay settled rather than get reopened later. Settled:
+**indent stays list-only, permanently** — [docs/DECISIONS.md](docs/DECISIONS.md)
+gained **D5**, generalising the same call already made for a heading inside a
+list (TODO 1.1.5's other, already-fixed bullet): a control that quietly does
+two different things depending on context is worse than two controls that
+each do one thing, even when both are individually expressible in markdown.
+No code changes — the guard that makes the path unreachable already existed
+for lists, D5 is what keeps it that way on purpose.
+
+[docs/TODO.md](docs/TODO.md) closes 1.1.5 entirely. Its standing check against
+ROADMAP.md's third-cluster escalation rule — which named 1.1.6 and 1.1.8 —
+moved up to 1.1's own overview rather than into either slice, so closing 1.1.5
+doesn't strand it the way it nearly got stranded once already (see the
+2026-09-05 cross-referencing entry above). 1.1.6's own text drops the "wants
+that answer settled first" blocker, since D5 supplies it.
+
+Three stale references to "TODO 1.1.5" as still-open work followed it down:
+[CLAUDE.md](CLAUDE.md)'s browser-check and execCommand sections both said the
+list-control divergences were still waiting on it, and
+[front/execcommand.js](front/execcommand.js)'s comment on the heading-unwrap
+backstop still pointed at 1.1.5 as future work rather than at
+`headingTargetsListItem` in `format-bar.js`, which already does the real
+refusal. All three now point at what's actually there. No behaviour changed;
+811-check Deno suite still green.

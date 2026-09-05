@@ -259,3 +259,35 @@ signal-to-noise a tool can give them, ideally nothing but the actual change. A
 WYSIWYG surface that saves byte-faithful markdown is the thing worth building.
 Everything expensive in this repo follows from taking both halves of that
 seriously.
+
+## D5. A block control only ever makes the block it's named for
+
+TODO 1.1.5 measured that execCommand's own `indent` does something beyond
+indenting a list item: applied outside a list, it turns the current block into
+a `<blockquote>`, with Chrome adding inline styles Firefox does not. That path
+is not reachable today — `app.js` guards Tab, and the indent control TODO 1.1.3
+added, to lists only — but 1.1.6 (blockquotes, written by hand rather than
+through execCommand) was going to have to decide whether to meet it: should
+indenting outside a list stay a no-op, or should it double as a way to make a
+quote?
+
+Settled: **it stays a no-op.** Tab and the indent control never touch a block
+that isn't a list item, in either direction, permanently — not just until 1.1.6
+ships. A blockquote is reachable only through its own control.
+
+This is the same call TODO 1.1.5's other bullet already made for a heading
+inside a list, generalised: a control that quietly does two different things
+depending on context is a worse control than two controls that each do one
+thing, even when both things are individually expressible in markdown. "Press
+Tab enough times and a paragraph turns into a quote" is a discovery, not a
+feature — nothing advertises it, nothing explains why it happens outside a
+list but not inside one, and it would make indent's meaning depend on the
+block it's pointed at rather than on the key that was pressed. The
+Chrome/Firefox styling divergence never had to enter into it; the answer would
+be the same if both engines agreed.
+
+Nothing changes in `front/` for this — the guard that makes the path
+unreachable already existed for lists, this decision is what keeps it that way
+on purpose rather than by accident of scope. 1.1.6 is free to build blockquotes
+however it needs to without reconciling itself against `indent`'s native
+behaviour at all.
