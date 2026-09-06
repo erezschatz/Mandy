@@ -1718,3 +1718,47 @@ backstop still pointed at 1.1.5 as future work rather than at
 `headingTargetsListItem` in `format-bar.js`, which already does the real
 refusal. All three now point at what's actually there. No behaviour changed;
 811-check Deno suite still green.
+
+## 2026-09-06 — The editor rewrite becomes 1.0 work (TODO 3.1, D6, REWRITE.md)
+
+The question was put as arithmetic: finish the remaining editing items on the
+current core and rewrite after, or rewrite now — with the rewrite's own cost
+unknown because nothing like it had been built here. Answered by measuring the
+code rather than guessing. About 1,500 lines go (`undo.js`, `execcommand.js`,
+the list surgery and the Turndown save rules in `app.js`), about 1,300 are
+modified, and about 5,300 — menus, notify, file API, outline, both exports,
+server, CSS — are untouched, because they read a rendered DOM that still
+exists. Against this repo's own pace since 2026-08-11, five to eight weeks,
+with the whole tail in the one layer that has no counterpart today: the
+`beforeinput` interception that turns contenteditable into an input method.
+
+The arithmetic double counts. The fix work is mostly discarded by the rewrite,
+and the rewrite does not re-implement those items — a table row becomes an
+array element, U+00A0 never enters a model, the undo caret bug belongs to a
+snapshot design that stops existing. And the roadmap's own escalation rule had
+already fired: tables are several clusters of hand-rolled DOM surgery at once,
+so starting TODO 1.1.8 on the old core *was* the third cluster.
+
+**[docs/REWRITE.md](docs/REWRITE.md) is new**: the design (a block-granular
+markdown model with source spans from markdown-it's own token `map`, no new
+parser and no engine dependency, per-block render, `beforeinput` by type,
+composition handed to the engine and read back on `compositionend`, Turndown
+kept for paste only), the file-by-file fate table, the estimate by stage, a
+three-day spike as a gate with pass and fail criteria spelled out, the build
+order, and what is accepted (the core is owned forever; Android and in-document
+drag unmeasured on the first pass; block granularity final).
+
+**[docs/DECISIONS.md](docs/DECISIONS.md) gained D6** with the argument, and D4's
+closing paragraph now points at 3.1 rather than at the roadmap, with one
+amendment to its boundary rule: no new format is written against
+contenteditable in the meantime, since the work would be discarded with the
+core. **[docs/TODO.md](docs/TODO.md) gained section 3** with 3.1 as the item to
+start from; 1.1's third-cluster standing check is replaced by the rule having
+fired; 1.1.6, 1.1.7 and 1.1.8 become model commands marked *(needs 3.1)*, 1.4
+and 1.6 are *(closed by 3.1)* rather than fixed on the old core, 1.5 is *(best
+after 3.1)*, 2.1 is marked as the one item that survives both cores, and 4.1
+notes that its document model is 3.1's and its 2N-copies count becomes N.
+**[docs/ROADMAP.md](docs/ROADMAP.md)** loses its "Mandy 2.0" section to a
+pointer, and its module-system and save-fidelity entries say what 3.1 changes
+for them. [CLAUDE.md](CLAUDE.md)'s "Document state" section says it describes
+the design being replaced. No code.

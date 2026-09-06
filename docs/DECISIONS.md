@@ -6,8 +6,8 @@ waiting to happen, and rather than in [CLAUDE.md](../CLAUDE.md) because that
 describes how the code works — this is why it works that way, and what
 changing it would cost. Reopen one by editing it here, not by filing it as a
 TODO again. Where a decision points forward rather than at the current code,
-that part lives in [ROADMAP.md](ROADMAP.md) instead — D4 is the one example
-today.
+that part lives in [TODO.md](TODO.md) or [ROADMAP.md](ROADMAP.md) instead — D4
+and D6 both point at [REWRITE.md](REWRITE.md).
 
 D0 is the exception to that description: it is not a question that was argued
 out but the position the rest of them follow from. It is numbered zero because
@@ -243,13 +243,17 @@ in the codebase is either measured by that page or is folklore. Two long-standin
 beliefs died the first time it ran. Re-run it when adding a format, and when a
 browser does something surprising.
 
-**On Mandy 2.0.** Everything above is a treatment rather than a cure, and the
+**On the rewrite.** Everything above is a treatment rather than a cure, and the
 cure is known: hold the document as a model in JS, render to the DOM, and treat
 contenteditable as an input method whose changes are intercepted and
 reinterpreted rather than accepted. That retires this decision, `undo.js`'s
 snapshot design, the hard half of tabs, and the reason table cells cannot be
-edited. It is a rewrite of the editor and it is not on the 1.0 route — see
-[ROADMAP.md](ROADMAP.md) for what it would need to preserve.
+edited. It was a rewrite kept off the 1.0 route; as of D6 it is on it, as TODO
+3.1, designed in [REWRITE.md](REWRITE.md). Until it lands, everything in this
+decision describes the running code and the boundary rule above still governs
+any change to `front/` — with one amendment: a *new* format is not written
+against contenteditable at all, since the work would be discarded with the
+core. D4 is marked retired, not deleted, when 3.1 ships.
 
 The reason none of this becomes "just edit the markdown in a textarea with a
 preview" — which would dissolve all of section 2 of the TODO at a stroke — is a
@@ -291,3 +295,54 @@ unreachable already existed for lists, this decision is what keeps it that way
 on purpose rather than by accident of scope. 1.1.6 is free to build blockquotes
 however it needs to without reconciling itself against `indent`'s native
 behaviour at all.
+
+## D6. The editing core is rewritten before 1.0, not after
+
+ROADMAP.md kept the rewrite D4 describes as a post-1.0 option, with a rule for
+when it stopped being one: twice a cluster of contenteditable bugs had forced a
+piece of the engine's behaviour to be replaced by hand-rolled DOM surgery
+(`outdentListItem`, then the empty-`<li>` Enter/Backspace handler), and a third
+such cluster would make the rewrite a 1.0 blocker, on the argument that past
+that point the hand-rolls are the input-layer spec being discovered a keystroke
+at a time.
+
+The question put on 2026-09-06 was whether to finish the remaining editing
+items on the current core first — blockquotes, images, tables, the invisible-
+whitespace leak, the undo caret bug, search — and rewrite after, or to rewrite
+now. The framing was arithmetic: two weeks of fixes then two of rewrite is a
+toss-up; two of fixes, two of rewrite and two re-implementing the fixes is a
+no; the trouble was that nobody had built the other side to estimate it.
+
+Settled: **rewrite now.** Three reasons, in order of weight.
+
+- **The arithmetic double counts.** The fix work is mostly discarded by the
+  rewrite — every one of those items targets the layer the rewrite deletes —
+  and the rewrite does not re-implement them, it makes them trivial: a table
+  row is an array element, U+00A0 never enters the model, undo restores a
+  small object rather than walking the whole editor for an offset. What the
+  rewrite costs is the core, which has no counterpart today and costs the same
+  whenever it is built. So fix-first is the rewrite plus two to three weeks
+  that mostly evaporate.
+- **The rule had already fired.** Tables are not a third cluster; they are
+  cell navigation, row and column surgery, Enter and Backspace at cell edges,
+  paste into a cell and a truce with each engine's native table editing, in
+  three engines. Starting TODO 1.1.8 on the old core *was* the third cluster.
+  Fix-first meant blockquotes and images, then the wall at tables, a week
+  further on.
+- **No date is waiting on 1.0.** That is the one case where fix-first wins: it
+  ships a 1.0 in two to three weeks where the rewrite ships one in five to
+  eight. Nobody is waiting, and `main` keeps working while the rewrite lives
+  on a branch.
+
+What the decision does *not* settle, deliberately: whether the rewrite can be
+built without an engine dependency. [REWRITE.md](REWRITE.md) keeps that
+constraint and puts a three-day spike in front of it as a gate — pass and the
+plan proceeds, fail and the constraint is the first thing reopened. The
+decision here is the order of work, not the feasibility, and it is made with
+the estimate's tail (the input layer, one to two weeks of fallout on top of
+four to six) stated rather than hoped away.
+
+The consequence for open work: TODO 1.1.6, 1.1.7, 1.1.8, 1.4 and 1.6 are not
+started on the current core, because everything written there is discarded
+with it. TODO 2.1 is the exception — a pure function that serialises a table,
+the same on both cores.

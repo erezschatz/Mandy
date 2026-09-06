@@ -222,6 +222,14 @@ The document lives in `editor.innerHTML` as HTML, always. Markdown is a
 boundary format: markdown-it parses on the way in, Turndown serialises on the
 way out. Nothing keeps a markdown copy in memory.
 
+**This is the design being replaced.** TODO 3.1 in [docs/TODO.md](docs/TODO.md)
+rewrites the editing core so that a block-granular markdown model owns the
+document and the DOM is rendered from it — [docs/REWRITE.md](docs/REWRITE.md)
+is the design, D6 in [docs/DECISIONS.md](docs/DECISIONS.md) the decision. Until
+it lands on `main`, everything below describes the running code and still
+governs changes to it, with one rule from D4's amendment: no new format is
+written against contenteditable in the meantime.
+
 The `#editor` div in `index.html` ships **empty**. The welcome document is
 [front/welcome.md](front/welcome.md), fetched and rendered by `app.js` when
 there is no non-blank `localStorage["markdownContent"]` to restore. Edit the

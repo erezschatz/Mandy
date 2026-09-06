@@ -5,50 +5,17 @@ finished 1.0; once that list is empty, this is where work continues. Nothing
 here is scheduled — an item lands when a decision behind it is made and
 someone starts it, the same as TODO.md, just on the other side of the line.
 
-## Mandy 2.0
+## The editor rewrite is not here any more
 
-The rewrite that Decision D4 in [DECISIONS.md](DECISIONS.md) only ever treats
-rather than cures — read that decision first for the argument against doing
-this now. The cure: hold the document as a model in JS, render to the DOM, and
-treat contenteditable as an input method whose changes are intercepted and
-reinterpreted rather than trusted the way `execCommand`'s output is trusted
-today. That retires D4 itself, `undo.js`'s snapshot design, the hard half of
-tabs (TODO 4.1), and the reason table cells cannot be edited (TODO 1.1). It is
-a rewrite of the editor, not an increment on it.
-
-Two constraints recorded now so a future rewrite starts from them rather than
-rediscovering them:
-
-- **The model must be a markdown CST with source spans, not a generic rich-text
-  document model.** ProseMirror, Lexical and Slate all normalise on the way in —
-  which is precisely what destroys the information markdown-style.js exists to
-  preserve. Ported naively onto one of those, D1 stops being true. Built
-  markdown-shaped from the start, source spans on nodes are *better* than
-  today's content-keyed matching, because a span cannot be defeated by two
-  identical paragraphs.
-- **The near-zero-dependency stance decides whether it is feasible at all.**
-  Building a model, schema, transactional undo, selection mapping and renderer
-  from scratch is where most editor projects die; adopting an existing engine
-  makes it tractable and contradicts what this project is. That is a call to make
-  deliberately, not to discover three months in.
-
-**When this stops being post-1.0.** Twice now a cluster of contenteditable bugs
-has forced a piece of its behaviour to be replaced with hand-rolled DOM surgery
-— `outdentListItem` for Shift+Tab, then the empty-`<li>` Enter/Backspace handler
-in `app.js` (see CHANGELOG). Each is a small, tested island, but each also
-widens the input surface this rewrite has to reproduce exactly, so past a point
-writing more of them is doing the rewrite in the worst order. The rule, kept as
-an option rather than a commitment: **a third such cluster reclassifies this
-from a roadmap item to a 1.0 blocker.** At that point the hand-rolls are no
-longer buying time, they are the spec — and it is cheaper to build the model
-than to keep discovering it one keystroke at a time.
-
-TODO 1.1's own overview carries a standing check against this rule at 1.1.6
-(blockquotes) and 1.1.8 (tables) — the two remaining slices that are new
-hand-rolled DOM surgery in the same family as the two clusters above. It used
-to live inside 1.1.5, which has since closed; moved up rather than into either
-slice alone, so closing one does not strand the check for the other. Update the
-count here if either lands a third.
+The "Mandy 2.0" section that used to head this file — hold the document as a
+model, render to the DOM, treat contenteditable as an input method — is 1.0
+work as of 2026-09-06: TODO 3.1, designed in [REWRITE.md](REWRITE.md), decided
+as D6 in [DECISIONS.md](DECISIONS.md). Its escalation rule (a third cluster of
+hand-rolled DOM surgery makes it a blocker) fired on tables, which are several
+clusters at once, and the arithmetic in D6 says fixing first and rewriting
+after costs more than rewriting now. The two constraints the section recorded
+— a markdown-shaped model with source spans rather than a rich-text one, and
+no new engine dependency — are REWRITE.md's first two constraints, unchanged.
 
 ## More export options
 
@@ -162,14 +129,19 @@ eviction, no per-tab cap** — a tab that loses the race degrades silently to
 "sniffs to nothing" on its next reload, which is cosmetic rather than data
 loss, and is not surfaced. Once that is the accepted behaviour, shrinking the
 per-document footprint is an optimisation that delays hitting a wall nobody has
-hit, not a correctness fix.
+hit, not a correctness fix. And 3.1 removes the second copy outright — the
+model's blocks carry their own bytes, so the model *is* the source — which
+makes this paragraph a description of the current core only.
 
 **Segment granularity is block-level.** `markdownSegments` splits on blank
 lines, list markers, headings and fences, so a change anywhere in a fenced
 block, a table or a multi-line paragraph re-serialises the whole segment.
 Finer granularity would need to match at line level, which is a different and
 much less safe algorithm — and the cost of not doing it is a slightly larger
-diff on a block that genuinely changed.
+diff on a block that genuinely changed. The rewrite keeps this granularity and
+makes it structural: a block's source span *is* the segment, and
+[REWRITE.md](REWRITE.md) records block granularity as final rather than as a
+limit of the matching.
 
 ## No module system
 
@@ -187,6 +159,7 @@ into one inline `<script>`, so it needs import maps or blob URLs. Real work,
 needs a decision first.
 
 It is here rather than in TODO.md because nothing a user does touches it, and
-because the Mandy 2.0 rewrite above would settle it either way: a rewrite that
-holds the document as a model has a module boundary problem to solve regardless,
-and solving it twice would be the waste.
+because the editor rewrite (TODO 3.1, [REWRITE.md](REWRITE.md)) will settle it
+either way: a rewrite that holds the document as a model has a module boundary
+problem to solve regardless, and solving it twice would be the waste. If 3.1
+lands without settling it, this stays here.

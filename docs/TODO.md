@@ -3,6 +3,11 @@
 This is what stands between here and a finished 1.0 — for what comes after
 that, see [ROADMAP.md](ROADMAP.md).
 
+The item to start from is **3.1**, the editing-core rewrite: most of section 1
+and all of section 2 now land on it rather than on the current engine.
+[REWRITE.md](REWRITE.md) is its design and plan, D6 in
+[DECISIONS.md](DECISIONS.md) the decision.
+
 Items are numbered `section.item` so they can point at each other. The numbers
 are labels, not an order and not a priority. An italic *(needs 4.1)* means that
 one has to land first, *(best after …)* is a preference rather than a blocker,
@@ -41,7 +46,9 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     engine — and every engine-specific claim in `front/` either came from it or
     is a guess. Its sibling
     [tests/list-indent-check.html](../tests/list-indent-check.html) covers the
-    one path that no longer goes through execCommand at all.
+    one path that no longer goes through execCommand at all. It holds until
+    3.1 lands; after that both pages retire with execCommand, and the single
+    input-layer check page [REWRITE.md](REWRITE.md) describes takes their place.
 
     The slices are roughly in order of increasing cost. 1.1.1 (links), 1.1.2
     (h4-h6, plus the 1.1.5 heading-in-list refusal bundled with it), 1.1.3
@@ -51,38 +58,40 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     [DECISIONS.md](DECISIONS.md): indent stays list-only, permanently, so it
     needed no code and left no slice behind.
 
-    **Standing check, for 1.1.6 and 1.1.8 specifically:** both are new
-    hand-rolled DOM surgery, same family as `outdentListItem` and the
-    empty-`<li>` Enter/Backspace handler — which ROADMAP.md's "Mandy 2.0"
-    section counts as two such clusters already, with a standing rule that
-    **a third reclassifies the rewrite from a roadmap item to a 1.0 blocker.**
-    Before writing either slice, check ROADMAP.md for the current count and
-    re-read that rule; if either slice's hand-rolling turns up its own
-    contenteditable divergence needing a bespoke fix, stop and raise it rather
-    than landing a third cluster quietly. This line used to live inside 1.1.5,
-    which is now closed — moved here, to 1.1's own overview, rather than into
-    either slice alone, so closing one does not strand it for the other the
-    way it nearly got stranded when 1.1.5 closed.
+    **The remaining slices land on the new core, not on this one.** 1.1.6,
+    1.1.7 and 1.1.8 were all going to be new hand-rolled DOM surgery, the same
+    family as `outdentListItem` and the empty-`<li>` Enter/Backspace handler,
+    and the escalation rule that used to sit here — a third such cluster makes
+    the model rewrite a 1.0 blocker — has fired: tables alone are several
+    clusters, and D6 in [DECISIONS.md](DECISIONS.md) records why fixing first
+    and rewriting after costs more than rewriting now. So none of the three is
+    written against contenteditable. Each is a model command on 3.1's core —
+    see [REWRITE.md](REWRITE.md), "Formats and structure as model commands" —
+    and *(needs 3.1)* below means exactly that. Do not start one on the old
+    core to save time; the work would be discarded with the core.
 
-    *   **1.1.6** *(blockquotes)* Written by hand. D5 settled the one question
-        it was waiting on — indent never doubles as a way to make a quote, in
-        or out of a list — so this is unblocked. *(third-cluster check above
-        applies here.)*
+    *   **1.1.6** *(blockquotes — needs 3.1)* A block type on the model, plus
+        a Format-menu control that wraps or unwraps the current block. D5
+        settled the one question it was waiting on — indent never doubles as a
+        way to make a quote, in or out of a list — and D2 says how it renders.
 
-    *   **1.1.7** *(images)* Written by hand — an insertion at the caret plus a
-        prompt for src and alt. An image is a leaf, so there is no structural-
-        editing story the way tables have one; simpler than 1.1.8 despite also
-        being hand-rolled.
+    *   **1.1.7** *(images — needs 3.1)* An insertion at the caret plus an
+        `askForInput` prompt for src and alt. An image is a leaf, so there is no
+        structural-editing story the way tables have one; the smallest of the
+        three.
 
-    *   **1.1.8** *(tables — also needs 2.1)* Worse than everything above.
-        *(third-cluster check above applies here too.)* Not
-        just that there is no control to insert one: an *existing* table —
-        already in the document, already rendered from markdown-it's `<table>` —
-        cannot be edited either. No way to add or remove a row or column.
-        Confirmed by hand: editing this very file after `hr: "---"` landed,
-        trying to delete the now-obsolete row it made fixed above. Insert is
-        hand-written; structural editing is a small grid-surgery layer; and an
-        edited table's bytes are 2.1's problem.
+    *   **1.1.8** *(tables — needs 3.1 and 2.1)* The item that made 3.1 a 1.0
+        blocker. Not just that there is no control to insert one: an *existing*
+        table — already in the document, already rendered from markdown-it's
+        `<table>` — cannot be edited either. No way to add or remove a row or
+        column. Confirmed by hand: editing this very file after `hr: "---"`
+        landed, trying to delete the now-obsolete row it made fixed above. On
+        the old core this was cell navigation, row and column surgery, Enter
+        and Backspace at cell edges, paste into a cell and a truce with each
+        engine's native table editing, all in three engines. On the model it is
+        index arithmetic on `rows[][]`: insert, add or delete a row or column
+        at the caret, Tab between cells. An edited table's bytes are 2.1's
+        problem either way.
 *   **1.2** Links are done except for two loose
     ends. Ctrl/Cmd+click follows a link and jumps to `#anchor` headings,
     `anchorSlug` / `headingAnchors` in app.js resolve slugs live, and
@@ -121,8 +130,9 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     the page logs as a plain-text paste. If WebKit strips the flavour like the
     other two, this item closes with no further code.
 
-*   **1.4** Invisible whitespace: what the cleanup does not reach. Pasted HTML
-    is sanitised on the way in and U+00A0 is normalised on the way out (see D3
+*   **1.4** *(closed by 3.1)* Invisible whitespace: what the cleanup does not
+    reach. Pasted HTML is sanitised on the way in and U+00A0 is normalised on
+    the way out (see D3
     in [DECISIONS.md](DECISIONS.md)), which covers everything that reaches the
     *file*. It does not cover the live DOM in between: type a trailing space,
     let the browser rewrite it to U+00A0, then select that paragraph and paste
@@ -130,9 +140,14 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     neither boundary. Closing it means normalising the document itself, on a
     debounced `input` or on `copy`, which is fiddlier than either of the two
     that landed: rewriting a text node under the caret can move the caret.
+    On the model that rewrite never happens: `insertText` is normalised at the
+    model boundary and the DOM is rendered from a document that holds no
+    U+00A0, so 1.4 closes with 3.1 rather than getting its own caret-preserving
+    fix on the old core.
 
-*   **1.5** No search-and-replace. Ctrl+F is chrome-level browser UI that
-    highlights matches in the live DOM but exposes nothing to the page, and
+*   **1.5** *(best after 3.1)* No search-and-replace. Ctrl+F is chrome-level
+    browser UI that highlights matches in the live DOM but exposes nothing to
+    the page, and
     `window.find()` only moves the selection — it doesn't replace, isn't
     standard, and support is inconsistent. So this is one of the few editor
     features the platform doesn't hand over for free: match-finding over the
@@ -140,10 +155,14 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     `runCommand("insertText", …)` or Range manipulation so it stays undoable
     and raises `input` like everything else in
     [execcommand.js](../front/execcommand.js). A feature in its own right, not
-    one of the one-liners nearby.
+    one of the one-liners nearby. After 3.1 the match-finding half is string
+    search over the model's blocks and replacement is an ordinary model edit,
+    undoable for free — the highlight-and-navigate UI is the whole feature.
+    Best after, so it is written once.
 
-*   **1.6** *(bug, unfixed)* Undo does not always come back clean. Reported:
-    open a file, press Enter at the end of an `<li>` (one edit), then Ctrl+Z.
+*   **1.6** *(bug, closed by 3.1)* Undo does not always come back clean.
+    Reported: open a file, press Enter at the end of an `<li>` (one edit), then
+    Ctrl+Z.
     The `(edited)` marker stays lit, and the caret jumps to the top of the
     document rather than back to where the edit was.
 
@@ -161,6 +180,12 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     keydown work if it turns out to share a cause; recorded separately because
     it is an `undo.js` question, not a list-markup one, and might be neither.
 
+    Not fixed on the old core: whichever of the two it is, both belong to the
+    whole-document `innerHTML` snapshot design that 3.1 removes — undo becomes
+    a stack of model states with the caret as a model position, and there is
+    no offset walk across the whole editor to miscount. Kept here until the
+    new undo is watched doing this exact case correctly.
+
 ## 2. Save fidelity
 
 Ways the bytes on disk still differ from what was opened, all verified by
@@ -170,8 +195,8 @@ Decision D1 in [DECISIONS.md](DECISIONS.md) is why, and lists the differences
 that are deliberate rather than bugs — as does D3, which is the one whole
 category fidelity deliberately does not extend to.
 
-*   **2.1** *(wanted by 1.1.8)* An edited table is re-emitted in the `table`
-    rule's house style. An untouched one now restores byte-for-byte —
+*   **2.1** *(wanted by 1.1.8; survives 3.1)* An edited table is re-emitted in
+    the `table` rule's house style. An untouched one now restores byte-for-byte —
     `normaliseTableRows` takes the rule's cell padding and its fixed three-dash
     delimiter out of the block key, so `|---|---|` and `| --- | --- |` are the
     same table to the index — but change one cell and the whole table comes
@@ -185,11 +210,48 @@ category fidelity deliberately does not extend to.
     delimiter row. Reachable by typing in a cell, which contenteditable allows
     even though the structural editing above is missing.
 
+    One of the few pieces of section 1 and 2 work that is the same on both
+    cores: a pure function from a table's rows and the source's delimiter
+    convention to text. It can be written before 3.1, and it is what the
+    model's serialiser calls for an edited table block.
+
+## 3. The editing core
+
+*   **3.1** *(unblocks 1.1.6, 1.1.7, 1.1.8, 1.4, 1.6, 4.1; best before 1.5)*
+    Replace the editing core: hold the document as a block-granular markdown
+    model with source spans, render it to the DOM, and treat contenteditable
+    as an input method whose `beforeinput` intentions are reinterpreted as
+    model edits rather than trusted the way `execCommand`'s output is today.
+    Retires D4, `undo.js`'s snapshot design, `execcommand.js`, the content-keyed
+    restore in `markdown-style.js`, the Mermaid and LaTeX source stashes, and
+    the reason a table cell cannot be edited. Leaves the ~5,300 lines around
+    the core — menus, notify, file API, outline, exports, server — untouched.
+
+    [REWRITE.md](REWRITE.md) is the design, the estimate (five to eight weeks
+    at this repo's pace, the tail all in the input layer) and the build order.
+    D6 in [DECISIONS.md](DECISIONS.md) is why it is 1.0 work rather than the
+    roadmap item it was until 2026-09-06.
+
+    It starts with a three-day spike, and the spike is a gate, not a first
+    step: a bare page that types, splits, merges and bolds through a block
+    model in Chrome, Firefox and Safari, with the macOS accent popup working.
+    If that passes, the stages in REWRITE.md follow in order — model and
+    serialiser first, proven byte-identical against this repo's own files with
+    no browser involved, then render, input, formats, lists, tables, and
+    reintegration. If it fails, REWRITE.md names the two honest moves, and the
+    choice between them is made then.
+
+    On a branch; `main` keeps the working editor until parity. Every item
+    marked *(needs 3.1)* waits rather than being started on the old core.
+
 ## 4. Interface
 
-*   **4.1** Tabbed view — several documents open at once, one per
-    tab. The guard it was waiting on has landed, so what is left is the document
-    model.
+*   **4.1** *(needs 3.1)* Tabbed view — several documents open at once, one
+    per tab. The guard it was waiting on has landed, and the document model it
+    was waiting on is 3.1's: a tab is one model, and switching tabs swaps which
+    model is rendered into the one `#editor`. What follows was written against
+    the current core and mostly still holds; the one place 3.1 changes the
+    numbers is noted inline.
 
     Today the app is built around holding exactly one: `editor.innerHTML` is the
     entire document state, autosave writes a single
@@ -206,7 +268,9 @@ category fidelity deliberately does not extend to.
       source is what makes a save byte-faithful, and it is already a second full
       copy of the document — see the save-fidelity section of
       [ROADMAP.md](ROADMAP.md). N tabs is therefore 2N copies in
-      `localStorage`. Settled: **no budget, no eviction, no per-tab cap.** Each
+      `localStorage` — until 3.1, after which the model *is* the source, each
+      block carrying its own bytes, and the count is N. Settled either way:
+      **no budget, no eviction, no per-tab cap.** Each
       tab's `localStorage.setItem` either succeeds or fails on its own, exactly
       as it does today for one document — the browser's quota is not ours to
       manage, and building a fairness scheme (which tab gets evicted to make
