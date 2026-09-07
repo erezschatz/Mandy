@@ -10,6 +10,11 @@ rewrite must not compromise (the user edits a document, never markup), D1 is
 what it must preserve (a saved file gets its own bytes back), and D4 is what it
 retires (execCommand plus normalisation, the treatment this is the cure for).
 
+[MARKDOWN.md](MARKDOWN.md) is the feature checklist the stages below are
+measured against: every construct in both Markdown Guide cheat sheets, where it
+stands today on render / author / round-trip, and the decisions the rewrite has
+to make rather than inherit by omission.
+
 ## Why now rather than after 1.0
 
 The rewrite was parked behind 1.0 on a rule ROADMAP.md recorded on 2026-09-03:

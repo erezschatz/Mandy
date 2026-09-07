@@ -39,6 +39,14 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     are where they go, and both have room. D4 carries the boundary rule for
     which formats may use execCommand and which get written by hand.
 
+    [MARKDOWN.md](MARKDOWN.md) is the full picture: every construct in both
+    Markdown Guide cheat sheets scored on render / author / round-trip, plus
+    the ones neither the bar nor markdown-it's default preset touches today —
+    raw HTML, task lists, footnotes, heading IDs, `linkify`, syntax
+    highlighting — each carrying a decision the rewrite has to make rather than
+    inherit by omission. Its per-construct notes feed 3.1's stage 1 and 2 exit
+    criteria.
+
     **Standing instruction, for every slice below:** re-run
     [tests/browser-check.html](../tests/browser-check.html) when adding a format,
     and when a browser does something surprising. It is the only thing in the
@@ -92,6 +100,31 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
         index arithmetic on `rows[][]`: insert, add or delete a row or column
         at the caret, Tab between cells. An edited table's bytes are 2.1's
         problem either way.
+
+    *   **1.1.9** *(task lists — needs 3.1)* A block type on the model: a list
+        item that carries a checkbox. Render a **live** checkbox, not the
+        `disabled` one `markdown-it-task-lists` emits — toggling it is an
+        undoable model edit that raises `input` like any other. A click or
+        selection plus a button or menu action turns a list item into a task
+        item and back. The serialiser sniffs the `[x]` / `[X]` spelling from
+        the file. Likely a hand-rolled markdown-it rule rather than the plugin —
+        see [MARKDOWN.md](MARKDOWN.md) S4. GFM only allows the checkbox inside a
+        list item, so the control needs a list context or creates one.
+
+    *   **1.1.10** *(link editor — needs 3.1)* Mandy is a web page; links are
+        first-class, and the current `askForInput` prompt for a bare href is the
+        floor, not the feature. Text + href + optional title, all editable, and
+        editing an existing link pre-fills them. A heading picker inserts an
+        inner link `[text](#slug)` against either an auto-slug or an explicit
+        id. `linkify: true` goes on at the same time — bare URLs become links on
+        import (no new dependency, `linkify-it` ships inside markdown-it), and
+        the serialiser has to put a linkified bare URL back as bare text, not as
+        `[url](url)`. **Explicit heading IDs** ride along: parse `## Title
+        {#id}`, honour it in `headingAnchors` over the auto-slug, a field in
+        this editor to set one, and re-emit it on an edited heading — with the
+        last two as the cut line if the work overruns (parse-and-resolve ships,
+        authoring waits; an untouched heading keeps its `{#id}` via its source
+        span regardless). The loose ends in 1.2 are the same feature area.
 *   **1.2** Links are done except for two loose
     ends. Ctrl/Cmd+click follows a link and jumps to `#anchor` headings,
     `anchorSlug` / `headingAnchors` in app.js resolve slugs live, and

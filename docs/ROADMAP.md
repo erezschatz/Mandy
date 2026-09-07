@@ -17,6 +17,27 @@ after costs more than rewriting now. The two constraints the section recorded
 — a markdown-shaped model with source spans rather than a rich-text one, and
 no new engine dependency — are REWRITE.md's first two constraints, unchanged.
 
+## Markdown constructs held for after 1.0
+
+[MARKDOWN.md](MARKDOWN.md) is the full coverage checklist. Most of it is 1.0
+work — tables, task lists, a link editor with explicit heading IDs — but a
+batch was explicitly deprioritised on 2026-09-07: **footnotes, definition
+lists, `==mark==`, `~sub~`, `^sup^`, and `:emoji:` shortcodes**. Each is one
+markdown-it plugin or a small hand-rolled rule in the same style as the
+existing `math` and `referenceAwareLink` rules; the decision to hand-roll or
+depend is made per-construct when it is picked up, against the project's
+standing aversion to extra dependencies.
+
+Footnotes and heading IDs were the two with a real case; heading IDs went into
+1.0 with the link editor (TODO 1.1.10), footnotes did not. Syntax highlighting
+is also out of scope for 1.0 and sits with "More export options" below as a
+library-behind-a-loader question rather than a fidelity one.
+
+Nothing here is lost in the meantime: 3.1's block-granular model round-trips an
+untouched block byte-exact through its source span whether or not the parser
+understands what is inside it, so an opened file that uses one of these keeps
+it — only editing that block risks the serialiser re-escaping it.
+
 ## More export options
 
 The set today is markdown, HTML, PDF, DOCX and Editable. Decide what else earns

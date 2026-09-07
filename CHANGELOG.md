@@ -1762,3 +1762,53 @@ notes that its document model is 3.1's and its 2N-copies count becomes N.
 pointer, and its module-system and save-fidelity entries say what 3.1 changes
 for them. [CLAUDE.md](CLAUDE.md)'s "Document state" section says it describes
 the design being replaced. No code.
+
+## 2026-09-07 — Markdown coverage checklist and feature decisions for the rewrite
+
+**[docs/MARKDOWN.md](docs/MARKDOWN.md) is new.** Every construct in the two
+Markdown Guide cheat sheets — basic and extended — plus Mandy's own math and
+Mermaid, each scored on three axes that can disagree: whether imported markdown
+*renders*, whether a control *authors* it, and whether a save *round-trips* it
+(byte-exact via the content-keyed index, lossy to Turndown's house style, or
+broken). The point of the list is the asymmetries and the gaps.
+
+The gaps it names, none currently rendered by `markdownit()`'s default preset
+and none authorable: raw inline/block HTML (`html: false` escapes it — the
+largest gap against real README files), task lists `- [ ]`, footnotes, explicit
+heading IDs `{#id}`, definition lists, `linkify` for bare URLs, syntax
+highlighting (the `language-x` class is set but nothing highlights it), and the
+low-stakes `==mark==` / `~sub~` / `^sup^` / emoji shortcodes. Each carries a
+decision the rewrite has to make rather than inherit by omission; the file lists
+them so they land in [docs/DECISIONS.md](docs/DECISIONS.md) before 3.1's stage 2
+calls a feature done. It also flags two small serialiser sniffs not yet done
+(fence character, hard-break spelling) and the constructs that need their own
+stage-1 fidelity cases because the four byte-identical fixture files don't
+exercise them (setext headings, indented code blocks, link titles, `~~`).
+
+**[docs/REWRITE.md](docs/REWRITE.md)** and **[docs/TODO.md](docs/TODO.md)** item
+1.1 both gained a pointer to it. No code.
+
+Then those decisions were taken and folded back in. **Settled:** `html: false`
+stays — rendering or authoring raw HTML breaks the WYSIWYG premise; tables are a
+must and already drive the rewrite; task lists are 1.0 (priority) with a live
+checkbox and an undoable toggle; a full link editor is 1.0 (text + href +
+optional title, a heading picker for inner links, `linkify: true` on import with
+the D1 cost of serialising bare URLs back to bare text accepted — no new
+dependency, `linkify-it` ships inside markdown-it); explicit heading IDs are
+1.0 as part of that editor, with authoring as the cut line if the work overruns;
+syntax highlighting is out of scope for 1.0; footnotes, definition lists,
+`==mark==`, `~sub~`, `^sup^` and `:emoji:` are roadmap, not 1.0; the fence-char
+and hard-break-spelling sniffs get done with the rest. An imported raw-HTML
+block or inline span is kept as opaque `source` — byte-exact round-trip,
+rendered inert as today, never editable — closing the D1 hole where opened
+HTML was escaped to text and written back mangled. **Still open:** the link
+editor's UI details (S2), and hand-rolled rule vs plugin for task lists and
+`{#id}` (S4) — decided when it is built, hand-rolled unless a plugin saves real
+time and its broad attribute surface is worth owning.
+
+**[docs/TODO.md](docs/TODO.md)** gained items **1.1.9** (task lists) and
+**1.1.10** (link editor, `linkify`, explicit heading IDs), both *(needs 3.1)*.
+**[docs/ROADMAP.md](docs/ROADMAP.md)** gained a "Markdown constructs held for
+after 1.0" section for the deprioritised batch. **[docs/MARKDOWN.md](docs/MARKDOWN.md)**'s
+per-construct "After 3.1" column and its Decisions section now carry the
+settled calls and the three open threads. No code.
