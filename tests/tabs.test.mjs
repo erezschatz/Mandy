@@ -23,8 +23,19 @@ const DIALOG_IDS = [
   "dialogSaveConfirm",
 ];
 
-function boot() {
+// `withTabs` decides whether tabs.js is in the bundle, which is the difference
+// between the app and an exported document -- and between this suite and the
+// file-path one, which boots the same modules without it and must keep reading
+// and writing the flat key names.
+//
+// `seed` fills the store with flat keys the way a session from before tabs
+// existed left them. `refuse` and `swallow` are the two ways a localStorage
+// write fails: throwing, and the quieter one where setItem reports success and
+// stores nothing.
+function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
+  quiet = false } = {}) {
   const store = new Map();
+  for (const [key, value] of Object.entries(seed)) store.set(key, value);
   // Every localStorage write, in order. Park and adopt must add none of their
   // own: which key a tab's state is persisted under belongs to whoever owns the
   // tab list, not to the modules the state lives in.
@@ -60,7 +71,9 @@ function boot() {
   };
 
   const api = loadSource(
-    ["toolbar.js", "markdown-style.js", "app.js", "file-api.js"],
+    withTabs
+      ? ["toolbar.js", "markdown-style.js", "app.js", "tabs.js", "file-api.js"]
+      : ["toolbar.js", "markdown-style.js", "app.js", "file-api.js"],
     {
       document,
       runCommand: () => true,
@@ -68,6 +81,8 @@ function boot() {
         getItem: (k) => (store.has(k) ? store.get(k) : null),
         setItem: (k, v) => {
           writes.push(k);
+          if (refuse.includes(k)) throw new Error("QuotaExceededError");
+          if (swallow.includes(k)) return;
           store.set(k, v);
         },
         removeItem: (k) => {
@@ -102,14 +117,17 @@ function boot() {
       undoReset() {},
       undoPosition: () => null,
       ask: () => Promise.resolve(false),
-      console,
+      // The deliberate-failure cases warn on purpose. Left unmuted they print
+      // into the run output, where an expected warning reads exactly like a
+      // suite going wrong.
+      console: quiet ? { ...console, warn() {}, error() {} } : console,
       setTimeout,
       clearTimeout,
       URL: globalThis.URL,
       Blob: class {},
       Date,
     },
-    "; return { filePark, fileAdopt, markdownStylePark, markdownStyleAdopt," +
+    "; const out = { filePark, fileAdopt, markdownStylePark, markdownStyleAdopt," +
       " adoptMarkdownStyle," +
       " fileState: () => ({ currentFilePath, isDirty, fileMtime, diskChanged," +
       "   cleanPosition, dialogDir })," +
@@ -120,12 +138,15 @@ function boot() {
       " mdState: () => ({ style: markdownStyle, source: markdownSource," +
       "   references: referenceDefinitions })," +
       " turndownOptions: () => turndownService.options," +
-      " label: () => currentFileLabel.textContent };",
+      " label: () => currentFileLabel.textContent," +
+      " documentKey" +
+      (withTabs ? ", tabs: { list: openTabs, active: activeTabId }" : "") +
+      " }; return out;",
   );
 
-  // `writes` belongs to this harness rather than to the loaded scope, so it is
-  // merged in here instead of being reached for from the tail.
-  return { ...api, writes };
+  // `store` and `writes` belong to this harness rather than to the loaded
+  // scope, so they are merged in here instead of reached for from the tail.
+  return { ...api, store, writes };
 }
 
 const TAB_A = {
@@ -286,5 +307,107 @@ export default async function run(check) {
     check("markdownStyleAdopt(null) is Turndown's own defaults",
       app.turndownOptions().bulletListMarker === "*" &&
       app.turndownOptions().emDelimiter === "_");
+  }
+
+  // --- tabs.js: storage and the migration onto it -------------------------
+
+  // What a session from before tabs existed leaves behind: one document under
+  // the flat names, and no list.
+  const LEGACY = {
+    markdownContent: "<p>hello</p>",
+    markdownSource: "hello\n",
+    "mandy-current-file": "/home/x/notes/plan.md",
+    "mandy-dirty": "1",
+    "mandy-file-mtime": "2026-09-07T10:00:00.000Z",
+    "mandy-last-dir": "/home/x/notes",
+  };
+
+  const TAB_1 = {
+    "mandy-tab-1-content": LEGACY.markdownContent,
+    "mandy-tab-1-source": LEGACY.markdownSource,
+    "mandy-tab-1-path": LEGACY["mandy-current-file"],
+    "mandy-tab-1-dirty": LEGACY["mandy-dirty"],
+    "mandy-tab-1-mtime": LEGACY["mandy-file-mtime"],
+    "mandy-tab-1-dir": LEGACY["mandy-last-dir"],
+  };
+
+  const tabKeys = (app) => [...app.store.keys()].filter((k) => k.startsWith("mandy-tab-"));
+
+  {
+    const app = boot({ withTabs: true, seed: LEGACY });
+
+    check("migration copies every flat key onto the first tab",
+      Object.entries(TAB_1).every(([k, v]) => app.store.get(k) === v));
+    check("migration deletes the flat keys it moved",
+      Object.keys(LEGACY).every((k) => !app.store.has(k)));
+    check("migration writes the tab list",
+      app.store.get("mandy-tabs") === JSON.stringify({ order: [1], active: 1, seq: 1 }));
+    check("documentKey resolves to the active tab once tabs.js is loaded",
+      app.documentKey("content") === "mandy-tab-1-content" &&
+      app.documentKey("dir") === "mandy-tab-1-dir");
+    // The chain end to end: file-api.js reads the open file's path out of
+    // storage at its own load time, so it has to be given the scoped key by
+    // then -- which is the whole reason tabs.js loads ahead of it.
+    check("the migrated document arrives with its file attached",
+      app.label() === "plan.md (edited)");
+  }
+
+  {
+    const app = boot({ withTabs: true });
+    check("a session with nothing stored opens one tab",
+      app.tabs.list.length === 1 && app.tabs.active === 1);
+    check("a session with nothing stored writes no document keys",
+      tabKeys(app).length === 0);
+  }
+
+  {
+    const app = boot({
+      withTabs: true,
+      seed: { ...LEGACY, "mandy-tabs": JSON.stringify({ order: [3], active: 3, seq: 3 }) },
+    });
+    check("a session that already has a list does not migrate again",
+      Object.entries(LEGACY).every(([k, v]) => app.store.get(k) === v));
+    check("a stored list decides which tab is active",
+      app.documentKey("content") === "mandy-tab-3-content");
+  }
+
+  {
+    const app = boot({
+      withTabs: true,
+      seed: { ...LEGACY, "mandy-tabs": JSON.stringify({ order: [3, 4], active: 9, seq: 4 }) },
+    });
+    check("an active id that is not in the order falls back to the first tab",
+      app.documentKey("content") === "mandy-tab-3-content");
+  }
+
+  {
+    const app = boot({
+      withTabs: true, quiet: true,
+      seed: { ...LEGACY, "mandy-tabs": "{not json" },
+    });
+    check("a corrupt list is treated as no list rather than throwing during load",
+      app.store.get("mandy-tab-1-content") === LEGACY.markdownContent);
+  }
+
+  // The failure this whole dance exists for. A migration that deleted the flat
+  // keys before proving the copies readable would lose the user's open document
+  // outright, so a failure anywhere has to leave every original exactly where
+  // it was -- and the session then runs on the flat names, as one document with
+  // no list, rather than on a tab list pointing at storage the document is not
+  // under.
+  for (const [label, options] of [
+    ["a write that throws", { refuse: ["mandy-tab-1-source"] }],
+    ["a write that reports success and stores nothing", { swallow: ["mandy-tab-1-content"] }],
+  ]) {
+    const app = boot({ withTabs: true, quiet: true, seed: LEGACY, ...options });
+
+    check(`${label} leaves every flat key where it was`,
+      Object.entries(LEGACY).every(([k, v]) => app.store.get(k) === v));
+    check(`${label} leaves no half-migrated tab keys behind`, tabKeys(app).length === 0);
+    check(`${label} writes no tab list`, !app.store.has("mandy-tabs"));
+    check(`${label} falls back to the flat key names`,
+      app.documentKey("content") === "markdownContent");
+    check(`${label} still shows the document's own file`,
+      app.label() === "plan.md (edited)");
   }
 }

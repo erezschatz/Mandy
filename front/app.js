@@ -208,6 +208,29 @@ md.inline.ruler.at("link", function referenceAwareLink(state, silent) {
   return true;
 });
 
+// Every localStorage key holding part of the open document, under the flat
+// names Mandy used while it could only hold one. tabs.js scopes them to the
+// active tab when it is loaded; without it -- an exported document, which has
+// one document and no file API -- these names are what everything resolves to,
+// so the single-document path is the fallback rather than a second
+// implementation.
+const DOCUMENT_KEYS = {
+  content: "markdownContent",
+  source: "markdownSource",
+  path: "mandy-current-file",
+  dirty: "mandy-dirty",
+  mtime: "mandy-file-mtime",
+  dir: "mandy-last-dir",
+};
+
+// The one indirection between every call site and the key it writes. Resolved
+// per call rather than cached, because the active tab changes underneath it.
+function documentKey(name) {
+  return typeof tabDocumentKey === "function"
+    ? tabDocumentKey(name)
+    : DOCUMENT_KEYS[name];
+}
+
 // The conventions of the document currently open. Replaced wholesale every time
 // a document arrives with markdown to read; until then these are Turndown's own
 // defaults, so a session that never opens a file serialises exactly as it did
@@ -328,7 +351,7 @@ function adoptMarkdownStyle(markdown, remember = true) {
   referenceDefinitions = scanReferenceDefinitions(markdown);
   if (remember) {
     try {
-      localStorage.setItem("markdownSource", markdown);
+      localStorage.setItem(documentKey("source"), markdown);
     } catch (error) {
       // A document too big for the quota still edits and saves; it just loses
       // byte fidelity across a reload.
@@ -775,8 +798,8 @@ onToolbarAction("new", async () => {
   }
 
   editor.innerHTML = "<p><br></p>";
-  localStorage.removeItem("markdownContent");
-  localStorage.removeItem("markdownSource");
+  localStorage.removeItem(documentKey("content"));
+  localStorage.removeItem(documentKey("source"));
   // Or a block of the old document could come back on the next save.
   markdownStyle = Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
   markdownSource = new Map();
@@ -934,7 +957,7 @@ onToolbarAction("paste-md", async () => {
       // The two renderers run after the `input` event above already scheduled
       // a debounced autosave, so without this an immediate reload could still
       // catch the pre-render markup.
-      localStorage.setItem("markdownContent", editor.innerHTML);
+      localStorage.setItem(documentKey("content"), editor.innerHTML);
     }
   } catch (err) {
     notify("Unable to access clipboard. Please grant clipboard permissions.", {
@@ -955,7 +978,7 @@ if (fileInput) {
       editor.innerHTML = html;
       await renderMermaidDiagrams(editor);
       await renderLatex(editor);
-      localStorage.setItem("markdownContent", editor.innerHTML);
+      localStorage.setItem(documentKey("content"), editor.innerHTML);
       // This is Open, for the variant with no file server behind it.
       undoReset();
     };
@@ -1249,7 +1272,7 @@ let saveTimer;
 editor.addEventListener("input", () => {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    localStorage.setItem("markdownContent", editor.innerHTML);
+    localStorage.setItem(documentKey("content"), editor.innerHTML);
   }, 1000);
 });
 
@@ -1275,7 +1298,7 @@ async function loadWelcomeDocument() {
 }
 
 window.addEventListener("load", () => {
-  const saved = localStorage.getItem("markdownContent");
+  const saved = localStorage.getItem(documentKey("content"));
   const isExported = editor.hasAttribute("data-exported");
 
   (async () => {
@@ -1286,11 +1309,11 @@ window.addEventListener("load", () => {
       editor.innerHTML = saved;
       // Re-adopt rather than re-render: the document is already restored, and
       // this only needs the style and the block index the markdown carries.
-      const source = localStorage.getItem("markdownSource");
+      const source = localStorage.getItem(documentKey("source"));
       if (source) adoptMarkdownStyle(source, false);
     } else {
-      if (saved) localStorage.removeItem("markdownContent");
-      localStorage.removeItem("markdownSource");
+      if (saved) localStorage.removeItem(documentKey("content"));
+      localStorage.removeItem(documentKey("source"));
       await loadWelcomeDocument();
     }
 
@@ -1327,7 +1350,7 @@ window.addEventListener("beforeunload", (e) => {
 
   // Only save if content is not essentially empty
   if (willSave) {
-    localStorage.setItem("markdownContent", editor.innerHTML);
+    localStorage.setItem(documentKey("content"), editor.innerHTML);
   }
 
   // The one guard that cannot use ask(): the browser will not wait on a

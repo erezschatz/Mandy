@@ -403,7 +403,7 @@ function toggleInlineCode(range) {
 
 function saveSoon() {
   setTimeout(() => {
-    localStorage.setItem("markdownContent", editor.innerHTML);
+    localStorage.setItem(documentKey("content"), editor.innerHTML);
   }, 100);
 }
 

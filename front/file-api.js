@@ -12,11 +12,6 @@ const dialogSaveRow = document.getElementById("dialogSaveRow");
 const dialogFilename = document.getElementById("dialogFilename");
 const dialogSaveConfirm = document.getElementById("dialogSaveConfirm");
 
-const FILE_PATH_KEY = "mandy-current-file";
-const LAST_DIR_KEY = "mandy-last-dir";
-const DIRTY_KEY = "mandy-dirty";
-const MTIME_KEY = "mandy-file-mtime";
-
 let currentFilePath = null;
 // Edited since the last open or save. Autosave is unaware of the file on disk,
 // so without this the toolbar shows a filename that may be nothing like the
@@ -36,7 +31,7 @@ let dialogMode = "open";
 // Last visited directory, reused between openings and across reloads — walking
 // back to the same folder every session is the kind of friction you only notice
 // by having to do it.
-let dialogDir = localStorage.getItem(LAST_DIR_KEY);
+let dialogDir = localStorage.getItem(documentKey("dir"));
 let saveResolver = null;
 
 function renderCurrentFile() {
@@ -64,9 +59,9 @@ function setDirty(dirty) {
   isDirty = dirty;
 
   if (dirty) {
-    localStorage.setItem(DIRTY_KEY, "1");
+    localStorage.setItem(documentKey("dirty"), "1");
   } else {
-    localStorage.removeItem(DIRTY_KEY);
+    localStorage.removeItem(documentKey("dirty"));
   }
   renderCurrentFile();
 }
@@ -96,9 +91,9 @@ function markClean() {
 function setFileMtime(modified) {
   fileMtime = modified || null;
   if (fileMtime) {
-    localStorage.setItem(MTIME_KEY, fileMtime);
+    localStorage.setItem(documentKey("mtime"), fileMtime);
   } else {
-    localStorage.removeItem(MTIME_KEY);
+    localStorage.removeItem(documentKey("mtime"));
   }
   setDiskChanged(false);
 }
@@ -108,9 +103,9 @@ function setFileMtime(modified) {
 function setCurrentFile(filePath) {
   currentFilePath = filePath;
   if (filePath) {
-    localStorage.setItem(FILE_PATH_KEY, filePath);
+    localStorage.setItem(documentKey("path"), filePath);
   } else {
-    localStorage.removeItem(FILE_PATH_KEY);
+    localStorage.removeItem(documentKey("path"));
   }
   renderCurrentFile();
 }
@@ -119,15 +114,15 @@ function setCurrentFile(filePath) {
 // about to fall back to welcome.md there is no file behind what you see, and
 // showing one would point Ctrl+S at a document you are not looking at.
 (function restoreCurrentFile() {
-  const savedContent = localStorage.getItem("markdownContent");
+  const savedContent = localStorage.getItem(documentKey("content"));
   if (savedContent && !isBlankContent(savedContent)) {
-    isDirty = localStorage.getItem(DIRTY_KEY) === "1";
-    fileMtime = localStorage.getItem(MTIME_KEY);
-    setCurrentFile(localStorage.getItem(FILE_PATH_KEY));
+    isDirty = localStorage.getItem(documentKey("dirty")) === "1";
+    fileMtime = localStorage.getItem(documentKey("mtime"));
+    setCurrentFile(localStorage.getItem(documentKey("path")));
   } else {
-    localStorage.removeItem(FILE_PATH_KEY);
-    localStorage.removeItem(DIRTY_KEY);
-    localStorage.removeItem(MTIME_KEY);
+    localStorage.removeItem(documentKey("path"));
+    localStorage.removeItem(documentKey("dirty"));
+    localStorage.removeItem(documentKey("mtime"));
   }
 })();
 
@@ -252,7 +247,7 @@ async function loadDir(dirPath) {
     // home instead. Only one retry — the second call passes no path, so a
     // failure there is the server, not the folder.
     if (dirPath) {
-      localStorage.removeItem(LAST_DIR_KEY);
+      localStorage.removeItem(documentKey("dir"));
       return loadDir(null);
     }
     notify("Failed to browse directory: " + err.message, { severity: "error" });
@@ -260,7 +255,7 @@ async function loadDir(dirPath) {
   }
 
   dialogDir = data.path;
-  localStorage.setItem(LAST_DIR_KEY, data.path);
+  localStorage.setItem(documentKey("dir"), data.path);
   // The path bar clips from the left (direction: rtl) to keep the tail of deep
   // paths visible; the inner LTR span keeps the path itself rendering normally.
   dialogPathBar.innerHTML = "";
@@ -432,7 +427,7 @@ async function openFile(filePath) {
   editor.innerHTML = markdownToHtml(data.content);
   await renderMermaidDiagrams(editor);
   await renderLatex(editor);
-  localStorage.setItem("markdownContent", editor.innerHTML);
+  localStorage.setItem(documentKey("content"), editor.innerHTML);
   // History does not cross a document boundary. Undo handing back the previous
   // file's text would leave it under this file's path, one Ctrl+S from being
   // written there. Reload comes through here too, which is right: discarding

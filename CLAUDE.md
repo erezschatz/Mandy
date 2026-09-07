@@ -310,8 +310,37 @@ Two traps here, both of which write into the user's file if you get them wrong:
   `#editor[contenteditable="true"]` so the static export — where links are
   ordinary links needing no modifier — does not advertise a shortcut.
 
-Autosave writes `editor.innerHTML` to `localStorage["markdownContent"]` on a 1s
+Autosave writes `editor.innerHTML` to the open document's content key on a 1s
 debounce — separate from, and unaware of, the file on disk.
+
+**Every storage key naming part of the open document goes through
+`documentKey(name)` in `app.js`, never a literal.** There are six — `content`,
+`source`, `path`, `dirty`, `mtime`, `dir` — and `DOCUMENT_KEYS` in `app.js`
+holds the flat names they had while Mandy could only hold one document
+(`markdownContent`, `mandy-current-file` and so on). [tabs.js](front/tabs.js)
+scopes them to the active tab when it is loaded; without it — an exported
+document, and the test suites that boot the same modules without it — the flat
+names are what everything resolves to. One indirection in one place, so the
+single-document path stays the fallback rather than becoming a second
+implementation.
+
+`tabs.js` owns which documents are open, which one is showing, and where each is
+persisted; none of the state itself lives there. It joins two of the three
+registries below — `index.html` and `SHELL_ASSETS` — and deliberately not
+`ASSETS`: an exported document holds one document and has no file API. Its place
+in the load order is load-bearing in both directions: after `app.js`, which
+defines `DOCUMENT_KEYS`, and **before `file-api.js`**, which reads the open
+file's path out of storage at its own load time and so has to be handed the
+active tab's key by then.
+
+Moving an existing document onto tab storage happens once, in `tabs.js`, and it
+copies, reads each value back under its new name, and only then deletes the
+originals. `localStorage` offers no transaction, a blown quota does not always
+announce itself by throwing, and a half-migrated document whose source of truth
+has already been deleted is the one outcome here that destroys the user's work.
+A failure anywhere rolls back the partial copies and leaves the session running
+on the flat names — one document, no list, nothing lost — rather than on a tab
+list pointing at storage the document is not under.
 
 ### The document versus the file
 
@@ -337,7 +366,7 @@ and reports them in the same toolbar label: `plan.md (edited, disk changed)`.
   once at startup — a page load has already missed the `focus` event for the tab
   it loads into.
 
-Both flags are persisted (`mandy-dirty`, `mandy-file-mtime`) and restored only
+Both flags are persisted (the `dirty` and `mtime` keys) and restored only
 alongside the content, for the same reason the path is: autosave carries unsaved
 edits across a browser reload, and a baseline that reset to null would make the
 first check call a file nobody has touched changed.

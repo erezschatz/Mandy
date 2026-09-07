@@ -1933,3 +1933,62 @@ Registered in `tests/run.mjs`; 831 checks green.
 CLAUDE.md is not updated yet. It describes the running code, and nothing calls
 either pair until the tab list exists; the architecture section is rewritten
 when tabs are real rather than describing two functions with no callers.
+
+## 2026-09-07 — Per-tab storage, and the migration onto it (TODO 4.1)
+
+Stage two of the tabbed view. Still one document, still nothing on screen that
+was not there before — what changed is where the open document is persisted, and
+that there is now a file whose job is to know.
+
+**[front/tabs.js](front/tabs.js) is new.** It owns which documents are open,
+which one is showing, and where each is stored. None of the state itself lives
+there: `filePark`/`fileAdopt`, `markdownStylePark`/`markdownStyleAdopt` and
+`undoPark`/`undoAdopt` already keep it in the modules that own it. It joins
+`index.html` and `SHELL_ASSETS` and deliberately **not** `ASSETS` — an exported
+document holds one document and has no file API. `sw.js` goes to `v1.27`.
+
+**Its place in the load order is load-bearing in both directions.** After
+`app.js`, which defines `DOCUMENT_KEYS`; and before `file-api.js`, which reads
+the open file's path, dirty flag, mtime baseline and last-browsed directory out
+of storage at its own load time and so has to be handed the active tab's key by
+then. That is the whole reason it sits at index.html line 220 rather than at the
+end.
+
+**Six key literals became one indirection.** `documentKey(name)` in `app.js`
+resolves `content`, `source`, `path`, `dirty`, `mtime` and `dir`; `DOCUMENT_KEYS`
+holds the flat names they had while Mandy could only hold one document, and
+`tabDocumentKey` in `tabs.js` scopes them to the active tab when that file is
+loaded. Without it — an exported document, and every test suite that boots these
+modules without `tabs.js` — the flat names are what everything resolves to, so
+the single-document path is the fallback rather than a second implementation of
+the same thing. `file-api.js` lost its four `*_KEY` constants to it, and the
+three `"markdownContent"` write sites scattered across `app.js`, `file-api.js`
+and `format-bar.js` go through it too.
+
+**The migration is the part that can destroy something.** Moving a document from
+the flat names onto `mandy-tab-1-*` copies, reads each value back under its new
+name, and only then deletes the originals. `localStorage` offers no transaction,
+and a blown quota does not always announce itself by throwing — Safari's private
+mode has historically accepted the write and stored nothing, which is why the
+read-back is there rather than a bare `try`. A failure anywhere rolls the
+partial copies back and leaves every original where it was, and the session then
+runs on the flat names exactly as it did before tabs existed: one document, no
+list, nothing lost. Better than a tab list pointing at storage the document is
+not under. Ids are never reused, for the same reason `cleanPosition` had to
+become per-tab: a recycled id inherits whatever of the previous tab's keys was
+not cleaned up.
+
+**21 more checks in [tests/tabs.test.mjs](tests/tabs.test.mjs)**, 854 green. The
+migration moves every key and deletes the flat ones; a session that already has
+a list does not migrate again; a stored active id outside the order falls back
+to the first tab; a corrupt list is treated as no list rather than throwing
+during load; and both ways a write fails — throwing, and reporting success while
+storing nothing — leave every flat key intact, no half-migrated tab keys behind,
+no list written, and the document still on the toolbar with its filename. The
+harness gained a `quiet` option so those deliberate failures stop printing
+warnings that read like a suite going wrong.
+
+**[CLAUDE.md](CLAUDE.md)** gains the `documentKey` rule, what `tabs.js` owns and
+where it has to sit, and why the migration is shaped the way it is. The two
+places naming `markdownContent`, `mandy-dirty` and `mandy-file-mtime` as literal
+keys now name the roles instead.
