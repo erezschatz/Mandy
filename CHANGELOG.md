@@ -1763,7 +1763,7 @@ pointer, and its module-system and save-fidelity entries say what 3.1 changes
 for them. [CLAUDE.md](CLAUDE.md)'s "Document state" section says it describes
 the design being replaced. No code.
 
-## 2026-09-07 — Markdown coverage checklist and feature decisions for the rewrite
+## 2026-09-07 — `948e350` — Markdown coverage checklist and feature decisions for the rewrite
 
 **[docs/MARKDOWN.md](docs/MARKDOWN.md) is new.** Every construct in the two
 Markdown Guide cheat sheets — basic and extended — plus Mandy's own math and
