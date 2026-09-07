@@ -152,6 +152,16 @@ the file itself.
   commit hash in the header yet; once it is committed, backfill the header to
   `## DATE — HASH — Title`. This holds for docs, comments and metafiles too — a
   change with no CHANGELOG entry is unfinished.
+- **Anything more than trivial is written down before it is built, and again
+  as each part lands.** Before: what is about to change, what the stages are,
+  and what each one entails — in the item's own entry in
+  [docs/TODO.md](docs/TODO.md) when it has one, or a `docs/` file when it is
+  large enough to need one (3.1 has [docs/REWRITE.md](docs/REWRITE.md)). After:
+  each stage says where it stands — *done and tested*, *done, untested*, *not
+  started* — updated as part of the landing rather than afterwards. **Do not
+  start the work before the plan is written.** The failure this prevents is a
+  CHANGELOG entry announcing "stage two" of a sequence that exists nowhere a
+  reader can find it, which is what TODO 4.1's first two stages shipped as.
 - **Do not run tests for a change that touches no code.** Nothing in `tests/`
   loads a CHANGELOG entry, a comment, a doc or a `docs/` file, so `npm test`
   proves nothing about one — skip it. When code does change, run only the suite

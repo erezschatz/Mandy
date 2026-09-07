@@ -1992,3 +1992,37 @@ warnings that read like a suite going wrong.
 where it has to sit, and why the migration is shaped the way it is. The two
 places naming `markdownContent`, `mandy-dirty` and `mandy-file-mtime` as literal
 keys now name the roles instead.
+
+## 2026-09-07 — TODO 4.1 gets its stages, and a rule about writing them down first
+
+The two tabs commits already landed said "first landing of the tabbed view" and
+"stage two of the tabbed view", referring to a sequence that existed only in the
+conversation that produced them. 3.1 has had the right shape all along —
+[REWRITE.md](docs/REWRITE.md)'s stage table, one exit criterion per row — and
+4.1 had nothing equivalent, so the CHANGELOG was pointing at something no reader
+could resolve.
+
+**TODO 4.1 now carries five numbered stages** with an exit criterion and a
+standing each: state boundaries and storage are done and tested, the hazards, N
+tabs and the bar are not started. It also records the ordering claim that was
+only ever spoken aloud — **stage 3 before stage 4 is a safety property rather
+than a preference**, because the four late-read sites are unreachable with one
+document and go live the moment there are two, so they close before a second tab
+can exist rather than after one could already have written the wrong file.
+
+**Three behavioural calls are recorded with it**, having also lived nowhere.
+Open replaces the current tab's document as it does today and stays behind
+`confirmDiscard`; New makes a tab instead of resetting the document in place,
+which drops it out of that guard's callers and leaves the guard covering Open
+and Reload; closing the last tab leaves one blank untitled tab rather than a
+no-document state that five modules have no null case for. New's current body
+survives the change of role — blanking the document and dropping the autosave,
+the sniffed style and the file association is exactly what closing the last tab
+has to do, so it becomes a reset primitive with two callers rather than a
+handler with one. Clear is untouched either way.
+
+**[CLAUDE.md](CLAUDE.md)'s "Making a change" section gains the general rule.**
+Anything more than trivial gets written down before it is built — what is
+changing, what the stages are, what each entails — and each stage's standing is
+updated as part of the landing rather than afterwards. Work does not start
+before the plan is written. No code.

@@ -303,14 +303,34 @@ category fidelity deliberately does not extend to.
     strings where the model swaps a reference. Days of throwaway work, not a
     structural blocker.
 
-    Today the app is built around holding exactly one: `editor.innerHTML` is the
-    entire document state, autosave writes a single
-    `localStorage["markdownContent"]`, and file-api.js tracks a single
-    `currentFilePath`. Settled: **a tab is a whole document**, so undo history,
+    The app is still built around holding exactly one: `editor.innerHTML` is the
+    entire document state and `file-api.js` tracks a single `currentFilePath`.
+    Storage is the part that has already moved — stage 2 below put the open
+    document under per-tab keys, reached through `documentKey(name)`. Settled: **a tab is a whole document**, so undo history,
     dirty status, file path, mtime baseline and the last-browsed directory are
     all per-tab. Working in tab A and then switching to B must not leave B's
     Open starting from A's directory, and A's unsaved status must still stop the
     window closing.
+
+    Three more are settled, and they decide what gets built rather than how:
+
+    - **Open replaces the current tab's document**, exactly as it does today,
+      and stays behind `confirmDiscard`. Tabs do not multiply by opening files.
+    - **New makes a tab.** It stops resetting the document in place, so it stops
+      discarding anything and drops out of `confirmDiscard`'s callers — leaving
+      that guard covering Open and Reload. Clear is untouched: still an ordinary
+      undoable edit, still leaving the file association where it is, so the
+      New/Clear split holds with New's weight moved rather than removed.
+    - **Closing the last tab leaves one blank untitled tab**, rather than
+      emptying the editor to no document at all. `app.js`, `undo.js`,
+      `file-api.js`, `format-bar.js` and `outline.js` each grab `editor` once at
+      load and assume a document behind it; a no-document state is a null case
+      none of them has.
+
+    New's current body is not lost when it stops being a toolbar handler. Blank
+    the document, drop the autosave, drop the sniffed style, drop the file
+    association — that is precisely what closing the last tab has to do, so it
+    becomes a reset primitive with two callers instead of a handler with one.
 
     Three things the obvious list misses:
 
@@ -421,6 +441,35 @@ category fidelity deliberately does not extend to.
     already applies to the theme toggle's own title. The transient toasts
     (Saved!, Reloaded!) are unaffected — the dot is the ambient state between
     actions, not a replacement for the feedback an action already gives.
+
+    **The stages, and where each one stands.** Kept here rather than in a
+    commit message so that a CHANGELOG entry saying "stage two" resolves to
+    something. Each lands on its own.
+
+    1.  **State boundaries** — *done and tested.* Every module owning part of a
+        document exposes a park/adopt pair; a round trip through one is
+        lossless and writes no storage. `undoPark`/`undoAdopt` already existed;
+        `filePark`/`fileAdopt` and `markdownStylePark`/`markdownStyleAdopt` are
+        the additions.
+    2.  **Storage** — *done and tested*, in the suite and by hand in Firefox.
+        One document persisted under per-tab keys, reached through
+        `documentKey(name)`; an existing session either migrates onto them or
+        provably keeps every flat key it had.
+    3.  **The hazards** — *not started.* A switch is refused while a file
+        operation is in flight, and no `await` is left sitting between deciding
+        which document and reading its bytes.
+    4.  **N tabs** — *not started.* Two documents open and switchable, driven
+        from the suite. No bar yet.
+    5.  **The bar** — *not started.* `.toolbar-content` becomes the tab bar:
+        the per-tab dot, close, Ctrl+Tab and Ctrl+1–9, and the
+        `--toolbar-height` arithmetic following it.
+
+    **Stage 3 comes before stage 4 deliberately, and that is the one ordering
+    here which is a safety property rather than a preference.** The four
+    late-read sites above are unreachable while there is one document to be
+    wrong about and go live the moment there are two, so they are closed before
+    a second tab can exist rather than after one could already have written the
+    wrong file.
 
 ## 6. Product
 
