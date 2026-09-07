@@ -1812,3 +1812,71 @@ time and its broad attribute surface is worth owning.
 after 1.0" section for the deprioritised batch. **[docs/MARKDOWN.md](docs/MARKDOWN.md)**'s
 per-construct "After 3.1" column and its Decisions section now carry the
 settled calls and the three open threads. No code.
+
+## 2026-09-07 — Tabs are unblocked, and the four ways they lose a file (TODO 4.1)
+
+**TODO 4.1 loses its *(needs 3.1)* marker and gains no replacement.** It went on
+in the 2026-09-06 pass that re-marked the whole file for the rewrite, and it did
+not survive being asked for its reasons. The two written down are not blockers:
+the `localStorage` count falling from 2N to N is a constant factor against a
+quota nobody has hit, and a question 4.1 had already settled its own way; and
+"every item marked *(needs 3.1)* waits" restates the marker rather than
+justifying it. Counting the per-tab state instead, most of the item is
+core-independent — `currentFilePath`, `isDirty`, `fileMtime`, `diskChanged` and
+the last-browsed directory are all in `file-api.js`, which REWRITE.md's own fate
+table leaves untouched, and the tab bar, the per-tab dot, the `beforeunload`
+compensation and restore-on-load never reach the core. What 3.1 discards is the
+per-tab `markdownSource` maps and swapping HTML strings where a model would swap
+a reference: days of throwaway work. Tabs are built on the current core on
+`main`; the rewrite stays on its branch and absorbs them when it merges.
+
+**A marker now states a blocking relationship and nothing else.** *(best after
+…)* was a recommendation wearing the same costume as a gate, and it read as one
+— which is how 4.1 came to be treated as waiting on work it does not need. The
+preamble's definition is rewritten to say so, and the three items carrying an
+ordering preference lose the label while keeping the argument in their prose,
+where it can be read and disagreed with: **1.5** (search-and-replace, whose body
+already explains why it is cheaper written once, after the model exists),
+**6.1** (the README rewrite) and **3.1**, whose marker keeps *(unblocks …)* — a
+fact about other items — and drops the "best before" clause. *(no urgency)* on
+**6.3** is left alone: it is a priority, not an ordering.
+
+**What replaces the marker on 4.1 is the hazard it was standing in front of.**
+Tabs open one class of bug that is new rather than merely bigger: every `await`
+between deciding *which document* and reading *the bytes*. It is unreachable
+today because there is one document to be wrong about, and each instance writes
+the wrong document somewhere the user cannot undo — `saveFile` reads
+`editor.innerHTML` after awaiting `confirmOverwrite` and possibly the entire
+`saveFileAs` browser, so tab B's content lands on tab A's file under a toast
+saying "Saved"; `openFile` assigns after its `await fetch`; autosave's single
+`saveTimer` and fixed key drop the outgoing tab's last second of edits; and
+`beforeunload` persists the active document alone. Settled: **the switch is
+refused while a file operation is in flight**, one rule rather than four capture
+sites, and capturing early would save the document as of the Save click rather
+than the confirm. `.notify-backdrop` and `.file-dialog` already do half of it for
+a mouse, being full-viewport `inset: 0` overlays; the gap is the four
+`document`-level `keydown` listeners that fire straight through an open dialog,
+which the Ctrl+Tab binding has to check for itself.
+
+**3.1 does not close that**, and the item now says so: the awaits stay, the
+single active-document global stays, and the same late read is the same bug with
+a new variable name. What the rewrite changes is the fix on offer — a background
+tab today is a frozen HTML string, so "serialise tab A right now" has no answer,
+while N live models make it `tabs[tabId].model` and the lock comes off. The lock
+is correct on both cores and worth building either way.
+
+**The undo bullet was describing shipped work as future work** and now describes
+`undoPark` / `undoAdopt` as landed, with the two things left at the call site:
+adopt after the content swap, never before, and `cleanPosition` moving into the
+tab record to park with the bundle. That second one is the sharpest silent
+failure in the item — `nextId` counts from zero inside each bundle, so a global
+`cleanPosition` reads tab A's id 7 as tab B's id 7, a dirty document reports
+clean, and the unsaved-work guard and the `beforeunload` warning go down
+together. It only misfires when two tabs' edit counts line up, so no manual pass
+finds it.
+
+**[docs/REWRITE.md](docs/REWRITE.md)'s Undo section carries the same requirement
+forward**, because a new history with new ids does not produce it by accident:
+the replacement counter has to be document-scoped and parked with the bundle, or
+globally unique. Written there rather than under "What is accepted", which is for
+costs taken on rather than requirements to meet. No code.

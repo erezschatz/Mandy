@@ -191,6 +191,18 @@ TODO 1.6 — Ctrl+Z after Enter at the end of a bullet leaving `(edited)` lit an
 the caret at the top — is a whole-document offset miscount on a snapshot
 restore. It does not get fixed; the design that produces it is removed.
 
+**One requirement the new history has to be told, because it does not fall out
+of being new:** a savepoint id is per-document and is never compared across
+documents. `cleanPosition` in `file-api.js` holds one to answer "has undo
+brought this back to the last save", and today's `nextId` counts from zero
+inside each bundle, so two documents both own an id 7 standing for different
+states. That is safe while there is one document and stops being safe the
+moment TODO 4.1 opens a second: a dirty document reports clean, and the
+unsaved-work guard and the `beforeunload` warning go down together. The
+replacement counter has to be either document-scoped and parked with the bundle
+or globally unique — a choice, not an accident. TODO 4.1 carries the same
+requirement against the current core, so whichever lands first pays for it once.
+
 ## The input layer
 
 This is the part with no counterpart in the repo and the only part that can

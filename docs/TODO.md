@@ -10,13 +10,15 @@ and all of section 2 now land on it rather than on the current engine.
 
 Items are numbered `section.item` so they can point at each other. The numbers
 are labels, not an order and not a priority. An italic *(needs 4.1)* means that
-one has to land first, *(best after …)* is a preference rather than a blocker,
-and *(unblocks …)* marks an item others are waiting on — those are the ones to
-start from. Two more say what kind of item it is: *(undecided)* is a suggestion
-nobody has ruled on yet, so it wants a decision before it wants code — settled
-ones are recorded in [DECISIONS.md](DECISIONS.md) — and *(fixed, unverified)*
-means the work landed but nobody has watched it happen in a browser, so what is
-left is the checking.
+one has to land first and *(unblocks …)* marks an item others are waiting on —
+those are the ones to start from. A marker states a blocking relationship and
+nothing else: an item that merely reads better after another one says so in its
+own prose, where the reasoning can be read and argued with, rather than wearing
+a status that looks like a gate. Two more say what kind of item it is:
+*(undecided)* is a suggestion nobody has ruled on yet, so it wants a decision
+before it wants code — settled ones are recorded in
+[DECISIONS.md](DECISIONS.md) — and *(fixed, unverified)* means the work landed
+but nobody has watched it happen in a browser, so what is left is the checking.
 
 A finished item leaves this file rather than staying in it struck through: what
 was done and why is in [CHANGELOG.md](../CHANGELOG.md), which is the better place
@@ -178,7 +180,7 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     U+00A0, so 1.4 closes with 3.1 rather than getting its own caret-preserving
     fix on the old core.
 
-*   **1.5** *(best after 3.1)* No search-and-replace. Ctrl+F is chrome-level
+*   **1.5** No search-and-replace. Ctrl+F is chrome-level
     browser UI that highlights matches in the live DOM but exposes nothing to
     the page, and
     `window.find()` only moves the selection — it doesn't replace, isn't
@@ -250,7 +252,7 @@ category fidelity deliberately does not extend to.
 
 ## 3. The editing core
 
-*   **3.1** *(unblocks 1.1.6, 1.1.7, 1.1.8, 1.4, 1.6, 4.1; best before 1.5)*
+*   **3.1** *(unblocks 1.1.6, 1.1.7, 1.1.8, 1.4, 1.6)*
     Replace the editing core: hold the document as a block-granular markdown
     model with source spans, render it to the DOM, and treat contenteditable
     as an input method whose `beforeinput` intentions are reinterpreted as
@@ -279,12 +281,27 @@ category fidelity deliberately does not extend to.
 
 ## 4. Interface
 
-*   **4.1** *(needs 3.1)* Tabbed view — several documents open at once, one
-    per tab. The guard it was waiting on has landed, and the document model it
-    was waiting on is 3.1's: a tab is one model, and switching tabs swaps which
-    model is rendered into the one `#editor`. What follows was written against
-    the current core and mostly still holds; the one place 3.1 changes the
-    numbers is noted inline.
+*   **4.1** Tabbed view — several documents open at once, one per tab. The
+    guard it was waiting on has landed. **It is not blocked on 3.1** — it builds
+    on the current core, on `main`, while the rewrite sits on its own branch and
+    absorbs tabs when it merges. What follows was written against the current
+    core; the places 3.1 changes are noted inline.
+
+    **It carried *(needs 3.1)* from 2026-09-06 to 2026-09-07, and that was
+    wrong.** The marker went on in the pass that re-marked the whole file for
+    the rewrite rather than from an argument made about this item, and the
+    arguments that were written down do not carry it: the 2N-to-N `localStorage`
+    count below is a constant factor against a quota nobody has hit, and "every
+    item marked *(needs 3.1)* waits" restates the marker instead of justifying
+    it. Measured against the per-tab state list, most of this is
+    core-independent — `currentFilePath`, `isDirty`, `fileMtime`, `diskChanged`
+    and the last-browsed directory all live in `file-api.js`, which
+    [REWRITE.md](REWRITE.md)'s fate table leaves untouched, and the tab bar, the
+    per-tab dot, the `beforeunload` compensation and restore-on-load never reach
+    the core at all. What 3.1 discards is two things: the per-tab
+    `markdownSource` maps, for an index that stops existing, and swapping HTML
+    strings where the model swaps a reference. Days of throwaway work, not a
+    structural blocker.
 
     Today the app is built around holding exactly one: `editor.innerHTML` is the
     entire document state, autosave writes a single
@@ -316,15 +333,66 @@ category fidelity deliberately does not extend to.
       action itself, so any UI mention of it reads as "something's wrong with
       my file" to someone who has no way to act on it and did nothing wrong.
       Stays a `console.warn`, unchanged, for whoever is debugging it.
-    - **Undo has to park and restore rather than reset.** Every
-      `editor.innerHTML` assignment currently picks reset-or-be-undoable, and a
-      tab switch is neither. It needs a third option: park the outgoing tab's
-      `{undoStack, redoStack, undoCurrent}` and restore the incoming one's. That
-      is a real relaxation of "history never crosses a document boundary", safe
-      only because the boundary becomes the tab rather than the assignment.
+    - **Undo parks and restores rather than resetting, and that half has
+      landed.** Every `editor.innerHTML` assignment picks reset-or-be-undoable
+      and a tab switch is neither, so it needed a third option: `undoPark()`
+      hands back the outgoing tab's history bundle and `undoAdopt()` installs
+      the incoming one's. That is a real relaxation of "history never crosses a
+      document boundary", safe only because the boundary becomes the tab rather
+      than the assignment. Two things are left to get right at the call site.
+      `undoAdopt` trusts the bundle to match what is on screen and never
+      re-snapshots, so the content swap comes first, always. And **`cleanPosition`
+      moves into the tab record and parks with the bundle** — the sharpest silent
+      failure in the item. `nextId` is per-bundle and counts from zero;
+      [undo.js](../front/undo.js) says so in as many words, "ids are only ever
+      compared within one bundle". Leave `cleanPosition` a single global and tab
+      A's id 7 reads as tab B's id 7, so a dirty document reports clean, which
+      switches off the unsaved-work guard on Open, Reload and New *and* the
+      `beforeunload` warning together. It misfires only when two tabs' edit
+      counts line up, so no manual pass will find it.
     - **One `#editor`, not N.** app.js, undo.js, file-api.js, format-bar.js and
       outline.js all grab `editor` once at load, so N editor elements would
-      fight the whole shared-scope arrangement. Swap the content instead.
+      fight the whole shared-scope arrangement. Swap the content instead — and
+      after 3.1 that swap is a model reference rather than an HTML string, a tab
+      being one model and the editor rendering whichever is active.
+
+    **The one class of bug that is new rather than bigger: every `await` between
+    "which document" and "the bytes".** It is unreachable today because there is
+    only one document to be wrong about, and each instance of it writes the wrong
+    document somewhere the user cannot undo:
+
+    - `saveFile` takes a path, then awaits `confirmOverwrite` — and possibly the
+      whole `saveFileAs` browser — before it reads `editor.innerHTML`. Switch in
+      that window and tab B's content goes over tab A's file, with the toast
+      saying "Saved".
+    - `openFile` assigns `editor.innerHTML` after its `await fetch`. A slow read
+      and a switch put the file in the wrong tab.
+    - Autosave is one `saveTimer` writing one fixed key. Switching inside the 1s
+      debounce drops the outgoing tab's last edits, and autosave is the only
+      thing carrying unsaved work across a browser reload.
+    - `beforeunload` persists the active document alone. Background tabs need
+      their content already written, or closing the window takes all of them.
+
+    Settled: **a switch is refused while a file operation is in flight**, rather
+    than each site capturing its own copy of the document up front. One rule in
+    one place beats four, and capturing early would write the document as of the
+    Save click rather than as of the confirm, which is a different answer nobody
+    asked for. Half of it is true by accident already — `.notify-backdrop` and
+    `.file-dialog` are both full-viewport `inset: 0` overlays, so a mouse cannot
+    reach a tab bar behind one. The gap is the keyboard: four `document`-level
+    `keydown` listeners (`app.js`, `file-api.js`, `undo.js`, `toolbar.js`) fire
+    straight through an open dialog, so the Ctrl+Tab / Ctrl+1–9 binding this item
+    adds has to make the check itself.
+
+    **3.1 does not close this, which is the reason it is written down here.** The
+    awaits stay — the file API is HTTP and the dialogs wait on a human — and so
+    does the single active-document global, so the same read after the same await
+    is the same bug wearing a new variable name. What the rewrite changes is
+    which fix is available. Today the document *is* the DOM, so a background tab
+    is a frozen string and "serialise tab A right now" has no answer; once N
+    models are live with one rendered, the fix is capture `tabId` at the top and
+    serialise `tabs[tabId].model` at the bottom, and the lock can come off. Build
+    the lock anyway: it is small, and it is correct on both cores.
 
     `beforeunload` cannot name which tab is dirty — the browser shows its own
     string and will not wait on us. That is accepted rather than solved: the
@@ -356,7 +424,7 @@ category fidelity deliberately does not extend to.
 
 ## 6. Product
 
-*   **6.1** *(best last)* Rewrite the README to better fit the project's state
+*   **6.1** Rewrite the README to better fit the project's state
     at release. D0 in [DECISIONS.md](DECISIONS.md) is the framing to write it
     from — what the project is *for* is argued there and nowhere in the README,
     which still describes a markdown editor rather than the case for one.
