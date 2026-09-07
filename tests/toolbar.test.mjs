@@ -147,8 +147,8 @@ export default async function run(check) {
       !walk(toolbar).some((n) => n.id === "githubBtn") &&
         !readFront("toolbar.js").includes("github"));
     // The app gets two rows: the menus, then the document row. That second row
-    // is where the tab bar goes (TODO 4.1), so its shape is worth pinning now
-    // rather than after something else has been built on top of it.
+    // is the tab bar (TODO 4.1), which is why it was a row of its own while it
+    // still held nothing but a filename.
     //
     // An exported document has neither a file on disk nor a theme toggle, so
     // there is nothing to put on a second row and it does not get one. The
@@ -165,8 +165,16 @@ export default async function run(check) {
       const content = toolbar.children[1];
       check(`${variant}: the document row is the second`,
         content.className === "toolbar-content");
-      check(`${variant}: holding the filename`,
-        content.children[0].id === "currentFile");
+      check(`${variant}: holding the tab bar`,
+        content.children[0].id === "tabBar");
+      // The bar ships empty and tabs.js fills it, the same arrangement
+      // `.toolbar` itself has — so what this file is responsible for is the
+      // container and the role, not a single tab.
+      check(`${variant}: which announces itself as a tab strip`,
+        content.children[0].getAttribute("role") === "tablist" &&
+        content.children[0].getAttribute("aria-label") === "Open documents");
+      check(`${variant}: and is empty until tabs.js fills it`,
+        content.children[0].children.length === 0);
       check(`${variant}: with the theme toggle last on it`,
         content.children.at(-1).id === "themeToggle");
     }
@@ -272,6 +280,18 @@ export default async function run(check) {
     themeScript.includes("data-theme"));
   check("and app.css reserves the shorter bar for it",
     /:root\[data-variant="export"\] \{[\s\S]*?--toolbar-height:/.test(readFront("app.css")));
+
+  // The reserved height is the whole reason nothing below the toolbar jumps
+  // when toolbar.js runs, and it is only right while it is computed from the
+  // things actually in the bar. The document row is the tab strip now, so a
+  // height still derived from the filename's font size would reserve a band
+  // the wrong size and nothing on screen would say which.
+  const css = readFront("app.css");
+  check("the document row's height comes from the tab strip",
+    /--content-height:\s*max\(\s*var\(--toggle-height\),\s*var\(--tab-height\)\s*\)/
+      .test(css));
+  check("and the tab's own height is derived rather than guessed",
+    /--tab-height:\s*calc\([^;]*var\(--tab-pad-y\)[^;]*var\(--file-font-size\)/.test(css));
 
   // --- the theme toggle explains itself --------------------------------------
 

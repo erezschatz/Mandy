@@ -45,7 +45,7 @@ const DIALOG_IDS = [
 // than racing it.
 function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   quiet = false, hold = null, disk = new Map(), fakeTimers = false,
-  failRender = false } = {}) {
+  failRender = false, answers = [] } = {}) {
   const store = new Map();
   for (const [key, value] of Object.entries(seed)) store.set(key, value);
   // Every localStorage write, in order. Park and adopt must add none of their
@@ -56,6 +56,8 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
 
   const timers = new Map();
   let timerId = 0;
+  // Every question put to the user, in order.
+  const asked = [];
 
   const toolbar = makeEl();
   toolbar.className = "toolbar";
@@ -75,6 +77,9 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
         : null;
     },
     hidden: false,
+    // The arrows are scoped to focus being in the bar, so a suite driving them
+    // has to be able to say where focus is.
+    activeElement: null,
     addEventListener(event, fn) {
       (listeners[event] ||= []).push(fn);
     },
@@ -161,7 +166,13 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
         }
       },
       notify: () => {},
-      ask: () => Promise.resolve(false),
+      // A queue rather than a fixed answer: closing a dirty tab asks
+      // confirmDiscard's three-way question, and what the close does next turns
+      // on which of the three came back.
+      ask: (message, options) => {
+        asked.push({ message, title: options && options.title });
+        return Promise.resolve(answers.length ? answers.shift() : "cancel");
+      },
       // The deliberate-failure cases warn on purpose. Left unmuted they print
       // into the run output, where an expected warning reads exactly like a
       // suite going wrong.
@@ -192,16 +203,26 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       " mdState: () => ({ style: markdownStyle, source: markdownSource," +
       "   references: referenceDefinitions })," +
       " turndownOptions: () => turndownService.options," +
-      " label: () => currentFileLabel.textContent," +
+
       " documentKey, flushAutosave, editor, markClean," +
       " openFile, reloadFile, saveFile, saveFileAs, saveCurrentOrPrompt," +
       " showOpenDialog, closeDialog, checkDiskChanged," +
       " fileOperationInFlight, operationCount: () => fileOperations," +
       " undo, undoReset, undoDepth: () => history.undoStack.length," +
+      " runToolbarAction, isBlankContent," +
       (withTabs
         // Read as functions rather than captured once: every stage-4 check is
         // about what the list looks like *after* an operation moved it.
-        ? " tabIds: () => openTabs.map((tab) => tab.id)," +
+        ? // Read off the bar rather than out of a variable: the tab is the only
+          // thing on screen saying which file Ctrl+S writes to, and stage 5
+          // moved that sentence from a label's textContent to a tab's
+          // aria-label.
+          " label: () => { const t = tabBar.children.find((c) =>" +
+          "     c.attrs[\"aria-selected\"] === \"true\");" +
+          "   return t ? t.attrs[\"aria-label\"] : null; }," +
+          " bar: () => tabBar, renderTabBar, requestCloseTab, tabDotState," +
+          " switchByOffset, switchByNumber," +
+          " tabIds: () => openTabs.map((tab) => tab.id)," +
           " activeTab: () => activeTabId," +
           " tabRecord: (id) => openTabs.find((tab) => tab.id === id)," +
           " tabsSwitchAllowed, newTab, switchToTab, closeTab, tabsBackgroundDirty"
@@ -229,6 +250,27 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
     },
     fireWindow: (event, arg) => {
       for (const fn of listeners[event] || []) fn(arg);
+    },
+    asked,
+    // What a click on the bar looks like: the listener is delegated onto the
+    // strip and reads event.target, so the target is the thing under the mouse
+    // rather than the thing the handler acts on.
+    clickBar: (target) => {
+      let stopped = false;
+      for (const fn of api.bar().listeners.click || []) {
+        fn({ target, stopPropagation: () => { stopped = true; } });
+      }
+      return stopped;
+    },
+    focusElement: (element) => {
+      document.activeElement = element;
+    },
+    fireKey: (init) => {
+      let prevented = false;
+      for (const fn of listeners.keydown || []) {
+        fn({ preventDefault: () => { prevented = true; }, ...init });
+      }
+      return prevented;
     },
   };
 }
@@ -308,15 +350,18 @@ export default async function run(check) {
     check("the other document is still intact in its own bundle", same(b, TAB_B));
   }
 
-  // The label is the only thing on screen that says which file Ctrl+S writes
-  // to, and it lives in toolbar.js rather than in the module holding the path.
+  // The tab is the only thing on screen that says which file Ctrl+S writes to,
+  // and it lives in tabs.js rather than in the module holding the path — so an
+  // adopt that moved the path without redrawing would leave the bar naming a
+  // document nobody is editing.
   {
-    const app = boot();
+    const app = boot({ withTabs: true });
     app.fileAdopt(TAB_A);
     check("adopting renders the incoming file's label",
       app.label() === "plan.md (edited, disk changed)");
     app.fileAdopt(null);
-    check("adopting nothing clears the label", app.label() === "");
+    check("adopting nothing leaves an untitled tab rather than a nameless one",
+      app.label() === "Untitled");
   }
 
   {
@@ -657,7 +702,7 @@ export default async function run(check) {
     // just has nothing in it, so there is a savepoint to measure the first edit
     // against. null is what a document restored across a page load has.
     check("the new tab has no file behind it",
-      app.label() === "" && same(app.fileState(), { ...BLANK, cleanPosition: 0 }));
+      app.label() === "Untitled" && same(app.fileState(), { ...BLANK, cleanPosition: 0 }));
   }
 
   // The round trip, through every module that owns a piece of a document.
@@ -842,7 +887,7 @@ export default async function run(check) {
     check("the tab that hydrated parks like any other",
       app.tabRecord(2).file.currentFilePath === "/home/x/other/log.md");
     check("switching back to the first tab restores it from storage too",
-      app.editor.innerHTML === "<p>showing</p>" && app.label() === "");
+      app.editor.innerHTML === "<p>showing</p>" && app.label() === "Untitled");
   }
 
   // --- stage 4: closing --------------------------------------------------
@@ -889,7 +934,7 @@ export default async function run(check) {
       app.tabIds().length === 1 && app.activeTab() === app.tabIds()[0]);
     check("closing the last tab does not reuse its id", app.tabIds()[0] === 2);
     check("closing the last tab leaves a blank untitled document",
-      app.editor.innerHTML === "<p><br></p>" && app.label() === "");
+      app.editor.innerHTML === "<p><br></p>" && app.label() === "Untitled");
     check("closing the last tab forgets the document it held",
       [...app.store.keys()].every((k) => !k.startsWith("mandy-tab-1-")));
   }
@@ -963,5 +1008,271 @@ export default async function run(check) {
 
     check("beforeunload stays quiet when nothing anywhere is dirty",
       prevented === false);
+  }
+
+  // --- stage 5: what the bar draws ----------------------------------------
+
+  // The tab is the only thing on screen naming the document, and the dot is the
+  // only thing saying whether it is safe to close. Both fail silently: a stale
+  // name points Ctrl+S at a file you are not looking at, and a missing dot says
+  // an hour of unsaved work is not there.
+
+  const barTabs = (app) => app.bar().children;
+  const tabFor = (app, id) =>
+    barTabs(app).find((tab) => tab.attrs["data-tab"] === String(id));
+  const partOf = (tab, className) =>
+    walk(tab).find((node) => node.className === className);
+  const nameOn = (tab) => partOf(tab, "tab-name").textContent;
+  const dotOn = (tab) => partOf(tab, "tab-dot").attrs["data-state"];
+
+  {
+    const app = boot({ withTabs: true, seed: LEGACY });
+    app.editor.innerHTML = "<p>hello</p>";
+    app.newTab();
+
+    const drawn = barTabs(app);
+    check("the bar draws one tab per open document", drawn.length === 2);
+    check("each tab carries its own id", drawn.map((t) => t.attrs["data-tab"]).join() === "1,2");
+    check("exactly one is selected, and it is the one showing",
+      drawn.filter((t) => t.attrs["aria-selected"] === "true").length === 1 &&
+      tabFor(app, 2).attrs["aria-selected"] === "true");
+    // Roving tabindex, the same shape the menu bar uses: the strip is one stop,
+    // not one per document.
+    check("only the selected tab is a tab stop",
+      tabFor(app, 2).attrs.tabindex === "0" && tabFor(app, 1).attrs.tabindex === "-1");
+    check("a tab shows the file's basename, not its path",
+      nameOn(tabFor(app, 1)) === "plan.md");
+    check("a document with no file is named rather than left blank",
+      nameOn(tabFor(app, 2)) === "Untitled");
+  }
+
+  // Redrawn whole on every state change, which is only safe if the redraw
+  // replaces what was there. Appending instead would leave the bar showing the
+  // same document several times, each row a different age.
+  {
+    const app = boot({ withTabs: true, seed: LEGACY });
+    app.renderTabBar();
+    app.renderTabBar();
+    check("a redraw replaces the bar rather than appending to it",
+      barTabs(app).length === 1);
+  }
+
+  // The dot, and the settled rule behind it: edited wins outright over
+  // disk-changed, because it is the more urgent of the two and the combination
+  // needs no third colour — the title says the whole sentence either way.
+  {
+    const app = boot({ withTabs: true });
+    const dotFor = (state) => {
+      app.setFileState({ ...BLANK, currentFilePath: "/home/x/a.md", ...state });
+      return dotOn(tabFor(app, 1));
+    };
+
+    check("a clean document gets no dot", dotFor({}) === "");
+    check("an edited document gets the red one", dotFor({ isDirty: true }) === "dirty");
+    check("a file that moved on disk gets the neutral one",
+      dotFor({ diskChanged: true }) === "stale");
+    check("edited wins when both are true",
+      dotFor({ isDirty: true, diskChanged: true }) === "dirty");
+    // The two marks part company on the no-file case, which the single-document
+    // label got wrong by gating both on a path. A document with nothing behind
+    // it on disk cannot be out of step with that file -- but it can certainly
+    // hold unsaved work, and that is the most urgent version of edited rather
+    // than an inapplicable one. beforeunload has always agreed: documentIsDirty
+    // never cared whether there was a path.
+    app.setFileState({ ...BLANK, diskChanged: true });
+    check("a document with no file cannot be out of step with one",
+      dotOn(tabFor(app, 1)) === "");
+    app.setFileState({ ...BLANK, isDirty: true });
+    check("but unsaved work in an untitled document still shows",
+      dotOn(tabFor(app, 1)) === "dirty" &&
+      tabFor(app, 1).attrs["aria-label"] === "Untitled (edited)");
+  }
+
+  // Colour alone is a soft accessibility gap, so the sentence the old text
+  // label spelled out has to still exist as something that can be read aloud.
+  {
+    const app = boot({ withTabs: true });
+    app.setFileState({
+      ...BLANK, currentFilePath: "/home/x/notes/plan.md", isDirty: true, diskChanged: true,
+    });
+    const tab = tabFor(app, 1);
+
+    check("the whole sentence survives as the tab's label",
+      tab.attrs["aria-label"] === "plan.md (edited, disk changed)");
+    check("and the title carries the full path with it",
+      tab.title === "/home/x/notes/plan.md — edited, disk changed");
+    check("the close says which document it closes",
+      partOf(tab, "tab-close").attrs["aria-label"] === "Close plan.md");
+  }
+
+  // --- stage 5: clicking the bar ------------------------------------------
+
+  {
+    const app = boot({ withTabs: true, fakeTimers: true });
+    app.editor.innerHTML = "<p>one</p>";
+    app.newTab();
+    app.editor.innerHTML = "<p>two</p>";
+
+    app.clickBar(tabFor(app, 1));
+    check("clicking a tab shows that document",
+      app.activeTab() === 1 && app.editor.innerHTML === "<p>one</p>");
+    check("and the bar follows", tabFor(app, 1).attrs["aria-selected"] === "true");
+  }
+
+  // The close sits inside the tab it closes, so the click reaches the strip's
+  // one listener through both. Without the stop, a cancelled close would still
+  // have selected the tab on the way past and left you somewhere you did not
+  // ask to be.
+  {
+    const app = boot({ withTabs: true, fakeTimers: true });
+    app.newTab();
+    const stopped = app.clickBar(partOf(tabFor(app, 1), "tab-close"));
+    check("a click on the close does not also select the tab",
+      stopped === true && app.activeTab() === 2);
+  }
+
+  // --- stage 5: closing asks about a document you can see ------------------
+
+  {
+    const app = boot({ withTabs: true, fakeTimers: true });
+    app.newTab();
+    await app.requestCloseTab(1);
+    check("a clean tab closes with no question at all",
+      app.asked.length === 0 && same(app.tabIds(), [2]));
+  }
+
+  {
+    const app = boot({ withTabs: true, fakeTimers: true });
+    app.editor.innerHTML = "<p>work</p>";
+    app.undoReset();
+    app.setFileState({ ...BLANK, currentFilePath: "/home/x/a.md" });
+    app.markClean();
+    app.type("A");
+    app.newTab();
+
+    await app.requestCloseTab(1);
+    // The whole reason this switches first: confirmDiscard reads the *active*
+    // document's flag and filename, so asking about a background tab would name
+    // whichever document happened to be showing.
+    check("closing a dirty tab asks about that document by name",
+      app.asked.length === 1 && app.asked[0].message.includes("a.md"));
+    check("and switched to it first, so the question is about what is on screen",
+      app.activeTab() === 1);
+    check("cancelling keeps the document, and leaves you looking at it",
+      same(app.tabIds(), [1, 2]) && app.editor.innerHTML.includes("work"));
+  }
+
+  {
+    const app = boot({ withTabs: true, fakeTimers: true, answers: ["discard"] });
+    app.editor.innerHTML = "<p>work</p>";
+    app.undoReset();
+    app.setFileState({ ...BLANK, currentFilePath: "/home/x/a.md" });
+    app.markClean();
+    app.type("A");
+    app.newTab();
+
+    await app.requestCloseTab(1);
+    check("discarding closes it", same(app.tabIds(), [2]) && app.activeTab() === 2);
+    check("and takes its storage with it",
+      [...app.store.keys()].every((k) => !k.startsWith("mandy-tab-1-")));
+  }
+
+  // --- stage 5: the keyboard ----------------------------------------------
+
+  {
+    const app = boot({ withTabs: true, fakeTimers: true });
+    app.newTab();
+    app.newTab();
+    check("three tabs, on the last", same(app.tabIds(), [1, 2, 3]) && app.activeTab() === 3);
+
+    check("ctrl+Tab wraps round to the first",
+      app.fireKey({ ctrlKey: true, key: "Tab" }) === true && app.activeTab() === 1);
+    check("ctrl+shift+Tab wraps back the other way",
+      app.fireKey({ ctrlKey: true, shiftKey: true, key: "Tab" }) === true &&
+      app.activeTab() === 3);
+    check("ctrl+2 picks the second", app.fireKey({ ctrlKey: true, key: "2" }) &&
+      app.activeTab() === 2);
+    // The convention every browser tab strip already teaches: 9 is the last
+    // document, not the ninth one.
+    check("ctrl+9 is the last rather than the ninth",
+      app.fireKey({ ctrlKey: true, key: "9" }) && app.activeTab() === 3);
+    check("ctrl+8 with nothing there changes nothing",
+      app.fireKey({ ctrlKey: true, key: "8" }) && app.activeTab() === 3);
+  }
+
+  // role="tablist" is a promise about the arrows as well as a name for the
+  // strip, and the promise is scoped: everywhere else the arrows belong to the
+  // document.
+  {
+    const app = boot({ withTabs: true, fakeTimers: true });
+    app.newTab();
+
+    check("an arrow outside the bar is left alone",
+      app.fireKey({ key: "ArrowLeft" }) === false && app.activeTab() === 2);
+
+    app.focusElement(tabFor(app, 2));
+    check("an arrow inside it moves along the bar",
+      app.fireKey({ key: "ArrowLeft" }) === true && app.activeTab() === 1);
+  }
+
+  // Stage 3 built the gate for exactly this: four document-level keydown
+  // listeners fire straight through an open dialog, so a keyboard switch has to
+  // be refused there — and it is, because every one of these goes through
+  // switchToTab rather than testing its own conditions.
+  {
+    const hold = deferred();
+    const app = boot({
+      withTabs: true, hold, disk: new Map([["/home/x/f.md", "hi\n"]]),
+    });
+    app.newTab();
+    const done = app.openFile("/home/x/f.md");
+
+    app.fireKey({ ctrlKey: true, key: "Tab" });
+    check("a keyboard switch is refused while a file operation is in flight",
+      app.activeTab() === 2);
+
+    hold.resolve();
+    await done;
+    app.fireKey({ ctrlKey: true, key: "Tab" });
+    check("and allowed once it finishes", app.activeTab() === 1);
+  }
+
+  // --- stage 5: New makes a tab -------------------------------------------
+
+  {
+    const app = boot({ withTabs: true, fakeTimers: true, seed: LEGACY });
+    app.editor.innerHTML = "<p>hello</p>";
+    await app.runToolbarAction("new");
+
+    check("New makes a tab rather than emptying the document",
+      same(app.tabIds(), [1, 2]) && app.activeTab() === 2);
+    check("nothing is discarded, so nothing is asked", app.asked.length === 0);
+    check("the document New was called from is still open",
+      app.store.get("mandy-tab-1-content") === "<p>hello</p>");
+    check("and the new tab is blank, with no file",
+      app.editor.innerHTML === "<p><br></p>" && app.label() === "Untitled");
+    // file-api.js hooks the same action to drop the file association after an
+    // in-place reset. There is no in-place reset left, and the tab it would
+    // clear is a fresh one that never had a file.
+    check("the old association went with the tab it belongs to",
+      app.tabRecord(1).file.currentFilePath === "/home/x/notes/plan.md");
+  }
+
+  // --- stage 5: the document with no list ---------------------------------
+
+  // A session whose migration failed runs on the flat key names with one
+  // document and no list. It still has a file open, and a bar that drew nothing
+  // would take the only thing naming that file off the screen.
+  {
+    const app = boot({
+      withTabs: true, quiet: true, seed: LEGACY, refuse: ["mandy-tab-1-source"],
+    });
+
+    check("the unlisted document still gets a tab", barTabs(app).length === 1);
+    check("named after the file it has open", nameOn(barTabs(app)[0]) === "plan.md");
+    check("and marked edited like any other", dotOn(barTabs(app)[0]) === "dirty");
+    // A control that cannot do its one job is worse than an absent one: there
+    // is no list for a close to take this document out of.
+    check("with no close on it", !partOf(barTabs(app)[0], "tab-close"));
   }
 }

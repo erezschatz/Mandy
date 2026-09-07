@@ -2188,3 +2188,105 @@ the gate, adopting a missing bundle instead of hydrating, reusing a closed tab's
 id, leaving its storage behind, dropping the background-dirty fallback, dropping
 the `beforeunload` clause, and putting the undo dispatch back before the
 position. All nine were caught.
+
+## 2026-09-07 — The tab bar (TODO 4.1, stage 5)
+
+The stage where the previous four become reachable. `.toolbar-content` — the
+row that has held nothing but a filename since the menu bar split the toolbar
+in two — is the tab bar, and New makes a tab.
+
+**The bar is a container from [toolbar.js](front/toolbar.js) and a fill from
+[tabs.js](front/tabs.js)**, the same arrangement `.toolbar` itself has and for
+the same reason: `html-export.js` hand-writes its own copy of the page shell, so
+markup in `index.html` would be a second copy to keep in step. `buildFileLabel()`
+became `buildTabBar()` and ships an empty `#tabBar`; an exported document still
+gets no second row at all.
+
+**`renderCurrentFile()` in [file-api.js](front/file-api.js) delegates to it.**
+That function was already the single "the active document's identity changed"
+hook — every `setDirty`, `setDiskChanged`, `setCurrentFile` and adopt ends there
+— so the bar redraws from the one place the text label used to, and the dot
+cannot fall out of step with the flags without every other consumer falling out
+with them. The module hands over three fields through the new
+`fileDescriptor()`; `tabDescriptor` in `tabs.js` reads those for the document on
+screen, the parked bundle for a tab this session has shown, and the tab's own
+storage keys for one restored by a page load. Three sources, one shape, one
+drawing function.
+
+**The `(edited, disk changed)` text became a dot**: `var(--notify-error)` for
+edited whether or not the disk also moved, `var(--text-toolbar)` for
+disk-changed-only, nothing when clean. Colour is never the only channel — the
+whole sentence is the tab's `aria-label`, and its `title` carries the full path
+with it, which is where a path goes now that a tab shows the basename alone.
+
+**The dot says "edited" for an untitled document, which the label did not.**
+That gate was one condition covering two questions. With no filename on screen
+there was nothing for "(edited)" to attach to, so both marks were gated on a
+path; a tab supplies the subject and the questions come apart. Disk-changed
+really is meaningless with no file open, but unsaved work in a document that was
+never saved anywhere is the *most* urgent version of edited — and
+`beforeunload` has always agreed, since `documentIsDirty()` never cared whether
+there was a path. Left as inherited, the bar and the close-the-window warning
+would have disagreed about the same document.
+
+**New makes a tab.** Nothing is discarded, so nothing is asked, and New drops
+out of `confirmDiscard`'s callers — leaving that guard covering Open, Reload and
+now closing a tab. Its old body survives as `resetDocument()` in
+[app.js](front/app.js), which an exported document's New still calls: an export
+ships no `tabs.js` and has nowhere to put a second document. `file-api.js`'s own
+`"new"` hook returns early when `tabs.js` is loaded, since it exists to drop the
+file association after an in-place reset and there is no in-place reset left for
+it to follow.
+
+**Closing asks by switching first.** `confirmDiscard` reads the *active*
+document's dirty flag and filename, so a background tab is a subject it cannot
+name. `requestCloseTab` makes the dirty tab the active one and then asks the
+question unchanged — which is why this needed no extra parameter on the guard
+and no second implementation of it. A clean tab closes with neither a switch nor
+a dialog.
+
+**Ctrl+Tab and Ctrl+1–9, and what is actually known about them.** The bindings
+cycle and pick by position (Ctrl+9 is the last, the convention every browser tab
+strip teaches), with Left/Right along the strip while focus is in it, since
+`role="tablist"` promises them. All of them go through `switchToTab`, so stage
+3's gate covers them without any of them testing its own conditions — which is
+what that gate was built for, four `document`-level `keydown` listeners firing
+straight through an open dialog.
+
+Every one of these is a binding some browser claims for its own tab strip, and
+two separate things have to be true before ours works: the keydown has to reach
+the page, and `preventDefault` has to suppress the browser's own action. So
+this stage also ships **[tests/tab-shortcut-check.html](tests/tab-shortcut-check.html)**,
+in the shape of `paste-check.html` — no server, no app, open the file. Measured:
+Chrome 148 on macOS delivers all of them and reports each as cancelable, which
+is unsurprising there, since macOS switches browser tabs on Cmd+1–9. Not
+measured: Windows and Linux, where Ctrl+1–9 *is* the browser's binding, and
+Firefox and Safari anywhere. The shipped set is provisional and TODO 4.1 says so
+rather than the code implying otherwise.
+
+**`--toolbar-height` follows the row.** `--content-height` is now a `max()` of
+the toggle and `--tab-height`, itself derived from the tab's padding and font
+size. The toolbar ships empty and paints before `toolbar.js` runs, so a
+reservation still computed from the old filename's font size would have settled
+into a different shape and jumped everything below it.
+
+**The DOM stub learned that `innerHTML` drops children.** [tests/dom.mjs](tests/dom.mjs)
+kept it as a plain property, so `el.innerHTML = ""` — how `front/` empties a
+container it rebuilds — left every child in place. The bar redraws that way on
+every state change, and a suite reading the result would have seen each document
+several times over, each row a different age.
+
+**46 more checks, 975 green.** `file-path.test.mjs` stopped reading a rendered
+label and now reads the state behind it: that suite drives when each mark is
+true, and the tabs suite drives what is made of it. Thirteen mutations, each of
+which had to fail something: reversing the dot's precedence, ungating the marks,
+appending on redraw, letting a close click also select, asking without switching
+first, ignoring the answer, making Ctrl+9 the ninth, unscoping the arrows,
+making New reset in place, drawing nothing for an unlisted document, dropping
+the marks from the label, cutting the delegation out of `renderCurrentFile`, and
+putting the old height arithmetic back. All thirteen were caught.
+
+Driven by hand in Chrome as well: New made a second tab, the bar switched by
+click and by Ctrl+2, an edit raised the dot, closing the edited tab asked the
+three-way question and Escape backed out of it, and closing the clean one went
+straight out — with the session's own document put back afterwards.

@@ -112,7 +112,7 @@ resolved rather than open: the heading-inside-a-list no-op is fixed in
 permanent no-op rather than something a future control needs to reconcile
 itself against.
 
-There are three other pages beside it, same idea and same reason. The first two
+There are four other pages beside it, same idea and same reason. The first two
 watch our own hand-rolled list surgery in a real editing engine rather than a
 command's output, and both drive the running app in an `<iframe src="/">` —
 served through the same `/tests/` route, so the frame is same-origin and the
@@ -142,8 +142,20 @@ keystroke. It answered the question TODO 1.3 opened with: Chrome 152 and Firefox
 154 both offer `text/plain` alone on that binding, so the plain branch in
 `app.js` already fires and there was nothing to build for either — the opposite
 of what the item predicted. Safari is still unmeasured; its binding is
-Cmd+Shift+Option+V. Unlike the other two it needs no server and no app — open
-the file itself.
+Cmd+Shift+Option+V. Unlike the two before it, it needs no server and no app —
+open the file itself, which is why it is not in `CHECK_PAGES`.
+
+[tests/tab-shortcut-check.html](tests/tab-shortcut-check.html) is the same kind
+of page and the same kind of question, for the tab bar's keyboard: Ctrl+Tab,
+Ctrl+Shift+Tab and Ctrl+1–9 are all bindings some browser claims for its own tab
+strip, and two separate things have to be true before one of ours works — the
+keydown has to reach the page at all, and `preventDefault` has to suppress the
+browser's own action. The answer is per browser *and* per platform, because
+macOS switches browser tabs on Cmd+1–9 and leaves Ctrl+1–9 free while Windows
+and Linux do not. Measured so far: Chrome 148 on macOS delivers all of them and
+reports each as cancelable. Nothing else — no Windows, no Linux, no Firefox, no
+Safari — so the shipped bindings are provisional, and TODO 4.1 says so. It needs
+no server and no app either.
 
 ## Making a change
 
@@ -334,8 +346,8 @@ names are what everything resolves to. One indirection in one place, so the
 single-document path stays the fallback rather than becoming a second
 implementation.
 
-`tabs.js` owns which documents are open, which one is showing, and where each is
-persisted; none of the state itself lives there. It joins two of the three
+`tabs.js` owns which documents are open, which one is showing, where each is
+persisted, and the bar that draws them; none of the state itself lives there. It joins two of the three
 registries below — `index.html` and `SHELL_ASSETS` — and deliberately not
 `ASSETS`: an exported document holds one document and has no file API. Its place
 in the load order is load-bearing in both directions: after `app.js`, which
@@ -366,7 +378,19 @@ reused rather than a second reading of the same keys, which is why
 being thrown away, and flushing would write it straight back under the key the
 close has just removed. It asks nothing either — `confirmDiscard` reads the
 *active* document's flag and filename and cannot ask about a background tab at
-all, so guarding a close belongs to whatever offers the close.
+all, so guarding a close belongs to whatever offers the close —
+`requestCloseTab`, which switches to a dirty tab before asking about it.
+
+**The bar is redrawn whole, from `renderCurrentFile()`.** That function is
+already file-api.js's single "the active document's identity changed" hook, so
+the dot cannot fall out of step with the flags without every other consumer
+falling out of step too. Each tab's name and marks come from `tabDescriptor`,
+which reads the live modules for the document on screen, the parked bundle for
+one this session has shown, and the tab's own storage keys for one restored by a
+page load — three sources, one shape. A session whose migration failed has no
+list at all and still gets one tab standing for its one document, without a
+close on it: there is no list to take that document out of, and a control that
+cannot do its job is worse than an absent one.
 
 Moving an existing document onto tab storage happens once, in `tabs.js`, and it
 copies, reads each value back under its new name, and only then deletes the
@@ -381,7 +405,18 @@ list pointing at storage the document is not under.
 
 A page load restores the document from autosave, never by re-reading the file,
 so the two can drift apart from either end. `file-api.js` tracks both directions
-and reports them in the same toolbar label: `plan.md (edited, disk changed)`.
+and hands them to the bar through `fileDescriptor()`, which draws them as one
+dot on the tab: red for edited, the toolbar's own text colour for
+disk-changed-only, nothing when clean. The sentence the old `plan.md (edited,
+disk changed)` label spelled out lives on as the tab's `title` and `aria-label`,
+because colour on its own is not a signal everyone can read.
+
+The two marks part company on one case, and the label used to get it wrong.
+Disk-changed is meaningless with no file open — there is nothing to be out of
+step with — but *edited* is not: unsaved work in a document that was never saved
+anywhere is the most urgent version of it, and `beforeunload` has always said so.
+The label gated both on a path only because with no filename on screen there was
+nothing for "(edited)" to attach to.
 
 - **Our edits** are `isDirty`, set from the editor's own `input` event —
   compared against `cleanPosition`, undo.js's id for the state as of the last
@@ -424,8 +459,18 @@ Ctrl+R, Ctrl+Shift+R and F5 all belong to the browser.
 ### The unsaved-work guard
 
 `confirmDiscard` in [file-api.js](front/file-api.js) is the single gate in front
-of every action that throws the open document away — Open, Reload and New (the
-action that used to be called Clear; see below). Before it, the three
+of every action that throws the open document away — Open, Reload and closing a
+tab. **New is not one of them any more**: in the app it makes a tab, so nothing
+is discarded and nothing is asked. It still resets in place in an exported
+document, which ships no `tabs.js` and has nowhere to put a second document —
+and no `file-api.js` either, so what it asks there is the plain question below
+rather than this guard.
+
+**Closing a tab asks by switching to it first.** The guard reads the *active*
+document's dirty flag and filename, so a background tab is a subject it cannot
+name; `requestCloseTab` in `tabs.js` makes the dirty tab the active one and then
+asks the question unchanged, which is why there is no second implementation and
+no extra parameter. A clean tab closes with neither a switch nor a dialog. Before it, the three
 disagreed: Reload asked, Open replaced the document with no check at all
 despite calling the identical function, and New/Clear asked a question whose
 wording read the same whether it was about to discard an untouched welcome
@@ -483,6 +528,12 @@ same way typing does, so it undoes as one step and needs no dialog of its own.
 Clear no longer touches `file-api.js` at all — nothing it does can leave a
 filename pointed at the wrong content, so there is nothing for that module to
 guard.
+
+That weight has since moved again rather than being lost. In the app New makes a
+tab, and the body it used to run is `resetDocument()` in `app.js` — the reset
+primitive an exported document's New still calls. `file-api.js`'s `"new"` hook
+returns early when `tabs.js` is loaded: it exists to drop the file association
+after an in-place reset, and there is no in-place reset left for it to follow.
 
 ### Save fidelity
 
@@ -818,11 +869,12 @@ keyboard, which never needed it.
 
 **The bar is two rows in the app, one in an exported document.** The menus have
 the first to themselves. The second is `.toolbar-content`, the document row: the
-filename on the left, the theme toggle on the right. It is a row rather than the
-filename being a toolbar child in its own right because that is where the tab
-bar goes once more than one document can be open (TODO 4.1) — the filename is
-standing in for it. An exported document has neither a file on disk nor a theme
-toggle, so it gets no second row at all rather than an empty band.
+tab bar on the left, the theme toggle on the right. It was a row of its own
+while it still held nothing but a filename, precisely so the tab bar could
+arrive without moving anything else. `toolbar.js` ships `#tabBar` empty and
+`tabs.js` fills it — the same arrangement `.toolbar` itself has, and for the
+same reason. An exported document holds one document, has no file on disk and
+no theme toggle, so it gets no second row at all rather than an empty band.
 
 There is no GitHub link. It pointed away from the app from a bar that should be
 about the document, and it was the tallest thing in that bar.

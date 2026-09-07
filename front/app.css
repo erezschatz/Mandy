@@ -229,6 +229,11 @@
            tallest thing in the bar — the row is the filename and the toggle
            now, both shorter than the menu row above them. */
         --toggle-height: 20px;
+        /* A tab is taller than the italic filename it replaced — it holds a
+           dot, a name and a close — so the row's height comes from it now and
+           the reservation below follows it rather than the font size. */
+        --tab-pad-y: 0.2rem;
+        --tab-height: calc(2 * var(--tab-pad-y) + var(--file-font-size) * 1.6);
         /* The height the toolbar occupies once toolbar.js has filled it, which
            .toolbar reserves as a min-height and .outline uses as its sticky
            offset. The toolbar ships empty and the two render-blocking CDN
@@ -238,12 +243,9 @@
 
            Two rows now, so it is a sum rather than the max() it was when
            everything shared one: the menu row, the gap, and the document row —
-           whose own height is the tallest of the three things sitting in it. */
+           whose own height is the taller of the tab strip and the toggle. */
         --menu-line: calc(2 * var(--menu-pad-y) + var(--menu-font-size) * 1.6);
-        --content-height: max(
-          var(--toggle-height),
-          calc(var(--file-font-size) * 1.6)
-        );
+        --content-height: max(var(--toggle-height), var(--tab-height));
         --toolbar-height: calc(
           2 * var(--toolbar-pad-y) + var(--menu-line) + var(--toolbar-row-gap) +
             var(--content-height)
@@ -909,13 +911,12 @@
       }
 
       /* ========================================
-         Current File Label
+         The Tab Bar
          ======================================== */
-      /* The toolbar's second row: what the document is, and the two controls
-         that are not about the document at all. The filename is a placeholder
-         here — this is where the tab bar goes once more than one document can
-         be open (TODO 4.3), which is why it is a row of its own rather than
-         the filename being a toolbar child in its own right. */
+      /* The toolbar's second row: which documents are open, and the control
+         that is not about a document at all. It was a row of its own while it
+         held nothing but the filename precisely so that this could arrive
+         without moving anything else (TODO 4.1). */
       .toolbar-content {
         display: flex;
         align-items: center;
@@ -924,16 +925,98 @@
         min-height: var(--content-height);
       }
 
-      .current-file {
-        /* Capped so a deep path cannot push the aside off the edge. */
-        max-width: 32ch;
+      .tab-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        /* Scrolls rather than wrapping: a second line here would change the
+           toolbar's height, and everything below it is positioned from a
+           height reserved before this row exists. */
+        overflow-x: auto;
+        scrollbar-width: none;
+        min-width: 0;
+      }
+
+      .tab-bar::-webkit-scrollbar {
+        display: none;
+      }
+
+      .tab {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex: 0 1 auto;
+        min-width: 0;
+        padding: var(--tab-pad-y) 0.5rem;
+        border-radius: 4px;
         color: var(--text-toolbar);
-        opacity: 0.7;
+        opacity: 0.65;
         font-size: var(--file-font-size);
-        font-style: italic;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .tab:hover {
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .tab[aria-selected="true"] {
+        background: rgba(255, 255, 255, 0.16);
+        opacity: 1;
+      }
+
+      .tab:focus-visible {
+        outline: 2px solid var(--accent-blue);
+        outline-offset: 1px;
+      }
+
+      .tab-name {
+        /* Capped so a deep name cannot push the toggle off the edge. */
+        max-width: 24ch;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
+      }
+
+      /* The dot replaced the `(edited, disk changed)` text the single-document
+         label spelled out. Red for edited whether or not the disk also moved —
+         edited is the more urgent of the two and wins outright — and the
+         toolbar's own text colour for disk-changed-only. Colour is never the
+         only channel: the whole sentence is on the tab's title and aria-label,
+         which is the same discipline the theme toggle follows. */
+      .tab-dot {
+        width: 7px;
+        height: 7px;
+        flex: none;
+        border-radius: 50%;
+        /* No mark, no dot — but the space stays, so a name does not shift left
+           and right as the document is edited and saved. */
+        background: transparent;
+      }
+
+      .tab-dot[data-state="dirty"] {
+        background: var(--notify-error);
+      }
+
+      .tab-dot[data-state="stale"] {
+        background: var(--text-toolbar);
+      }
+
+      .tab-close {
+        background: none;
+        border: none;
+        border-radius: 3px;
+        color: inherit;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 1rem;
+        line-height: 1;
+        padding: 0 0.15rem;
+        opacity: 0.6;
+      }
+
+      .tab-close:hover {
+        background: rgba(255, 255, 255, 0.2);
+        opacity: 1;
       }
 
       /* ========================================
@@ -1321,7 +1404,7 @@
         .file-dialog,
         .notify-stack,
         .notify-backdrop,
-        .current-file {
+        .tab-bar {
           display: none !important;
         }
       }

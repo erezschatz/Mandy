@@ -1,0 +1,119 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mandy tab-shortcut check</title>
+
+<!--
+  The question stage 5 of TODO 4.1 opens with, and the one no test in tests/
+  can answer: the tab bar binds Ctrl+Tab, Ctrl+Shift+Tab and Ctrl+1-9, and
+  every one of those is a binding some browser claims for its own tab strip.
+
+  Two separate things have to be true for one of ours to work, and they fail
+  differently:
+
+    1. The keydown reaches the page at all. If the browser handles it above the
+       document, no listener anywhere in front/ ever runs and the binding is a
+       dead control.
+    2. preventDefault actually suppresses the browser's own action. If it does
+       not, pressing the key switches Mandy's tab *and* the browser's, which is
+       worse than the binding not existing.
+
+  The answer is per browser and per platform, because the platforms disagree
+  about which modifier owns the tab strip: macOS switches browser tabs on
+  Cmd+1-9, leaving Ctrl+1-9 free, while Windows and Linux use Ctrl+1-9 for
+  exactly what we are trying to bind.
+
+  Needs no server and no app -- open this file directly in each browser. It
+  reports which bindings arrived and whether the default was cancellable; only
+  a person can see whether the browser's own tab strip moved anyway, so that
+  column is a question rather than a measurement.
+
+  Measured 2026-09-07 -- Chrome 148 on macOS delivers all of Ctrl+Tab,
+  Ctrl+Shift+Tab and Ctrl+1-9 to the page, and reports each as cancelable.
+  Nothing else has been measured: no Windows, no Linux, no Firefox and no
+  Safari, and nobody has yet watched whether the browser's own strip stays put.
+-->
+
+<style>
+  body { font: 14px/1.6 system-ui, sans-serif; margin: 2rem; max-width: 52rem; }
+  table { border-collapse: collapse; margin-top: 1rem; width: 100%; }
+  th, td { border: 1px solid #bbb; padding: .4rem .6rem; text-align: left; }
+  code { background: #eee; padding: 0 .2rem; }
+  .yes { color: #070; font-weight: bold; }
+  .no { color: #b00; font-weight: bold; }
+  .waiting { color: #777; }
+  #env { background: #f4f4f4; padding: .6rem 1rem; border-radius: 6px; }
+</style>
+
+<h1>Tab shortcuts — which of these reach the page?</h1>
+
+<p>Click anywhere on this page first, then press each binding in the table
+below. Nothing here changes a document; the page only records what arrived.</p>
+
+<p id="env"></p>
+
+<table>
+  <thead>
+    <tr><th>Binding</th><th>What Mandy wants it for</th><th>Reached the page</th><th>Default cancellable</th></tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<p><strong>The column no script can fill:</strong> after pressing each one,
+look at your browser's own tab strip. If it moved, <code>preventDefault</code>
+did not hold and the binding cannot be ours on this platform, whatever the
+last column says.</p>
+
+<script>
+  var BINDINGS = [
+    ["ctrl+Tab", "next document", function (e) { return e.ctrlKey && !e.shiftKey && e.key === "Tab"; }],
+    ["ctrl+shift+Tab", "previous document", function (e) { return e.ctrlKey && e.shiftKey && e.key === "Tab"; }],
+    ["ctrl+1", "first document", function (e) { return e.ctrlKey && e.key === "1"; }],
+    ["ctrl+2", "second document", function (e) { return e.ctrlKey && e.key === "2"; }],
+    ["ctrl+8", "eighth document", function (e) { return e.ctrlKey && e.key === "8"; }],
+    ["ctrl+9", "last document", function (e) { return e.ctrlKey && e.key === "9"; }],
+    ["ArrowRight", "next, while the bar has focus", function (e) { return e.key === "ArrowRight"; }],
+  ];
+
+  var seen = {};
+  var rows = document.getElementById("rows");
+
+  document.getElementById("env").textContent =
+    (navigator.userAgentData && navigator.userAgentData.platform
+      ? navigator.userAgentData.platform
+      : navigator.platform) + " — " + navigator.userAgent;
+
+  function draw() {
+    rows.innerHTML = "";
+    for (var i = 0; i < BINDINGS.length; i++) {
+      var name = BINDINGS[i][0];
+      var hit = seen[name];
+      var row = document.createElement("tr");
+      row.innerHTML =
+        "<td><code>" + name + "</code></td>" +
+        "<td>" + BINDINGS[i][1] + "</td>" +
+        (hit
+          ? '<td class="yes">yes</td><td class="' + (hit.cancelable ? "yes" : "no") + '">' +
+            (hit.cancelable ? "yes" : "NO — this binding cannot be ours") + "</td>"
+          : '<td class="waiting">not pressed yet</td><td class="waiting">—</td>');
+      rows.appendChild(row);
+    }
+  }
+
+  // Capture phase, so this measures what the *page* is given rather than what
+  // survives anything else on it — there is nothing else on this page, which is
+  // the point of it having no app behind it.
+  document.addEventListener("keydown", function (e) {
+    for (var i = 0; i < BINDINGS.length; i++) {
+      if (!BINDINGS[i][2](e)) continue;
+      seen[BINDINGS[i][0]] = { cancelable: e.cancelable };
+      // Asking for the default to be suppressed is half the measurement: the
+      // other half is whether the browser honoured it, which only a person
+      // watching their own tab strip can report.
+      e.preventDefault();
+      draw();
+      return;
+    }
+  }, true);
+
+  draw();
+</script>

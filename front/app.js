@@ -765,53 +765,15 @@ onToolbarAction("copy-md", async (button) => {
   }
 });
 
-// New is what "no baggage" means: a document with no more history than the
-// one Mandy opens with. This used to be what Clear did — see the comment on
-// the "clear" handler below for why the two split (CHANGELOG.md, "New and
-// Clear are two different weights now").
-onToolbarAction("new", async () => {
-  // Two different questions wearing one dialog until now. Starting fresh over
-  // an untouched welcome document costs nothing; starting fresh over an hour
-  // of unsaved work costs the hour — and the old wording read identically
-  // either way, which made the dialog useless as a signal about what was at
-  // stake.
-  //
-  // So the dirty case goes through file-api.js's shared guard, which knows the
-  // filename and can offer Save. The guard does not exist in an exported
-  // document, which ships no file-api.js and has no file to be dirty against:
-  // that is the honest absence rather than a second implementation, and the
-  // plain question below is what an export gets.
-  // One dialog or the other, never both. The guard's question already covers
-  // everything the plain one says and adds the filename and a Save button, so
-  // asking twice would only teach the user to click through the first.
-  const guarded =
-    typeof confirmDiscard === "function" &&
-    typeof documentIsDirty === "function" &&
-    documentIsDirty();
-
-  if (guarded) {
-    const proceed = await confirmDiscard({
-      title: "Start a new document?",
-      detail: "The auto-saved copy goes too.",
-      discardLabel: "Discard and start new",
-    });
-    if (!proceed) return;
-  } else {
-    // Cancel is the default action, so Enter and Escape both do the safe thing.
-    const confirmed = await ask(
-      "This removes all content and the auto-saved copy.",
-      {
-        title: "Start a new document?",
-        severity: "warn",
-        actions: [
-          { label: "Cancel", value: false, variant: "quiet", default: true },
-          { label: "New", value: true, variant: "danger" },
-        ],
-      },
-    );
-    if (!confirmed) return;
-  }
-
+// Empty the document in place and forget everything derived from it. The whole
+// of what New used to do after its dialog, and now a primitive with two callers
+// rather than a handler with one: an exported document's New, which still
+// resets in place because it ships no tabs.js and has nowhere else to put a
+// second document, and nothing else — the app's New makes a tab instead.
+//
+// The file association is not dropped here. Only file-api.js knows there is
+// one, and it hooks the same action to drop it (see its "new" handler).
+function resetDocument() {
   editor.innerHTML = "<p><br></p>";
   localStorage.removeItem(documentKey("content"));
   localStorage.removeItem(documentKey("source"));
@@ -825,11 +787,54 @@ onToolbarAction("new", async () => {
 
   focusDocumentStart();
 
-  // Replaced, not edited: New also drops the autosave, the sniffed style and
+  // Replaced, not edited: this also drops the autosave, the sniffed style and
   // (via file-api.js) the file association, so an undo that brought the text
   // back would restore it into a document that no longer knows where it came
   // from. The ask() dialog is what stands in for undo here.
   undoReset();
+}
+
+// New is what "no baggage" means: a document with no more history than the
+// one Mandy opens with. This used to be what Clear did — see the comment on
+// the "clear" handler below for why the two split (CHANGELOG.md, "New and
+// Clear are two different weights now").
+onToolbarAction("new", async () => {
+  // In the app, New makes a tab (TODO 4.1). Nothing is discarded, so nothing is
+  // asked: the document that was open is still open, one tab to the left. That
+  // is the whole of New here, and the dialogs below belong to the other world.
+  //
+  // newTab() returns null when the switch was refused — a file operation is in
+  // flight — and then no tab was made, which is why this returns either way
+  // rather than falling through to a reset that would empty the document that
+  // is still on screen.
+  if (typeof newTab === "function") {
+    newTab();
+    return;
+  }
+
+  // Only an exported document reaches here. It ships no tabs.js and has
+  // nowhere to put a second document, so New still resets in place — and it
+  // ships no file-api.js either, so there is no file to be dirty against and no
+  // shared guard to ask through. This plain question is the whole of what an
+  // export gets, and it is the only question left in this handler: the app's
+  // New discards nothing and so dropped out of confirmDiscard's callers, which
+  // are Open and Reload now.
+  //
+  // Cancel is the default action, so Enter and Escape both do the safe thing.
+  const confirmed = await ask(
+    "This removes all content and the auto-saved copy.",
+    {
+      title: "Start a new document?",
+      severity: "warn",
+      actions: [
+        { label: "Cancel", value: false, variant: "quiet", default: true },
+        { label: "New", value: true, variant: "danger" },
+      ],
+    },
+  );
+  if (!confirmed) return;
+
+  resetDocument();
 });
 
 // Clear used to carry New's weight above — dialog, full reset, file

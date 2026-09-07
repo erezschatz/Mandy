@@ -23,10 +23,24 @@ function childMatching(node, selector) {
 }
 
 export function makeEl(tag = "div", { parent = null, text = "" } = {}) {
+  let html = "";
+
   const node = {
     tagName: tag.toUpperCase(),
     nodeType: 1,
-    innerHTML: "",
+    // Kept as a string, since there is no parser here — but assigning it drops
+    // the children, which is the half of the real behaviour that matters to
+    // code doing it deliberately. `el.innerHTML = ""` is how front/ empties a
+    // container it rebuilds (the tab bar redraws that way on every state
+    // change), and a stub that kept the old children would let such a redraw
+    // silently accumulate them, in a suite reading the result as gospel.
+    get innerHTML() {
+      return html;
+    },
+    set innerHTML(value) {
+      html = value;
+      node.children.length = 0;
+    },
     textContent: text,
     id: "",
     className: "",

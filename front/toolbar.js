@@ -344,13 +344,22 @@ function focusItem(step, from) {
 // already says — and it took the page's only h1 with it, which belonged to the
 // document rather than to the chrome.
 //
-// Only the app tracks a file on disk, but the label is harmless either way and
-// file-api.js expects to find it.
-function buildFileLabel() {
-  const currentFile = document.createElement("span");
-  currentFile.id = "currentFile";
-  currentFile.className = "current-file";
-  return currentFile;
+// The tab bar ships empty and tabs.js fills it, exactly as `.toolbar` itself
+// does — html-export.js hand-writes its own copy of the page shell, so markup
+// here would be a second copy to keep in step. It replaced a `#currentFile`
+// span, which said the same thing for the one document Mandy could hold: the
+// filename, and whether it was edited or the disk had moved on. A tab says both
+// per document now, the second as a dot (TODO 4.1).
+//
+// `role="tablist"` is a promise about the keyboard as well as a label for the
+// strip, and tabs.js keeps it: Left and Right move along the bar.
+function buildTabBar() {
+  const bar = document.createElement("div");
+  bar.id = "tabBar";
+  bar.className = "tab-bar";
+  bar.setAttribute("role", "tablist");
+  bar.setAttribute("aria-label", "Open documents");
+  return bar;
 }
 
 // The theme toggle is the whole of the document row's right-hand side now. It
@@ -377,16 +386,17 @@ function buildThemeToggle() {
   return toggle;
 }
 
-// The toolbar's second row: what the document is, and the control that is not
-// about the document at all. Returns nothing for an exported document, which
-// has neither a file on disk nor a theme toggle — the row would be an empty
-// band, and `:root[data-variant]` takes the reserved height down to match.
+// The toolbar's second row: which documents are open, and the control that is
+// not about a document at all. Returns nothing for an exported document, which
+// holds exactly one document, has no file on disk and no theme toggle — the row
+// would be an empty band, and `:root[data-variant]` takes the reserved height
+// down to match.
 function buildToolbarContent(variant) {
   if (variant !== "app") return null;
 
   const content = document.createElement("div");
   content.className = "toolbar-content";
-  content.appendChild(buildFileLabel());
+  content.appendChild(buildTabBar());
   content.appendChild(buildThemeToggle());
   return content;
 }

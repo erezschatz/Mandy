@@ -1,8 +1,6 @@
 // Server-backed open/save. Only loaded by the app itself — exported HTML files
 // have no server behind them and keep their own blob download instead.
 
-const currentFileLabel = document.getElementById("currentFile");
-
 const fileDialog = document.getElementById("fileDialog");
 const dialogTitle = document.getElementById("dialogTitle");
 const dialogClose = document.getElementById("dialogClose");
@@ -34,20 +32,25 @@ let dialogMode = "open";
 let dialogDir = localStorage.getItem(documentKey("dir"));
 let saveResolver = null;
 
+// What the bar draws the active tab from. Only this module knows any of it, and
+// a background tab's copy is the same three fields sitting in its parked bundle
+// — which is what lets tabs.js draw every tab through one function rather than
+// one for the document on screen and another for the rest.
+function fileDescriptor() {
+  return { path: currentFilePath, isDirty, diskChanged };
+}
+
+// The single "the active document's identity changed" hook: every setDirty,
+// setDiskChanged, setCurrentFile and adopt ends here, so the bar redraws from
+// the one place the text label used to. That label was a `#currentFile` span
+// saying `plan.md (edited, disk changed)` for the one document Mandy could
+// hold; the same sentence is now a dot plus a title on the tab (TODO 4.1), and
+// drawing it belongs to whoever owns the list.
+//
+// Nothing to draw into without tabs.js, which is a configuration only the test
+// suites produce: an exported document ships no file-api.js at all.
 function renderCurrentFile() {
-  if (!currentFileLabel) return;
-
-  const name = currentFilePath ? currentFilePath.split("/").pop() : "";
-  // Both marks are only meaningful against a file on disk: with no file open
-  // there is nothing the document could be out of step with. They are also not
-  // exclusive — edit a file an agent has since rewritten and both are true, and
-  // that is exactly the case worth being loud about.
-  const marks = [];
-  if (name && isDirty) marks.push("edited");
-  if (name && diskChanged) marks.push("disk changed");
-
-  currentFileLabel.textContent = marks.length ? `${name} (${marks.join(", ")})` : name;
-  currentFileLabel.title = currentFilePath || "";
+  if (typeof renderTabBar === "function") renderTabBar();
 }
 
 // Persisted for the same reason the path is: autosave keeps unsaved edits
@@ -133,6 +136,12 @@ function restoreCurrentFile() {
 }
 
 restoreCurrentFile();
+// The bar's first draw. Everything later comes through renderCurrentFile() off
+// a state change, but the opening one has nothing to hang off — and it cannot
+// live at the end of tabs.js, which loads first and so would be calling
+// fileDescriptor() before this file has defined it. The restore above only
+// renders when it finds a document, so a blank session needs this too.
+renderCurrentFile();
 
 // Called by app.js once, right after its own startup undoReset() has minted
 // the id for whichever document just loaded — restored, welcome or exported.
@@ -231,6 +240,14 @@ editor.addEventListener("input", () => {
 // and the blank check correctly does nothing. Clear does not get this hook —
 // it stays open on the same file, so there is no association to drop.
 onToolbarAction("new", () => {
+  // Nothing to drop once New makes a tab (TODO 4.1): tabs.js has already parked
+  // the outgoing document's file state and adopted a blank one, so the document
+  // this would clear is a fresh tab that never had a file. Without this it
+  // would still be a no-op — the fields are already null — but it would write
+  // the new tab's keys to say so, which is a second module answering a question
+  // it no longer has.
+  if (typeof newTab === "function") return;
+
   if (isBlankContent(editor.innerHTML)) {
     markClean();
     setFileMtime(null);

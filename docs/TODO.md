@@ -557,16 +557,103 @@ category fidelity deliberately does not extend to.
         bullet marker and emphasis delimiter into the next file saved.
         `markdownStyleAdopt(null)` is what those three assignments were trying
         to be.
-    5.  **The bar** — *not started.* `.toolbar-content` becomes the tab bar:
-        the per-tab dot, close, Ctrl+Tab and Ctrl+1–9, and the
-        `--toolbar-height` arithmetic following it. It carries two things stage
-        4 deliberately left for it, both because they are only honest once a
-        tab is visible: **New makes a tab** rather than resetting the document
-        in place, dropping out of `confirmDiscard`'s callers; and the close
-        control asks before throwing a document away, which needs a guard that
-        can name a tab other than the active one. New's current body survives
-        as the reset primitive the exported document still needs — the export
-        ships no `tabs.js`, so New there stays exactly what it is today.
+    5.  **The bar** — *done and tested.* In the suite, and by hand in Chrome:
+        New made a second tab, the bar switched between them by click and by
+        Ctrl+2, an edit raised the dot, closing the edited one asked the
+        three-way question and Escape backed out of it, and closing the clean
+        one went straight out — with the session's own document put back
+        afterwards. `.toolbar-content` becomes the tab bar.
+        This is the stage where everything the previous four built becomes
+        reachable, so it carries the two rewirings stage 4 deliberately left
+        alone as well as the bar itself. Eight parts:
+
+        -   **The bar's markup is a container from `toolbar.js` and a fill from
+            `tabs.js`**, the same arrangement `.toolbar` itself has and for the
+            same reason: `html-export.js` hand-writes its own copy of the page
+            shell, so markup in `index.html` would be a second copy to keep in
+            step. `buildFileLabel()` becomes `buildTabBar()` and ships an empty
+            `#tabBar`; an exported document still gets no second row at all.
+        -   **`renderTabBar()` in `tabs.js` draws one tab per record**, reading
+            each tab's name and marks from the live modules when it is the
+            active one and from its parked bundle — or its own storage keys,
+            for a tab this session has never shown — when it is not. It binds
+            its own delegated click listener on `#tabBar` rather than going
+            through `onToolbarAction`: a tab is not an action, and that
+            dispatcher's contract is about modules registering for a named
+            action, not about one control per row of a list.
+        -   **`renderCurrentFile()` in `file-api.js` delegates to it.** That
+            function is already the single "the active document's identity
+            changed" hook — every `setDirty`, `setDiskChanged`, `setCurrentFile`
+            and adopt goes through it — so the bar redraws from the same one
+            place the text label did. `#currentFile` and the `.current-file`
+            rule go with the label.
+        -   **The dot**, as settled above: `var(--notify-error)` for edited
+            whether or not the disk also changed, `var(--text-toolbar)` for
+            disk-changed-only, nothing when clean. The sentence the text label
+            used to spell out stays, as a real `title` and `aria-label` on the
+            tab — colour alone is a soft accessibility gap, and the title is
+            also where the full path goes now.
+        -   **New makes a tab.** `newTab()` when `tabs.js` is loaded, so nothing
+            is discarded and nothing is asked; New drops out of
+            `confirmDiscard`'s callers, leaving that guard covering Open and
+            Reload. New's current body becomes `resetDocument()`, the reset
+            primitive an exported document still needs — it ships no `tabs.js`,
+            so New there stays exactly what it is today, dialog and all.
+            `file-api.js`'s own `"new"` hook returns early when `tabs.js` is
+            present: it exists to drop the file association after an in-place
+            reset, and there is no in-place reset left to follow.
+        -   **Close asks, by switching first.** A dirty tab is switched to
+            before the question, so `confirmDiscard` — which reads the *active*
+            document's flag and filename — names a document that is on screen.
+            That is why it needs no new parameter and no second implementation:
+            the guard's existing question is exactly the right one once the
+            document it is about is the one showing. A clean tab closes without
+            a switch and without a dialog.
+        -   **Ctrl+Tab / Ctrl+Shift+Tab cycle, Ctrl+1–8 pick the nth and Ctrl+9
+            the last**, plus Left/Right while focus is in the bar, since
+            `role="tablist"` promises them. All of them go through
+            `switchToTab`, which is where stage 3's gate already sits — that
+            gate exists precisely because these listeners fire straight through
+            an open dialog.
+
+            **What is measured and what is not.** All six candidate bindings
+            reach the page in Chrome 148 on macOS — measured, not assumed —
+            which is unsurprising there, since macOS Chrome switches browser
+            tabs on Cmd+1–9 rather than Ctrl+1–9. Two things are still guesses
+            and must not be written down as anything else: whether
+            `preventDefault` actually suppresses the browser's own action for
+            Ctrl+Tab, and what happens on Windows and Linux, where Ctrl+1–9 *is*
+            the browser's own tab binding. So this stage also ships
+            **`tests/tab-shortcut-check.html`**, a check page in the shape of
+            `paste-check.html`: it reports which bindings arrive and whether the
+            default was suppressible, per browser and per platform, and it needs
+            no app and no server. Until it has been run somewhere other than
+            here, the shipped set is provisional.
+        -   **The dot says "edited" for an untitled document too**, which the
+            label it replaces did not. That gate was one condition covering two
+            questions: with no filename on screen, "(edited)" had no subject to
+            attach to, so both marks were gated on a path. A tab supplies the
+            subject and the questions come apart. Disk-changed really is
+            meaningless with no file — there is nothing to be out of step with —
+            but unsaved work in a document that was never saved anywhere is the
+            *most* urgent version of edited, and `beforeunload` has always
+            agreed: `documentIsDirty()` never cared whether there was a path.
+            Left as inherited, the bar and the close-the-window warning would
+            disagree about the same document.
+        -   **`--toolbar-height` follows the row.** `--content-height` is a
+            `max()` of the toggle and the tab, so the reservation the empty
+            toolbar paints matches what `toolbar.js` settles into. Get it wrong
+            and everything below the bar jumps once the script runs, which is
+            the whole reason the arithmetic exists.
+
+    **What is left of this item is one measurement.** All five stages have
+    landed, and the only thread still open is the one stage 5's check page
+    exists to close: whether the Ctrl+Tab and Ctrl+1–9 bindings survive on a
+    platform where the browser claims them, which cannot be answered from a Mac.
+    Run [tests/tab-shortcut-check.html](../tests/tab-shortcut-check.html) on
+    Windows or Linux, and in Firefox and Safari, and either the bindings stand
+    or they move — at which point this item leaves the file for
+    [CHANGELOG.md](../CHANGELOG.md) like any other finished one.
 
     **Stage 3 comes before stage 4 deliberately, and that is the one ordering
     here which is a safety property rather than a preference.** The four

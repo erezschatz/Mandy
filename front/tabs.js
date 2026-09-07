@@ -326,3 +326,258 @@ function tabsBackgroundDirty() {
     return localStorage.getItem(tabKeyFor(tab.id, "dirty")) === "1";
   });
 }
+
+// ── The bar ──────────────────────────────────────────────────────────────────
+
+// toolbar.js ships this empty and we fill it, the same arrangement `.toolbar`
+// itself has: html-export.js hand-writes its own copy of the page shell, so
+// markup in index.html would be a second copy to keep in step. An exported
+// document has no second row at all, so this is null there and every function
+// below returns early.
+const tabBar = document.getElementById("tabBar");
+
+// A document with no file behind it. Shown rather than an empty tab, because a
+// nameless strip of dots says nothing about which document is which.
+const UNTITLED = "Untitled";
+
+// The tab drawn for the document on screen, as of the last redraw. Only the
+// arrow keys read it, and only to keep focus with the selection.
+let activeTabElement = null;
+
+// Name and marks for one tab, from whichever of the three places currently
+// holds them: the live modules for the tab on screen, its parked bundle for one
+// this session has shown and moved off, and its own storage keys for one
+// restored by a page load and never opened. Three sources, one shape, so the
+// bar draws every tab through the same function.
+function tabDescriptor(tab) {
+  if (tab.id === activeTabId) return fileDescriptor();
+  if (tab.file) {
+    return { path: tab.file.currentFilePath, isDirty: tab.file.isDirty, diskChanged: tab.file.diskChanged };
+  }
+  return {
+    path: localStorage.getItem(tabKeyFor(tab.id, "path")),
+    isDirty: localStorage.getItem(tabKeyFor(tab.id, "dirty")) === "1",
+    // Nothing has stat'd this tab's file since the page loaded, so there is
+    // nothing to claim about it. Switching to it re-baselines and the check on
+    // the next window focus answers properly.
+    diskChanged: false,
+  };
+}
+
+// The two marks are not exclusive — edit a file an agent has since rewritten
+// and both are true, which is exactly the case worth being loud about.
+//
+// They differ on the no-file case, and the single-document label got that
+// wrong: it gated *both* on there being a path, because with no filename on
+// screen there was no subject for "(edited)" to attach to. A tab supplies the
+// subject, and the two questions are not the same one. "Disk changed" really is
+// meaningless without a file — there is nothing for the document to be out of
+// step with. "Edited" is not: unsaved work in a document that has never been
+// saved anywhere is the *most* urgent version of it, and `beforeunload` already
+// says so, since documentIsDirty() has never cared whether there was a path.
+// Leaving the dot off there would have the bar and the close-the-window warning
+// disagreeing about the same document.
+function tabMarks({ path, isDirty, diskChanged }) {
+  const marks = [];
+  if (isDirty) marks.push("edited");
+  if (path && diskChanged) marks.push("disk changed");
+  return marks;
+}
+
+// Which dot, if any. Edited wins outright over disk-changed: it is the more
+// urgent of the two and the combination needs no third colour, since the title
+// says the whole sentence either way.
+function tabDotState(descriptor) {
+  const marks = tabMarks(descriptor);
+  if (marks.includes("edited")) return "dirty";
+  if (marks.includes("disk changed")) return "stale";
+  return "";
+}
+
+// The one document a session with no tab list has (see restoreTabs). It stands
+// for itself: `tabDescriptor` reads it as the active one, since null is what
+// activeTabId is in that state.
+const TABS_UNLISTED = [{ id: null }];
+
+function buildTab(tab) {
+  const descriptor = tabDescriptor(tab);
+  const name = descriptor.path ? descriptor.path.split("/").pop() : UNTITLED;
+  const marks = tabMarks(descriptor);
+  const sentence = marks.length ? `${name} (${marks.join(", ")})` : name;
+
+  const element = document.createElement("div");
+  element.className = "tab";
+  element.setAttribute("role", "tab");
+  if (tab.id !== null) element.setAttribute("data-tab", String(tab.id));
+  element.setAttribute("aria-selected", tab.id === activeTabId ? "true" : "false");
+  // Roving tabindex, the way the menu bar does it: one stop for the whole strip
+  // rather than one per document.
+  element.setAttribute("tabindex", tab.id === activeTabId ? "0" : "-1");
+  // A colour-only signal is a soft accessibility gap on its own, so the
+  // sentence the old text label spelled out has to still exist as something
+  // that can be read aloud -- and the title is where the full path goes now
+  // that there is no room for one on screen.
+  element.setAttribute("aria-label", sentence);
+  element.title = descriptor.path ? `${descriptor.path}${marks.length ? ` — ${marks.join(", ")}` : ""}` : sentence;
+
+  const dot = document.createElement("span");
+  dot.className = "tab-dot";
+  dot.setAttribute("data-state", tabDotState(descriptor));
+  dot.setAttribute("aria-hidden", "true");
+
+  const label = document.createElement("span");
+  label.className = "tab-name";
+  label.textContent = name;
+
+  element.appendChild(dot);
+  element.appendChild(label);
+
+  // No close on the unlisted document: there is no list to take it out of, and
+  // a control that cannot do its one job is worse than an absent one.
+  if (tab.id !== null) {
+    const close = document.createElement("button");
+    close.className = "tab-close";
+    close.setAttribute("data-close", String(tab.id));
+    close.setAttribute("tabindex", "-1");
+    close.setAttribute("aria-label", `Close ${name}`);
+    close.title = `Close ${name}`;
+    close.textContent = "×";
+    element.appendChild(close);
+  }
+
+  return element;
+}
+
+// Redrawn whole rather than patched. The bar is at most a handful of elements
+// and every input to it -- the list, which tab is active, and three fields per
+// document -- can change in one operation, so diffing would be a second model
+// of the same thing with its own way of going stale.
+//
+// file-api.js's renderCurrentFile() calls this, which is what keeps the dot in
+// step: every setDirty, setDiskChanged, setCurrentFile and adopt already ends
+// there.
+function renderTabBar() {
+  if (!tabBar) return;
+
+  tabBar.innerHTML = "";
+  activeTabElement = null;
+  // A session whose migration failed runs on the flat key names with one
+  // document and no list. It still has a file open, and a bar that drew nothing
+  // would take the only thing naming that file off the screen entirely.
+  const showing = activeTabId === null ? TABS_UNLISTED : openTabs;
+  for (const tab of showing) {
+    const element = buildTab(tab);
+    // Kept from the build rather than found again afterwards: the arrows move
+    // focus to whichever tab the switch landed on, and asking the DOM for it
+    // would be a second way of knowing something we have just decided.
+    if (tab.id === activeTabId) activeTabElement = element;
+    tabBar.appendChild(element);
+  }
+}
+
+// Closing a document the user cannot see cannot ask a question about it:
+// confirmDiscard reads the *active* document's dirty flag and filename, which
+// is the right question wearing the wrong subject. So a dirty tab is switched
+// to before it is asked about, and the dialog then names a document that is on
+// screen. That is why this needs no new parameter on the guard and no second
+// implementation of it -- and why a clean tab closes with neither a switch nor
+// a dialog, since there is nothing to lose and nothing to look at.
+async function requestCloseTab(id) {
+  const tab = findTab(id);
+  if (!tab) return false;
+
+  const descriptor = tabDescriptor(tab);
+  if (descriptor.isDirty) {
+    if (!switchToTab(id)) return false;
+    const proceed = await confirmDiscard({
+      title: "Close this document?",
+      detail: "The auto-saved copy goes too.",
+      discardLabel: "Discard and close",
+    });
+    if (!proceed) return false;
+  }
+
+  return closeTab(id);
+}
+
+// One listener for the whole strip rather than one per tab, so a redraw does
+// not have to rebind anything. Deliberately not routed through
+// onToolbarAction: a tab is not an action, and that dispatcher's contract is
+// modules registering for a named action rather than one control per row of a
+// list.
+if (tabBar) {
+  tabBar.addEventListener("click", (event) => {
+    const closing = event.target.closest && event.target.closest("[data-close]");
+    if (closing) {
+      // The close sits inside the tab, so without this the click selects the
+      // tab on its way past and a cancelled close leaves you somewhere you did
+      // not ask to be.
+      event.stopPropagation();
+      requestCloseTab(Number(closing.getAttribute("data-close")));
+      return;
+    }
+
+    const tab = event.target.closest && event.target.closest("[data-tab]");
+    if (tab) switchToTab(Number(tab.getAttribute("data-tab")));
+  });
+}
+
+// Cycle by position in the bar, wrapping at both ends -- the same rule the menu
+// bar's arrows follow, and what every tab strip people arrive from does.
+function switchByOffset(step) {
+  if (activeTabId === null || openTabs.length < 2) return false;
+
+  const at = openTabs.findIndex((tab) => tab.id === activeTabId);
+  const next = (at + step + openTabs.length) % openTabs.length;
+  return switchToTab(openTabs[next].id);
+}
+
+// Ctrl+9 is the last tab rather than the ninth, which is the convention every
+// browser tab strip already teaches; 1-8 are positional.
+function switchByNumber(number) {
+  const tab = number === 9 ? openTabs[openTabs.length - 1] : openTabs[number - 1];
+  return tab ? switchToTab(tab.id) : false;
+}
+
+// Its own listener rather than a branch in one of the four that already exist,
+// because this is the only one of them that must not fire through an open
+// dialog -- and it does not have to test for that itself, since every path
+// below goes through switchToTab and the gate lives there.
+//
+// What is measured: all of these reach the page in Chrome 148 on macOS, where
+// the browser's own tab bindings are Cmd+1-9. What is not: whether
+// preventDefault suppresses the browser's own action for Ctrl+Tab, and what
+// Windows and Linux do, where Ctrl+1-9 *is* the browser's binding.
+// tests/tab-shortcut-check.html is what answers that, and until it has been run
+// somewhere other than here this set is provisional.
+document.addEventListener("keydown", (event) => {
+  if (activeTabId === null) return;
+
+  if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === "Tab") {
+    event.preventDefault();
+    switchByOffset(event.shiftKey ? -1 : 1);
+    return;
+  }
+
+  if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey &&
+      /^[1-9]$/.test(event.key)) {
+    event.preventDefault();
+    switchByNumber(Number(event.key));
+    return;
+  }
+
+  // role="tablist" promises the arrows, and the promise is the reason they are
+  // here: the strip announces itself as a tab list to anything reading the
+  // page. Scoped to focus being in the bar, so the arrow keys still belong to
+  // the document everywhere else.
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  if (!tabBar || !tabBar.contains(document.activeElement)) return;
+
+  event.preventDefault();
+  // Focus follows the selection, or the next arrow press would be measured from
+  // a tab that is no longer the one showing — and the strip is a roving
+  // tabindex, so the element focus was on has just stopped being a tab stop.
+  if (switchByOffset(event.key === "ArrowRight" ? 1 : -1) && activeTabElement) {
+    activeTabElement.focus();
+  }
+});

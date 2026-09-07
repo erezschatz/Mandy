@@ -217,8 +217,8 @@ function boot({
       Blob: class {},
       Date,
     },
-    "; return { path: currentFilePath, label: currentFileLabel.textContent," +
-      " dir: dialogDir, labelEl: currentFileLabel, saveFile, showOpenDialog," +
+    "; return { path: currentFilePath, descriptor: () => fileDescriptor()," +
+      " dir: dialogDir, saveFile, showOpenDialog," +
       " openFile, reloadFile, dirNow: () => dialogDir," +
       " pathNow: () => currentFilePath, mtimeNow: () => fileMtime };",
   );
@@ -245,9 +245,21 @@ function boot({
       for (const fn of listeners.visibilitychange || []) fn();
       await settle();
     },
-    // What the toolbar reads right now, as opposed to `label` — the snapshot
-    // taken while the scripts were still loading.
-    labelNow: () => api.labelEl.textContent,
+    // The sentence the bar draws, built from the three fields file-api.js hands
+    // it. Stage 5 of TODO 4.1 moved the drawing out of this module — the
+    // filename label became a tab, and `(edited, disk changed)` became a dot
+    // plus a title — so this suite drives the *state* and the tabs suite drives
+    // what is made of it. The wording is rebuilt here rather than imported
+    // because every check below is about when each mark is true, and reading
+    // them as sentences is what makes that legible.
+    labelNow: () => {
+      const { path, isDirty, diskChanged } = api.descriptor();
+      const name = path ? path.split("/").pop() : "";
+      const marks = [];
+      if (name && isDirty) marks.push("edited");
+      if (name && diskChanged) marks.push("disk changed");
+      return marks.length ? `${name} (${marks.join(", ")})` : name;
+    },
     // markdownit is a pass-through here, so this is the markdown a read put in.
     html: () => editorEl.innerHTML,
     // The harness boots from localStorage without app.js's restore ever running,
@@ -324,7 +336,7 @@ function boot({
 export default async function run(check) {
   let r = boot({ savedContent: "<h1>Real work</h1>", savedPath: "/home/erez/notes/plan.md" });
   check("path restored alongside content", r.path === "/home/erez/notes/plan.md");
-  check("label shows the basename", r.label === "plan.md");
+  check("label shows the basename", r.labelNow() === "plan.md");
 
   r = boot({ savedContent: "<p><br></p>", savedPath: "/home/erez/notes/plan.md" });
   check("path dropped when the content is blank", !r.path);
@@ -335,7 +347,7 @@ export default async function run(check) {
 
   r = boot({ savedContent: "<h1>x</h1>" });
   check("a missing path is handled", r.path === null);
-  check("label is empty without a path", r.label === "");
+  check("label is empty without a path", r.labelNow() === "");
 
   r = boot({ savedDir: "/home/erez/projects/docs" });
   check("last directory restored", r.dir === "/home/erez/projects/docs");
@@ -434,8 +446,10 @@ export default async function run(check) {
 
   r.type();
   check("typing marks the document edited", r.labelNow() === "plan.md (edited)");
-  check("and the full path stays in the tooltip",
-    r.labelEl.title === "/home/erez/notes/plan.md");
+  // The tab's title is built from this, which is where the full path goes now
+  // that a tab shows the basename alone — the tabs suite checks the building.
+  check("and the full path is still what the bar is given",
+    r.descriptor().path === "/home/erez/notes/plan.md");
 
   // Autosave survives a reload, so the flag has to as well — otherwise the
   // toolbar reopens showing a clean filename over unsaved edits.
