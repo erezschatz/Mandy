@@ -113,7 +113,13 @@ function setCurrentFile(filePath) {
 // Only restore the path if the content is being restored too. When app.js is
 // about to fall back to welcome.md there is no file behind what you see, and
 // showing one would point Ctrl+S at a document you are not looking at.
-(function restoreCurrentFile() {
+//
+// Two callers: the page load below, and fileAdoptStored() when a tab this
+// session has never shown is switched into. A tab restored from a page load is
+// an id and six storage keys, so bringing one to the front asks the same
+// question a page load asks — which is why it is this function again rather
+// than a second reading of the same three keys somewhere else.
+function restoreCurrentFile() {
   const savedContent = localStorage.getItem(documentKey("content"));
   if (savedContent && !isBlankContent(savedContent)) {
     isDirty = localStorage.getItem(documentKey("dirty")) === "1";
@@ -124,7 +130,9 @@ function setCurrentFile(filePath) {
     localStorage.removeItem(documentKey("dirty"));
     localStorage.removeItem(documentKey("mtime"));
   }
-})();
+}
+
+restoreCurrentFile();
 
 // Called by app.js once, right after its own startup undoReset() has minted
 // the id for whichever document just loaded — restored, welcome or exported.
@@ -179,6 +187,26 @@ function fileAdopt(bundle) {
   diskChanged = bundle ? bundle.diskChanged : false;
   cleanPosition = bundle ? bundle.cleanPosition : null;
   dialogDir = bundle ? bundle.dialogDir : null;
+  renderCurrentFile();
+}
+
+// The adopt for a tab with no bundle to adopt: whatever its own storage keys
+// say. Not the same as `fileAdopt(null)`, which is a document that has never
+// had a file — this one is a document whose file survived a page load while its
+// undo history did not.
+//
+// Ordering, both halves of it enforced by the caller (tabs.js): the active tab
+// id must already have flipped, since every key here resolves through
+// documentKey, and undoAdopt must already have run, since initUndoBaseline
+// mints the clean savepoint inside whichever history is now live.
+function fileAdoptStored() {
+  fileAdopt(null);
+  restoreCurrentFile();
+  dialogDir = localStorage.getItem(documentKey("dir"));
+  // A restored document that carried unsaved edits has no history to undo back
+  // to, so it stays dirty until the next real save — exactly as it does on a
+  // page load, and for the same reason.
+  initUndoBaseline();
   renderCurrentFile();
 }
 

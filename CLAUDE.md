@@ -343,6 +343,31 @@ defines `DOCUMENT_KEYS`, and **before `file-api.js`**, which reads the open
 file's path out of storage at its own load time and so has to be handed the
 active tab's key by then.
 
+**The swap is where a tab costs more than a key prefix, and two orderings inside
+it are load-bearing.** `switchToTab` gates on `tabsSwitchAllowed()`, then
+`flushAutosave()` — while `documentKey` still resolves to the *outgoing* tab,
+since the timer resolves its key when it fires and a flush after the flip would
+write the outgoing document under the incoming tab's name — then parks all three
+bundles onto the outgoing record, flips `activeTabId`, and only then swaps
+`editor.innerHTML` and adopts. **Content before adopt**: `undoAdopt` trusts the
+bundle to describe what is on screen and never re-snapshots. **Undo before
+file**: `cleanPosition` is an id minted inside one history bundle, so the file
+state has to land on top of the history it was measured against, or a dirty
+document reports clean — which switches off the unsaved-work guard and the
+`beforeunload` warning together, and only when two tabs' edit counts line up.
+
+A tab this session has never shown — one restored from a page load — is an id
+and six storage keys, with no parked bundle and no undo history, which does not
+survive a reload. So an adopt with no bundle hydrates from storage instead:
+`fileAdoptStored()` and `markdownStyleAdoptStored()` are the load-time restore
+reused rather than a second reading of the same keys, which is why
+`restoreCurrentFile` is a function with two callers rather than the IIFE it was.
+`closeTab` is the one operation that neither parks nor flushes: the document is
+being thrown away, and flushing would write it straight back under the key the
+close has just removed. It asks nothing either — `confirmDiscard` reads the
+*active* document's flag and filename and cannot ask about a background tab at
+all, so guarding a close belongs to whatever offers the close.
+
 Moving an existing document onto tab storage happens once, in `tabs.js`, and it
 copies, reads each value back under its new name, and only then deletes the
 originals. `localStorage` offers no transaction, a blown quota does not always
@@ -434,7 +459,11 @@ changed underneath you" that does not require someone's work to be lost. It
 cannot recurse: the new path is not `currentFilePath`, so the staleness check
 returns early. And `beforeunload` in `app.js` cannot use `ask()` at all, because
 the browser will not wait on a Promise — it sets `returnValue` from
-`documentIsDirty()` and takes the browser's own wording.
+`documentIsDirty()` and takes the browser's own wording. It asks
+`tabsBackgroundDirty()` as well: the question is whether anything would be lost,
+not whether the document on screen would be, and a window shut over an unsaved
+background document is the same loss either way. Which tab it is cannot be
+named, since the string is the browser's.
 
 An exported document ships no `file-api.js`, and has no file to be dirty against.
 Both call sites in `app.js` therefore feature-test (`typeof confirmDiscard ===
@@ -1156,9 +1185,14 @@ Four things worth knowing:
 
 Applying a snapshot dispatches `input` so autosave, the dirty flag and the
 outline all hear it, and does so behind a re-entrancy guard so the undo does not
-record itself as an edit. `onToolbarAction("undo"/"redo")` are registered with
-no buttons behind them until the menu bar gave them somewhere to go, which was a
-spec entry rather than new wiring.
+record itself as an edit. **The position moves before that event, not after
+it** — `file-api.js` asks `undoPosition()` from inside its own input handler, so
+dispatching first told it the document was still in the state undo had just
+left, and undoing back to the last save went on reporting `(edited)`.
+
+`onToolbarAction("undo"/"redo")` are registered with no buttons behind them
+until the menu bar gave them somewhere to go, which was a spec entry rather than
+new wiring.
 
 ### Notifications
 

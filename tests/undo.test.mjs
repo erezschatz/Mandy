@@ -18,6 +18,7 @@ import { loadSource, makeEl, makeText, readFront } from "./dom.mjs";
 const REPLACEMENT_SITES = {
   "app.js": 5, // new, upload, welcome (x2), restore-from-autosave
   "file-api.js": 1, // openFile, which reload comes through too
+  "tabs.js": 1, // the tab swap, which picks the third option: park and adopt
 };
 
 function harness({ html = "<p>start</p>" } = {}) {
@@ -31,6 +32,10 @@ function harness({ html = "<p>start</p>" } = {}) {
   // company and the toolbar goes on claiming the file matches.
   const heard = [];
   editor.addEventListener("input", (e) => heard.push(e && e.inputType));
+  // Where those listeners think the document is when they hear it. file-api.js
+  // asks undoPosition() from inside its own input handler, so what this records
+  // is exactly what decides whether the toolbar says "(edited)".
+  const positions = [];
 
   let now = 1000;
 
@@ -55,8 +60,10 @@ function harness({ html = "<p>start</p>" } = {}) {
      " undoDepth: () => history.undoStack.length," +
      " redoDepth: () => history.redoStack.length, undoPosition };");
 
+  editor.addEventListener("input", () => positions.push(api.undoPosition()));
+
   return {
-    ...api, editor, actions, heard,
+    ...api, editor, actions, heard, positions,
     advance: (ms) => { now += ms; },
     // What the browser raises for a real edit: mutate, then announce it.
     type: (text, inputType = "insertText") => {
@@ -84,7 +91,12 @@ export default function run(check) {
     );
     check(
       `${file}: tells the undo stack about them`,
-      /undoReset\(\)/.test(src) || /dispatchEvent\(new Event\("input"/.test(src),
+      /undoReset\(\)/.test(src) || /dispatchEvent\(new Event\("input"/.test(src) ||
+        // The third answer, and only a tab switch is entitled to it: the
+        // outgoing history is set aside rather than forgotten, which is a
+        // crossing of the document boundary only because the boundary has
+        // become the tab (TODO 4.1).
+        /undoAdopt\(/.test(src),
     );
   }
 
@@ -345,6 +357,24 @@ export default function run(check) {
     h.heard.length === before + 1);
   check("and does not record itself as an edit", h.undoDepth() === 0);
   check("leaving exactly one step to redo", h.redoDepth() === 1);
+
+  // Raising the event is only half of reaching them: file-api.js asks
+  // undoPosition() from inside its own handler, so a snapshot applied *after*
+  // the event told it the document was still in the state undo had just left.
+  // The dirty flag is computed from that answer, so undoing back to the last
+  // save went on reporting "(edited)" and the unsaved-work guard went on asking
+  // about a document that matched its file.
+  h = harness();
+  h.undoReset();
+  const saved = h.undoPosition();
+  h.type("a");
+  h.undo();
+  check("the input an undo raises already reports the restored position",
+    h.positions[h.positions.length - 1] === saved);
+
+  h.redo();
+  check("and the one a redo raises reports the position it returned to",
+    h.positions[h.positions.length - 1] === h.undoPosition());
 
   // --- shortcuts -----------------------------------------------------------
 

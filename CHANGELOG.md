@@ -2089,3 +2089,102 @@ The third one initially failed nothing — the "does not leak its turn" check wa
 driving an operation that *returns* early rather than one that throws, so it
 proved nothing about the `finally`. It now drives a renderer that throws, and
 the check is renamed to say which of the two it covers.
+
+## 2026-09-07 — Two documents, and the swap between them (TODO 4.1, stage 4)
+
+Stage 4 of the tabbed view: the list operations, and the state hydration behind
+them. Two documents can now be open at once and switched between — from the
+suite, which is the only thing that calls any of it. Nothing in the app makes a
+second tab yet, for the same reason stage 3 changed no behaviour: a tab the user
+can neither see nor get back from is worse than no tabs, so New is rewired in
+stage 5, in the landing that makes a tab visible.
+
+**`switchToTab(id)` in [tabs.js](front/tabs.js), and the order inside it.**
+`tabsSwitchAllowed()` first; then `flushAutosave()`, while `documentKey` still
+resolves to the outgoing tab — the whole reason stage 3 built it, since a flush
+on the far side of the flip would write the outgoing document under the incoming
+tab's key and the outgoing tab's last edits would be written nowhere; then park
+all three bundles onto the outgoing record; then flip `activeTabId`; and only
+then swap `editor.innerHTML` and adopt. Two orderings inside the adopt are
+load-bearing. **Content before adopt, always**: `undoAdopt` trusts the bundle to
+describe what is on screen and never re-snapshots, and `undoAdopt(null)` takes
+its fresh baseline from whatever is in the editor at that moment. **Undo before
+file, always**: `cleanPosition` is an id minted inside one history bundle, so
+the file state has to land on top of the history it was measured against — get
+it backwards and a dirty document reports clean, which switches off the
+unsaved-work guard and the `beforeunload` warning together, and only when two
+tabs' edit counts line up, so no manual pass would ever find it.
+
+**`newTab()`** parks the active document and appends a blank one. Named for what
+New does rather than as the opposite of `closeTab`, because `openTab` sitting one
+letter from the `openTabs` list it pushes onto is a line nobody should have to
+read twice. Appended rather than inserted beside the active tab: the bar has no
+other ordering to offer yet.
+
+**`closeTab(id)`** forgets the tab's six storage keys and drops the record, so a
+close leaves no orphans under an id nothing will resolve to again. It
+deliberately does not flush and does not park — the document is being thrown
+away, and flushing would write it straight back under the key just removed.
+Closing the last tab leaves one blank untitled tab on a *fresh* id, never the
+one just closed, for the same reason ids are never reused anywhere here. It asks
+nothing: `confirmDiscard` reads the *active* document's dirty flag and filename
+and cannot ask about a background tab at all, so guarding a close belongs to the
+close control, exactly as Open and Reload guard at their own call sites rather
+than inside what they call. That control is stage 5 and the guard arrives with
+it.
+
+**Hydration, for a tab this session has never shown.** A tab restored from a
+page load is an id and six storage keys: no parked bundle, and no undo history,
+which does not survive a reload. So an adopt with no bundle reads storage
+instead — `fileAdoptStored()` in [file-api.js](front/file-api.js) and
+`markdownStyleAdoptStored()` in [app.js](front/app.js). Both are the load-time
+restore *reused* rather than a second reading of the same keys:
+`restoreCurrentFile` stopped being an IIFE and became a function with two
+callers, and the window-load path now goes through the markdown one. A clean
+restored tab gets a savepoint minted in the history that is now live; a dirty one
+gets none, because there is no state left to undo back to — which is precisely
+what a page load already does with the one document it brings back.
+
+**`beforeunload` asks whether anything would be lost, not whether the document
+on screen would be.** `tabsBackgroundDirty()` reads a background tab's unsaved
+edits out of its parked bundle, or out of its own `dirty` key when this session
+has never shown it. Their *content* needed no new work: parking flushes it under
+the tab's own key before the swap, so a background document is already written
+by the time the window closes. Which tab it is still cannot be named — the
+browser shows its own string and will not wait on us — and that stays accepted
+rather than solved.
+
+**A real bug, found by making the suite drive the real undo stack.**
+`applyUndoSnapshot` in [undo.js](front/undo.js) dispatched its synthetic `input`
+event *before* moving `history.current`, and `file-api.js`'s own input listener
+asks `undoPosition()` from inside that handler — so it was told the document was
+still in the state undo had just left. Undoing back to the last save went on
+reporting `plan.md (edited)`, and the unsaved-work guard went on asking about a
+document that matched its file byte for byte. The position moves first now. It
+could not surface before: [tests/file-path.test.mjs](tests/file-path.test.mjs)
+stubs `undoPosition` and drives file-api.js's half of the savepoint correctly,
+and [tests/undo.test.mjs](tests/undo.test.mjs) drove the real stack but had no
+listener asking where the document was — the failure lived exactly in the seam
+between the two suites, which is what stage 4 needed closed.
+
+**One drive-by fix, using the primitive stage 1 added.** New cleared the three
+markdown globals by hand and never called `pushMarkdownStyleOptions`, so
+Turndown kept the previous document's bullet marker and emphasis delimiter into
+the next file saved. `markdownStyleAdopt(null)` is what those three assignments
+were trying to be. `focusDocumentStart()` came out of the same handler, since
+every route that replaces the document wholesale now ends there.
+
+Driven by hand in Chrome as well, from the console, since nothing in the app
+reaches these yet: a second tab made, edited, switched away from and back to,
+undone in — the undo handing back that tab's own text rather than the other's —
+and closed, leaving no key behind and, at the last one, a blank untitled tab on
+a fresh id.
+
+**57 more checks, 927 green** — and the tabs suite now loads `undo.js` for real
+rather than stubbing it, because what is under test is an ordering and a stub
+would have agreed with any order at all. Nine mutations, each of which had to
+fail something: swapping the adopt order, parking without the flush, dropping
+the gate, adopting a missing bundle instead of hydrating, reusing a closed tab's
+id, leaving its storage behind, dropping the background-dirty fallback, dropping
+the `beforeunload` clause, and putting the undo dispatch back before the
+position. All nine were caught.

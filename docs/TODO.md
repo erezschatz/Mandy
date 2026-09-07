@@ -487,11 +487,86 @@ category fidelity deliberately does not extend to.
         `checkServerAvailable` are excluded from the counter for the opposite
         reason — they run on every window focus, so locking on them would make
         switching fail at moments with no explanation attached.
-    4.  **N tabs** — *not started.* Two documents open and switchable, driven
-        from the suite. No bar yet.
+    4.  **N tabs** — *done and tested.* In the suite, and by hand in Chrome:
+        nothing in the app calls any of it yet, so the operations were driven
+        from the console — a second tab made, edited, switched away from and
+        back to, undone in, and closed, with the session's own document put
+        back afterwards. The list operations, and the state hydration behind
+        them. Two documents open and switchable, driven
+        from the suite; nothing in the app makes a second tab yet, for the same
+        reason stage 3 changed no behaviour — a tab the user cannot see and
+        cannot get back from is worse than no tabs, so New is rewired in stage
+        5, in the landing that makes a tab visible. Five additions:
+
+        -   **`switchToTab(id)` in `tabs.js`, and the swap order it fixes.**
+            `tabsSwitchAllowed()` first, then `flushAutosave()` — while
+            `documentKey` still resolves to the outgoing tab, which is the
+            whole reason stage 3 built it — then park all three bundles onto
+            the outgoing record, flip `activeTabId`, and only then swap
+            `editor.innerHTML` and adopt. Content before adopt, always:
+            `undoAdopt` trusts the bundle to match what is on screen and
+            `undoAdopt(null)` takes its baseline from whatever is in the editor
+            now. Undo before file, always: `cleanPosition` is an id minted
+            inside the history that is now live.
+        -   **`openTab()`** parks the active document and appends a blank tab.
+            Appended rather than inserted beside the active one because the
+            bar has no other ordering to offer yet, and Ctrl+T is what people
+            arrive from.
+        -   **`closeTab(id)`** forgets the tab's six storage keys and drops the
+            record, so a close does not leave orphans under an id nothing will
+            resolve to again. It does not flush and does not park: the document
+            is being thrown away, and flushing would write it straight back
+            under the key just removed. Closing the last tab leaves one blank
+            untitled tab, on a fresh id, which is the settled decision above.
+            **No dialog here, deliberately.** `confirmDiscard` reads the
+            *active* document's dirty flag and filename, so it cannot ask about
+            a background tab at all; guarding a close is the close control's
+            business, exactly as Open and Reload guard at their call sites
+            rather than inside the primitives. The control is stage 5 and the
+            guard arrives with it.
+        -   **Hydration, for a tab this session has never shown.** A tab
+            restored from a page load is an id and six storage keys: no parked
+            bundle, and no undo history, which did not survive the reload. So
+            an adopt with no bundle reads storage instead —
+            `fileAdoptStored()` in `file-api.js` and `markdownStyleAdoptStored()`
+            in `app.js`. Both are the load-time restore reused rather than a
+            second reading of the same keys: `restoreCurrentFile` stops being
+            an IIFE and becomes a function with two callers, and the
+            window-load path calls the markdown one.
+        -   **`tabsBackgroundDirty()`, consulted by `beforeunload`.** The
+            question that guard asks is whether anything would be lost, not
+            whether the document on screen would be. A background tab's unsaved
+            edits are in its parked bundle; a never-shown tab's are its own
+            `dirty` key. Their *content* needs no new work — parking flushes it
+            under the tab's own key before the swap, so a background document
+            is already written by the time the window closes.
+
+        It also turned up a real bug outside its own area, which is recorded
+        in [CHANGELOG.md](../CHANGELOG.md) rather than here because it is
+        fixed: `applyUndoSnapshot` raised its synthetic `input` event before
+        moving `history.current`, so `file-api.js` — which asks
+        `undoPosition()` from inside that handler — was told the document was
+        still where undo had just left it, and undoing back to the last save
+        went on reporting `(edited)`. It lived in the seam between two suites:
+        the file-path one stubs `undoPosition`, and the undo one drove the real
+        stack with no listener asking where the document was.
+
+        One drive-by fix, using the primitive stage 1 added: New clears the
+        three markdown globals by hand and never calls
+        `pushMarkdownStyleOptions`, so Turndown keeps the previous document's
+        bullet marker and emphasis delimiter into the next file saved.
+        `markdownStyleAdopt(null)` is what those three assignments were trying
+        to be.
     5.  **The bar** — *not started.* `.toolbar-content` becomes the tab bar:
         the per-tab dot, close, Ctrl+Tab and Ctrl+1–9, and the
-        `--toolbar-height` arithmetic following it.
+        `--toolbar-height` arithmetic following it. It carries two things stage
+        4 deliberately left for it, both because they are only honest once a
+        tab is visible: **New makes a tab** rather than resetting the document
+        in place, dropping out of `confirmDiscard`'s callers; and the close
+        control asks before throwing a document away, which needs a guard that
+        can name a tab other than the active one. New's current body survives
+        as the reset primitive the exported document still needs — the export
+        ships no `tabs.js`, so New there stays exactly what it is today.
 
     **Stage 3 comes before stage 4 deliberately, and that is the one ordering
     here which is a safety property rather than a preference.** The four

@@ -8,7 +8,7 @@
 //                  and they are the heavy ones worth never re-fetching.
 //   /api/*       → never touched. Those are live file reads and writes.
 
-const VERSION = "v1.27";
+const VERSION = "v1.28";
 const SHELL_CACHE = `mandy-shell-${VERSION}`;
 const RUNTIME_CACHE = `mandy-runtime-${VERSION}`;
 

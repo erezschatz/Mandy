@@ -402,6 +402,21 @@ function markdownStyleAdopt(bundle) {
   pushMarkdownStyleOptions();
 }
 
+// The adopt for a document with no bundle to adopt: re-sniffed from the source
+// its own storage key kept. The page load and a switch into a tab this session
+// has never shown both arrive here — the document is already on screen either
+// way, restored from the content key, and what is missing is only the style and
+// the block index the markdown carries. Re-adopting rather than re-rendering is
+// the point: the markup is not touched.
+//
+// `remember: false` because the source is already under that exact key; writing
+// it back would be the same bytes and one more chance to blow the quota.
+function markdownStyleAdoptStored() {
+  const source = localStorage.getItem(documentKey("source"));
+  if (source) adoptMarkdownStyle(source, false);
+  else markdownStyleAdopt(null);
+}
+
 // Turndown rule to convert mermaid wrappers back to markdown code blocks
 turndownService.addRule("mermaid", {
   filter: function (node) {
@@ -800,18 +815,15 @@ onToolbarAction("new", async () => {
   editor.innerHTML = "<p><br></p>";
   localStorage.removeItem(documentKey("content"));
   localStorage.removeItem(documentKey("source"));
-  // Or a block of the old document could come back on the next save.
-  markdownStyle = Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
-  markdownSource = new Map();
-  referenceDefinitions = new Map();
+  // Or a block of the old document could come back on the next save. The three
+  // assignments this replaces left Turndown carrying the *previous* document's
+  // bullet marker and emphasis delimiter, since nothing pushed the reset style
+  // onto the shared service — so the first save of the new document wrote the
+  // old one's list style. markdownStyleAdopt(null) is what they were trying to
+  // be, and pushing the options is half of what it does.
+  markdownStyleAdopt(null);
 
-  editor.focus();
-  const range = document.createRange();
-  const sel = window.getSelection();
-  range.setStart(editor.firstChild, 0);
-  range.collapse(true);
-  sel.removeAllRanges();
-  sel.addRange(range);
+  focusDocumentStart();
 
   // Replaced, not edited: New also drops the autosave, the sniffed style and
   // (via file-api.js) the file association, so an undo that brought the text
@@ -1297,6 +1309,24 @@ function isBlankContent(html) {
   return trimmed === "" || trimmed === "<p><br></p>" || trimmed === "<p></p>";
 }
 
+// Put the caret at the top of whatever is in the editor now. Every route that
+// replaces the document wholesale ends here — New, and the tab swaps in
+// tabs.js — because a document that arrives without a caret in it makes the
+// first keystroke land nowhere. The guard is for the one document that has no
+// first child to point at: an editor emptied to the empty string, which is not
+// a state anything here produces but is one an assignment could.
+function focusDocumentStart() {
+  editor.focus();
+  if (!editor.firstChild) return;
+
+  const range = document.createRange();
+  const sel = window.getSelection();
+  range.setStart(editor.firstChild, 0);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
 // The welcome document is markdown like any other, not markup baked into the
 // page. Returns false if it cannot be fetched so startup can carry on with an
 // empty editor rather than dying on the welcome text.
@@ -1323,10 +1353,7 @@ window.addEventListener("load", () => {
       editor.removeAttribute("data-exported");
     } else if (saved && !isBlankContent(saved)) {
       editor.innerHTML = saved;
-      // Re-adopt rather than re-render: the document is already restored, and
-      // this only needs the style and the block index the markdown carries.
-      const source = localStorage.getItem(documentKey("source"));
-      if (source) adoptMarkdownStyle(source, false);
+      markdownStyleAdoptStored();
     } else {
       if (saved) localStorage.removeItem(documentKey("content"));
       localStorage.removeItem(documentKey("source"));
@@ -1376,7 +1403,20 @@ window.addEventListener("beforeunload", (e) => {
   // the one time it is not — a cleared cache, another browser, a private
   // window. documentIsDirty lives in file-api.js, which an exported document
   // does not ship and which has no file to be dirty against anyway.
-  if (typeof documentIsDirty === "function" && documentIsDirty()) {
+  //
+  // The question is whether anything would be lost, not whether the document on
+  // screen would be, so a background tab's unsaved edits count too (TODO 4.1).
+  // Their content is already written — a switch flushes the outgoing tab under
+  // its own key before parking it — but the browser closing takes the warning
+  // with it either way, and a window shut over an unsaved background document
+  // with no prompt is the same loss whether or not it was the one showing.
+  // Which tab it is cannot be named here: the browser shows its own string and
+  // will not wait on us.
+  const dirty =
+    (typeof documentIsDirty === "function" && documentIsDirty()) ||
+    (typeof tabsBackgroundDirty === "function" && tabsBackgroundDirty());
+
+  if (dirty) {
     e.preventDefault();
     e.returnValue = "";
     return "";

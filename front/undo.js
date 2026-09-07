@@ -232,14 +232,21 @@ function applyUndoSnapshot(snapshot) {
   if (editor.focus) editor.focus();
   undoRestoreSelection(snapshot.selection);
 
+  // Before the event, not after it. file-api.js's own input listener asks
+  // undoPosition() where the document now is, and answering with the state we
+  // have just left made undoing back to the last save go on reporting
+  // "(edited)" — the exact thing the savepoint exists to prevent, and with it
+  // an unsaved-work guard asking about a document that matches its file. It
+  // had no way to show up until a suite drove the real stack past the real
+  // listener, which is what stage 4 of the tabbed view needed.
+  history.current = snapshot;
+  history.lastType = null;
+
   // Autosave, the dirty flag and the outline all hang off `input`, and a
   // programmatic change does not raise one. Dispatched inside the guard so
   // every other listener hears it and ours does not.
   editor.dispatchEvent(new Event("input", { bubbles: true }));
   undoApplying = false;
-
-  history.current = snapshot;
-  history.lastType = null;
 }
 
 /**
