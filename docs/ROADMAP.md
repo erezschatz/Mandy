@@ -144,8 +144,8 @@ across a reload — a `console.warn` and nothing else. Storing the derived style
 plus block hashes instead of the whole source would be smaller, and could not
 reconstruct the bytes.
 
-What defused this was the tabs item settling its own version of the question
-(TODO 4.1): N tabs is 2N copies, and the answer there is **no budget, no
+What defused this was the tabbed view settling its own version of the question:
+N tabs is 2N copies, and the answer it landed on was **no budget, no
 eviction, no per-tab cap** — a tab that loses the race degrades silently to
 "sniffs to nothing" on its next reload, which is cosmetic rather than data
 loss, and is not surfaced. Once that is the accepted behaviour, shrinking the

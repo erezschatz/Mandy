@@ -349,7 +349,7 @@ function focusItem(step, from) {
 // here would be a second copy to keep in step. It replaced a `#currentFile`
 // span, which said the same thing for the one document Mandy could hold: the
 // filename, and whether it was edited or the disk had moved on. A tab says both
-// per document now, the second as a dot (TODO 4.1).
+// per document now, the second as a dot.
 //
 // `role="tablist"` is a promise about the keyboard as well as a label for the
 // strip, and tabs.js keeps it: Left and Right move along the bar.
@@ -416,12 +416,9 @@ function buildToolbar(variant) {
     if (menu) menubar.appendChild(menu);
   }
 
-  // Menus first and hard left, the way a menu bar goes; the filename sits after
-  // them and its auto margin takes the slack, which is what keeps the aside
-  // pinned right at every width.
-  // Two rows in the app. The menus get the first to themselves; the second is
-  // the document row — the filename today, a tab bar once there is more than
-  // one document open (TODO 4.1) — with the theme toggle pinned to its right.
+  // Two rows in the app, and the menus get the first hard left to themselves,
+  // the way a menu bar goes. The second is the document row: the tab bar, with
+  // the theme toggle pinned to its right by the row's own space-between.
   toolbar.appendChild(menubar);
   const content = buildToolbarContent(variant);
   if (content) toolbar.appendChild(content);

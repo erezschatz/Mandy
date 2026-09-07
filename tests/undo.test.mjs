@@ -95,7 +95,7 @@ export default function run(check) {
         // The third answer, and only a tab switch is entitled to it: the
         // outgoing history is set aside rather than forgotten, which is a
         // crossing of the document boundary only because the boundary has
-        // become the tab (TODO 4.1).
+        // become the tab.
         /undoAdopt\(/.test(src),
     );
   }

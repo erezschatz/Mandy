@@ -372,7 +372,7 @@ function pushMarkdownStyleOptions() {
   turndownService.options.strongDelimiter = markdownStyle.strongDelimiter;
 }
 
-// The per-tab half of the markdown state above, for TODO 4.1: the sniffed
+// The per-tab half of the markdown state above, for the tabbed view: the sniffed
 // conventions, the block index and the reference definitions, all three derived
 // from the one string a document arrived as and so rebuilt together by
 // adoptMarkdownStyle. They move together for the same reason, and the Turndown
@@ -799,7 +799,7 @@ function resetDocument() {
 // the "clear" handler below for why the two split (CHANGELOG.md, "New and
 // Clear are two different weights now").
 onToolbarAction("new", async () => {
-  // In the app, New makes a tab (TODO 4.1). Nothing is discarded, so nothing is
+  // In the app, New makes a tab. Nothing is discarded, so nothing is
   // asked: the document that was open is still open, one tab to the left. That
   // is the whole of New here, and the dialogs below belong to the other world.
   //
@@ -1288,7 +1288,7 @@ onToolbarAction("paste-plain", async () => {
 let saveTimer;
 
 // Write the document now rather than when the debounce runs out. A tab switch
-// has to call this before parking the outgoing document (TODO 4.1): the timer
+// has to call this before parking the outgoing document: the timer
 // resolves documentKey("content") when it fires, so a switch inside its one
 // second would write the *incoming* tab's content -- correctly, under the
 // incoming tab's key -- and the outgoing tab's last edits would simply never be
@@ -1410,7 +1410,7 @@ window.addEventListener("beforeunload", (e) => {
   // does not ship and which has no file to be dirty against anyway.
   //
   // The question is whether anything would be lost, not whether the document on
-  // screen would be, so a background tab's unsaved edits count too (TODO 4.1).
+  // screen would be, so a background tab's unsaved edits count too.
   // Their content is already written — a switch flushes the outgoing tab under
   // its own key before parking it — but the browser closing takes the warning
   // with it either way, and a window shut over an unsaved background document

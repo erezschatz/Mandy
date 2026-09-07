@@ -916,7 +916,7 @@
       /* The toolbar's second row: which documents are open, and the control
          that is not about a document at all. It was a row of its own while it
          held nothing but the filename precisely so that this could arrive
-         without moving anything else (TODO 4.1). */
+         without moving anything else. */
       .toolbar-content {
         display: flex;
         align-items: center;

@@ -1,4 +1,4 @@
-// The tab list (TODO 4.1). A tab is a whole document: its content, the file it
+// The tab list. A tab is a whole document: its content, the file it
 // came from, the markdown conventions it was written in and its undo history.
 // None of that state lives here -- each module that already owns a piece of it
 // exposes its own park/adopt pair, the way undo.js always has. What this file
@@ -296,7 +296,7 @@ function closeTab(id) {
     return true;
   }
 
-  // Settled (TODO 4.1): never no document at all. app.js, undo.js, file-api.js,
+  // Settled: never no document at all. app.js, undo.js, file-api.js,
   // format-bar.js and outline.js each grab `editor` once at load and assume a
   // document behind it, so a no-document state is a null case none of them has.
   // A fresh id rather than the one just closed, for the reason ids are never

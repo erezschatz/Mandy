@@ -197,10 +197,10 @@ documents. `cleanPosition` in `file-api.js` holds one to answer "has undo
 brought this back to the last save", and today's `nextId` counts from zero
 inside each bundle, so two documents both own an id 7 standing for different
 states. That is safe while there is one document and stops being safe the
-moment TODO 4.1 opens a second: a dirty document reports clean, and the
+moment the tabbed view opened a second: a dirty document reports clean, and the
 unsaved-work guard and the `beforeunload` warning go down together. The
 replacement counter has to be either document-scoped and parked with the bundle
-or globally unique — a choice, not an accident. TODO 4.1 carries the same
+or globally unique — a choice, not an accident. The tabbed view carries the same
 requirement against the current core, so whichever lands first pays for it once.
 
 ## The input layer
@@ -302,7 +302,7 @@ the editing core, not the application around it.
 autosave key changes from HTML to the model's serialised form — which is to say
 markdown plus the per-block `source`, so `localStorage["markdownSource"]` stops
 being a second copy: the model *is* the source. That is the tabs item's "2N
-copies" question (TODO 4.1) answered by construction.
+copies" question the tabbed view raised answered by construction.
 
 ## Estimate
 

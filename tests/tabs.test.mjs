@@ -1,4 +1,4 @@
-// The per-tab state boundaries (TODO 4.1). A tab is a whole document, so every
+// The per-tab state boundaries. A tab is a whole document, so every
 // module that owns part of one exposes its own park/adopt pair and a swap moves
 // all of them at once -- the shape undo.js already had.
 //
@@ -922,7 +922,7 @@ export default async function run(check) {
       [...app.store.keys()].every((k) => !k.startsWith("mandy-tab-1-")));
   }
 
-  // Settled (TODO 4.1): never no document at all. Five modules grab `editor`
+  // Settled: never no document at all. Five modules grab `editor`
   // once at load and assume a document behind it, so a no-document state is a
   // null case none of them has.
   {

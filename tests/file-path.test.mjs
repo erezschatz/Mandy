@@ -246,7 +246,7 @@ function boot({
       await settle();
     },
     // The sentence the bar draws, built from the three fields file-api.js hands
-    // it. Stage 5 of TODO 4.1 moved the drawing out of this module — the
+    // it. The tab bar moved the drawing out of this module — the
     // filename label became a tab, and `(edited, disk changed)` became a dot
     // plus a title — so this suite drives the *state* and the tabs suite drives
     // what is made of it. The wording is rebuilt here rather than imported

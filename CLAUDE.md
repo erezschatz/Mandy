@@ -154,7 +154,7 @@ browser's own action. The answer is per browser *and* per platform, because
 macOS switches browser tabs on Cmd+1–9 and leaves Ctrl+1–9 free while Windows
 and Linux do not. Measured so far: Chrome 148 on macOS delivers all of them and
 reports each as cancelable. Nothing else — no Windows, no Linux, no Firefox, no
-Safari — so the shipped bindings are provisional, and TODO 4.1 says so. It needs
+Safari — so the shipped bindings are provisional, and TODO 4.2 says so. It needs
 no server and no app either.
 
 ## Making a change
@@ -173,7 +173,7 @@ no server and no app either.
   started* — updated as part of the landing rather than afterwards. **Do not
   start the work before the plan is written.** The failure this prevents is a
   CHANGELOG entry announcing "stage two" of a sequence that exists nowhere a
-  reader can find it, which is what TODO 4.1's first two stages shipped as.
+  reader can find it, which is what the tabbed view's first two stages shipped as.
 - **Do not run tests for a change that touches no code.** Nothing in `tests/`
   loads a CHANGELOG entry, a comment, a doc or a `docs/` file, so `npm test`
   proves nothing about one — skip it. When code does change, run only the suite

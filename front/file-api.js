@@ -44,7 +44,7 @@ function fileDescriptor() {
 // setDiskChanged, setCurrentFile and adopt ends here, so the bar redraws from
 // the one place the text label used to. That label was a `#currentFile` span
 // saying `plan.md (edited, disk changed)` for the one document Mandy could
-// hold; the same sentence is now a dot plus a title on the tab (TODO 4.1), and
+// hold; the same sentence is now a dot plus a title on the tab, and
 // drawing it belongs to whoever owns the list.
 //
 // Nothing to draw into without tabs.js, which is a configuration only the test
@@ -154,7 +154,7 @@ function initUndoBaseline() {
 }
 
 // The per-tab half of this module's state, moved whole rather than field by
-// field. A tab is a whole document (TODO 4.1), so the file it names, both
+// field. A tab is a whole document, so the file it names, both
 // staleness flags, the savepoint and the folder its dialog last browsed all
 // belong to the tab rather than to the session.
 //
@@ -240,7 +240,7 @@ editor.addEventListener("input", () => {
 // and the blank check correctly does nothing. Clear does not get this hook —
 // it stays open on the same file, so there is no association to drop.
 onToolbarAction("new", () => {
-  // Nothing to drop once New makes a tab (TODO 4.1): tabs.js has already parked
+  // Nothing to drop once New makes a tab: tabs.js has already parked
   // the outgoing document's file state and adopted a blank one, so the document
   // this would clear is a fresh tab that never had a file. Without this it
   // would still be a no-op — the fields are already null — but it would write
@@ -281,7 +281,7 @@ function fileDialogIsOpen() {
 }
 
 // True while the document must not be swapped underneath an operation that has
-// already decided which file it is acting on (TODO 4.1). Every such operation
+// already decided which file it is acting on. Every such operation
 // has an await between naming a path and reading or writing the bytes -- the
 // worst is saveFile, which takes a path, then awaits confirmOverwrite and
 // possibly the whole save browser, and only then reads editor.innerHTML. Switch

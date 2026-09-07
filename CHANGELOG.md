@@ -2027,7 +2027,7 @@ changing, what the stages are, what each entails — and each stage's standing i
 updated as part of the landing rather than afterwards. Work does not start
 before the plan is written. No code.
 
-## 2026-09-07 — The switch lock, and a flushable autosave (TODO 4.1, stage 3)
+## 2026-09-07 — `b9b7d4e` — The switch lock, and a flushable autosave (TODO 4.1, stage 3)
 
 Stage 3 of the tabbed view: the four late-read hazards closed before stage 4
 makes a second tab possible, so they are never reachable rather than fixed after
@@ -2090,7 +2090,7 @@ driving an operation that *returns* early rather than one that throws, so it
 proved nothing about the `finally`. It now drives a renderer that throws, and
 the check is renamed to say which of the two it covers.
 
-## 2026-09-07 — Two documents, and the swap between them (TODO 4.1, stage 4)
+## 2026-09-07 — `801db70` — Two documents, and the swap between them (TODO 4.1, stage 4)
 
 Stage 4 of the tabbed view: the list operations, and the state hydration behind
 them. Two documents can now be open at once and switched between — from the
@@ -2189,7 +2189,7 @@ id, leaving its storage behind, dropping the background-dirty fallback, dropping
 the `beforeunload` clause, and putting the undo dispatch back before the
 position. All nine were caught.
 
-## 2026-09-07 — The tab bar (TODO 4.1, stage 5)
+## 2026-09-07 — `1f0bffd` — The tab bar (TODO 4.1, stage 5)
 
 The stage where the previous four become reachable. `.toolbar-content` — the
 row that has held nothing but a filename since the menu bar split the toolbar
@@ -2290,3 +2290,53 @@ Driven by hand in Chrome as well: New made a second tab, the bar switched by
 click and by Ctrl+2, an edit raised the dot, closing the edited tab asked the
 three-way question and Escape backed out of it, and closing the clean one went
 straight out — with the session's own document put back afterwards.
+
+## 2026-09-07 — Retire the tabbed-view item, and keep the one thread that outlives it
+
+All five stages have landed and been driven in a browser, so TODO 4.1 leaves
+[docs/TODO.md](docs/TODO.md) the way a finished item is supposed to: what was
+done and why is in the six entries above this one, which is the better place to
+read it, and a list of open work reads better without a 380-line closed item in
+the middle of it.
+
+**What survives it is not a tabbed-view thread at all.** The bar's keyboard
+bindings — Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+1–9 — are measured in exactly one
+browser on one platform, and the platform is the one that cannot settle the
+question: macOS switches browser tabs on Cmd+1–9, leaving Ctrl+1–9 free, while
+Windows and Linux use Ctrl+1–9 for precisely what we bind. So that becomes
+**TODO 4.2**, a measurement item pointing at
+[tests/tab-shortcut-check.html](tests/tab-shortcut-check.html), which says what
+is known (Chrome 148 on macOS delivers all of them and reports each cancelable),
+what is not (every other platform, Firefox and Safari anywhere, and whether the
+browser's own strip actually stays put, which no script can see), and what the
+fallback would be if a binding turns out to be unavailable. Keeping a five-stage
+feature alive to hold one measurement is what makes a TODO file unreadable.
+
+**Numbered 4.2 rather than reusing 4.1.** Reuse is this file's documented norm
+and normally costs nothing, but a dozen dated entries above say "TODO 4.1"
+meaning the tabbed view, and minting a different 4.1 in the same week would make
+every one of them ambiguous to whoever reads them next.
+
+**Twenty-four references chased**, which is the part of retiring an item that
+[CLAUDE.md](CLAUDE.md) warns about: numbers get reused, so a comment pointing at
+one becomes a comment pointing at somebody else's work. Every live `TODO 4.1` in
+`front/`, `tests/`, [docs/REWRITE.md](docs/REWRITE.md),
+[docs/ROADMAP.md](docs/ROADMAP.md) and CLAUDE.md now names the thing instead of
+the number — "the tabbed view", "New makes a tab" — which is what those comments
+were actually about and cannot go stale. The dated CHANGELOG entries keep
+theirs: they are a record of what was true when they were written.
+
+**One stale comment fixed while chasing them.** `buildToolbar` in
+[toolbar.js](front/toolbar.js) still described the second row as "the filename
+today, a tab bar once there is more than one document open", sitting directly
+above the code that builds the tab bar — and it overlapped an older sentence
+about a filename's auto margin holding the aside right, which stopped being true
+when the row gained `space-between`. Both are now one comment that describes
+what is there.
+
+**Three headers backfilled** with the hashes their commits turned out to have —
+stage 3's had been missed as well as stages 4 and 5.
+
+No behaviour change, and the suite is untouched at 975 green — nothing in
+`tests/` reads a comment, but the source-scanning suites do read those files, so
+it was worth the run.

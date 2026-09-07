@@ -147,7 +147,7 @@ export default async function run(check) {
       !walk(toolbar).some((n) => n.id === "githubBtn") &&
         !readFront("toolbar.js").includes("github"));
     // The app gets two rows: the menus, then the document row. That second row
-    // is the tab bar (TODO 4.1), which is why it was a row of its own while it
+    // is the tab bar, which is why it was a row of its own while it
     // still held nothing but a filename.
     //
     // An exported document has neither a file on disk nor a theme toggle, so
