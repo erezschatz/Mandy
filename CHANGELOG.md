@@ -1813,7 +1813,7 @@ after 1.0" section for the deprioritised batch. **[docs/MARKDOWN.md](docs/MARKDO
 per-construct "After 3.1" column and its Decisions section now carry the
 settled calls and the three open threads. No code.
 
-## 2026-09-07 — Tabs are unblocked, and the four ways they lose a file (TODO 4.1)
+## 2026-09-07 — `8dbbc95` — Tabs are unblocked, and the four ways they lose a file (TODO 4.1)
 
 **TODO 4.1 loses its *(needs 3.1)* marker and gains no replacement.** It went on
 in the 2026-09-06 pass that re-marked the whole file for the rewrite, and it did
