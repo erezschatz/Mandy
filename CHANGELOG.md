@@ -1880,3 +1880,56 @@ forward**, because a new history with new ids does not produce it by accident:
 the replacement counter has to be document-scoped and parked with the bundle, or
 globally unique. Written there rather than under "What is accepted", which is for
 costs taken on rather than requirements to meet. No code.
+
+## 2026-09-07 — Per-tab state boundaries: filePark/fileAdopt and markdownStylePark/markdownStyleAdopt (TODO 4.1)
+
+First landing of the tabbed view, and deliberately an inert one: two new pairs
+of functions, nothing calling them, no second document possible yet. A tab is a
+whole document, so the state one is made of has to be movable as a unit, and
+`undo.js` already showed the shape — `undoPark()` hands the outgoing history
+back and `undoAdopt()` installs the incoming one, with persistence left to
+whoever owns the tab. The alternative was one new module reaching into four
+others' globals, which the shared scope permits and which would put file state's
+invariants somewhere that does not own them.
+
+**`filePark()` / `fileAdopt(bundle)` in [file-api.js](front/file-api.js)** move
+`currentFilePath`, `isDirty`, `fileMtime`, `diskChanged`, `cleanPosition` and
+`dialogDir`. `fileAdopt(null)` is a document with nothing behind it on disk —
+what a fresh tab starts as and what closing the last one will leave — and it
+resets the dialog directory with the rest, so a switch cannot leave the incoming
+tab's Open starting from the outgoing tab's folder. Seeding a new tab's
+directory from the tab that spawned it is a different question and belongs to
+whoever creates tabs.
+
+**They have to be called in the same swap as undo.js's pair**, and the comment
+says so, because `cleanPosition` is an id minted inside one history bundle:
+`nextId` counts from zero per bundle, so tab A's id 7 and tab B's id 7 name
+different states. A `cleanPosition` adopted without the history it came from
+reports a dirty document clean, which switches off the unsaved-work guard on
+Open and Reload *and* the `beforeunload` warning together — and only when two
+tabs' edit counts happen to line up, so no manual pass finds it. The suite's
+two fixtures share a `cleanPosition` of 7 for exactly that reason.
+
+**`markdownStylePark()` / `markdownStyleAdopt(bundle)` in
+[app.js](front/app.js)** move the three things `adoptMarkdownStyle` builds
+together — the sniffed style, the block index and the reference definitions —
+and the four Turndown options with them. That last part is the one with teeth:
+one shared `TurndownService` serialises every document, so a swap that carried
+the new tab's block index but left the outgoing document's bullet marker on the
+service would write `*` into a file written with `+`, in a block nobody had
+edited. The four option assignments moved into `pushMarkdownStyleOptions()` so
+the two callers cannot drift apart.
+
+**[tests/tabs.test.mjs](tests/tabs.test.mjs) is new**, 20 checks: park returns
+what it found and leaves the module blank, adopt restores every field, adopting
+nothing is a blank document rather than a half-cleared one, a document parked
+while another was adopted comes back whole, the toolbar label follows the swap
+(it is the only thing on screen naming the file Ctrl+S writes to, and it lives
+in `toolbar.js` rather than in the module holding the path), Turndown's options
+follow the style, and **neither pair writes to storage** — which key a tab is
+persisted under belongs to the tab list, not to the modules the state lives in.
+Registered in `tests/run.mjs`; 831 checks green.
+
+CLAUDE.md is not updated yet. It describes the running code, and nothing calls
+either pair until the tab list exists; the architecture section is rewritten
+when tabs are real rather than describing two functions with no callers.

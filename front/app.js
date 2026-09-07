@@ -335,10 +335,48 @@ function adoptMarkdownStyle(markdown, remember = true) {
       console.warn("[Style] Could not persist the source document:", error);
     }
   }
+  pushMarkdownStyleOptions();
+}
+
+// The subset of the sniffed style that Turndown itself reads. One shared
+// service instance serialises every document, so its options are per-document
+// state like the rest of this cluster -- pushed here rather than at each of the
+// two call sites, which must not be able to drift apart.
+function pushMarkdownStyleOptions() {
   turndownService.options.hr = markdownStyle.hr;
   turndownService.options.bulletListMarker = markdownStyle.bulletListMarker;
   turndownService.options.emDelimiter = markdownStyle.emDelimiter;
   turndownService.options.strongDelimiter = markdownStyle.strongDelimiter;
+}
+
+// The per-tab half of the markdown state above, for TODO 4.1: the sniffed
+// conventions, the block index and the reference definitions, all three derived
+// from the one string a document arrived as and so rebuilt together by
+// adoptMarkdownStyle. They move together for the same reason, and the Turndown
+// options go with them -- a switch that carried the new tab's block index but
+// left the outgoing document's bullet marker on the shared service would write
+// the wrong marker into the file the next save touched.
+//
+// Storage is the caller's business, as in undoPark()/undoAdopt() and
+// filePark()/fileAdopt(): these move what is in memory and nothing else.
+function markdownStylePark() {
+  const parked = {
+    style: markdownStyle,
+    source: markdownSource,
+    references: referenceDefinitions,
+  };
+  markdownStyleAdopt(null);
+  return parked;
+}
+
+// `markdownStyleAdopt(null)` is Turndown's own defaults with nothing indexed:
+// a document that has never had markdown read into it, which is exactly what a
+// fresh tab is until a file is opened or markdown is pasted into it.
+function markdownStyleAdopt(bundle) {
+  markdownStyle = bundle ? bundle.style : Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
+  markdownSource = bundle ? bundle.source : new Map();
+  referenceDefinitions = bundle ? bundle.references : new Map();
+  pushMarkdownStyleOptions();
 }
 
 // Turndown rule to convert mermaid wrappers back to markdown code blocks

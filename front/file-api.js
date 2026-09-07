@@ -141,6 +141,52 @@ function initUndoBaseline() {
   if (!isDirty) cleanPosition = undoPosition();
 }
 
+// The per-tab half of this module's state, moved whole rather than field by
+// field. A tab is a whole document (TODO 4.1), so the file it names, both
+// staleness flags, the savepoint and the folder its dialog last browsed all
+// belong to the tab rather than to the session.
+//
+// Neither function touches localStorage. What gets persisted and under which
+// key is the caller's business, exactly as undoPark()/undoAdopt() leave
+// persistence alone -- these move what is in memory and nothing else.
+//
+// **They have to be called in the same swap as undo.js's pair**, because
+// cleanPosition is an id minted inside one history bundle: nextId counts from
+// zero per bundle, so tab A's id 7 and tab B's id 7 name different states.
+// Adopt a cleanPosition without the history it was minted in and a dirty
+// document reports clean, which switches off the unsaved-work guard on Open and
+// Reload *and* the beforeunload warning at the same time -- and it only
+// misfires when two tabs' edit counts happen to line up, so no manual pass
+// finds it.
+function filePark() {
+  const parked = {
+    currentFilePath,
+    isDirty,
+    fileMtime,
+    diskChanged,
+    cleanPosition,
+    dialogDir,
+  };
+  fileAdopt(null);
+  return parked;
+}
+
+// `fileAdopt(null)` is a document with nothing behind it on disk: what a fresh
+// tab starts as, and what closing the last one leaves. The dialog directory
+// resets to null with the rest, so the tab that lands has its own answer to
+// "where does Open start" rather than inheriting whichever folder the outgoing
+// tab was browsing. Seeding a new tab's directory from the tab that spawned it
+// is a different question and belongs to whoever creates the tab.
+function fileAdopt(bundle) {
+  currentFilePath = bundle ? bundle.currentFilePath : null;
+  isDirty = bundle ? bundle.isDirty : false;
+  fileMtime = bundle ? bundle.fileMtime : null;
+  diskChanged = bundle ? bundle.diskChanged : false;
+  cleanPosition = bundle ? bundle.cleanPosition : null;
+  dialogDir = bundle ? bundle.dialogDir : null;
+  renderCurrentFile();
+}
+
 // Typing, formatting and paste all land here: execCommand fires input too, so
 // the format bar marks the document edited without needing its own hook.
 // Assigning editor.innerHTML does not, which is why opening a file and clearing
