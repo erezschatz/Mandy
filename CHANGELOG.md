@@ -1881,7 +1881,7 @@ the replacement counter has to be document-scoped and parked with the bundle, or
 globally unique. Written there rather than under "What is accepted", which is for
 costs taken on rather than requirements to meet. No code.
 
-## 2026-09-07 — Per-tab state boundaries: filePark/fileAdopt and markdownStylePark/markdownStyleAdopt (TODO 4.1)
+## 2026-09-07 — `7791121` — Per-tab state boundaries: filePark/fileAdopt and markdownStylePark/markdownStyleAdopt (TODO 4.1)
 
 First landing of the tabbed view, and deliberately an inert one: two new pairs
 of functions, nothing calling them, no second document possible yet. A tab is a
@@ -1934,7 +1934,7 @@ CLAUDE.md is not updated yet. It describes the running code, and nothing calls
 either pair until the tab list exists; the architecture section is rewritten
 when tabs are real rather than describing two functions with no callers.
 
-## 2026-09-07 — Per-tab storage, and the migration onto it (TODO 4.1)
+## 2026-09-07 — `b35b8da` — Per-tab storage, and the migration onto it (TODO 4.1)
 
 Stage two of the tabbed view. Still one document, still nothing on screen that
 was not there before — what changed is where the open document is persisted, and
@@ -1993,7 +1993,7 @@ where it has to sit, and why the migration is shaped the way it is. The two
 places naming `markdownContent`, `mandy-dirty` and `mandy-file-mtime` as literal
 keys now name the roles instead.
 
-## 2026-09-07 — TODO 4.1 gets its stages, and a rule about writing them down first
+## 2026-09-07 — `bbd0aa2` — TODO 4.1 gets its stages, and a rule about writing them down first
 
 The two tabs commits already landed said "first landing of the tabbed view" and
 "stage two of the tabbed view", referring to a sequence that existed only in the
