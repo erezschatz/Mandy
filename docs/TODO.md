@@ -455,9 +455,38 @@ category fidelity deliberately does not extend to.
         One document persisted under per-tab keys, reached through
         `documentKey(name)`; an existing session either migrates onto them or
         provably keeps every flat key it had.
-    3.  **The hazards** — *not started.* A switch is refused while a file
-        operation is in flight, and no `await` is left sitting between deciding
-        which document and reading its bytes.
+    3.  **The hazards** — *done, tested in the suite.* Nothing to verify by
+        hand yet: there is no switch to refuse until stage 4, so what landed is
+        the predicate and the two things that consult it. Three additions, no
+        behaviour change while there is one tab:
+
+        -   `fileOperationInFlight()` in `file-api.js`. A counter rather than a
+            boolean, because the operations nest — `saveCurrentOrPrompt` calls
+            `saveFileAs` calls `saveFile` — and true also while the file dialog
+            is open, since `showOpenDialog` returns as soon as the dialog is
+            rendered and the pick arrives later on a click. `openFile` needs
+            its own turn of the counter regardless: the entry click closes the
+            dialog *before* calling it, and does not await it.
+        -   `tabsSwitchAllowed()` in `tabs.js`, the single gate stage 4's
+            switch and stage 5's Ctrl+Tab both call. It is where the keyboard
+            gap is closed: `.notify-backdrop` and `.file-dialog` already stop a
+            mouse reaching a tab bar, but four `document`-level `keydown`
+            listeners fire straight through an open dialog.
+        -   `flushAutosave()` in `app.js`, so the 1s debounce can be forced.
+            Without it a switch inside that second drops the outgoing tab's
+            last edits, and autosave is the only thing carrying unsaved work
+            across a browser reload. `format-bar.js`'s own 100ms `saveSoon`
+            timer needs no equivalent: it resolves its key at fire time, so
+            after a flush it rewrites the incoming tab's content under the
+            incoming tab's key, which is redundant rather than wrong.
+
+        **The four late-read sites are deliberately not touched.** The settled
+        answer above is the lock, not per-site capture: one rule in one place
+        beats four, and capturing early would write the document as of the Save
+        click rather than as of the confirm. `checkDiskChanged` and
+        `checkServerAvailable` are excluded from the counter for the opposite
+        reason — they run on every window focus, so locking on them would make
+        switching fail at moments with no explanation attached.
     4.  **N tabs** — *not started.* Two documents open and switchable, driven
         from the suite. No bar yet.
     5.  **The bar** — *not started.* `.toolbar-content` becomes the tab bar:

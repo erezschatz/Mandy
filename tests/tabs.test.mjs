@@ -32,8 +32,14 @@ const DIALOG_IDS = [
 // existed left them. `refuse` and `swallow` are the two ways a localStorage
 // write fails: throwing, and the quieter one where setItem reports success and
 // stores nothing.
+// `hold` is a deferred the file reads await, so a test can stand inside an
+// operation's own await window and ask whether a switch is allowed there.
+// `fakeTimers` replaces setTimeout with a queue the test drains itself, which is
+// the only way to see that flushing the autosave cancels the debounce rather
+// than racing it.
 function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
-  quiet = false } = {}) {
+  quiet = false, hold = null, disk = new Map(), fakeTimers = false,
+  failRender = false } = {}) {
   const store = new Map();
   for (const [key, value] of Object.entries(seed)) store.set(key, value);
   // Every localStorage write, in order. Park and adopt must add none of their
@@ -41,6 +47,9 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   // tab list, not to the modules the state lives in.
   const writes = [];
   const listeners = {};
+
+  const timers = new Map();
+  let timerId = 0;
 
   const toolbar = makeEl();
   toolbar.className = "toolbar";
@@ -99,13 +108,42 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
         getSelection: () => ({ removeAllRanges() {}, addRange() {} }),
       },
       navigator: { clipboard: {} },
-      renderMermaidDiagrams: async () => {},
+      // openFile awaits both renderers outside its own try, so a renderer that
+      // throws throws out of the whole operation -- the path the counter's
+      // `finally` exists for.
+      renderMermaidDiagrams: async () => {
+        if (failRender) throw new Error("mermaid blew up");
+      },
       renderLatex: async () => {},
-      fetch: async () => ({
-        ok: true,
-        json: async () => ({ home: HOME }),
-        text: async () => "",
-      }),
+      fetch: async (url, opts) => {
+        if (opts && opts.method === "POST") {
+          const body = JSON.parse(opts.body);
+          disk.set(body.path, body.content);
+          return {
+            ok: true,
+            json: async () => ({ path: body.path, modified: "2026-09-07T12:00:00.000Z" }),
+          };
+        }
+        if (url.startsWith("/api/file")) {
+          if (hold) await hold.promise;
+          const filePath = decodeURIComponent(url.match(/path=([^&]*)/)[1]);
+          if (!disk.has(filePath)) {
+            return { ok: false, json: async () => ({ error: "File not found" }) };
+          }
+          return {
+            ok: true,
+            json: async () => ({
+              path: filePath,
+              content: disk.get(filePath),
+              modified: "2026-09-07T10:00:00.000Z",
+            }),
+          };
+        }
+        if (url.startsWith("/api/browse")) {
+          return { ok: true, json: async () => ({ path: HOME, parent: null, entries: [] }) };
+        }
+        return { ok: true, json: async () => ({ home: HOME }), text: async () => "" };
+      },
       TurndownService: class {
         options = {};
         addRule() {}
@@ -121,8 +159,14 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       // into the run output, where an expected warning reads exactly like a
       // suite going wrong.
       console: quiet ? { ...console, warn() {}, error() {} } : console,
-      setTimeout,
-      clearTimeout,
+      setTimeout: fakeTimers
+        ? (fn) => {
+          timerId += 1;
+          timers.set(timerId, fn);
+          return timerId;
+        }
+        : setTimeout,
+      clearTimeout: fakeTimers ? (id) => timers.delete(id) : clearTimeout,
       URL: globalThis.URL,
       Blob: class {},
       Date,
@@ -139,14 +183,29 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       "   references: referenceDefinitions })," +
       " turndownOptions: () => turndownService.options," +
       " label: () => currentFileLabel.textContent," +
-      " documentKey" +
-      (withTabs ? ", tabs: { list: openTabs, active: activeTabId }" : "") +
+      " documentKey, flushAutosave, editor," +
+      " openFile, reloadFile, saveFile, saveFileAs, saveCurrentOrPrompt," +
+      " showOpenDialog, closeDialog, checkDiskChanged," +
+      " fileOperationInFlight, operationCount: () => fileOperations," +
+      (withTabs
+        ? " tabs: { list: openTabs, active: activeTabId }, tabsSwitchAllowed"
+        : "") +
       " }; return out;",
   );
 
-  // `store` and `writes` belong to this harness rather than to the loaded
-  // scope, so they are merged in here instead of reached for from the tail.
-  return { ...api, store, writes };
+  // `store`, `writes` and the fake timer queue belong to this harness rather
+  // than to the loaded scope, so they are merged in here instead of reached for
+  // from the tail.
+  return {
+    ...api,
+    store,
+    writes,
+    disk,
+    pendingTimers: () => timers.size,
+    fireInput: () => {
+      for (const fn of api.editor.listeners.input || []) fn({});
+    },
+  };
 }
 
 const TAB_A = {
@@ -409,5 +468,136 @@ export default async function run(check) {
       app.documentKey("content") === "markdownContent");
     check(`${label} still shows the document's own file`,
       app.label() === "plan.md (edited)");
+  }
+
+  // --- stage 3: the switch lock, and flushing the autosave ----------------
+
+  // Every file operation has an await between naming a path and touching the
+  // bytes. With one document that window is harmless; with two, a switch inside
+  // it writes one document over another document's file. The settled answer is
+  // to refuse the switch rather than have each site capture its own copy, so
+  // what is under test is the predicate the switch will consult -- there is no
+  // switch yet to drive through it.
+
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((r) => { resolve = r; });
+    return { promise, resolve };
+  };
+
+  {
+    const app = boot({ withTabs: true });
+    check("nothing is in flight at rest", app.fileOperationInFlight() === false);
+    check("a switch is allowed at rest", app.tabsSwitchAllowed() === true);
+  }
+
+  {
+    const hold = deferred();
+    const app = boot({
+      withTabs: true, hold, disk: new Map([["/home/x/f.md", "hi\n"]]),
+    });
+    const done = app.openFile("/home/x/f.md");
+
+    check("an open still awaiting its read refuses a switch",
+      app.tabsSwitchAllowed() === false);
+    hold.resolve();
+    await done;
+    check("the open gives its turn back when it finishes",
+      app.fileOperationInFlight() === false);
+  }
+
+  // The counter has to count rather than latch: reloadFile calls openFile, and a
+  // boolean would be cleared by the inner one's exit while the outer was still
+  // running -- which is exactly the window the guard exists for.
+  {
+    const hold = deferred();
+    const app = boot({
+      withTabs: true, hold, disk: new Map([["/home/x/f.md", "hi\n"]]),
+    });
+    app.setFileState({ ...BLANK, currentFilePath: "/home/x/f.md" });
+    const done = app.reloadFile();
+    await Promise.resolve();
+
+    check("a nested operation takes its own turn", app.operationCount() === 2);
+    hold.resolve();
+    await done;
+    check("both turns come back", app.operationCount() === 0);
+  }
+
+  {
+    const app = boot({ withTabs: true });
+    // Nothing on disk, so the read fails and the operation returns early.
+    await app.openFile("/home/x/gone.md");
+    check("an operation that returns early gives its turn back",
+      app.fileOperationInFlight() === false);
+  }
+
+  // The case the counter's `finally` is actually for. openFile awaits the two
+  // renderers outside its own try/catch, so one of them throwing throws out of
+  // the operation -- and a turn left behind would refuse every switch for the
+  // rest of the session, with nothing on screen saying why.
+  {
+    const app = boot({
+      withTabs: true, failRender: true, disk: new Map([["/home/x/f.md", "hi\n"]]),
+    });
+    let threw = false;
+    try {
+      await app.openFile("/home/x/f.md");
+    } catch {
+      threw = true;
+    }
+    check("an operation that throws still throws", threw);
+    check("an operation that throws gives its turn back",
+      app.operationCount() === 0 && app.tabsSwitchAllowed() === true);
+  }
+
+  // The dialog is in flight in its own right. showOpenDialog returns as soon as
+  // the dialog is rendered and the pick arrives later on a click, so the counter
+  // alone would leave the entire picking phase unguarded.
+  {
+    const app = boot({ withTabs: true });
+    await app.showOpenDialog();
+    check("an open file dialog refuses a switch with no operation running",
+      app.operationCount() === 0 && app.tabsSwitchAllowed() === false);
+    app.closeDialog();
+    check("closing the dialog allows switching again", app.tabsSwitchAllowed() === true);
+  }
+
+  // The opposite requirement: these run on every window focus and every
+  // visibilitychange, so locking on them would refuse switches at moments with
+  // nothing on screen to explain why.
+  {
+    const app = boot({ withTabs: true, disk: new Map([["/home/x/f.md", "hi\n"]]) });
+    app.setFileState({ ...BLANK, currentFilePath: "/home/x/f.md", fileMtime: "old" });
+    const done = app.checkDiskChanged();
+    check("a background disk check does not refuse a switch",
+      app.tabsSwitchAllowed() === true);
+    await done;
+  }
+
+  // Autosave is not a file operation and the lock does not cover it. A switch
+  // inside the 1s debounce would leave the outgoing tab's last edits written
+  // nowhere -- the timer resolves its key when it fires, so it would write the
+  // incoming tab's content under the incoming tab's key and be none the wiser.
+  {
+    const app = boot({ withTabs: true, fakeTimers: true });
+    app.editor.innerHTML = "<p>one</p>";
+    app.fireInput();
+    check("an edit schedules a debounced write", app.pendingTimers() === 1);
+
+    app.editor.innerHTML = "<p>two</p>";
+    app.flushAutosave();
+    check("flushing writes the document as it stands now",
+      app.store.get("mandy-tab-1-content") === "<p>two</p>");
+    check("flushing cancels the debounce rather than racing it",
+      app.pendingTimers() === 0);
+  }
+
+  {
+    const app = boot({ withTabs: true, fakeTimers: true });
+    app.editor.innerHTML = "<p>only</p>";
+    app.flushAutosave();
+    check("flushing with nothing pending still writes",
+      app.store.get("mandy-tab-1-content") === "<p>only</p>");
   }
 }

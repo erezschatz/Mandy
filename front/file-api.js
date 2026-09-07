@@ -222,6 +222,57 @@ function joinPath(dir, name) {
 
 // ── Dialog ───────────────────────────────────────────────────────────────────
 
+// How many file operations are running. A counter rather than a flag because
+// they nest: saveCurrentOrPrompt calls saveFileAs calls saveFile, and each
+// takes its own turn.
+let fileOperations = 0;
+
+// The dialog's own visibility is the single source of truth for whether it is
+// up -- closeDialog is the one close point and the two show functions are the
+// only open ones -- so this reads it rather than keeping a second flag that
+// could disagree with what is on screen.
+function fileDialogIsOpen() {
+  return fileDialog.style.display === "flex";
+}
+
+// True while the document must not be swapped underneath an operation that has
+// already decided which file it is acting on (TODO 4.1). Every such operation
+// has an await between naming a path and reading or writing the bytes -- the
+// worst is saveFile, which takes a path, then awaits confirmOverwrite and
+// possibly the whole save browser, and only then reads editor.innerHTML. Switch
+// tabs in that window and one document's content goes over another document's
+// file, with the toast reporting success.
+//
+// The dialog counts as in flight in its own right: showOpenDialog returns as
+// soon as the dialog is rendered, and the pick arrives later on a click, so the
+// counter alone would leave the whole picking phase unguarded.
+//
+// checkDiskChanged and checkServerAvailable are deliberately outside this. They
+// run on every window focus and every visibilitychange, and locking on them
+// would refuse switches at moments with nothing on screen to explain why.
+function fileOperationInFlight() {
+  return fileOperations > 0 || fileDialogIsOpen();
+}
+
+// Wraps one operation in a turn of the counter. `finally` rather than a trailing
+// decrement because every one of these can throw or return early, and a counter
+// that leaked a turn would refuse every switch for the rest of the session.
+//
+// The five operations each keep their body in a `…Body` function and expose a
+// two-line wrapper, rather than taking the turn inline. That way the guard is
+// visible at the top of each one and the bodies are untouched -- an inline
+// try/finally would re-indent all five and bury the guard inside the thing it
+// is guarding. Callers only ever see the wrapper, so a nested call takes its own
+// turn, which is exactly why this counts rather than latches.
+async function duringFileOperation(run) {
+  fileOperations += 1;
+  try {
+    return await run();
+  } finally {
+    fileOperations -= 1;
+  }
+}
+
 function closeDialog() {
   fileDialog.style.display = "none";
   if (saveResolver) {
@@ -414,6 +465,10 @@ async function confirmDiscard({ title, detail = "", discardLabel = "Discard" }) 
 // ── Open / Save ──────────────────────────────────────────────────────────────
 
 async function openFile(filePath) {
+  return duringFileOperation(() => openFileBody(filePath));
+}
+
+async function openFileBody(filePath) {
   let data;
   try {
     const res = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`);
@@ -443,6 +498,10 @@ async function openFile(filePath) {
 // point of it, since this is also the only way to throw local changes away. So
 // it asks when there are edits to lose.
 async function reloadFile() {
+  return duringFileOperation(() => reloadFileBody());
+}
+
+async function reloadFileBody() {
   if (!currentFilePath) {
     notify("No file is open to reload.", { severity: "info" });
     return;
@@ -532,6 +591,10 @@ async function confirmOverwrite(filePath) {
 }
 
 async function saveFile(filePath) {
+  return duringFileOperation(() => saveFileBody(filePath));
+}
+
+async function saveFileBody(filePath) {
   const overwrite = await confirmOverwrite(filePath);
   if (overwrite === "cancel") return false;
   if (overwrite === "save-as") return saveFileAs();
@@ -568,6 +631,10 @@ async function saveFile(filePath) {
 // needs: a Save the user backed out of must not clear the way for the action
 // that was waiting on it.
 async function saveCurrentOrPrompt() {
+  return duringFileOperation(() => saveCurrentOrPromptBody());
+}
+
+async function saveCurrentOrPromptBody() {
   const target = currentFilePath || (await showSaveDialog());
   if (!target) return false;
   return saveFile(target);
@@ -576,6 +643,10 @@ async function saveCurrentOrPrompt() {
 // Not named saveAs: FileSaver.js claims that global, and whichever loaded last
 // would silently clobber the other.
 async function saveFileAs() {
+  return duringFileOperation(() => saveFileAsBody());
+}
+
+async function saveFileAsBody() {
   const target = await showSaveDialog();
   if (!target) return false;
   return saveFile(target);

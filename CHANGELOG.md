@@ -2026,3 +2026,66 @@ Anything more than trivial gets written down before it is built — what is
 changing, what the stages are, what each entails — and each stage's standing is
 updated as part of the landing rather than afterwards. Work does not start
 before the plan is written. No code.
+
+## 2026-09-07 — The switch lock, and a flushable autosave (TODO 4.1, stage 3)
+
+Stage 3 of the tabbed view: the four late-read hazards closed before stage 4
+makes a second tab possible, so they are never reachable rather than fixed after
+one could already have written the wrong file. No behaviour change — there is
+still one tab, and nothing yet calls the gate that landed.
+
+**`fileOperationInFlight()` in [file-api.js](front/file-api.js)** answers
+whether the document may be swapped right now. Every file operation has an await
+between naming a path and touching the bytes, and the worst is `saveFile`: it
+takes a path, awaits `confirmOverwrite` and possibly the entire save browser,
+and only then reads `editor.innerHTML`. A counter rather than a flag, because
+the operations nest — `saveCurrentOrPrompt` calls `saveFileAs` calls `saveFile`
+— and a boolean would be cleared by the innermost one's exit while the outer was
+still running, which is exactly the window this exists for. It is also true
+while the file dialog is open in its own right: `showOpenDialog` returns as soon
+as the dialog is rendered and the pick arrives later on a click, so the counter
+alone would leave the whole picking phase unguarded. `openFile` still takes its
+own turn regardless, because the entry click closes the dialog *before* calling
+it and does not await it.
+
+`checkDiskChanged` and `checkServerAvailable` are deliberately outside it. They
+run on every window focus and every `visibilitychange`, so locking on them would
+refuse switches at moments with nothing on screen to explain why.
+
+The five operations keep their bodies in a `…Body` function behind a two-line
+wrapper rather than taking the turn inline: the guard stays visible at the top
+of each, and an inline `try`/`finally` would have re-indented all five and
+buried the guard inside the thing it guards. The `finally` is not decoration —
+`openFile` awaits both renderers outside its own `try`, so a renderer that
+throws throws out of the operation, and a turn left behind would refuse every
+switch for the rest of the session.
+
+**`tabsSwitchAllowed()` in [tabs.js](front/tabs.js)** is the single gate stage
+4's switch and stage 5's Ctrl+Tab both call, so there is one answer to "may the
+document be swapped" rather than one per entry point. It is where the keyboard
+gap gets closed: `.notify-backdrop` and `.file-dialog` are both full-viewport
+`inset: 0` overlays, so a mouse cannot reach a tab bar behind one, but four
+`document`-level `keydown` listeners fire straight through an open dialog.
+
+**`flushAutosave()` in [app.js](front/app.js)** makes the 1s debounce forcible,
+which the lock cannot help with because autosave is not a file operation. The
+timer resolves `documentKey("content")` when it *fires*, so a switch inside that
+second would write the incoming tab's content under the incoming tab's key —
+correctly — and the outgoing tab's last edits would be written nowhere at all.
+Autosave is the only thing carrying unsaved work across a browser reload, so
+that is real loss. `format-bar.js`'s own 100ms `saveSoon` needs no equivalent:
+after a flush it rewrites the incoming tab's content under the incoming tab's
+key, redundant rather than wrong.
+
+**The four late-read sites are untouched, and that is the settled answer** — the
+lock rather than per-site capture. One rule in one place beats four, and
+capturing early would write the document as of the Save click rather than as of
+the confirm.
+
+**16 more checks**, 870 green. Each of the three additions was mutation-tested
+rather than assumed: breaking the predicate, dropping the `clearTimeout` and
+replacing the `finally` with a trailing decrement each had to fail something.
+The third one initially failed nothing — the "does not leak its turn" check was
+driving an operation that *returns* early rather than one that throws, so it
+proved nothing about the `finally`. It now drives a renderer that throws, and
+the check is renamed to say which of the two it covers.

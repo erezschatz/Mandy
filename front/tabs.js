@@ -131,3 +131,22 @@ function migrateSingleDocument(id) {
   activeTabId = id;
   persistTabList();
 })();
+
+// The single gate every tab switch goes through. Stage 4's switch and stage 5's
+// Ctrl+Tab / Ctrl+1-9 both call this rather than each testing their own
+// conditions, so there is one answer to "may the document be swapped right now"
+// instead of one per entry point.
+//
+// The mouse is already blocked while a dialog is up: `.notify-backdrop` and
+// `.file-dialog` are both full-viewport `inset: 0` overlays, so a click cannot
+// reach a tab bar behind one. The keyboard is not -- four document-level
+// keydown listeners, in app.js, file-api.js, undo.js and toolbar.js, fire
+// straight through an open dialog -- and that gap is the reason this exists as
+// a function rather than as a CSS problem already solved.
+//
+// file-api.js is absent from an exported document, which has one document and
+// nothing to switch between; its absence reads as "nothing in flight" rather
+// than as a reason to refuse.
+function tabsSwitchAllowed() {
+  return !(typeof fileOperationInFlight === "function" && fileOperationInFlight());
+}

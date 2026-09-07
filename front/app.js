@@ -1269,11 +1269,27 @@ onToolbarAction("paste-plain", async () => {
 });
 
 let saveTimer;
+
+// Write the document now rather than when the debounce runs out. A tab switch
+// has to call this before parking the outgoing document (TODO 4.1): the timer
+// resolves documentKey("content") when it fires, so a switch inside its one
+// second would write the *incoming* tab's content -- correctly, under the
+// incoming tab's key -- and the outgoing tab's last edits would simply never be
+// written anywhere. Autosave is the only thing carrying unsaved work across a
+// browser reload, so that is real loss rather than a stale cache.
+//
+// Unconditional: if the debounce has already fired, this rewrites the same
+// bytes, which costs nothing and is one fewer state to reason about than asking
+// whether a write is pending.
+function flushAutosave() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  localStorage.setItem(documentKey("content"), editor.innerHTML);
+}
+
 editor.addEventListener("input", () => {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    localStorage.setItem(documentKey("content"), editor.innerHTML);
-  }, 1000);
+  saveTimer = setTimeout(flushAutosave, 1000);
 });
 
 function isBlankContent(html) {
