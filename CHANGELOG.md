@@ -2340,3 +2340,68 @@ stage 3's had been missed as well as stages 4 and 5.
 No behaviour change, and the suite is untouched at 975 green — nothing in
 `tests/` reads a comment, but the source-scanning suites do read those files, so
 it was worth the run.
+
+## 2026-09-08 — `4ba4262` — The docs re-read against the tabbed view, before the rewrite starts
+
+A spec-only pass over `docs/`, CLAUDE.md and the README, asking of each claim
+whether it survived the six tabs entries above. Most did. What did not, and what
+was ambiguous enough to be read either way:
+
+**[docs/REWRITE.md](docs/REWRITE.md) was written the day before tabs landed and
+still spoke of them as future.** The Undo section's savepoint requirement said
+"whichever lands first pays for it once" — tabs landed first and paid, so it now
+records how (`cleanPosition` travels in the file bundle, `adoptActive` adopts
+undo before file) and what the new history therefore has to keep: either
+document-scoped ids parked with the bundle, which is what makes that ordering
+load-bearing, or global ids, which retire it. The fate table gains `tabs.js`, and
+a new passage under it says what the rewrite changes for tabs and nothing else:
+the swap moves a model reference rather than an HTML string, so "content before
+adopt" is re-derived rather than inherited; the switch lock stays by default,
+with the model-handle alternative named and left to reintegration; hydration
+loses its markdown half. It also settles something the old text glossed: the
+`content` key holds HTML today, per tab, and the first load after the rewrite
+lands has to convert it once through Turndown rather than discard an autosave
+that may be the only copy of unsaved work. Smaller: "`file-api.js`'s eight
+`innerHTML` assignments" was eight across four files, and says so; the
+`markdownSource` literal became the `source` key; the "four check pages become
+one" count was wrong twice over, since only the three that watch the core retire
+and `paste-check` and `tab-shortcut-check` stay; and "1.5 and 4.1 become
+straightforward" named an item that no longer exists.
+
+**TODO 1.6's edited-marker half may already be fixed.** Stage 4 found and fixed
+`applyUndoSnapshot` dispatching `input` before moving `history.current`, which
+produces exactly "undo to the savepoint, marker stays lit". The item now says so,
+unverified against its reported case, and keeps the caret half as the part 3.1
+closes. **TODO 1.2** changed shape too: following a relative link opens a tab
+now, so the unsaved-work guard it said it lacked is not needed, and what is
+missing is path resolution and a new tab inheriting its parent's directory. The
+preamble's example marker read *(needs 4.1)*, pointing at nothing.
+
+**D4 still counted "the hard half of tabs" among what the rewrite retires**; it
+does not, and the sentence says what it does change instead. **ROADMAP.md's
+save-fidelity section** described the 2N-copies answer as a settlement rather
+than shipped code, called losing the source copy "cosmetic" when the cost is a
+whole-file rewrite on the next save, and named the storage key by its old
+literal.
+
+**CLAUDE.md's test list and the README's had no `tabs` row**, and the README
+still said New asks about unsaved work, the filename says `(disk changed)`, and
+Paste and Copy markdown live in Edit — three things the running app has not
+done for some time. Fixed in place; TODO 6.1 still owns the rewrite.
+
+**`front/welcome.md` told a new user the bar "says *(edited)*" beside the
+filename.** It now describes the tab bar — one tab per document, the two dots,
+the full path on hover — and the shortcut list gains Ctrl+Tab, Ctrl+Shift+Tab
+and Ctrl+1–9, Ctrl on the Mac as well since the binding excludes the Command
+key on purpose. `welcome.md` is a shell asset, so `sw.js` goes to `v1.30`; the
+`undo` and `notify` suites are the two that read that file, and both stay
+green.
+
+**TODO 4.3 is new, and undecided:** a tab is named by its basename alone, so
+two open files with the same name draw two identical tabs, and a long name is
+cut at the end, which is where the extension is. The item records the scheme
+to try — disambiguate only on collision with the shortest trailing directory,
+truncate in the middle, count untitled documents — and that all of it is
+`buildTab` over the paths `openTabs` already holds, with the `title` and
+`aria-label` keeping the full path whatever is drawn. Nothing in it touches
+the core.

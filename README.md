@@ -14,9 +14,9 @@ Marky was where this started. Mandy is where it learned to give your files back 
 
 ### Import Your Content
 
-- **Paste from Clipboard** - **Edit → Paste markdown** loads markdown directly from your clipboard
+- **Paste from Clipboard** - **Insert → Paste markdown** inserts markdown from your clipboard at the cursor
 - **Open Local Files** - Browse your computer and open any `.md`, `.markdown`, or `.txt` file directly (requires the local server, see [For Developers](#-for-developers))
-- **Reload from Disk** - **File → Reload from disk** re-reads the file, picking up anything another tool, script or agent wrote to it - and it is also how you throw local changes away. Mandy checks the file whenever you come back to the window, and marks the filename `(disk changed)` when it no longer matches what you have open
+- **Reload from Disk** - **File → Reload from disk** re-reads the file, picking up anything another tool, script or agent wrote to it - and it is also how you throw local changes away. Mandy checks the file whenever you come back to the window, and marks the document's tab when it no longer matches what you have open
 
 ### Edit with Ease
 
@@ -27,7 +27,8 @@ Marky was where this started. Mandy is where it learned to give your files back 
 - **Dark Mode** - Toggle between light and dark themes, or let it follow your system preference
 - **Document Outline** - **View → Outline sidebar** lists the document's headings; click any of them to jump there. It follows how your headings actually nest rather than the numbers in them, so a document that uses H6 for a caption under an H1 does not draw a five-deep staircase. **Insert → Table of contents** is the related but separate thing: it writes a real linked list into the document itself - the one you want when the file is going to be read on GitHub rather than in Mandy
 - **Menu Bar** - Six menus - File, Edit, Insert, Format, View and Export - hold every action; the Format menu reaches the same ten formats as the floating bar, and is the way to reach the inline ones without selecting anything
-- **New and Clear** - **File → New document** starts over: blank document, no file attached, and it asks first if you have unsaved work. **Edit → Clear document** is an ordinary edit that empties the text and leaves the file you have open alone - one Ctrl+Z takes it back
+- **Tabs** - The row below the menus is one tab per open document, with a dot on any that has unsaved changes or whose file changed on disk. Click a tab, or use Ctrl+Tab and Ctrl+1–9, to switch; closing a tab with unsaved work asks first
+- **New and Clear** - **File → New document** opens a blank document in a new tab, so nothing is asked and nothing is lost. **Edit → Clear document** is an ordinary edit that empties the text and leaves the file you have open alone - one Ctrl+Z takes it back
 
 ### Export Your Work
 
@@ -111,11 +112,11 @@ Unlike other markdown editors:
 ## Pro Tips
 
 - Select any text to see the formatting toolbar appear above it
-- Use **Edit → Paste markdown** to quickly load markdown from anywhere
+- Use **Insert → Paste markdown** to quickly insert markdown from anywhere
 - Your work auto-saves to localStorage - but download important files as a backup
-- **File → New document** starts fresh; **Edit → Clear document** just empties the one you have open
+- **File → New document** opens a new tab; **Edit → Clear document** just empties the one you have open
 - Toggle dark mode in the toolbar or let it automatically match your system theme
-- **Collaborative HTML Workflow**: Use **Export → Editable copy…** (not **HTML page…**, which is read-only) and share the result with colleagues. They can open it in any browser, edit the content directly, save their changes, and send the modified HTML back to you. Open their file in a browser and use **Edit → Copy markdown** to get their changes back as markdown - Mandy's Open dialog only accepts `.md`, `.markdown` and `.txt`, so it cannot open the returned HTML directly.
+- **Collaborative HTML Workflow**: Use **Export → Editable copy…** (not **HTML page…**, which is read-only) and share the result with colleagues. They can open it in any browser, edit the content directly, save their changes, and send the modified HTML back to you. Open their file in a browser and use **Export → Copy markdown** to get their changes back as markdown - Mandy's Open dialog only accepts `.md`, `.markdown` and `.txt`, so it cannot open the returned HTML directly.
 
 ## For Developers
 
@@ -190,7 +191,8 @@ opened yet, is wrong:
 | `links` | Anchor slugs, the scheme allowlist, and the Ctrl+Click hint staying out of the markdown. |
 | `static-export` | What the document-only export contains, including heading anchor ids. |
 | `self-reproduce` | An exported document re-exports offline, handing its successor byte-identical CSS and JS. |
-| `file-path` | The open file, the last browsed directory, the `(edited)` marker surviving a reload, and Reload / the disk-changed marker against a fake disk. |
+| `file-path` | The open file, the last browsed directory, the edited mark surviving a reload, and Reload / the disk-changed mark against a fake disk. |
+| `tabs` | Switching documents loses nothing: park and adopt, the migration onto per-tab storage and both ways it can fail, the switch lock, the ordering inside the swap, and the tab bar. |
 | `outline` | The depth algorithm, the inline allowlist, and the shape of the list Insert TOC writes. |
 | `notify` | That no source has slipped back to `alert()`, and that dismissing a dialog is not the same as agreeing with it. |
 | `undo` | The coalescing rules and, above all, that history never survives a document boundary. |

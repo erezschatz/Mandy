@@ -79,6 +79,16 @@ They cover the invariants that fail *silently* rather than loudly:
   whether a block is a blank line or an inline is a real one. Only the predicate
   — the traversal around it needs an HTML parser the stub does not have, which
   is why the decision lives in one pure function.
+- **tabs** — the per-tab state boundaries and the swap between documents: that
+  park and adopt are lossless and adopting nothing is a blank document rather
+  than a half-cleared one; the migration off the flat keys and both ways a
+  write can fail; the switch lock; the ordering inside `switchToTab`; the
+  hydration of a tab this session has never shown; `beforeunload` seeing a
+  background tab's edits; and the bar — the dot's precedence, close asking by
+  switching first, and the keyboard. It loads `undo.js` for real rather than
+  stubbing it, because what is under test is an ordering and a stub would
+  agree with any order at all. The seam between `file-api.js` and `undo.js` is
+  where stage 4's real bug lived, invisible to either suite alone.
 
 ### The browser check
 

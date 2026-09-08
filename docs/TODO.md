@@ -9,7 +9,7 @@ and all of section 2 now land on it rather than on the current engine.
 [DECISIONS.md](DECISIONS.md) the decision.
 
 Items are numbered `section.item` so they can point at each other. The numbers
-are labels, not an order and not a priority. An italic *(needs 4.1)* means that
+are labels, not an order and not a priority. An italic *(needs 3.1)* means that
 one has to land first and *(unblocks …)* marks an item others are waiting on —
 those are the ones to start from. A marker states a blocking relationship and
 nothing else: an item that merely reads better after another one says so in its
@@ -139,9 +139,15 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
       would just 404 off the static handler. The behaviour that would make a
       linked set of markdown files navigable is opening it in Mandy through the
       file API, resolved against the directory of the open file — a good deal
-      more work than a `window.open`. Following a link means replacing the open
-      document, so it now has `openFile` and the dirty/mtime tracking to build
-      on; what it still lacks is the unsaved-work guard on that path.
+      more work than a `window.open`. The tabbed view changed the shape of the
+      answer: following a link opens the file in a new tab, the way New makes
+      one, so nothing is discarded and there is no unsaved-work guard to add.
+      `openFile` and the dirty/mtime tracking are what it builds on. What is
+      still missing is resolving the path against the open file's directory,
+      which `file-api.js` has never had to do, and `newTab` seeding its
+      directory from the tab that spawned it — `fileAdopt(null)` resets the
+      dialog directory with everything else today, and the CHANGELOG entry
+      that introduced it left seeding to whoever creates tabs.
     - **Touch devices have no modifier**, so there is no way to follow a link on
       one, and the hover tooltip never shows either. Wants its own affordance —
       a long-press, or the chip Google Docs shows.
@@ -198,10 +204,18 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
 *   **1.6** *(bug, closed by 3.1)* Undo does not always come back clean.
     Reported: open a file, press Enter at the end of an `<li>` (one edit), then
     Ctrl+Z.
-    The `(edited)` marker stays lit, and the caret jumps to the top of the
+    The edited dot stays lit, and the caret jumps to the top of the
     document rather than back to where the edit was.
 
-    Both halves point at the same place. `file-api.js` clears `(edited)` when
+    **Half of it may be fixed already, unverified.** Stage 4 of the tabbed
+    view (2026-09-07, `801db70`) found `applyUndoSnapshot` dispatching its
+    `input` event *before* moving `history.current`, so `file-api.js`'s
+    listener asked `undoPosition()` and was told the state undo had just left
+    — which is exactly "undo back to the savepoint, dot stays lit", for any
+    edit and not just this one. Nobody has re-run the reported case since. If
+    the dot now clears, what is left of this item is the caret half alone.
+
+    Both halves point at the same place. `file-api.js` clears the dot when
     undo returns to `cleanPosition` — the `undoPosition()` id recorded at the
     last open/save — so if the flag stays, the id undo landed on is not the one
     `markClean()` stored. Either the Enter's snapshot bookkeeping is off, or the
@@ -260,7 +274,10 @@ category fidelity deliberately does not extend to.
     Retires D4, `undo.js`'s snapshot design, `execcommand.js`, the content-keyed
     restore in `markdown-style.js`, the Mermaid and LaTeX source stashes, and
     the reason a table cell cannot be edited. Leaves the ~5,300 lines around
-    the core — menus, notify, file API, outline, exports, server — untouched.
+    the core — menus, notify, file API, outline, exports, server — untouched,
+    and the tabbed view nearly so: its swap moves a model reference instead
+    of an HTML string, and REWRITE.md's "What it replaces" section says what
+    else changes at reintegration and what is decided there.
 
     [REWRITE.md](REWRITE.md) is the design, the estimate (five to eight weeks
     at this repo's pace, the tail all in the input layer) and the build order.
@@ -311,6 +328,40 @@ category fidelity deliberately does not extend to.
     had: a dozen dated [CHANGELOG.md](../CHANGELOG.md) entries say "TODO 4.1"
     meaning the tabbed view, and minting a different 4.1 the same week would
     make every one of them ambiguous. Reuse is fine once that is not fresh.
+
+*   **4.3** *(undecided)* A tab is named by its file's basename and nothing
+    else, and two things a real session does break that. **Two open files with
+    the same name** — `README.md` from two repos, a `TODO.md` beside its
+    `docs/TODO.md` — draw two identical tabs, and the only thing telling them
+    apart is the full path on hover, which a glance at the bar never sees.
+    **A long name** is cut at 24 characters with an ellipsis at the *end*
+    (`.tab-name` in `app.css`), which is the end that carries the extension
+    and, for names that share a long prefix, the only part that differed.
+
+    Wants a naming scheme rather than a wider cap. The candidates, in the order
+    they should be tried:
+
+    - **Disambiguate only on collision**, the way editors do: a tab keeps its
+      bare basename until another open tab shares it, and then both gain the
+      shortest trailing directory that tells them apart — `README.md — mandy`
+      and `README.md — tasks`, deepening one segment at a time until unique.
+      Nothing changes for the common case, and a name never carries a
+      qualifier it does not need.
+    - **Truncate the middle, not the end**, so a cut name keeps its extension
+      and its last few characters: `long-spec-na…-v2.md`. CSS cannot do this,
+      so it is a small piece of JS in `buildTab`, measured in characters rather
+      than pixels the way the 24ch cap already is.
+    - Untitled documents have the same collision in the worst form — every
+      new tab is `Untitled` — and want a counter, `Untitled 2`, minted when
+      the tab is made and dropped once the document has a name.
+
+    All of it is `buildTab` and `tabDescriptor` in
+    [tabs.js](../front/tabs.js), which already has every open tab's path in
+    hand when it draws the bar, so the collision check is a pass over
+    `openTabs` and nothing has to be stored. The `title` and `aria-label`
+    keep the full path regardless — the scheme decides what is drawn, not what
+    is said. It reaches nothing in the core, so it neither waits on 3.1 nor is
+    discarded by it.
 
 ## 6. Product
 

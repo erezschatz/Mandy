@@ -247,9 +247,11 @@ browser does something surprising.
 cure is known: hold the document as a model in JS, render to the DOM, and treat
 contenteditable as an input method whose changes are intercepted and
 reinterpreted rather than accepted. That retires this decision, `undo.js`'s
-snapshot design, the hard half of tabs, and the reason table cells cannot be
-edited. It was a rewrite kept off the 1.0 route; as of D6 it is on it, as TODO
-3.1, designed in [REWRITE.md](REWRITE.md). Until it lands, everything in this
+snapshot design, and the reason table cells cannot be edited — not tabs, which
+this sentence once counted: the tabbed view shipped on this core on
+2026-09-07, and what the rewrite changes for it is the swap and, possibly, the
+switch lock, per [REWRITE.md](REWRITE.md). It was a rewrite kept off the 1.0
+route; as of D6 it is on it, as TODO 3.1, designed there. Until it lands, everything in this
 decision describes the running code and the boundary rule above still governs
 any change to `front/` — with one amendment: a *new* format is not written
 against contenteditable at all, since the work would be discarded with the

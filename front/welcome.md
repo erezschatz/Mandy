@@ -33,9 +33,11 @@ Everything else lives in the six menus:
 - **Export** — **HTML page…**, **PDF…**, **Word document…**, and **Editable
   copy…**, which recipients can change in their browser and send back to you.
 
-Below the menus is the file you have open. It says *(edited)* while your copy
-has changes you have not saved, and *(disk changed)* when something else has
-written to the file since you opened it.
+Below the menus is a tab for each document you have open. **File → New
+document** opens another; click a tab to switch. A red dot on a tab means that
+copy has changes you have not saved, and a plain one means something else has
+written to the file since you opened it. Hover a tab for the full path and the
+same in words.
 
 ## Keyboard Shortcuts
 
@@ -46,6 +48,8 @@ written to the file since you opened it.
 - **Ctrl+B** / **Ctrl+I** (Cmd+B / Cmd+I on Mac) — Bold and italic
 - **Ctrl+Z** (Cmd+Z on Mac) — Undo
 - **Ctrl+Y** or **Ctrl+Shift+Z** (Cmd+Shift+Z on Mac) — Redo
+- **Ctrl+Tab** / **Ctrl+Shift+Tab** (Ctrl on Mac too) — Next or previous tab,
+  and **Ctrl+1**–**9** picks one by position, **Ctrl+9** being the last.
 - **Tab** / **Shift+Tab** — Indent or unindent a bullet. Only inside a list;
   anywhere else Tab moves focus as usual.
 - **Ctrl+Click** (Cmd+Click on Mac) — Follow a link, or jump to a heading it

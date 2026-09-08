@@ -187,21 +187,30 @@ programmatic edits stays too: a model command dispatches one synthetic `input`
 so autosave, the dirty flag and the outline hear it, and `undoRefresh` is gone
 because there is nothing to correct after the fact.
 
-TODO 1.6 — Ctrl+Z after Enter at the end of a bullet leaving `(edited)` lit and
-the caret at the top — is a whole-document offset miscount on a snapshot
-restore. It does not get fixed; the design that produces it is removed.
+TODO 1.6 — Ctrl+Z after Enter at the end of a bullet leaving the edited dot lit
+and the caret at the top — is two symptoms. The caret half is a whole-document
+offset miscount on a snapshot restore, and it does not get fixed; the design
+that produces it is removed. The dot half may already be gone: stage 4 of the
+tabbed view found `applyUndoSnapshot` dispatching its `input` event before
+moving `history.current`, which produces exactly that symptom, and fixed it —
+unverified against the reported case, which TODO 1.6 records.
 
 **One requirement the new history has to be told, because it does not fall out
 of being new:** a savepoint id is per-document and is never compared across
 documents. `cleanPosition` in `file-api.js` holds one to answer "has undo
-brought this back to the last save", and today's `nextId` counts from zero
-inside each bundle, so two documents both own an id 7 standing for different
-states. That is safe while there is one document and stops being safe the
-moment the tabbed view opened a second: a dirty document reports clean, and the
-unsaved-work guard and the `beforeunload` warning go down together. The
-replacement counter has to be either document-scoped and parked with the bundle
-or globally unique — a choice, not an accident. The tabbed view carries the same
-requirement against the current core, so whichever lands first pays for it once.
+brought this back to the last save", and `nextId` counts from zero inside each
+bundle, so two documents both own an id 7 standing for different states. The
+tabbed view met this on the current core when it landed on 2026-09-07:
+`cleanPosition` travels inside the file bundle `filePark` / `fileAdopt` move,
+and `adoptActive` in `tabs.js` adopts the history *before* the file state, so
+the id lands on top of the bundle it was minted in. Get either wrong and a dirty
+document reports clean, which takes the unsaved-work guard and the
+`beforeunload` warning down together — and only when two tabs' edit counts line
+up, so no manual pass finds it. The replacement counter has to keep one of the
+two properties that make that safe: document-scoped and parked with the bundle,
+which is what ships and is what keeps the undo-before-file ordering
+load-bearing, or globally unique, which retires the ordering. A choice, not an
+accident, and the `tabs` suite's mutation checks are the oracle either way.
 
 ## The input layer
 
@@ -292,17 +301,54 @@ all/some/none — reads the rendered DOM as it does now and needs little change.
 | `undo.js`, `execcommand.js`, the list surgery and Turndown save rules in `app.js` | ~1,500 | Deleted |
 | `markdown-style.js` | 542 | Half survives: the sniffers, `reflowMarkdown` and `normaliseTableRows`. `indexMarkdownBlocks` and `restoreSourceWrapping` go |
 | `format-bar.js`, `renderers.js`, the rest of `app.js` | ~1,300 | Modified: the bar UI, links and anchors, welcome, paste UI stay; commands move onto the model; the two source-stash hacks go |
+| `tabs.js` | 583 | Modified: the list, the bar, park/adopt and the switch lock stay; `adoptActive`'s `innerHTML` load from storage becomes a model load, and hydration loses its markdown half, since the model is the source |
 | `toolbar.js`, `notify.js`, `file-api.js`, `outline.js`, both exports, PDF, DOCX, theme, lazy-load, `sw.js`, `server/`, `app.css` | ~5,300 | Untouched or near it. They read the rendered DOM, which still exists |
-| `tests/` | 6,200 | About 2,800 lines rewritten; the core's tests no longer need `dom.mjs` |
+| `tests/` | ~6,700 | About 2,800 lines rewritten, plus the `tabs` suite's swap and hydration checks; the core's tests no longer need `dom.mjs` |
 
-The line to notice: the ~5,300 untouched lines are the product. This replaces
-the editing core, not the application around it.
+Counts as measured on 2026-09-06, except `tabs.js` and `tests/`, which were
+re-measured after the tabbed view landed the next day. The line to notice: the
+~5,300 untouched lines are the product. This replaces the editing core, not the
+application around it.
 
-`file-api.js`'s eight `editor.innerHTML` assignments become model loads. The
-autosave key changes from HTML to the model's serialised form — which is to say
-markdown plus the per-block `source`, so `localStorage["markdownSource"]` stops
-being a second copy: the model *is* the source. That is the tabs item's "2N
-copies" question the tabbed view raised answered by construction.
+The eight `editor.innerHTML` assignment sites the `undo` suite counts — five in
+`app.js`, one each in `file-api.js`, `tabs.js` and `undo.js` — become model
+loads, and the suite's count goes to zero outside render. The autosave changes
+from HTML to the model's serialised form, which is to say markdown plus the
+per-block `source`, so the `source` key in `DOCUMENT_KEYS` goes: the model *is*
+the source, and `markdownStyleAdoptStored` has nothing left to rebuild. That is
+the "second copy" paragraph in ROADMAP.md's save-fidelity section answered by
+construction, for every tab, since the keys are per-tab. One thing the change
+of format owes on the way in: a `content` key written before the rewrite holds
+HTML — per tab, and under the flat name in an exported document — and the first
+load after landing has to recognise it and convert it once, through Turndown
+with today's rules, the last time it runs on anything but the paste path. That
+autosave may be the only copy of unsaved work, and a save would have serialised
+it the same way.
+
+**Tabs landed on the current core**, on 2026-09-07, and the rewrite absorbs
+them rather than the other way round — the CHANGELOG entry of that date
+("Tabs are unblocked") has the argument, and it holds: the file state, the bar,
+the per-tab dot and restore-on-load never reach the core. Three things change
+at reintegration and nothing else does:
+
+- **The swap moves a model reference, not an HTML string.** `switchToTab`
+  parks three bundles, flips the id, then loads the incoming content and
+  adopts — with "content before adopt" load-bearing because `undoAdopt` trusts
+  what is on screen. With a model, the incoming tab's model *is* the content
+  and its history describes it directly, so that ordering is re-derived rather
+  than carried over on faith. Undo-before-file stays unless savepoint ids go
+  global (see Undo above).
+- **The switch lock stays, by default.** `tabsSwitchAllowed()` and
+  `fileOperationInFlight()` exist because every file operation awaits between
+  naming a path and reading `editor.innerHTML`, and that late read is the same
+  bug on a model with a new variable name. What the model adds is an
+  alternative: a background tab is a live model rather than a frozen string,
+  so the late-read sites could take a model handle at the start and the lock
+  could come off. Decided at stage 4; the lock is kept unless the handle turns
+  out to be the smaller change.
+- **Hydration halves.** `fileAdoptStored` reads a tab's file keys and stays;
+  `markdownStyleAdoptStored` re-sniffs a `source` key that no longer exists,
+  and goes.
 
 ## Estimate
 
@@ -317,7 +363,7 @@ four browser check pages and CI. Weeks below are that kind of week.
 | **1. Model and serialiser** | `CLAUDE.md`, `README.md`, `welcome.md` and `docs/TODO.md` round-trip byte-identical through the model with no browser involved; editing one paragraph changes one paragraph. The `save-fidelity` suite's cases pass against the model | 1 |
 | **2. Core to parity** | Undo, the thirteen formats, lists including the two hand-rolled behaviours, paste, links, Mermaid and MathJax rendering — everything the app does today, on the new core | 1.5 to 2 |
 | **3. The 1.1 items** | Blockquote, image, table insert and structural editing, the 2.1 formatter | 1 |
-| **4. Reintegration** | `file-api.js`, outline, both exports, tabs-ready autosave; tests rewritten; one input-layer check page run in three engines | 1 to 2 |
+| **4. Reintegration** | `file-api.js`, `tabs.js` — the swap moves a model reference, the stored-HTML conversion, the lock decision above — outline, both exports; tests rewritten; one input-layer check page run in three engines | 1 to 2 |
 | **5. Fallout** | IME beyond the accent popup, autocorrect, spellcheck replacement, Safari's quirks, anything the first real documents turn up | 1 to 2 |
 | | | **5 to 8** |
 
@@ -355,17 +401,23 @@ core with the information the spike bought. Either is decided then, not now.
 3. **Input.** `beforeinput` by type, composition, paste through Turndown.
 4. **Formats**, then **lists**, then **tables**, each as model commands driven
    from the existing `applyFormat` and `TOOLBAR_MENUS` entries.
-5. **Reintegrate** `file-api.js`, `undo.js`'s new shape, outline, exports.
+5. **Reintegrate** `file-api.js`, `tabs.js`, `undo.js`'s new shape, outline,
+   exports.
 6. **Tests.** The `undo`, `execcommand`, `format-bar`, `save-fidelity`,
-   `list-indent`, `latex` and `links` suites are rewritten against the model;
-   the source scans in `execcommand` and `notify` change targets (no
-   `execCommand` call site at all; no `innerHTML` assignment outside render).
-   The four browser check pages become one that drives the input layer.
+   `list-indent`, `latex` and `links` suites are rewritten against the model,
+   and the half of `tabs` that drives the swap and hydration with them; the
+   source scans in `execcommand` and `notify` change targets (no `execCommand`
+   call site at all; no `innerHTML` assignment outside render). The three check
+   pages that watch the core in a real engine — `browser-check`,
+   `list-indent-check`, `list-empty-item-check` — become one that drives the
+   input layer; `paste-check` and `tab-shortcut-check` measure the browser
+   rather than the core, and stay.
 7. **Docs.** D4 is marked retired in DECISIONS.md rather than deleted.
    CLAUDE.md's "Document state", "Save fidelity", "execCommand", "Undo" and
    "The format bar" sections are rewritten; "The browser check" shrinks to the
    one page. TODO 1.1.6, 1.1.7, 1.1.8, 1.4, 1.6 and 2.1 close as part of the
-   stages above; 1.5 and 4.1 become straightforward.
+   stages above; 1.5 becomes straightforward. 4.2 is a measurement of the
+   browser's tab strip and is not touched by any of this.
 
 ## What is accepted
 

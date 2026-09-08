@@ -136,23 +136,26 @@ file comes back byte-identical and editing one paragraph changes one paragraph �
 and neither of these is a case where it does not.
 
 **The source is persisted as a second copy of the document.**
-`adoptMarkdownStyle` writes the incoming markdown to
-`localStorage["markdownSource"]`, because the autosave is HTML and carries no
-markdown to re-sniff on reload. It roughly doubles what Mandy stores, and a
+`adoptMarkdownStyle` writes the incoming markdown to the document's `source`
+key — `documentKey("source")`, per tab — because the autosave is HTML and
+carries no markdown to re-sniff on reload. It roughly doubles what Mandy stores, and a
 document that blows the quota keeps editing and saving but loses byte fidelity
 across a reload — a `console.warn` and nothing else. Storing the derived style
 plus block hashes instead of the whole source would be smaller, and could not
 reconstruct the bytes.
 
-What defused this was the tabbed view settling its own version of the question:
-N tabs is 2N copies, and the answer it landed on was **no budget, no
-eviction, no per-tab cap** — a tab that loses the race degrades silently to
-"sniffs to nothing" on its next reload, which is cosmetic rather than data
-loss, and is not surfaced. Once that is the accepted behaviour, shrinking the
-per-document footprint is an optimisation that delays hitting a wall nobody has
-hit, not a correctness fix. And 3.1 removes the second copy outright — the
-model's blocks carry their own bytes, so the model *is* the source — which
-makes this paragraph a description of the current core only.
+What defused this was the tabbed view settling its own version of the question,
+and then shipping it that way on 2026-09-07: N tabs is 2N copies, under per-tab
+keys, with **no budget, no eviction and no per-tab cap**. A tab that loses the
+race keeps editing and saving and degrades to "sniffs to nothing" on its next
+reload — a `console.warn` in `adoptMarkdownStyle` and nothing on screen. That
+is not data loss, but it is not cosmetic either: the first save after that
+reload rewrites the whole file in the defaults, which is the diff D1 exists to
+prevent. Once that is the accepted behaviour, shrinking the per-document
+footprint is an optimisation that delays hitting a wall nobody has hit, not a
+correctness fix. And 3.1 removes the second copy outright — the model's blocks
+carry their own bytes, so the model *is* the source, and the `source` key goes
+— which makes this paragraph a description of the current core only.
 
 **Segment granularity is block-level.** `markdownSegments` splits on blank
 lines, list markers, headings and fences, so a change anywhere in a fenced
