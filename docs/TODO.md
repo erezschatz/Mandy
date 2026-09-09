@@ -296,6 +296,12 @@ category fidelity deliberately does not extend to.
     On a branch; `main` keeps the working editor until parity. Every item
     marked *(needs 3.1)* waits rather than being started on the old core.
 
+    **Started 2026-09-09 on branch `rewrite`.** REWRITE.md's "Where each stage
+    stands" is the running status, one line per stage, updated as each lands.
+    Stage 0's page is [spike/block-model.html](../spike/block-model.html), and
+    the gate is half open: the model, the render splice and the caret mapping
+    behave, and no engine has yet been driven by a person's hands.
+
 ## 4. Interface
 
 *   **4.2** *(measurement, not code)* The tab bar's keyboard bindings are

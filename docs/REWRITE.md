@@ -419,6 +419,82 @@ core with the information the spike bought. Either is decided then, not now.
    stages above; 1.5 becomes straightforward. 4.2 is a measurement of the
    browser's tab strip and is not touched by any of this.
 
+## Where each stage stands
+
+Started 2026-09-09, on branch `rewrite`. The stage numbers are the estimate
+table's. Each line says where it stands — *done and tested*, *done, untested*,
+*not started* — and is updated as part of the landing, not afterwards.
+
+*   **0. Spike — done, measured in one engine of three.**
+    [spike/block-model.html](../spike/block-model.html), a single self-contained
+    page: block model, per-block render, `beforeinput` interception, both
+    selection mappings, and the composition path. Throwaway code that answers
+    a question — it is not the first draft of `front/`, and nothing in it is
+    meant to be moved there. What it entails, in the order it was built:
+
+    1.  **Parse.** markdown-it 13.0.1 from the same CDN the app uses, `md.parse`,
+        top-level tokens split into blocks by their `map`. Paragraphs and
+        headings become editable runs; every other block kind — lists, fences,
+        rules, tables — is kept whole as its source, rendered read-only, and
+        refuses edits. Stage 0 needs the input layer measured, not a schema.
+    2.  **Render.** One block to one child of `#editor`, tagged `data-block`,
+        `innerHTML` from the runs. Only touched blocks re-render; a split or a
+        merge splices the children rather than rebuilding the list.
+    3.  **Map.** `(block, offset)` in characters of the block's rendered text,
+        both directions, over one block's text nodes.
+    4.  **Intercept.** `beforeinput` by `inputType`, `preventDefault` on every
+        one it handles *and* on every one it does not, so the DOM can only
+        change through render. Deletions are read from `getTargetRanges()`,
+        which is what makes "a deletion whose target range spans two blocks is
+        a merge" fall out rather than being special-cased.
+    5.  **Compose.** `compositionstart` hands the block to the engine;
+        `compositionend` diffs the block element's text against the model,
+        applies the difference as one edit, and re-renders.
+    6.  **Verify.** After every render and every stray `input`, each block's DOM
+        text is compared against its model text; a divergence is the exact
+        failure mode the spike exists to find, so it is reported on the page
+        rather than left to be felt.
+
+    The page reports what it was asked to report: every `beforeinput` the engine
+    sent, whether it was cancelable, what was done with it, and any divergence
+    between the DOM and the model. It needs no server and no app — open the file
+    itself, the way `paste-check.html` is run.
+
+    **Measured in Blink (Chrome 152, macOS) on 2026-09-09, and only in part.**
+    Through real input: typing, typing over a selection, a double-click word
+    selection surviving a re-render still selected, the bold toggle, and an edit
+    refused inside a read-only block — all with the DOM matching the model
+    throughout and nothing dropped. Through synthesised `beforeinput` and
+    composition events, because the automation to hand delivers a trusted
+    keydown but no editing command for Enter or Backspace: the split, the merge
+    landing back on the exact offset it started from, Enter at the end of a
+    heading opening a paragraph rather than a second heading, and the accent
+    popup's shape — the engine replacing the character under the caret, the
+    model reading the block back at `compositionend`. The fixture also
+    round-trips byte-identical through the model, and one typed character leaves
+    exactly one block off its source, which is D1 in miniature.
+
+    **The gate is not passed.** The criterion is three engines and a person's
+    hands, and a synthesised event proves the model, the render splice and the
+    caret mapping rather than what an engine delivers. Enter, Backspace,
+    Ctrl/Cmd+B and a real accent popup have to be pressed in Chrome, Firefox and
+    Safari before stage 1 starts — that is the remaining half of stage 0, not a
+    formality after it.
+
+    One thing it turned up for stage 2 to decide rather than inherit: typing
+    over a fully-bold selection gives plain text here, because a new run
+    inherits the marks to its left and the left edge of a selection sits outside
+    the bold. Every editor people arrive from keeps the bold. The rule wants to
+    be "inherit from the range that was deleted when there was one, from the
+    left when there was not", and it is a model-command decision rather than an
+    input-layer one.
+
+*   **1. Model and serialiser — not started.**
+*   **2. Core to parity — not started.**
+*   **3. The 1.1 items — not started.**
+*   **4. Reintegration — not started.**
+*   **5. Fallout — not started.**
+
 ## What is accepted
 
 - **The core is owned forever.** execCommand gave IME, mobile keyboards and

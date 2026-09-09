@@ -2489,3 +2489,51 @@ seventh key is picked up rather than enumerated a fourth time.
 
 It reaches nothing in the core, so it neither waits on 3.1 nor is discarded by
 it. No code changed, so nothing was run.
+
+## 2026-09-09 — The rewrite starts: stage 0, the block-model spike
+
+**TODO 3.1 begins, on branch `rewrite`, with the stage the plan calls a gate
+rather than a first step.** REWRITE.md gained a "Where each stage stands"
+section — one line per stage, *done and tested* / *done, untested* / *not
+started*, updated as part of each landing — and TODO 3.1 points at it, so the
+failure CLAUDE.md warns about (a CHANGELOG entry announcing "stage two" of a
+sequence nobody can find) has somewhere to not happen.
+
+[spike/block-model.html](spike/block-model.html) is the stage itself: one
+self-contained page, no server and no app, holding a block array parsed by the
+same markdown-it 13.0.1 the app loads, rendering one block to one child of
+`#editor`, intercepting `beforeinput` and mapping `(block, offset)` both ways.
+Throwaway code, and the header comment says so — it is not the first draft of
+`front/`, it exists to be typed into in three engines and then thrown away.
+
+Three things in it are the design rather than the prototype. **Every
+`beforeinput` is cancelled**, the implemented ones and the rest alike, so the
+DOM can only change through render — which is what makes the divergence check
+mean anything: after every render the page compares each block's DOM text to
+its model text and says so on screen. **Deletions are read from
+`getTargetRanges()`**, so graphemes, word deletion and "a deletion spanning two
+blocks is a merge" are one path rather than three reimplementations. **A
+composition is handed to the engine whole** and read back at `compositionend`
+by a prefix/suffix diff, which is the accent popup's shape as much as an IME's.
+
+Everything but paragraphs and headings is kept whole as its source and rendered
+read-only. A schema is stage 1; the input layer can be measured without one.
+
+Measured in Blink (Chrome 152, macOS): typing, typing over a selection, a word
+selection that survives a re-render still selected, the bold toggle, and a
+refused edit inside a read-only block — all through real input, all with the DOM
+matching the model. Enter and Backspace went through synthesised `beforeinput`,
+because the automation to hand delivers a trusted keydown and no editing command
+for either, so the split, the merge back onto its original offset, the heading
+opening a paragraph and the composition read-back are proven in the model and
+unmeasured in any engine. The fixture round-trips byte-identical, and one typed
+character leaves exactly one block off its source — D1 in miniature.
+
+**The gate is half open, and the entry says which half.** Chrome, Firefox and
+Safari still have to be driven by a person's hands before stage 1 starts. The
+spike also turned up one question for stage 2 to decide rather than inherit:
+typing over a fully-bold selection currently gives plain text, because a new run
+inherits the marks to its left.
+
+Nothing in `front/` or `server/` changed and no suite reads the spike, so
+nothing was run.
