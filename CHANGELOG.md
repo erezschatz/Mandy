@@ -2406,7 +2406,7 @@ truncate in the middle, count untitled documents — and that all of it is
 `aria-label` keeping the full path whatever is drawn. Nothing in it touches
 the core.
 
-## 2026-09-09 — TODO 6.4, and the sentence the README was missing
+## 2026-09-09 — `f3080e7` — TODO 6.4, and the sentence the README was missing
 
 **TODO 6.4 is new: open HTML, save markdown.** Prompted by a search that turned
 up the "HTML is the new markdown" argument — that a 3,000-word agent-written
@@ -2451,3 +2451,41 @@ to write it in. TODO 6.1 still owns the full rewrite; this is one line of it
 that was worth not waiting for.
 
 No code changed, so nothing was run — `tests/` reads none of these three files.
+
+## 2026-09-09 — TODO 4.4: right-to-left documents
+
+**A View toggle that puts `dir="rtl"` on `#editor`, and nothing else.** The
+document flips; the toolbar, the outline's side and the dialogs stay where they
+are. Mirroring the application is a different and much larger feature, and the
+entry says so rather than leaving the scope to be discovered.
+
+The design question is not the CSS, which is three physical declarations inside
+`#editor` becoming logical ones. It is that **markdown cannot hold direction**,
+and the item treats that as the design rather than as a gap. There is no
+CommonMark syntax for it; `<div dir="rtl">` in the file would contradict the
+`html: false` position MARKDOWN.md settled on 2026-09-07; frontmatter is a
+concept this project does not have. So direction is Mandy's opinion about the
+file rather than the file's content — a per-document preference, with a flipped
+document saving to a `.md` byte-identical to its unflipped self. Per-document
+rather than global like the theme, because tabs make the global answer wrong
+immediately: two files open side by side can want different answers. The
+asymmetry is recorded rather than left to be found — `dir` is an HTML attribute,
+so both exports can carry the setting and the markdown never will.
+
+Two things the entry pins down because they are the ones that bite. The key is
+named `direction`, not `dir`: `DOCUMENT_KEYS.dir` is already the last browsed
+*directory*, which is exactly the collision class CLAUDE.md's load-order section
+warns about. And **code stays left-to-right** — under bidi, `const x = 1;` in an
+RTL block renders with its punctuation in the wrong place, so one `direction:
+ltr` rule on `pre` and `code` is the difference between flipping the document and
+flipping it correctly.
+
+Six stages, all *not started*, and the last of them is a measurement rather than
+code: the format bar positions itself from `offsetWidth` and a `left`, and a
+caret rect inside an RTL block is a thing to look at rather than reason about. A
+check page if it misbehaves, not before. `tabs.js` turns out to need nothing —
+it iterates `Object.keys(DOCUMENT_KEYS)` at all three places that matter, so a
+seventh key is picked up rather than enumerated a fourth time.
+
+It reaches nothing in the core, so it neither waits on 3.1 nor is discarded by
+it. No code changed, so nothing was run.

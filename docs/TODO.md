@@ -363,6 +363,77 @@ category fidelity deliberately does not extend to.
     is said. It reaches nothing in the core, so it neither waits on 3.1 nor is
     discarded by it.
 
+*   **4.4** *(survives 3.1)* Right-to-left documents. **View → Right to left**
+    puts `dir="rtl"` on `#editor` and the document flips; the toolbar, the
+    outline's side and the dialogs do not. Mirroring the *application* is a
+    different and much larger feature, deliberately not this one.
+
+    **Markdown cannot hold direction, and that is the design rather than a
+    limitation of it.** There is no CommonMark syntax for it. Writing `<div
+    dir="rtl">` into the file would contradict `html: false`
+    ([MARKDOWN.md](MARKDOWN.md), out of D0), and frontmatter is a concept the
+    project does not have and would be a far bigger feature wearing this one's
+    clothes. So direction is Mandy's opinion about the file rather than the
+    file's content: a per-document preference, and a flipped document saves to a
+    `.md` byte-identical to its unflipped self. The presentation layer presents;
+    the data layer stores what the author wrote. The exports are the asymmetry
+    worth stating rather than discovering — `dir` is an HTML attribute, so both
+    of them can carry it and the markdown never will.
+
+    Per-document rather than a global preference like the theme, because tabs
+    make the global answer wrong immediately: a Hebrew file and an English one
+    open side by side want different answers, and there is already a mechanism
+    for exactly that.
+
+    **The key is named `direction`, not `dir`.** `DOCUMENT_KEYS.dir` is the last
+    browsed *directory* ([app.js](../front/app.js)), and this is precisely the
+    collision class CLAUDE.md's load-order section warns about.
+
+    The stages:
+
+    *   **The seventh document key** — *not started*. An entry in
+        `DOCUMENT_KEYS`, and [tabs.js](../front/tabs.js) needs nothing: it
+        iterates `Object.keys(DOCUMENT_KEYS)` at all three places that matter,
+        the migration, the cleanup and the per-tab read, so the key is picked up
+        rather than enumerated a fourth time. A document from before this has no
+        value under it, which reads as left-to-right — the same absence the
+        `path` key already tolerates.
+
+    *   **The toggle** — *not started*. A second checkable item in View, which
+        holds exactly one today. The mechanism is already there: `outline.js`
+        writes `aria-pressed` on its item by action and
+        [app.css](../front/app.css) draws the checkmark from the attribute, so
+        this is a spec entry and a handler that stamps the attribute and writes
+        the key.
+
+    *   **The stylesheet** — *not started*. Three physical declarations inside
+        `#editor` become logical ones: the list `padding-left`, and the
+        blockquote's `border-left` and `padding-left`. Everything else the
+        Unicode bidi algorithm handles for free.
+
+    *   **Code stays left-to-right** — *not started*, and a correctness rule
+        rather than a refinement. Under bidi, `const x = 1;` in an RTL block
+        renders with its punctuation in the wrong place. `#editor pre`, `#editor
+        code { direction: ltr }` is the whole fix, and it is the difference
+        between flipping the document and flipping it correctly.
+
+    *   **The exports carry it** — *not started*. `documentBody()` in
+        [static-export.js](../front/static-export.js) and the shell
+        [html-export.js](../front/html-export.js) hand-writes both stamp `dir`
+        on the exported editor. HTML is the one output that can hold the
+        setting, so it should.
+
+    *   **What to measure rather than derive** — *not started*. The format bar
+        positions itself from `offsetWidth` and a `left`, and a caret rect
+        inside an RTL block is a thing to look at rather than reason about.
+        Contenteditable's caret behaviour at a bidi boundary is engine-specific
+        in ways nobody predicts correctly. A check page if either misbehaves,
+        not before one does.
+
+    It reaches nothing in the core: direction is a view property and 3.1 has no
+    opinion about it, so this neither waits on the rewrite nor is discarded by
+    it.
+
 ## 6. Product
 
 *   **6.1** Rewrite the README to better fit the project's state
