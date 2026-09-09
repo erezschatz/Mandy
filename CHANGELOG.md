@@ -2490,7 +2490,7 @@ seventh key is picked up rather than enumerated a fourth time.
 It reaches nothing in the core, so it neither waits on 3.1 nor is discarded by
 it. No code changed, so nothing was run.
 
-## 2026-09-09 — The rewrite starts: stage 0, the block-model spike
+## 2026-09-09 — `a79d10a` — The rewrite starts: stage 0, the block-model spike
 
 **TODO 3.1 begins, on branch `rewrite`, with the stage the plan calls a gate
 rather than a first step.** REWRITE.md gained a "Where each stage stands"
