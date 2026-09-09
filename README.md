@@ -104,6 +104,7 @@ That's it! No tutorials needed.
 ## Why Mandy?
 
 Unlike other markdown editors:
+- **You edit the document, not the markup** - the answer to a 3,000-word wall of markdown is an editor that renders it, not a heavier format to write it in
 - **Editable HTML exports** - Share documents that recipients can modify and return
 - No complicated split-pane views - just pure WYSIWYG
 - No account creation or login required

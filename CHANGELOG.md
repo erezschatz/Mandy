@@ -2341,7 +2341,7 @@ No behaviour change, and the suite is untouched at 975 green — nothing in
 `tests/` reads a comment, but the source-scanning suites do read those files, so
 it was worth the run.
 
-## 2026-09-08 — `4ba4262` — The docs re-read against the tabbed view, before the rewrite starts
+## 2026-09-08 — `222f967` — The docs re-read against the tabbed view, before the rewrite starts
 
 A spec-only pass over `docs/`, CLAUDE.md and the README, asking of each claim
 whether it survived the six tabs entries above. Most did. What did not, and what
@@ -2405,3 +2405,49 @@ truncate in the middle, count untitled documents — and that all of it is
 `buildTab` over the paths `openTabs` already holds, with the `title` and
 `aria-label` keeping the full path whatever is drawn. Nothing in it touches
 the core.
+
+## 2026-09-09 — TODO 6.4, and the sentence the README was missing
+
+**TODO 6.4 is new: open HTML, save markdown.** Prompted by a search that turned
+up the "HTML is the new markdown" argument — that a 3,000-word agent-written
+spec is an unreadable wall of markup, and the fix is to generate HTML instead.
+The premise is right and the conclusion inverts D0. A wall of markup is a
+presentation problem, and answering it with a second, heavier markup is the move
+D0 already diagnoses in YAML: treating "the syntax is unfriendly" as the
+question when the question is why a person is reading source at all. What
+follows from the argument is not a format change; it is an editor, which is this
+project.
+
+What does follow is import. If specs arrive as HTML, Mandy should take them, and
+the item scopes that deliberately narrowly: **one way in, markdown from then
+on.** Not a second document format — `markdown-style.js` is markdown-specific
+top to bottom, so D1 has no HTML implementation and could not get one cheaply,
+and MARKDOWN.md settled on 2026-09-07 that raw HTML is neither rendered nor
+authored. Opening HTML as an editable format would need a second fidelity stack
+*and* contradict that. The way back out already exists twice, in
+`static-export.js` and `html-export.js`, and needs nothing.
+
+The entry records the two findings that make it small. The conversion is
+`htmlToMarkdown` then `markdownToHtml` — two functions already in `app.js` —
+with `markdownStyleAdopt(null)` between them, which already exists and is
+already documented as "a document that has never had markdown read into it",
+exactly what an import is. And sanitising is free rather than a component to
+build: Turndown parses into a detached document, markdown-it runs `html: false`,
+so the pipeline escapes what it cannot convert, provided the imported string
+never reaches a live node before conversion. Four stages, all *not started*: the
+server's single extension gate splits so that **reading widens and writing does
+not**, the branch in `openFileBody`, the decision that an imported file is
+*imported rather than opened* (`setCurrentFile(null)`, so Ctrl+S becomes Save As
+under a `.md` name), and a case in the `file-path` suite.
+
+It reaches nothing in the core, so it neither waits on 3.1 nor is discarded by
+it — after the rewrite the same conversion is REWRITE.md's paste path with a
+file instead of a clipboard.
+
+**The README gained one sentence**, first in the "Why Mandy?" list, because the
+argument above is the project's thesis and the file made the case nowhere: the
+answer to a wall of markdown is an editor that renders it, not a heavier format
+to write it in. TODO 6.1 still owns the full rewrite; this is one line of it
+that was worth not waiting for.
+
+No code changed, so nothing was run — `tests/` reads none of these three files.

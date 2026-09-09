@@ -398,3 +398,74 @@ category fidelity deliberately does not extend to.
     Packaging, not architecture: no new rendering engine, no experimental API,
     no change to what Mandy is. The desktop-app version of the same idea — a
     window, and the costs that come with one — is in [ROADMAP.md](ROADMAP.md).
+*   **6.4** *(survives 3.1)* Open HTML, save markdown. Mandy reads `.md`,
+    `.markdown` and `.txt`, and content increasingly arrives as HTML — a
+    rendered spec from an agent, a saved page, an editable export coming back
+    from a reviewer — so the only way in is a detour through some other
+    converter. The README's own collaboration tip ends by admitting it: open the
+    returned HTML *in a browser* and use Copy markdown, because the Open dialog
+    will not take it.
+
+    **One way on purpose: HTML in, markdown from then on.** Not a second
+    document format. [markdown-style.js](../front/markdown-style.js) is
+    markdown-specific top to bottom — bullet markers, rule characters, wrap
+    width, `markdownSegments` — so D1 has no HTML implementation and could not
+    get one cheaply, and [MARKDOWN.md](MARKDOWN.md) has already settled that raw
+    HTML is neither rendered nor authored (`html: false`, out of D0). An
+    editable HTML format would need a second fidelity stack *and* contradict a
+    decision already recorded. So HTML is a source to rescue content out of,
+    never a document Mandy holds. The way back out exists twice already, in
+    [static-export.js](../front/static-export.js) and
+    [html-export.js](../front/html-export.js), and neither needs anything.
+
+    **The conversion is two functions that already exist.**
+    `htmlToMarkdown(imported)` then `markdownToHtml(that)`, with
+    `markdownStyleAdopt(null)` between them so the outgoing document's sniffed
+    bullet marker and block index cannot shape the generated markdown. The
+    second call adopts that markdown as the document's source, which is the
+    answer rather than a shortcut: an import is stable from its *second* save,
+    the first writing Turndown's spelling and D1 applying normally from there.
+
+    **Sanitising is free as long as nothing is assigned live.** Turndown parses
+    the string into a detached document and reads only the tags its rules know,
+    and markdown-it runs `html: false`, so whatever survives as text is escaped
+    rather than rendered. The rule to keep is that the imported string never
+    reaches a live node before conversion — `<img onerror>` fires the moment it
+    does, where a `<script>` would not. Turndown's detached parse is an engine
+    claim rather than a measured one, and this is the repo with check pages for
+    exactly that; cheap to watch once.
+
+    The stages:
+
+    *   **The server's one gate becomes two** — *not started*.
+        `MARKDOWN_EXTENSIONS` in [server.ts](../server/src/server.ts) gates
+        browse, GET and POST alike. Reading widens to `.html` and `.htm`;
+        **writing does not**, which keeps the security property CLAUDE.md
+        records intact and makes "you cannot save as HTML" enforced rather than
+        merely conventional. One dialog serves Open and Save As, so the save
+        listing offers files it cannot write to until it takes a filter.
+
+    *   **The import path** — *not started*. A branch in `openFileBody`
+        ([file-api.js](../front/file-api.js)) on the extension: markdown as
+        today, HTML through the three calls above. A Mandy export is the one
+        shape whose body is exactly known — take `#editor`'s contents; anything
+        else takes `<body>`.
+
+    *   **Imported, not opened** — *not started*, and the only real decision.
+        `setCurrentFile(null)`, so Ctrl+S falls through to Save As under a `.md`
+        name instead of posting markdown at `notes.html` and collecting the
+        server's rejection. It disposes of the disk-changed baseline question
+        too: nothing is being tracked, because the file that was read is not one
+        Mandy will ever write.
+
+    *   **Tests** — *not started*. An HTML-open case in the `file-path` suite,
+        which already drives a fake disk. No fidelity suite is touched, because
+        nothing here claims HTML fidelity.
+
+    It reaches nothing in the core, so it neither waits on 3.1 nor is discarded
+    by it: after the rewrite the same conversion is Turndown to markdown to
+    blocks, which [REWRITE.md](REWRITE.md)'s input layer already specifies for
+    paste, and the call site moves rather than the decision. What is lost on the
+    way in is worth saying once — `<details>`, `<div align>` and `<img width>`
+    flatten to their text, because that is what a markdown document can hold.
+    Import rescues prose and structure, not a page.
