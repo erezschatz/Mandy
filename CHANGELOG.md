@@ -2520,3 +2520,22 @@ distant maybe: it needs the same block-presentational-attribute the model
 lacks, plus another line-start marker `reflowMarkdown` must not strand.
 
 No code changed, so nothing was run — `tests/` reads none of these files.
+
+## 2026-09-10 — TODO 6.5 and 6.6: what breaks when Mandy is not on loopback
+
+**Two bugs found fitting Mandy behind Atrium as a chamber, recorded rather than
+fixed.** 6.5: [sw.js](front/sw.js) answers navigations, and re-issuing one with
+`fetch()` drops `Sec-Fetch-Mode` from `navigate` to `cors`, so an auth gate in
+front reads a page load as an XHR and returns a bare 401 where the login
+redirect belongs — no login page, and no document loaded to notice. The fix
+costs the offline boot, which is why it is not one line; guarding on
+`navigator.onLine` buys most of it back, and whether the header really is erased
+on every engine wants a check page before either version lands.
+
+**6.6:** `/tests/:name` and `/report` exist in every deployment. Neither is a
+hole — the check pages match a literal set, and `/report` ignores its body — but
+`/report` writes unbounded request text to the process log, and 6.3's binary and
+any hosted instance put both on something other than loopback. They should not
+exist rather than be guarded: register them only under `MANDY_DEV`.
+
+No code changed, so nothing was run.

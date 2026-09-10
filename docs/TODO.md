@@ -540,3 +540,54 @@ category fidelity deliberately does not extend to.
     way in is worth saying once — `<details>`, `<div align>` and `<img width>`
     flatten to their text, because that is what a markdown document can hold.
     Import rescues prose and structure, not a page.
+*   **6.5** *(survives 3.1)* The service worker intercepts navigations, which
+    breaks logging in to any host that puts an auth gate in front of Mandy.
+    Found fitting Mandy behind Atrium as a chamber; it is not an Atrium quirk,
+    it is what the platform does to a re-issued navigation.
+
+    [sw.js](../front/sw.js)'s fetch listener sends every same-origin GET that is
+    not `/api/*` into `networkFirst`, navigations included — `networkFirst` even
+    has a `request.mode === "navigate"` branch, so it is deliberate. Answering a
+    navigation means re-issuing it with `fetch(request)`, and that drops
+    `Sec-Fetch-Mode` from `navigate` to `cors`. A host that reads that header to
+    tell a page load from an XHR — the standard way to decide between redirecting
+    to a login page and returning a bare 401 — then classifies the page load as
+    an XHR. The browser gets a 401 body where the login page should have been,
+    and there is no document loaded to notice the 401 and go find one. The user
+    sees an error and has no way to authenticate.
+
+    **What it costs to fix is the offline boot, which is why this is not one
+    line.** Leaving navigations alone unconditionally is the simple fix, and it
+    means an offline launch no longer boots the cached shell: the browser asks
+    for `/`, no worker answers, the network fails, and the app never starts. The
+    version written for the Atrium variant keeps most of it by guarding on
+    `navigator.onLine` — false means there is genuinely no interface, so cache
+    is served without any `fetch()` and `Sec-Fetch-Mode` never arises; true goes
+    to the network untouched. The gap that leaves is a reachable interface with
+    an unreachable server, where the browser's own error page replaces a boot
+    that used to work.
+
+    Worth measuring before adopting either: whether re-issuing really does erase
+    the header on every engine, or only the ones this was seen on. It is an
+    engine claim in a repo that has check pages for exactly that kind of claim,
+    and the cheap fix and the careful fix differ only in how much offline
+    behaviour they buy back.
+*   **6.6** *(survives 3.1)* `/tests/:name` and `/report` exist in every
+    deployment, including ones that are not on loopback. Neither is a hole on
+    its own — [server.ts](../server/src/server.ts) matches the check pages
+    against a literal `CHECK_PAGES` set, so nothing takes a path from the
+    request, and `/report` ignores its body beyond printing it. But they are
+    development surfaces, and the deployment story has stopped being "loopback
+    only": 6.3 ships a binary, and running Mandy behind an authenticating host
+    puts them on a hostname.
+
+    `/report` is the one with an edge to it. It writes the request body to the
+    process log at any length, so anyone who can reach the port can grow the log
+    without limit and put chosen text in it. On loopback that is any local
+    process; under pm2 the log is a file on disk.
+
+    The fix is that they should not exist rather than that they should be
+    guarded: read a `MANDY_DEV` env var at startup and register the two routes
+    only when it is set, so a deployed instance has no such endpoints to reason
+    about. The check pages are run by hand from a dev server, which is exactly
+    when the var is set, so nothing about how they are used changes.
