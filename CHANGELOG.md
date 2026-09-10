@@ -2553,7 +2553,7 @@ Only the page's intro markup and three CSS rules changed; the model, the input
 layer and the checks are untouched, and no suite reads this file, so nothing
 was run.
 
-## 2026-09-10 — The spike passes in three engines, and finds a live bug on `main`
+## 2026-09-10 — `73f4078` — The spike passes in three engines, and finds a live bug on `main`
 
 **Stage 0's gate is open.** Typing, Enter, Backspace, the accent popup and the
 refusal inside a read-only block were driven by hand in Blink, Gecko and WebKit,
