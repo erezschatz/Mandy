@@ -2291,7 +2291,7 @@ click and by Ctrl+2, an edit raised the dot, closing the edited tab asked the
 three-way question and Escape backed out of it, and closing the clean one went
 straight out — with the session's own document put back afterwards.
 
-## 2026-09-07 — Retire the tabbed-view item, and keep the one thread that outlives it
+## 2026-09-07 — `6a076ae` — Retire the tabbed-view item, and keep the one thread that outlives it
 
 All five stages have landed and been driven in a browser, so TODO 4.1 leaves
 [docs/TODO.md](docs/TODO.md) the way a finished item is supposed to: what was
@@ -2452,7 +2452,7 @@ that was worth not waiting for.
 
 No code changed, so nothing was run — `tests/` reads none of these three files.
 
-## 2026-09-09 — TODO 4.4: right-to-left documents
+## 2026-09-09 — `6400cb4` — TODO 4.4: right-to-left documents
 
 **A View toggle that puts `dir="rtl"` on `#editor`, and nothing else.** The
 document flips; the toolbar, the outline's side and the dialogs stay where they
@@ -2490,7 +2490,7 @@ seventh key is picked up rather than enumerated a fourth time.
 It reaches nothing in the core, so it neither waits on 3.1 nor is discarded by
 it. No code changed, so nothing was run.
 
-## 2026-09-10 — Abbreviation on the roadmap; underline and center dropped
+## 2026-09-10 — `9abe7ba` — Abbreviation on the roadmap; underline and center dropped
 
 **Of four extended-syntax constructs the user asked about, abbreviation is
 recorded as a post-1.0 nice-to-have, subtext as a distant maybe, and underline
@@ -2521,7 +2521,7 @@ lacks, plus another line-start marker `reflowMarkdown` must not strand.
 
 No code changed, so nothing was run — `tests/` reads none of these files.
 
-## 2026-09-10 — TODO 6.5 and 6.6: what breaks when Mandy is not on loopback
+## 2026-09-10 — `4293b6c` — TODO 6.5 and 6.6: what breaks when Mandy is not on loopback
 
 **Two bugs found fitting Mandy behind Atrium as a chamber, recorded rather than
 fixed.** 6.5: [sw.js](front/sw.js) answers navigations, and re-issuing one with
@@ -2537,5 +2537,29 @@ hole — the check pages match a literal set, and `/report` ignores its body —
 `/report` writes unbounded request text to the process log, and 6.3's binary and
 any hosted instance put both on something other than loopback. They should not
 exist rather than be guarded: register them only under `MANDY_DEV`.
+
+No code changed, so nothing was run.
+
+## 2026-09-10 — TODO 4.5: the reopened PWA never asks about the file
+
+**A file that changed while the installed PWA was closed is not reported when
+the app comes back**, recorded rather than fixed. Nothing is lost — Reload
+still takes the newer file — so what goes missing is the reason to press it,
+which is the entire job of the mark.
+
+[file-api.js](front/file-api.js) has three wake points, and one of them, the
+startup IIFE, exists for exactly this shape of launch, so the interesting
+question is which of three it is: the relaunch is a restore rather than a page
+load, so neither the IIFE nor — per engine, per platform —
+`focus`/`visibilitychange` runs; or it is a page load whose `mtime` key did not
+come back; or the file server was not up yet, which gates the startup check and
+then leaves it waiting on a `focus` that a window which already has focus never
+fires. `checkDiskChanged` swallows its errors on purpose, so all three look
+identical from outside — the item is a measurement before it is a fix, and not
+one a check page can make: an installed PWA, an OS-level close and a file
+edited in between are not things a page can arrange for itself.
+`checkServerAvailable` shares those listeners and the same gap, so one fix
+covers both, and both checks are already idempotent — which is the argument for
+adding wake points rather than hunting the one true event.
 
 No code changed, so nothing was run.

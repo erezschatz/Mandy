@@ -434,6 +434,64 @@ category fidelity deliberately does not extend to.
     opinion about it, so this neither waits on the rewrite nor is discarded by
     it.
 
+*   **4.5** *(bug, survives 3.1)* Reopening the installed PWA does not report a
+    file that changed while it was closed. Open a file, close the app window,
+    edit that file in something else, launch Mandy again from the OS: the tab
+    keeps its clean dot and nothing says the document and the file have parted
+    company. Reload still takes the newer file, so nothing is lost — but the
+    user has no reason to press it, which is the entire job of the mark.
+
+    **Three wake points are supposed to cover this**, all in
+    [file-api.js](../front/file-api.js): the startup IIFE, `window` `focus`,
+    and `visibilitychange` when the page is not hidden. The startup one exists
+    for exactly this shape of launch — the comment beside it says `focus` never
+    fires for the tab that already has it — so a cold PWA start should be
+    covered already and observably is not.
+
+    **Nothing on screen tells a check that ran and lost from one that never
+    ran.** `checkDiskChanged` returns early unless both `currentFilePath` and
+    `fileMtime` are set, and swallows every error from the stat, deliberately:
+    an alert on every window focus would be no way to raise a deleted file. The
+    cost is that the three candidates below look identical from outside, which
+    is why this is a measurement before it is a fix.
+
+    *   **The relaunch may not be a page load at all.** A PWA closed to the OS
+        can be frozen or discarded and *restored* rather than re-fetched. A
+        restored page does not re-run a top-level IIFE, and whether `focus` and
+        `visibilitychange` fire on the way back is per engine and per platform.
+        If that is it, the missing wake points are `pageshow` — the
+        `event.persisted` one — and the Page Lifecycle `resume`.
+
+    *   **Or it is a page load whose state did not come back.** The check bails
+        silently with no `mtime`. A PWA launched at `start_url` `/` is the same
+        origin as a browser tab and should read the same six document keys, but
+        *should* is the word this item exists to remove.
+
+    *   **Or the state came back and the server was not up yet.** The startup
+        check is gated on `serverAvailable`, resolved from `/api/home`. An app
+        launched before its own file server gets `false`, skips the check, and
+        then waits for a `focus` that a window which already has focus never
+        fires. That one self-corrects at the next wake, so it explains a silent
+        launch rather than a permanently silent session.
+
+    **`checkServerAvailable` rides the same two listeners and has the same
+    gap**, so whatever fixes one fixes both: a PWA reopened after the server
+    died reports it only once one of those events arrives.
+
+    **What to measure, and it cannot be a check page in the usual sense.** This
+    needs an installed PWA, an OS-level close and reopen, and a file edited in
+    between — none of which a page can arrange for itself. So it is a by-hand
+    run per platform, recording which of `pageshow` (and its `persisted`),
+    `resume`, `focus` and `visibilitychange` fire, in what order, and whether
+    `visibilityState` was ever `hidden`.
+
+    **The fix is cheap to over-cover**, which is the argument for adding wake
+    points rather than identifying the one true event. Both checks are guarded
+    by their own in-flight flags, and `setDiskChanged` and `setServerAvailable`
+    are no-ops when nothing changed, so a redundant wake point costs one stat
+    call and nothing else. Nothing here reloads or merges on its own either —
+    the report is the whole feature, and what to do about it stays the user's.
+
 ## 6. Product
 
 *   **6.1** Rewrite the README to better fit the project's state
