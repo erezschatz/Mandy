@@ -93,7 +93,12 @@
     <li><label><input type="checkbox"> <b>Backspace</b> at the very start of that
       second half — it merges back, caret at the join.</label></li>
     <li><label><input type="checkbox"> <b>Double-click a word, Ctrl/Cmd+B</b> —
-      it bolds, and stays selected.</label></li>
+      it bolds, and stays selected. Measured 2026-09-10: Blink bolds; Gecko on
+      macOS opens the bookmarks sidebar instead; WebKit does nothing. The page
+      now binds the key itself, so what to read here is the Events table — a
+      <code>keydown</code> row means the key reached us, no row at all means the
+      browser kept it, and whether the sidebar <em>still</em> opens is the half
+      no script can see.</label></li>
     <li><label><input type="checkbox"> <b>The accent popup</b> — hold a vowel and
       pick an accented character. One character lands. (macOS; elsewhere, any
       IME.)</label></li>
@@ -115,6 +120,15 @@
     stage 1; a fail is decided against the two moves in
     <code>docs/REWRITE.md</code> — ProseMirror as the input and selection layer
     only, or the rewrite back to the roadmap.
+  </p>
+  <p>
+    <b>Number 4 does not gate it</b>, which is worth saying since it is the one
+    that failed. Whether an engine lets a page have Cmd+B is a keyboard-routing
+    question that today's Mandy already loses in the same browser — it binds
+    Ctrl+S, Ctrl+O and Ctrl+K and never binds Cmd+B at all — and the command
+    behind it is reachable from a menu regardless. What gates the design is
+    1, 2, 3, 5 and 6: whether the engine tells us what it is about to do, and
+    lets us do it instead.
   </p>
 </div>
 
@@ -554,6 +568,8 @@ Hold a vowel here and pick from the accent popup.</textarea>
     return { range: { start: sel.start, end: { block: sel.start.block + 1, offset: 0 } }, from: "fallback merge" };
   }
 
+  const FORMAT_MARKS = { formatBold: "strong", formatItalic: "em", formatStrikeThrough: "s" };
+
   editor.addEventListener("beforeinput", (e) => {
     // Composition is the one thing that cannot be cancelled: the engine needs
     // to write into the DOM while an IME or the accent popup is open, and the
@@ -576,18 +592,45 @@ Hold a vowel here and pick from the accent popup.</textarea>
           ? (merge ? "merge" : "delete") + " via " + target.from
           : "refused (raw block)";
       }
-    } else if (e.inputType === "formatBold" && sel) {
-      note = apply(toggleMark(sel, "strong")) ? "toggle strong" : "refused";
-    } else if (e.inputType === "formatItalic" && sel) {
-      note = apply(toggleMark(sel, "em")) ? "toggle em" : "refused";
-    } else if (e.inputType === "formatStrikeThrough" && sel) {
-      note = apply(toggleMark(sel, "s")) ? "toggle s" : "refused";
+    } else if (FORMAT_MARKS[e.inputType]) {
+      const mark = FORMAT_MARKS[e.inputType];
+      if (shortcutJustHandled) note = "arrived as well — ignored, the keydown already did it";
+      else if (!sel) note = "no model selection — cancelled";
+      else note = apply(toggleMark(sel, mark)) ? "toggle " + mark : "refused";
     } else {
       note = sel ? "not in the spike — cancelled" : "no model selection — cancelled";
     }
 
     if (e.cancelable) e.preventDefault();
     log(e.inputType, e.cancelable, note);
+  });
+
+  // The format shortcuts are the one part of the design an engine can defeat
+  // upstream of `beforeinput`: Gecko on macOS hands Cmd+B to the bookmarks
+  // sidebar, so no formatBold is ever sent, and WebKit sent nothing measurable
+  // either. Binding the shortcut here reports both halves of the question TODO
+  // 4.2 asks of the tab strip — whether the keydown reaches the page at all
+  // (no row means it did not), and whether preventDefault suppresses what the
+  // browser wanted to do instead. No script can see that second half: if the
+  // sidebar still opens with a row in the table, that is the answer.
+  const SHORTCUT_MARKS = { b: "strong", i: "em" };
+
+  let shortcutJustHandled = false;
+
+  editor.addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const mark = SHORTCUT_MARKS[e.key.toLowerCase()];
+    if (!mark) return;
+
+    const name = "keydown " + (e.metaKey ? "Cmd" : "Ctrl") + "+" + e.key.toUpperCase();
+    e.preventDefault();
+    // If the engine sends the matching format* anyway, it must not toggle back.
+    shortcutJustHandled = true;
+    setTimeout(() => { shortcutJustHandled = false; }, 0);
+
+    const sel = getModelSelection();
+    if (!sel || collapsed(sel)) { log(name, e.cancelable, "reached the page — nothing selected"); return; }
+    log(name, e.cancelable, apply(toggleMark(sel, mark)) ? "reached the page — toggled " + mark : "reached the page — refused");
   });
 
   // Nothing but composition should ever reach here: every other beforeinput is

@@ -2552,3 +2552,35 @@ judging it is standing.
 Only the page's intro markup and three CSS rules changed; the model, the input
 layer and the checks are untouched, and no suite reads this file, so nothing
 was run.
+
+## 2026-09-10 — The spike passes in three engines, and finds a live bug on `main`
+
+**Stage 0's gate is open.** Typing, Enter, Backspace, the accent popup and the
+refusal inside a read-only block were driven by hand in Blink, Gecko and WebKit,
+and all three behave with the divergence line quiet. That is the question the
+spike existed to ask — will an engine say what it is about to do and let us do
+it instead — and the answer is yes everywhere, so REWRITE.md's stages proceed in
+order and stage 1 may start.
+
+**One of the six failed, and chasing it found something older.** Ctrl/Cmd+B
+bolds in Blink; Gecko on macOS gives the key to its own bookmarks sidebar and
+the page never sees it; WebKit does nothing at all. That is keyboard routing
+upstream of `beforeinput` rather than a hole in the interception — and it turns
+out `main` has the same gap today: `app.js` binds Ctrl+S, Ctrl+O, Ctrl+Shift+P
+and Ctrl+K and never binds a format shortcut, so bold-by-keyboard has been dead
+in two engines out of three, silently, for as long as there has been a format
+bar. It took a spike measuring something else to notice, which is the argument
+for the check pages in one sentence.
+
+So three things changed. REWRITE.md's input-layer section no longer claims the
+engine's shortcuts *arrive* as `formatBold` — they do where they do, and the
+shortcut is bound as a `keydown` where they do not, with the `format*` handler
+ignoring an event that lands after a keydown already did the work, or the two
+cancel out. The spike binds it that way and reports whether the key reached the
+page at all. And **TODO 1.7** records the bug, the fix's home in 3.1 stage 2,
+and the half no script can answer: whether `preventDefault` actually suppresses
+what the browser wanted the key for. It is 4.2's shape, with one difference
+worth stating — 4.2 has Alt+1–9 to fall back to and 1.7 has nothing, because
+Cmd+B *is* the convention.
+
+`front/` is untouched, so nothing was run; the spike is not read by any suite.

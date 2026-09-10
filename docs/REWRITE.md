@@ -231,9 +231,17 @@ DOM never changes except through render:
   an empty list item outdents or leaves the list; Enter at the end of a
   heading opens a paragraph. These are the hand-rolled list behaviours
   `app.js` carries today, as model rules, in one place, engine-independent.
-- `formatBold`, `formatItalic`, `formatStrikeThrough` — the engine's own
-  shortcuts arrive as these, and route to the same commands the Format menu
-  calls. Nothing goes through `execCommand`.
+- `formatBold`, `formatItalic`, `formatStrikeThrough` — where the engine's own
+  shortcuts arrive as these, they route to the same commands the Format menu
+  calls. Nothing goes through `execCommand`. **Where they do not, and stage 0
+  found that is two engines out of three, the shortcut is bound as a `keydown`
+  on the editable and calls the same command** — Gecko on macOS gives Cmd+B to
+  its bookmarks sidebar and sends no `formatBold` at all, and WebKit sent
+  nothing measurable either. So this row is a bonus entry point rather than the
+  mechanism, and the `format*` handler has to ignore an event that arrives
+  after a `keydown` already did the work, or the two cancel out. TODO 1.7
+  carries the part no script can answer: whether `preventDefault` actually
+  suppresses what the browser wanted the key for.
 - `insertFromPaste`, `insertFromDrop` — read the clipboard's `text/html` or
   `text/plain`, and go through **Turndown to markdown, then markdown-it into
   blocks**. Turndown stays in the bundle for this one path, with its table and
@@ -474,12 +482,24 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     round-trips byte-identical through the model, and one typed character leaves
     exactly one block off its source, which is D1 in miniature.
 
-    **The gate is not passed.** The criterion is three engines and a person's
-    hands, and a synthesised event proves the model, the render splice and the
-    caret mapping rather than what an engine delivers. Enter, Backspace,
-    Ctrl/Cmd+B and a real accent popup have to be pressed in Chrome, Firefox and
-    Safari before stage 1 starts — that is the remaining half of stage 0, not a
-    formality after it.
+    **Driven by hand in all three engines on 2026-09-10, and the gate passes.**
+    Typing, Enter, Backspace, the accent popup and the refusal inside the
+    read-only block behave in Blink, Gecko and WebKit alike, with the divergence
+    line quiet throughout. That is the question the spike was built to ask —
+    whether an engine will say what it is about to do and let us do it instead —
+    and all three do.
+
+    **One of the six failed, and it is not one the design rests on.** Ctrl/Cmd+B
+    bolds in Blink; in Gecko on macOS the browser takes the key for its
+    bookmarks sidebar and the page never sees it; in WebKit nothing happened at
+    all. That is keyboard routing upstream of `beforeinput`, not a hole in the
+    interception — and it is a gap `main` already has, since `app.js` binds
+    Ctrl+S, Ctrl+O, Ctrl+Shift+P and Ctrl+K and never binds a format shortcut,
+    leaving all thirteen to whatever the engine does natively. The input-layer
+    section above now says the shortcut is bound as a `keydown` rather than
+    awaited as a `format*`; the spike binds it that way and the page reports
+    whether the key arrives, which is the half a script can see. **TODO 1.7**
+    carries the other half and the fallback bindings.
 
     One thing it turned up for stage 2 to decide rather than inherit: typing
     over a fully-bold selection gives plain text here, because a new run

@@ -235,6 +235,35 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     no offset walk across the whole editor to miscount. Kept here until the
     new undo is watched doing this exact case correctly.
 
+*   **1.7** *(measurement first; the binding lands with 3.1 stage 2)*
+    **No format shortcut is Mandy's.** `app.js` binds Ctrl+S, Ctrl+O,
+    Ctrl+Shift+P and Ctrl+K, and nothing binds Ctrl/Cmd+B or Ctrl/Cmd+I — the
+    three formats that have a conventional shortcut at all are left to whatever
+    the engine does with the key inside a `contenteditable`, and the other ten
+    have no shortcut to be broken. Measured 2026-09-10 while running 3.1's
+    stage-0 spike, which is the only reason anyone noticed: Blink bolds, **Gecko
+    on macOS opens the bookmarks sidebar** and the page never sees the key, and
+    **WebKit does nothing at all**. So in two engines out of three the most
+    common formatting shortcut in any editor is dead on `main` today, silently.
+
+    The fix is one `keydown` handler on the editable calling the same command
+    the Format menu calls, and it belongs with 3.1 stage 2, where every format
+    becomes a model command and the handler has somewhere to call into. Writing
+    it against `execCommand` first would be a fourth thing D4's amendment says
+    not to start on the old core.
+
+    **The measurement comes first, and it is 4.2's shape exactly**: two things
+    have to be true before a binding works — the keydown has to reach the page,
+    and `preventDefault` has to suppress what the browser wanted the key for.
+    [spike/block-model.html](../spike/block-model.html) answers the first half
+    now (a `keydown` row in its Events table means the key arrived; no row means
+    the browser kept it) and cannot answer the second, because no script can see
+    whether the sidebar still opened. Somebody has to press it and look. If
+    Gecko keeps the key either way, the fallback wants deciding rather than
+    discovering — and unlike 4.2 there is no unclaimed binding to fall back to,
+    since Cmd+B *is* the convention, so the honest options are a modifier nobody
+    expects or accepting the menu as the only route in that browser.
+
 ## 2. Save fidelity
 
 Ways the bytes on disk still differ from what was opened, all verified by
