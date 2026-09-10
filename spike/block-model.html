@@ -68,18 +68,55 @@
   .problem { color: #b00; font-weight: bold; }
   .clear { color: #070; }
   .hint { color: #555; }
+  .protocol { border: 1px solid #ccc; border-left: 4px solid #36c; border-radius: 4px; padding: .1rem 1rem 1rem; margin-bottom: 1.2rem; max-width: 52rem; }
+  .protocol h2 { margin-top: 1rem; }
+  .protocol li { margin: .3rem 0; }
   textarea { width: 100%; height: 10rem; font: 12px/1.5 ui-monospace, monospace; }
 </style>
 
 <h1>Block model + <code>beforeinput</code> — does this engine let us own the document?</h1>
 
 <p class="hint">
-  Type in the box. Everything the engine tries to do is cancelled and re-done
-  through the model, so if a character is dropped or the caret jumps, that is
-  the finding. Try: typing, Enter in the middle of a paragraph, Backspace at
-  the very start of one, selecting a word and pressing Ctrl/Cmd+B, and — on
-  macOS — holding a vowel and picking from the accent popup.
+  Everything the engine tries to do in the box is cancelled and re-done through
+  the model, so a dropped character or a jumping caret is the finding rather
+  than a glitch. Run the six below in <b>Chrome, Firefox and Safari</b>, one
+  browser at a time. Five minutes each.
 </p>
+
+<div class="protocol">
+  <h2>What to do</h2>
+  <ol>
+    <li><label><input type="checkbox"> <b>Type</b> a sentence into the middle of
+      a paragraph — the characters land at the caret, in order.</label></li>
+    <li><label><input type="checkbox"> <b>Enter</b> in the middle of a paragraph
+      — it splits in two.</label></li>
+    <li><label><input type="checkbox"> <b>Backspace</b> at the very start of that
+      second half — it merges back, caret at the join.</label></li>
+    <li><label><input type="checkbox"> <b>Double-click a word, Ctrl/Cmd+B</b> —
+      it bolds, and stays selected.</label></li>
+    <li><label><input type="checkbox"> <b>The accent popup</b> — hold a vowel and
+      pick an accented character. One character lands. (macOS; elsewhere, any
+      IME.)</label></li>
+    <li><label><input type="checkbox"> <b>Type inside the greyed-out list</b> —
+      nothing happens. That is correct: this spike edits paragraphs and headings
+      only.</label></li>
+  </ol>
+
+  <h2>What decides it</h2>
+  <p>
+    <b>Pass</b> — all six behave in all three engines, the Checks line never turns
+    red, and typing feels like typing. <b>Fail</b> — anything dropped, any caret
+    jump, a red Checks line, or an action that produces <em>no Events row at
+    all</em>, which means the engine never sent the <code>beforeinput</code> this
+    whole design reads.
+  </p>
+  <p>
+    Either way three days were spent and the answer is known. A pass starts
+    stage 1; a fail is decided against the two moves in
+    <code>docs/REWRITE.md</code> — ProseMirror as the input and selection layer
+    only, or the rewrite back to the roadmap.
+  </p>
+</div>
 
 <div class="cols">
   <div>

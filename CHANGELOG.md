@@ -2537,3 +2537,18 @@ inherits the marks to its left.
 
 Nothing in `front/` or `server/` changed and no suite reads the spike, so
 nothing was run.
+
+## 2026-09-10 — The spike says what to do with it
+
+The stage-0 page measured the right things and never said what a person was
+supposed to press, which left the pass criterion in `docs/REWRITE.md` and the
+tester in a browser. It now carries the protocol itself: six numbered actions
+with checkboxes — type, Enter, Backspace, Ctrl/Cmd+B on a word, the accent
+popup, and an edit refused inside the read-only list — and what decides it,
+including the failure that is easy to miss because nothing visibly happens, an
+action that produces no Events row at all. A criterion belongs where the person
+judging it is standing.
+
+Only the page's intro markup and three CSS rules changed; the model, the input
+layer and the checks are untouched, and no suite reads this file, so nothing
+was run.
