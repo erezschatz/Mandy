@@ -2489,3 +2489,34 @@ seventh key is picked up rather than enumerated a fourth time.
 
 It reaches nothing in the core, so it neither waits on 3.1 nor is discarded by
 it. No code changed, so nothing was run.
+
+## 2026-09-10 — Abbreviation on the roadmap; underline and center dropped
+
+**Of four extended-syntax constructs the user asked about, abbreviation is
+recorded as a post-1.0 nice-to-have, subtext as a distant maybe, and underline
+and center are dropped.** A row in [docs/MARKDOWN.md](docs/MARKDOWN.md)'s
+extended-syntax table under a *Hacks page / non-standard* heading, a decision
+bullet beside the existing deprioritised batch, and the argument in a new
+[docs/ROADMAP.md](docs/ROADMAP.md) subsection.
+
+**Underline** has no markdown spelling and its `_word_` form is the `_`
+emphasis delimiter, so taking it would re-read every `_`-italicised file; any
+other route means reopening `html: false` / D0 for a `<u>` that reads as a
+broken link on the web. **Center** (`->text<-`) is `<div align>`-family
+block presentation S1 already refuses, with delimiters that collide with typed
+text. Neither earns the decision it would force.
+
+**Abbreviation** (`*[HTML]: …`) stays — the one with broad ecosystem support
+(Markdown Extra, Python-Markdown, `markdown-it-abbr`). The first draft called
+it a fidelity problem; corrected here. An untouched file round-trips for free
+via the 3.1 source span, contingent only on the invisible-block model type the
+reference-link definitions are already adding — where the nodeless `*[…]:` line
+parks. The edited case is bounded work: a one-line Turndown rule unwrapping
+`<abbr>` to text, a `scanAbbreviationDefinitions` + re-emit pair mirroring the
+reference-link one, and a whole-document whole-word match walk that skips the
+four opaque subtrees. Authoring is deferred, parse-and-render first, the cut
+line heading IDs took. **Subtext** (Discord's `-# text`) is kept only as a
+distant maybe: it needs the same block-presentational-attribute the model
+lacks, plus another line-start marker `reflowMarkdown` must not strand.
+
+No code changed, so nothing was run — `tests/` reads none of these files.

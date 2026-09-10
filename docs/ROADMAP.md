@@ -38,6 +38,73 @@ untouched block byte-exact through its source span whether or not the parser
 understands what is inside it, so an opened file that uses one of these keeps
 it — only editing that block risks the serialiser re-escaping it.
 
+### Abbreviation, and a note on subtext (2026-09-10)
+
+The user asked about four from the guide's *Hacks* page. Two are dropped:
+**underline** has no markdown spelling and its `_word_` form *is* the `_`
+emphasis delimiter (`emDelimiter`), so taking it would re-read every
+`_`-italicised file, and doing it any other way means reopening `html: false` /
+D0 to emit `<u>`/`<ins>` — which on the web reads as a broken link anyway.
+**Center** (`->text<-`) is block-level presentation of the `<div align>` /
+`<img width>` kind S1 in [MARKDOWN.md](MARKDOWN.md) settled Mandy will neither
+render nor author, and its `->` / `<-` delimiters collide with ordinary typed
+text. Neither is worth the decision it would force.
+
+**Abbreviation** stays on the list. `*[HTML]: Hyper Text Markup Language` on its
+own line, and every later `HTML` in prose renders as `<abbr title="Hyper Text
+Markup Language">HTML</abbr>` — the guide draws it as a dotted-underline `<span>`
+with a `title`, but the portable output is `<abbr>` and the underline is one
+`app.css` rule, never an inline style (the `--link-hint` reasoning). It is the
+only one of the four with broad support: Markdown Extra, Python-Markdown,
+`markdown-it-abbr`.
+
+The earlier note called it a fidelity problem; that was overstated. The
+**untouched file is free** — the same 3.1 source-span round-trip everything
+else gets — with one dependency: the `*[…]:` line renders to no token and so
+has no DOM node, so it needs somewhere to live in the model. That somewhere is
+the **invisible-block type the reference-link definitions are already forcing
+3.1 to add** ([REWRITE.md](REWRITE.md): "definitions get a real home as an
+invisible block with `source` in place"). Abbreviation rides on that; it does
+not pay for it alone.
+
+The **edited** case is the only real work, and it is bounded:
+
+- A one-line Turndown rule: `<abbr>` → its text content. (Turndown ships none,
+  so without this an edited block silently loses the tag — the letters stay, so
+  nothing looks wrong.)
+- A `scanAbbreviationDefinitions` / re-emit pair mirroring
+  `scanReferenceDefinitions` / `appendReferenceDefinitions` — read the raw
+  definitions on load, write them back on save. One decision inside it: emit
+  every scanned definition, or only those still referenced after the edit (the
+  reference-link rule drops unused ones, which here means editing prose can
+  delete a definition line elsewhere in the file).
+- The part with no precedent: the render-time match is a **whole-document,
+  whole-word walk**, not a span the author wrote. It has to visit every prose
+  text node and skip the four subtrees `normaliseEditorMarkup` also refuses —
+  `pre`, `code`, `.mermaid-wrapper`, `mjx-container` — and it has to decide what
+  happens when someone types inside an `<abbr>` so its text no longer matches
+  any definition (re-wrap, unwrap, leave stale). That is a `MutationObserver`
+  concern like the outline's, not an inline rule.
+- `<abbr>` added to `outline.js`'s `copyInline` allowlist, or an abbreviation in
+  a heading flattens to text in the outline entry. One line.
+
+Authoring is deferred, not blocked: there is no "select text, apply" gesture
+for a document-wide glossary — the nearest thing is a replace-all panel with no
+place in the bar or menus yet — so this ships parse-and-render first and author
+later, the cut line heading IDs already took.
+
+**Subtext** (`-# line`, Discord's, not any guide's core) is kept only as a
+distant maybe. `<small>` is the nearest HTML and at least has a spec meaning,
+but it would still need 3.1's block model to carry a presentational attribute —
+the thing center's dismissal turns on — and `-# ` joins the line-start markers
+`reflowMarkdown` must never strand, needing to be told apart from `- #` (a list
+item holding an H1). Thin case; likely to move only if a block-style control is
+ever built for its own sake.
+
+The dependency-vs-hand-roll call is S4's: hand-roll as a markdown-it rule in the
+`math` / `referenceAwareLink` style unless a plugin saves a week.
+`markdown-it-abbr` is small enough that it might.
+
 ## More export options
 
 The set today is markdown, HTML, PDF, DOCX and Editable. Decide what else earns

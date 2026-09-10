@@ -92,6 +92,21 @@ when there is a decision owed first.
 | **Automatic URL linking** (bare `https://…` in text) | ✗ `linkify: false` — a bare URL stays text | ✗ | ✓ (it's just text) | → **settled: `linkify: true` on import.** No new dependency — `linkify-it` already ships inside markdown-it. The D1 cost of serialising a linkified bare URL back to bare text is accepted (S2) |
 | **Disabling automatic URL linking** (inside a code span, or `\`-escaped) | ✓ once `linkify` is on, markdown-it already honours both | n/a | — | → covered by the line above |
 
+### From the guide's *Hacks* page / non-standard
+
+Two the user asked to record — **underline** and **center** were considered and
+dropped (2026-09-10): underline has no markdown spelling and its `_word_` form
+collides with the `_` emphasis delimiter, and center is block-level presentation
+of the `<div align>` kind S1 refuses. Neither remaining one is in markdown-it's
+default preset or has a Turndown rule, so both render literally today and, once
+parsed, an untouched block round-trips byte-exact via its 3.1 source span while
+an edited one is where the work is. The argument is in [ROADMAP.md](ROADMAP.md).
+
+| Construct | Render | Author | Round-trip | After 3.1 |
+| --- | --- | --- | --- | --- |
+| **Abbreviation** `*[HTML]: Hyper Text Markup Language` (Markdown Extra; `markdown-it-abbr`, ~1 KB; widely supported) | ✗ not parsed — renders literally | ✗ | ✗ from markdown; an untouched block byte-exact via its source span | → **roadmap, not 1.0** (2026-09-10). Untouched file is fine — *once the model has the invisible-block type the reference-link definitions are already adding*, which is where the nodeless `*[…]:` line parks. Editing a block that carries an occurrence is the only real work: a one-line Turndown rule unwrapping `<abbr>` to its text, a `scanAbbreviationDefinitions` + re-emit-at-end pair mirroring the reference-link one, and a whole-document whole-word match walk that skips the four opaque subtrees (`pre`, `code`, `.mermaid-wrapper`, `mjx-container`) |
+| **Subtext** `-# smaller and greyed out` | ✗ not parsed (Discord's, not any guide's core) — renders literally | ✗ | ✗ | → **roadmap, not 1.0** — would need 3.1's block model to carry a presentational attribute; `-# ` joins the line-start markers `reflowMarkdown` must never strand and needs telling apart from `- #` (a list item holding an H1). Thinnest case here |
+
 ## Mandy's own two
 
 Not in either guide; both work by stashing the source where the renderer cannot
@@ -172,6 +187,15 @@ want an answer first.
   [ROADMAP.md](ROADMAP.md). Until then an untouched block containing one
   round-trips byte-exact via its source span; only an edited block risks
   re-escaping.
+- **Abbreviation and subtext are roadmap, not 1.0** (added 2026-09-10);
+  **underline and center were considered and dropped** the same day — underline
+  has no markdown and its `_word_` form is the `_` emphasis delimiter, center is
+  `<div align>`-family presentation S1 refuses. Abbreviation is the one with
+  broad ecosystem support; its untouched-file round-trip is free once the model
+  grows the invisible-block type reference-link definitions already need, and
+  the edited case is a small, bounded piece of work — not the scope question the
+  batch above mostly is. Subtext is a distant maybe. [ROADMAP.md](ROADMAP.md)
+  has the argument.
 - **The small serialiser sniffs get done.** Fence character (` ``` ` vs `~~~`)
   and hard-break spelling (two trailing spaces vs `\`) join the
   `sniffMarkdownStyle` set. The rewrite's whole point is better sniffing, so
