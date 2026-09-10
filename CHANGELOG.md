@@ -2538,7 +2538,7 @@ inherits the marks to its left.
 Nothing in `front/` or `server/` changed and no suite reads the spike, so
 nothing was run.
 
-## 2026-09-10 — The spike says what to do with it
+## 2026-09-10 — `529ee82` — The spike says what to do with it
 
 The stage-0 page measured the right things and never said what a person was
 supposed to press, which left the pass criterion in `docs/REWRITE.md` and the
