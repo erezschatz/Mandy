@@ -2632,7 +2632,7 @@ list markers for exactly this reason. REWRITE.md gains slice 1b: containers get
 children that tile their span the way blocks tile the file, recursively. Not
 started, and recorded as not optional.
 
-## 2026-09-11 — CLAUDE.md catches up with the branch it is on
+## 2026-09-11 — `2ed418f` — CLAUDE.md catches up with the branch it is on
 
 Someone opening this file on `rewrite` could read all fourteen hundred lines of
 it and not learn that a second document model exists in `front/`. Six additions
