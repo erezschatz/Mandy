@@ -2,6 +2,30 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## This branch
+
+`rewrite` carries TODO 3.1, the editing-core rewrite. **Everything below still
+describes the running editor and still governs changes to it** — the branch has
+replaced nothing yet, and `main` keeps the working editor until parity. What the
+branch has added sits *beside* that editor rather than inside it:
+
+- [front/model.js](front/model.js) — the document model, stage 1. **Nothing
+  loads it**, deliberately, until stage 4: it is in none of the three registries
+  below, so nothing done to it can reach the running app. Its own section is
+  under Architecture.
+- [spike/block-model.html](spike/block-model.html) — stage 0, which was a gate
+  rather than a first step, and throwaway by design. It asked whether an engine
+  will announce what it is about to do and let us do it instead. Passed by hand
+  in Blink, Gecko and WebKit on 2026-09-10. It is not the first draft of
+  `front/` and nothing in it is meant to be moved there.
+- [tests/model.test.mjs](tests/model.test.mjs) and the root `deno.json`.
+
+[docs/REWRITE.md](docs/REWRITE.md) is the design, the plan, and — in its "Where
+each stage stands" section — the running status, one line per stage, updated as
+part of each landing. Read that before starting any of it. D6 in
+[docs/DECISIONS.md](docs/DECISIONS.md) is why this is 1.0 work rather than the
+roadmap item it was until 2026-09-06.
+
 ## Commands
 
 ```bash
@@ -18,7 +42,8 @@ exists only to hold the scripts, and Deno fetches what it needs itself: Hono for
 the server, and markdown-it for the model suite, both pinned by `npm:` specifier
 (`server/deno.json` and the root `deno.json`). The root config also sets
 `nodeModulesDir: none`, without which `package.json`'s presence sends Deno
-looking for a `node_modules` this project does not have.
+looking for a `node_modules` this project does not have. So `npm test` wants the
+network on its first run and nothing after it, since Deno caches what it fetched.
 Flag it before adding any dependency, npm or Deno.
 
 ### Tests
@@ -172,6 +197,16 @@ of what the item predicted. Safari is still unmeasured; its binding is
 Cmd+Shift+Option+V. Unlike the two before it, it needs no server and no app —
 open the file itself, which is why it is not in `CHECK_PAGES`.
 
+[spike/block-model.html](spike/block-model.html) is a sixth page of the same
+family and the only one outside `tests/`, because it watches a core that does
+not exist yet rather than this one — TODO 3.1's stage 0. It carries its own
+protocol on the page: six numbered actions, and what pass and fail mean. Like
+`paste-check` above it and `tab-shortcut-check` below, it needs no server and no
+app. When the rewrite lands it
+replaces `browser-check`, `list-indent-check` and `list-empty-item-check`, all
+three of which retire with execCommand; `paste-check` and `tab-shortcut-check`
+measure the browser rather than the core and stay.
+
 [tests/tab-shortcut-check.html](tests/tab-shortcut-check.html) is the same kind
 of page and the same kind of question, for the tab bar's keyboard: Ctrl+Tab,
 Ctrl+Shift+Tab and Ctrl+1–9 are all bindings some browser claims for its own tab
@@ -265,6 +300,13 @@ in a way that only shows up later:
 Bump `VERSION` in [sw.js](front/sw.js) when the shell changes; `activate` deletes
 caches whose names don't match.
 
+**`model.js` is the one file that joins none of them, on purpose.** It is stage
+1 of the rewrite and is loaded by nothing until stage 4, which is what keeps the
+running editor untouched while the model is built against it. Skipping a
+registry is otherwise a bug, and where it is deliberate the reason is written
+down — `tabs.js` is absent from `ASSETS` because an exported document holds one
+document and has no file API.
+
 ### Document state
 
 The document lives in `editor.innerHTML` as HTML, always. Markdown is a
@@ -278,6 +320,10 @@ is the design, D6 in [docs/DECISIONS.md](docs/DECISIONS.md) the decision. Until
 it lands on `main`, everything below describes the running code and still
 governs changes to it, with one rule from D4's amendment: no new format is
 written against contenteditable in the meantime.
+
+The replacement has begun and is the next section. It runs beside this design
+rather than over it: the model parses and re-emits a document today, and nothing
+in the app has heard of it.
 
 The `#editor` div in `index.html` ships **empty**. The welcome document is
 [front/welcome.md](front/welcome.md), fetched and rendered by `app.js` when
@@ -321,6 +367,62 @@ and the parser cannot disagree about what is an equation.
 Display maths broken across a blank line is still not handled. It does not need
 to be: a blank line inside `$$…$$` is an error in TeX itself, and markdown-it
 has split the paragraph in two before any inline rule runs.
+
+### The model
+
+[model.js](front/model.js) is the start of what replaces the section above, and
+the branch note at the top says why nothing loads it. It is pure string and
+token work, which is what lets the `model` suite drive it with no DOM anywhere.
+
+`modelParse(markdown, md)` returns `{ prefix, blocks }`, and the invariant that
+makes the rest work is that **every character of the input is in exactly one of
+`prefix`, a block's `source`, or a block's `separator`**. `modelSerialise`
+concatenates them, so an unedited document comes back byte-identical *because
+nothing ever threw the bytes away* — not because a restore pass got most of them
+back. That is the inversion the whole rewrite is for. Two identical paragraphs
+cannot be confused for one another by a source span, and `indexMarkdownBlocks`
+keys on content precisely because it has no span to use instead.
+
+Six things that are decisions rather than details:
+
+- **The parser is injected, never reached for.** `modelParse` takes the
+  markdown-it instance as an argument. In the app that will be the configured
+  one `app.js` already builds, carrying the `math` and `referenceAwareLink`
+  rules; in the suite it is a bare one. A module that fetched its own parser
+  could not be tested without a browser, which is the entire reason this stage
+  comes before the ones that are at risk.
+- **`modelTouch` is the only door to `source = null`.** That assignment *is* the
+  contract with D1: a path that changes a block's content without going through
+  it leaves the file's old bytes on disk under new content, and the document
+  looks right on screen either way.
+- **Blocks come from top-level tokens' `map`, which is a source span for free.**
+  A block's `source` is the exact bytes and no trailing newline; the newline
+  that ends its last line belongs to the separator, or every block would carry
+  one and the two could not be told apart when a block is re-emitted.
+- **A container's `map` runs into the blank line after it**, so trailing blanks
+  are handed back to the separator. Without that an edited list loses or doubles
+  that line depending on which side of the seam the emitter believed it was on.
+- **Reference definitions are ordinary blocks.** markdown-it consumes a
+  `[label]: url` line and emits no token, which is why today they have no DOM
+  node to survive on and `appendReferenceDefinitions` collects them at the end of
+  the file regardless of where the author put them. Here such a line is a block
+  of kind `gap` in its own position, rendered to nothing — and a definition
+  wrapped onto a second line, which `scanReferenceDefinitions` cannot see at all
+  today, is only a taller one.
+- **A list is currently one block, and that is a known regression rather than
+  the design.** `docs/TODO.md` is 584 lines and sixteen blocks; the largest is
+  239 of them. Editing one item would rewrite 41% of the file — which is the
+  unmergeable diff D1 exists to prevent, and *worse* than the three-layer
+  restore this replaces, since `markdownSegments` splits on list markers for
+  exactly this reason. REWRITE.md's slice 1b tiles containers with sub-blocks,
+  recursively, and says what else that drags in: a touched block has to clear
+  its ancestors' `source`, and an edited item's emitter has to put back the
+  marker and the content indent.
+
+What it does not do yet: hold the inline structure a block is edited through,
+emit an edited block at all (`modelSerialise` throws rather than guess), or let
+anything inside a list, a quote or a table be edited. Those are the rest of
+stage 1 and stages 2 and 3.
 
 ### Links and heading anchors
 
@@ -1008,6 +1110,19 @@ room for — see the menu-bar section below. Twelve of the thirteen are
 `execCommand` calls. Code is the exception, and everything interesting about
 *what a format does* is about Code. Everything interesting about *when the bar
 is there at all* is the caret bar below it.
+
+**No format has a keyboard shortcut of Mandy's, and that is a bug rather than a
+decision** — TODO 1.7. `app.js` binds Ctrl+S, Ctrl+O, Ctrl+Shift+P and Ctrl+K
+and never binds Ctrl/Cmd+B or Ctrl/Cmd+I, so the three formats that have a
+conventional shortcut at all are left to whatever the engine does with the key
+inside a `contenteditable`. Measured 2026-09-10, while running something else:
+Blink bolds, **Gecko on macOS opens its bookmarks sidebar** and the page never
+sees the key, and **WebKit does nothing**. So bold-by-keyboard has been dead in
+two engines out of three for as long as there has been a format bar. A `keydown`
+binding with `preventDefault` takes the key back in all three, and it lands with
+3.1's stage 2, where the formats become model commands there is something to
+call — writing it against `execCommand` first is what D4's amendment says not to
+do.
 
 The Format menu also carries **Indent**/**Outdent list item** (TODO 1.1.3),
 which is not part of this count: they call `outdentListItem` and

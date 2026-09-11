@@ -2631,3 +2631,43 @@ prevent, and *worse* than the three-layer restore this replaces, which splits on
 list markers for exactly this reason. REWRITE.md gains slice 1b: containers get
 children that tile their span the way blocks tile the file, recursively. Not
 started, and recorded as not optional.
+
+## 2026-09-11 — CLAUDE.md catches up with the branch it is on
+
+Someone opening this file on `rewrite` could read all fourteen hundred lines of
+it and not learn that a second document model exists in `front/`. Six additions
+fix that, and the first one is the one that matters.
+
+**A "This branch" section, before anything else.** It says what a reader has to
+know before they trust a single line below it: the rewrite has replaced nothing,
+everything here still governs changes to the running editor, and what the branch
+has added — `model.js`, the spike, the model suite, a root `deno.json` — sits
+beside that editor rather than inside it. It points at REWRITE.md's "Where each
+stage stands" for status, because a status kept in two places is a status kept
+in neither.
+
+**A section for the model itself**, in the same shape as every other
+architecture note: the invariant that every character lands in exactly one of
+`prefix`, a `source` or a `separator`; the parser being injected rather than
+reached for, which is what makes the suite possible at all; `modelTouch` as the
+only door to `source = null`, because that assignment *is* the contract with D1.
+It ends with what the model cannot do yet, including the list-granularity
+regression measured on 2026-09-11 — the section says 41% of `docs/TODO.md` in
+the same breath as it says the model is byte-perfect, which is the honest pair.
+
+**The three-registries rule gains its one deliberate exception.** `model.js`
+joins none of them, and that is what keeps the running editor untouched while
+the model is built beside it. Skipping a registry is otherwise a bug, so the
+exception is written down next to the rule rather than discovered.
+
+**TODO 1.7 reaches the format-bar section**, where it belongs: no format has a
+shortcut of Mandy's, bold-by-keyboard is dead in two engines out of three, and
+it has been for as long as there has been a format bar. That is a fact about the
+*shipped* editor and had no home in this file at all.
+
+Plus the spike page listed with the five check pages it is a sibling of, with
+which of them it replaces when the rewrite lands, and a note that `npm test`
+now wants the network once.
+
+No code changed — this is one metafile — so nothing was run, per this file's own
+rule about it.
