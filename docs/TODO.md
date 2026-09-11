@@ -255,14 +255,20 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     **The measurement comes first, and it is 4.2's shape exactly**: two things
     have to be true before a binding works — the keydown has to reach the page,
     and `preventDefault` has to suppress what the browser wanted the key for.
-    [spike/block-model.html](../spike/block-model.html) answers the first half
-    now (a `keydown` row in its Events table means the key arrived; no row means
-    the browser kept it) and cannot answer the second, because no script can see
-    whether the sidebar still opened. Somebody has to press it and look. If
-    Gecko keeps the key either way, the fallback wants deciding rather than
-    discovering — and unlike 4.2 there is no unclaimed binding to fall back to,
-    since Cmd+B *is* the convention, so the honest options are a modifier nobody
-    expects or accepting the menu as the only route in that browser.
+    [spike/block-model.html](../spike/block-model.html) answers the first half —
+    a `keydown` row in its Events table means the key arrived, no row means the
+    browser kept it — and **it arrived: measured 2026-09-10, a `keydown`
+    binding with `preventDefault` takes Cmd+B back in all three engines**, so
+    the fix is the ordinary one and no fallback binding has to be invented. That
+    is the good outcome, and it is only known because it was pressed: 4.2's
+    identical question about the tab strip is still unpressed everywhere but
+    Chrome on macOS.
+
+    What no script can see is whether Gecko *also* still opens its sidebar on
+    that keystroke. If it does, the binding is worse than dead — it would move
+    Mandy's formatting and the browser's chrome together — so that is the one
+    thing to watch for when the binding lands in stage 2, and the reason 1.7
+    stays open rather than closing on the measurement above.
 
 ## 2. Save fidelity
 

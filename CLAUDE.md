@@ -13,16 +13,23 @@ npm test        # deno run --allow-read tests/run.mjs
 Type-check the server: `cd server && deno task check`.
 `MANDY_PORT` overrides the port. `pm2 start ecosystem.config.cjs` runs it supervised.
 
-There is no linter and no build step, and no installable dependencies —
-`package.json` exists only to hold the scripts, and Deno fetches Hono itself.
+There is no linter and no build step, and nothing is installed — `package.json`
+exists only to hold the scripts, and Deno fetches what it needs itself: Hono for
+the server, and markdown-it for the model suite, both pinned by `npm:` specifier
+(`server/deno.json` and the root `deno.json`). The root config also sets
+`nodeModulesDir: none`, without which `package.json`'s presence sends Deno
+looking for a `node_modules` this project does not have.
 Flag it before adding any dependency, npm or Deno.
 
 ### Tests
 
-[tests/](tests/) has no framework and no dependencies. Each suite loads the real
-`front/` sources into a scope with a hand-rolled DOM stub ([tests/dom.mjs](tests/dom.mjs))
-and drives them, so a suite breaks when the source it names changes. Run one
-suite by importing it directly; `tests/run.mjs` runs them all.
+[tests/](tests/) has no framework. Each suite loads the real `front/` sources
+into a scope with a hand-rolled DOM stub ([tests/dom.mjs](tests/dom.mjs)) and
+drives them, so a suite breaks when the source it names changes. Run one suite
+by importing it directly; `tests/run.mjs` runs them all.
+
+One suite is the exception to both halves of that: `model` needs no stub and
+does need a dependency. See its entry below.
 
 They cover the invariants that fail *silently* rather than loudly:
 
@@ -79,6 +86,16 @@ They cover the invariants that fail *silently* rather than loudly:
   whether a block is a blank line or an inline is a real one. Only the predicate
   — the traversal around it needs an HTML parser the stub does not have, which
   is why the decision lives in one pure function.
+- **model** — `front/model.js`, TODO 3.1's stage 1, and the only suite with no
+  DOM in it: the model is pure string and token work, so it borrows dom.mjs's
+  file helpers and nothing else. It is also the only one with a dependency —
+  a real markdown-it, since the point is to parse this repo's own files with no
+  browser anywhere. What it asserts is D1: `CLAUDE.md`, `README.md`,
+  `welcome.md`, `docs/TODO.md` and `docs/REWRITE.md` come back byte-identical,
+  and editing one paragraph rewrites exactly that paragraph. Two of its checks
+  exist only to stop the round trip passing by doing nothing — a parse that
+  found no blocks would hand the file back untouched, which is byte-identical
+  and worthless.
 - **tabs** — the per-tab state boundaries and the swap between documents: that
   park and adopt are lossless and adopting nothing is a blank document rather
   than a half-cleared one; the migration off the flat keys and both ways a

@@ -498,8 +498,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     leaving all thirteen to whatever the engine does natively. The input-layer
     section above now says the shortcut is bound as a `keydown` rather than
     awaited as a `format*`; the spike binds it that way and the page reports
-    whether the key arrives, which is the half a script can see. **TODO 1.7**
-    carries the other half and the fallback bindings.
+    whether the key arrives, which is the half a script can see — and it does
+    arrive, in all three, so the ordinary binding is enough and nothing exotic
+    has to be invented. **TODO 1.7** carries what is left: whether Gecko opens
+    its sidebar as well as handing us the key.
 
     One thing it turned up for stage 2 to decide rather than inherit: typing
     over a fully-bold selection gives plain text here, because a new run
@@ -509,7 +511,74 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     left when there was not", and it is a model-command decision rather than an
     input-layer one.
 
-*   **1. Model and serialiser — not started.**
+*   **1. Model and serialiser — in progress, started 2026-09-11.**
+    Pure JS in `front/model.js`, no browser and no `dom.mjs`: this is the stage
+    that proves D1 survives before anything is at risk. The exit criterion is
+    the estimate table's — `CLAUDE.md`, `README.md`, `welcome.md` and
+    `docs/TODO.md` round-trip byte-identical, editing one paragraph changes one
+    paragraph, and the `save-fidelity` cases hold against the model. Four
+    slices, each landing on its own:
+
+    1.  **Parse and reconstruct — done and tested, 2026-09-11.** markdown-it's
+        top-level block tokens, whose `map` is the source span, become blocks
+        carrying their exact bytes and the exact text that followed them. Lines
+        no token covers — reference definitions above all, which markdown-it
+        consumes silently — become blocks of their own in their own position
+        rather than being collected at the end the way
+        `appendReferenceDefinitions` has to today. Reconstruction is then a
+        concatenation, so byte-identical is structural rather than something
+        the serialiser has to get right. `front/model.js` and
+        `tests/model.test.mjs`, 39 checks.
+
+    1b. **Sub-blocks inside containers — not started, and it is not optional.**
+        Measured as soon as slice 1 could count: `docs/TODO.md` is 584 lines and
+        **16 blocks**, because a whole section's bullet list is one top-level
+        token. The largest is 239 lines — 41% of the file — so editing one TODO
+        item would re-serialise 41% of the file, which is exactly the
+        unmergeable diff D1 exists to prevent. `CLAUDE.md` is milder at 5% and
+        still wrong.
+
+        This is not a surprise so much as a thing the current design already
+        knew: `markdownSegments` splits on list markers, headings and fences
+        precisely *because* matching whole blank-line-separated blocks fails on
+        this repo's own files. A model at top-level granularity alone would
+        therefore ship **worse** fidelity than the three-layer restore it
+        replaces, on the exact documents this project is written in.
+
+        The fix is the same algorithm one level down: `list_item_open` carries a
+        `map` like everything else, so a container block gets children that tile
+        its span the way blocks tile the file, recursively. Two things follow
+        and are the work: a touched block has to clear its ancestors' `source`,
+        or an edited item would be re-emitted inside a list that still claims
+        its own original bytes; and an edited item's emitter has to put back the
+        marker and the content indent, which is the one piece `reflowMarkdown`
+        already knows how to do.
+
+        **"Block-granular is final" in *What is accepted* below is unchanged by
+        this.** That sentence is about an edited paragraph re-serialising whole,
+        and a list item is a block in every sense that matters here.
+    2.  **The inline model.** A paragraph's or heading's markdown-it inline
+        tokens become the editable structure: text, the three marks, code
+        spans, links (with the `data-ref-label` stamp `referenceAwareLink`
+        already writes), images. This is what an edited block is re-emitted
+        from.
+    3.  **The block serialiser.** An edited block emits markdown in the
+        conventions `sniffMarkdownStyle` read off the file it came from, then
+        `reflowMarkdown` re-wraps it — the same two layers as today, applied to
+        one block instead of to a whole document that then has most of itself
+        restored. `indexMarkdownBlocks` and `restoreSourceWrapping` are what
+        this replaces, and they stay on `main` until stage 4 removes them.
+    4.  **The suite.** `tests/model.test.mjs`, driving this repo's own files as
+        the oracle. It imports `npm:markdown-it@13.0.1` the way
+        `server/deno.json` already imports `npm:hono` — flagged per CLAUDE.md
+        and decided 2026-09-11: the app keeps its CDN tags, the two pins have
+        to be kept in step, and `npm test` wants the network once.
+
+    What this stage deliberately does not do: edit inside a list, a quote or a
+    table. Those are one block each here, holding their source and their token
+    subtree, and become editable in stages 2 and 3. Nothing in `front/` loads
+    `model.js` yet — it joins none of the three registries until stage 4, so
+    `main`'s editor is untouched by every slice above.
 *   **2. Core to parity — not started.**
 *   **3. The 1.1 items — not started.**
 *   **4. Reintegration — not started.**

@@ -2584,3 +2584,50 @@ worth stating — 4.2 has Alt+1–9 to fall back to and 1.7 has nothing, because
 Cmd+B *is* the convention.
 
 `front/` is untouched, so nothing was run; the spike is not read by any suite.
+
+## 2026-09-11 — Stage 1 begins: the model parses, and hands back exactly what it read
+
+**`front/model.js` and `tests/model.test.mjs`, and nothing in `front/` loads
+either.** The model joins none of the three registries until stage 4, so the
+running editor is untouched by this and by every slice after it.
+
+What the model is: an ordered list of blocks, each carrying the exact bytes it
+arrived with and the exact bytes that followed it. Serialising concatenates
+them, so **a file that is opened and saved unedited comes back byte for byte
+because nothing ever threw the bytes away** — not because a restore pass got
+most of it back. That is the inversion the whole rewrite is for: today Turndown
+rewrites the document and `restoreSourceWrapping` matches content to put it
+back, and content-matching is defeated by two identical paragraphs in a way a
+source span cannot be.
+
+Two things fall out that used to be work. **Reference definitions get a home**:
+markdown-it consumes a `[label]: url` line and emits no token, which is why
+`appendReferenceDefinitions` has to collect them all at the end of the file
+regardless of where the author put them — here the line is simply a block that
+renders to nothing, in its own position, and a definition wrapped onto a second
+line (invisible to `scanReferenceDefinitions` today) is just a taller one. And
+**a container's `map` runs to the blank line after it**, so the trailing blanks
+are handed back to the separator; without that an edited list would lose or
+double that line depending on which side of the seam the emitter thought it was
+on.
+
+The suite is the first with no DOM in it at all, and the first with a
+dependency: it parses `CLAUDE.md`, `README.md`, `welcome.md`, `docs/TODO.md` and
+`docs/REWRITE.md` with a real markdown-it, pinned in a new root `deno.json` the
+way `server/deno.json` already pins Hono. Flagged per CLAUDE.md and chosen over
+vendoring, with the cost written down: **that pin and `front/index.html`'s CDN
+tag are two halves of one version and move together**. `npm test` needs no new
+flags and is 1016 checks.
+
+Two of its checks exist only to stop the round trip passing by doing nothing. A
+parse that found no blocks would leave the whole file in the prefix and hand it
+back unchanged — byte-identical, and worthless.
+
+**And it immediately found the thing that would have sunk the stage.**
+`docs/TODO.md` is 584 lines and sixteen blocks, because a section's bullet list
+is one top-level token; the largest is 239 lines, 41% of the file. Editing one
+TODO item would rewrite 41% of the file — the unmergeable diff D1 exists to
+prevent, and *worse* than the three-layer restore this replaces, which splits on
+list markers for exactly this reason. REWRITE.md gains slice 1b: containers get
+children that tile their span the way blocks tile the file, recursively. Not
+started, and recorded as not optional.
