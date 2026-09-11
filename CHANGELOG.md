@@ -2585,7 +2585,7 @@ Cmd+B *is* the convention.
 
 `front/` is untouched, so nothing was run; the spike is not read by any suite.
 
-## 2026-09-11 — Stage 1 begins: the model parses, and hands back exactly what it read
+## 2026-09-11 — `ade3cde` — Stage 1 begins: the model parses, and hands back exactly what it read
 
 **`front/model.js` and `tests/model.test.mjs`, and nothing in `front/` loads
 either.** The model joins none of the three registries until stage 4, so the
