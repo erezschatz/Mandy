@@ -475,6 +475,64 @@ category fidelity deliberately does not extend to.
     opinion about it, so this neither waits on the rewrite nor is discarded by
     it.
 
+*   **4.5** *(bug, survives 3.1)* Reopening the installed PWA does not report a
+    file that changed while it was closed. Open a file, close the app window,
+    edit that file in something else, launch Mandy again from the OS: the tab
+    keeps its clean dot and nothing says the document and the file have parted
+    company. Reload still takes the newer file, so nothing is lost — but the
+    user has no reason to press it, which is the entire job of the mark.
+
+    **Three wake points are supposed to cover this**, all in
+    [file-api.js](../front/file-api.js): the startup IIFE, `window` `focus`,
+    and `visibilitychange` when the page is not hidden. The startup one exists
+    for exactly this shape of launch — the comment beside it says `focus` never
+    fires for the tab that already has it — so a cold PWA start should be
+    covered already and observably is not.
+
+    **Nothing on screen tells a check that ran and lost from one that never
+    ran.** `checkDiskChanged` returns early unless both `currentFilePath` and
+    `fileMtime` are set, and swallows every error from the stat, deliberately:
+    an alert on every window focus would be no way to raise a deleted file. The
+    cost is that the three candidates below look identical from outside, which
+    is why this is a measurement before it is a fix.
+
+    *   **The relaunch may not be a page load at all.** A PWA closed to the OS
+        can be frozen or discarded and *restored* rather than re-fetched. A
+        restored page does not re-run a top-level IIFE, and whether `focus` and
+        `visibilitychange` fire on the way back is per engine and per platform.
+        If that is it, the missing wake points are `pageshow` — the
+        `event.persisted` one — and the Page Lifecycle `resume`.
+
+    *   **Or it is a page load whose state did not come back.** The check bails
+        silently with no `mtime`. A PWA launched at `start_url` `/` is the same
+        origin as a browser tab and should read the same six document keys, but
+        *should* is the word this item exists to remove.
+
+    *   **Or the state came back and the server was not up yet.** The startup
+        check is gated on `serverAvailable`, resolved from `/api/home`. An app
+        launched before its own file server gets `false`, skips the check, and
+        then waits for a `focus` that a window which already has focus never
+        fires. That one self-corrects at the next wake, so it explains a silent
+        launch rather than a permanently silent session.
+
+    **`checkServerAvailable` rides the same two listeners and has the same
+    gap**, so whatever fixes one fixes both: a PWA reopened after the server
+    died reports it only once one of those events arrives.
+
+    **What to measure, and it cannot be a check page in the usual sense.** This
+    needs an installed PWA, an OS-level close and reopen, and a file edited in
+    between — none of which a page can arrange for itself. So it is a by-hand
+    run per platform, recording which of `pageshow` (and its `persisted`),
+    `resume`, `focus` and `visibilitychange` fire, in what order, and whether
+    `visibilityState` was ever `hidden`.
+
+    **The fix is cheap to over-cover**, which is the argument for adding wake
+    points rather than identifying the one true event. Both checks are guarded
+    by their own in-flight flags, and `setDiskChanged` and `setServerAvailable`
+    are no-ops when nothing changed, so a redundant wake point costs one stat
+    call and nothing else. Nothing here reloads or merges on its own either —
+    the report is the whole feature, and what to do about it stays the user's.
+
 ## 6. Product
 
 *   **6.1** Rewrite the README to better fit the project's state
@@ -581,3 +639,69 @@ category fidelity deliberately does not extend to.
     way in is worth saying once — `<details>`, `<div align>` and `<img width>`
     flatten to their text, because that is what a markdown document can hold.
     Import rescues prose and structure, not a page.
+*   **6.5** *(survives 3.1)* The service worker intercepts navigations, which
+    breaks logging in to any host that puts an auth gate in front of Mandy.
+    Found fitting Mandy behind Atrium as a chamber; it is not an Atrium quirk,
+    it is what the platform does to a re-issued navigation.
+
+    [sw.js](../front/sw.js)'s fetch listener sends every same-origin GET that is
+    not `/api/*` into `networkFirst`, navigations included — `networkFirst` even
+    has a `request.mode === "navigate"` branch, so it is deliberate. Answering a
+    navigation means re-issuing it with `fetch(request)`, and that drops
+    `Sec-Fetch-Mode` from `navigate` to `cors`. A host that reads that header to
+    tell a page load from an XHR — the standard way to decide between redirecting
+    to a login page and returning a bare 401 — then classifies the page load as
+    an XHR. The browser gets a 401 body where the login page should have been,
+    and there is no document loaded to notice the 401 and go find one. The user
+    sees an error and has no way to authenticate.
+
+    **What it costs to fix is the offline boot, which is why this is not one
+    line.** Leaving navigations alone unconditionally is the simple fix, and it
+    means an offline launch no longer boots the cached shell: the browser asks
+    for `/`, no worker answers, the network fails, and the app never starts. The
+    version written for the Atrium variant keeps most of it by guarding on
+    `navigator.onLine` — false means there is genuinely no interface, so cache
+    is served without any `fetch()` and `Sec-Fetch-Mode` never arises; true goes
+    to the network untouched. The gap that leaves is a reachable interface with
+    an unreachable server, where the browser's own error page replaces a boot
+    that used to work.
+
+    Worth measuring before adopting either: whether re-issuing really does erase
+    the header on every engine, or only the ones this was seen on. It is an
+    engine claim in a repo that has check pages for exactly that kind of claim,
+    and the cheap fix and the careful fix differ only in how much offline
+    behaviour they buy back.
+*   **6.6** *(survives 3.1)* `/tests/:name` and `/report` exist in every
+    deployment, including ones that are not on loopback. Neither is a hole on
+    its own — [server.ts](../server/src/server.ts) matches the check pages
+    against a literal `CHECK_PAGES` set, so nothing takes a path from the
+    request, and `/report` ignores its body beyond printing it. But they are
+    development surfaces, and the deployment story has stopped being "loopback
+    only": 6.3 ships a binary, and running Mandy behind an authenticating host
+    puts them on a hostname.
+
+    `/report` is the one with an edge to it. It writes the request body to the
+    process log at any length, so anyone who can reach the port can grow the log
+    without limit and put chosen text in it. On loopback that is any local
+    process; under pm2 the log is a file on disk.
+
+    The fix is that they should not exist rather than that they should be
+    guarded: read a `MANDY_DEV` env var at startup and register the two routes
+    only when it is set, so a deployed instance has no such endpoints to reason
+    about. The check pages are run by hand from a dev server, which is exactly
+    when the var is set, so nothing about how they are used changes.
+
+    **3.1 may answer this by deletion instead, which is worth knowing before
+    the env var is built.** `CHECK_PAGES` holds exactly three names —
+    `browser-check`, `list-indent-check`, `list-empty-item-check` — and those
+    same three are the only pages that `POST /report`. All three retire with
+    execCommand. So when the rewrite lands, both routes lose every caller at
+    once: the set is empty and the sink has nobody writing to it, and two
+    endpoints that serve nothing are removed rather than gated. The open part
+    is whether 3.1's own input-layer check page wants them back —
+    `spike/block-model.html` needs no server and `paste-check` and
+    `tab-shortcut-check` are run off disk, so the precedent says no. If a
+    successor does want a sink, `MANDY_DEV` is still the answer and this item
+    is unchanged; if not, it shrinks to a deletion. Neither waits on the other,
+    but doing 6.6 first risks building a gate for two routes about to be
+    deleted.

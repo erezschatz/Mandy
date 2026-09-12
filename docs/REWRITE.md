@@ -433,7 +433,7 @@ Started 2026-09-09, on branch `rewrite`. The stage numbers are the estimate
 table's. Each line says where it stands — *done and tested*, *done, untested*,
 *not started* — and is updated as part of the landing, not afterwards.
 
-*   **0. Spike — done, measured in one engine of three.**
+*   **0. Spike — done and tested, in all three engines.**
     [spike/block-model.html](../spike/block-model.html), a single self-contained
     page: block model, per-block render, `beforeinput` interception, both
     selection mappings, and the composition path. Throwaway code that answers

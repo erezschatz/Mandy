@@ -2291,7 +2291,7 @@ click and by Ctrl+2, an edit raised the dot, closing the edited tab asked the
 three-way question and Escape backed out of it, and closing the clean one went
 straight out — with the session's own document put back afterwards.
 
-## 2026-09-07 — Retire the tabbed-view item, and keep the one thread that outlives it
+## 2026-09-07 — `6a076ae` — Retire the tabbed-view item, and keep the one thread that outlives it
 
 All five stages have landed and been driven in a browser, so TODO 4.1 leaves
 [docs/TODO.md](docs/TODO.md) the way a finished item is supposed to: what was
@@ -2452,7 +2452,7 @@ that was worth not waiting for.
 
 No code changed, so nothing was run — `tests/` reads none of these three files.
 
-## 2026-09-09 — TODO 4.4: right-to-left documents
+## 2026-09-09 — `6400cb4` — TODO 4.4: right-to-left documents
 
 **A View toggle that puts `dir="rtl"` on `#editor`, and nothing else.** The
 document flips; the toolbar, the outline's side and the dialogs stay where they
@@ -2537,6 +2537,80 @@ inherits the marks to its left.
 
 Nothing in `front/` or `server/` changed and no suite reads the spike, so
 nothing was run.
+
+## 2026-09-10 — `9abe7ba` — Abbreviation on the roadmap; underline and center dropped
+
+**Of four extended-syntax constructs the user asked about, abbreviation is
+recorded as a post-1.0 nice-to-have, subtext as a distant maybe, and underline
+and center are dropped.** A row in [docs/MARKDOWN.md](docs/MARKDOWN.md)'s
+extended-syntax table under a *Hacks page / non-standard* heading, a decision
+bullet beside the existing deprioritised batch, and the argument in a new
+[docs/ROADMAP.md](docs/ROADMAP.md) subsection.
+
+**Underline** has no markdown spelling and its `_word_` form is the `_`
+emphasis delimiter, so taking it would re-read every `_`-italicised file; any
+other route means reopening `html: false` / D0 for a `<u>` that reads as a
+broken link on the web. **Center** (`->text<-`) is `<div align>`-family
+block presentation S1 already refuses, with delimiters that collide with typed
+text. Neither earns the decision it would force.
+
+**Abbreviation** (`*[HTML]: …`) stays — the one with broad ecosystem support
+(Markdown Extra, Python-Markdown, `markdown-it-abbr`). The first draft called
+it a fidelity problem; corrected here. An untouched file round-trips for free
+via the 3.1 source span, contingent only on the invisible-block model type the
+reference-link definitions are already adding — where the nodeless `*[…]:` line
+parks. The edited case is bounded work: a one-line Turndown rule unwrapping
+`<abbr>` to text, a `scanAbbreviationDefinitions` + re-emit pair mirroring the
+reference-link one, and a whole-document whole-word match walk that skips the
+four opaque subtrees. Authoring is deferred, parse-and-render first, the cut
+line heading IDs took. **Subtext** (Discord's `-# text`) is kept only as a
+distant maybe: it needs the same block-presentational-attribute the model
+lacks, plus another line-start marker `reflowMarkdown` must not strand.
+
+No code changed, so nothing was run — `tests/` reads none of these files.
+
+## 2026-09-10 — `4293b6c` — TODO 6.5 and 6.6: what breaks when Mandy is not on loopback
+
+**Two bugs found fitting Mandy behind Atrium as a chamber, recorded rather than
+fixed.** 6.5: [sw.js](front/sw.js) answers navigations, and re-issuing one with
+`fetch()` drops `Sec-Fetch-Mode` from `navigate` to `cors`, so an auth gate in
+front reads a page load as an XHR and returns a bare 401 where the login
+redirect belongs — no login page, and no document loaded to notice. The fix
+costs the offline boot, which is why it is not one line; guarding on
+`navigator.onLine` buys most of it back, and whether the header really is erased
+on every engine wants a check page before either version lands.
+
+**6.6:** `/tests/:name` and `/report` exist in every deployment. Neither is a
+hole — the check pages match a literal set, and `/report` ignores its body — but
+`/report` writes unbounded request text to the process log, and 6.3's binary and
+any hosted instance put both on something other than loopback. They should not
+exist rather than be guarded: register them only under `MANDY_DEV`.
+
+No code changed, so nothing was run.
+
+## 2026-09-10 — `9c92604` — TODO 4.5: the reopened PWA never asks about the file
+
+**A file that changed while the installed PWA was closed is not reported when
+the app comes back**, recorded rather than fixed. Nothing is lost — Reload
+still takes the newer file — so what goes missing is the reason to press it,
+which is the entire job of the mark.
+
+[file-api.js](front/file-api.js) has three wake points, and one of them, the
+startup IIFE, exists for exactly this shape of launch, so the interesting
+question is which of three it is: the relaunch is a restore rather than a page
+load, so neither the IIFE nor — per engine, per platform —
+`focus`/`visibilitychange` runs; or it is a page load whose `mtime` key did not
+come back; or the file server was not up yet, which gates the startup check and
+then leaves it waiting on a `focus` that a window which already has focus never
+fires. `checkDiskChanged` swallows its errors on purpose, so all three look
+identical from outside — the item is a measurement before it is a fix, and not
+one a check page can make: an installed PWA, an OS-level close and a file
+edited in between are not things a page can arrange for itself.
+`checkServerAvailable` shares those listeners and the same gap, so one fix
+covers both, and both checks are already idempotent — which is the argument for
+adding wake points rather than hunting the one true event.
+
+No code changed, so nothing was run.
 
 ## 2026-09-10 — `529ee82` — The spike says what to do with it
 
@@ -2671,3 +2745,50 @@ now wants the network once.
 
 No code changed — this is one metafile — so nothing was run, per this file's own
 rule about it.
+
+## 2026-09-12 — `main`'s three docs-only commits merged into `rewrite`
+
+**Nothing in `main` had touched code since the branch left it, and the merge
+confirms it: `CHANGELOG.md`, `docs/TODO.md`, `docs/ROADMAP.md` and
+`docs/MARKDOWN.md`, no `front/` and no `server/`.** The only conflict was the
+CHANGELOG's tail, where both sides had appended; the two runs are interleaved by
+commit time rather than concatenated, so `main`'s three 2026-09-10 entries sit
+where they happened — before the spike's two evening entries, not after stage 1.
+The last of them was also still missing its hash, which is backfilled here to
+`9c92604`.
+
+**Three of the four additions survive 3.1 untouched, as they say they do.** TODO
+4.5 is `file-api.js`'s wake points and the rewrite never reaches them; 6.5 is
+`sw.js` answering navigations, which is the service worker's business and not
+the core's. 6.6 is the one that turns out to interact, and not in the direction
+its own note assumed — see below.
+
+**The abbreviation roadmap item's stated dependency is already discharged.**
+[ROADMAP.md](docs/ROADMAP.md) and [MARKDOWN.md](docs/MARKDOWN.md) were written
+on 2026-09-10 against an invisible-block type "the reference-link definitions
+are already forcing 3.1 to add", in the future tense, quoting REWRITE.md's own
+future tense back. Stage 1 slice 1 landed it the next day: every source line no
+top-level token covers becomes a block of kind `gap`, in its own position,
+carrying its own bytes. Both files now say so. The tense was the whole of the
+error — nothing about the item's shape changes, and it costs the model nothing
+further, because an unparsed `*[…]:` line is an ordinary paragraph today and
+only becomes a `gap` if `markdown-it-abbr` is ever the parser consuming it,
+which is the case `gap` already handles.
+
+**TODO 6.6 may be answered by deletion rather than by the env var it proposes**,
+which is worth knowing before the var is built. `CHECK_PAGES` holds exactly
+three names, and those same three are the only pages that `POST /report`. All
+three retire with execCommand. So the rewrite empties the set and orphans the
+sink in one move, and two endpoints that serve nothing are removed rather than
+gated — unless 3.1's own input-layer check page wants a sink back, which the
+precedent argues against, since the spike, `paste-check` and `tab-shortcut-check`
+all run off disk with no server. Recorded in the item.
+
+**One status line was stale and is corrected**: REWRITE.md's "Where each stage
+stands" still headed stage 0 *done, measured in one engine of three*, two
+paragraphs above its own body saying it was driven by hand in Blink, Gecko and
+WebKit on 2026-09-10 and the gate passes. The headline is the part that section
+exists for, so it is the part that has to be right.
+
+No code changed — the merge carried none and this entry adds none — so nothing
+was run.
