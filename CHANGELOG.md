@@ -2793,7 +2793,7 @@ exists for, so it is the part that has to be right.
 No code changed — the merge carried none and this entry adds none — so nothing
 was run.
 
-## 2026-09-12 — Stage 1 slice 1b gets its plan, and the slice list gets its markers
+## 2026-09-12 — `4878171` — Stage 1 slice 1b gets its plan, and the slice list gets its markers
 
 **TODO 3.1's next piece is written down before it is built, per this file's own
 rule about it.** [REWRITE.md](docs/REWRITE.md)'s "Where each stage stands" had
