@@ -2792,3 +2792,66 @@ exists for, so it is the part that has to be right.
 
 No code changed — the merge carried none and this entry adds none — so nothing
 was run.
+
+## 2026-09-12 — Stage 1 slice 1b gets its plan, and the slice list gets its markers
+
+**TODO 3.1's next piece is written down before it is built, per this file's own
+rule about it.** [REWRITE.md](docs/REWRITE.md)'s "Where each stage stands" had
+slice 1b as a paragraph of argument with no plan under it; it now carries six
+numbered steps, a measurement that decides what the steps can reach, what it
+deliberately does not, and an estimate.
+
+**The measurement first, because it is what the steps are shaped by.** Child
+tokens have to carry a `map` for the recursion to have anything to tile with,
+and not all of them do: `list_item_open` does at every depth (19 at level 1 and
+23 at level 3 in `docs/TODO.md`), `tr_open` and `thead_open`/`tbody_open` do,
+and **`td_open` does not at all** — so the row is the floor for a table and a
+cell cannot be made a sub-block from the token stream. Recorded as a table in
+the entry.
+
+**The numbers behind 1b are re-measured and one of them is new.** `docs/TODO.md`
+is 708 lines now rather than the 584 the entry was written against — `main`'s
+three items and 6.6's note landed in it — so the largest block is a third of the
+file rather than 41% of it. The sharper figure is the one that was not there
+before: **93% of that file's lines sit inside a list, a quote or a table**, and
+so inside one block each. `REWRITE.md` is 49%, `CLAUDE.md` and `README.md` 37%.
+Top-level granularity does not mostly work and fail at the edges; on the
+planning documents it barely works at all.
+
+**The six steps, in short:** generalise `modelTopLevelSpans` to a token slice
+and a level, with today's behaviour as its level-0 case; children tile a
+container's `source` the way blocks tile the file; `modelSerialise` recurses, so
+an edited item re-emits itself and its ancestors re-emit as a concatenation
+around it and **no sibling is ever re-serialised**; `modelTouch` walks up and
+clears ancestors, which buys a parent link and costs the model being
+`JSON.stringify`-able; each item records its marker and content indent at parse
+for slice 3's emitter; and the suite asserts the share-of-file metric, not only
+the round trips. Two to three days, additive to the stage's one-week line rather
+than inside it, since 1b was found after that table was written.
+
+**Three gaps in the same section, one of them worse than it looked.** Slices 2,
+3 and 4 carried no status marker, though one per line is what that section is
+for — they now read *not started*, *not started*, and *scaffolded 2026-09-11 and
+grows with each slice*, which is the honest state of slice 4: the scaffold, the
+file oracle, the `npm:markdown-it` pin and 39 checks landed with slice 1, and
+only per-slice coverage is left, so that line closes when 3 does.
+
+**The third was a rendering bug.** `1b.` is not a number markdown can count to,
+so the slice list was parsing as two ordered lists — one item, then 2/3/4
+restarting — and the six paragraphs indented under `1b.` were an **indented code
+block**, not prose, because an 8-space continuation under a 4-space non-marker
+is four spaces too deep. The slices are bullets now, with their numbers in the
+bold lead where markdown cannot misread them, and the section says why so the
+next inserted slice does not repeat it. A scan of all six metafiles found this
+was the only instance.
+
+**One cross-reference written and withdrawn in the same pass:** a note in slice 2
+pointing at the typing-over-a-bold-selection question. The spike turned that up
+and assigned it to *stage* 2, core-to-parity, explicitly as a model-command
+decision rather than an input-layer one — not to stage 1's slice 2, which is the
+data structure and not the commands over it. Removed rather than reworded.
+
+No code changed — `front/model.js` is untouched and this is one metafile plus
+this entry — so nothing was run, per this file's rule about it. The
+measurements above were taken by driving the existing `modelParse` and
+markdown-it over the repo's own files, not by changing either.

@@ -516,10 +516,15 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     that proves D1 survives before anything is at risk. The exit criterion is
     the estimate table's — `CLAUDE.md`, `README.md`, `welcome.md` and
     `docs/TODO.md` round-trip byte-identical, editing one paragraph changes one
-    paragraph, and the `save-fidelity` cases hold against the model. Four
-    slices, each landing on its own:
+    paragraph, and the `save-fidelity` cases hold against the model. Five
+    slices, each landing on its own — 1b was added after the first landed, for
+    the reason its own entry gives. They are bullets rather than a numbered
+    list because `1b` is not a number markdown can count to: written as one it
+    broke the list in two and turned six paragraphs of this section into an
+    indented code block, which is what a 4-space marker does to the 8-space
+    continuations under it.
 
-    1.  **Parse and reconstruct — done and tested, 2026-09-11.** markdown-it's
+    *   **1. Parse and reconstruct — done and tested, 2026-09-11.** markdown-it's
         top-level block tokens, whose `map` is the source span, become blocks
         carrying their exact bytes and the exact text that followed them. Lines
         no token covers — reference definitions above all, which markdown-it
@@ -530,13 +535,20 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         the serialiser has to get right. `front/model.js` and
         `tests/model.test.mjs`, 39 checks.
 
-    1b. **Sub-blocks inside containers — not started, and it is not optional.**
-        Measured as soon as slice 1 could count: `docs/TODO.md` is 584 lines and
-        **16 blocks**, because a whole section's bullet list is one top-level
-        token. The largest is 239 lines — 41% of the file — so editing one TODO
-        item would re-serialise 41% of the file, which is exactly the
-        unmergeable diff D1 exists to prevent. `CLAUDE.md` is milder at 5% and
-        still wrong.
+    *   **1b. Sub-blocks inside containers — not started, and it is not
+        optional.** Measured as soon as slice 1 could count, and again on
+        2026-09-12 after `main`'s items landed in it: `docs/TODO.md` is 708
+        lines and **16 blocks**, because a whole section's bullet list is one
+        top-level token. The largest is 239 lines — a third of the file — so
+        editing one TODO item would re-serialise a third of the file, which is
+        exactly the unmergeable diff D1 exists to prevent.
+
+        The sharper number is not the largest block but the share of the file
+        that is inside one: **93% of `docs/TODO.md`'s lines sit inside a list,
+        a quote or a table**, and so inside a single block each. `REWRITE.md`
+        is 49%, `CLAUDE.md` and `README.md` 37%, `welcome.md` 33%. Top-level
+        granularity does not mostly work on this repo's documents and then fail
+        at the edges; on the planning documents it barely works at all.
 
         This is not a surprise so much as a thing the current design already
         knew: `markdownSegments` splits on list markers, headings and fences
@@ -547,38 +559,114 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
         The fix is the same algorithm one level down: `list_item_open` carries a
         `map` like everything else, so a container block gets children that tile
-        its span the way blocks tile the file, recursively. Two things follow
-        and are the work: a touched block has to clear its ancestors' `source`,
-        or an edited item would be re-emitted inside a list that still claims
-        its own original bytes; and an edited item's emitter has to put back the
-        marker and the content indent, which is the one piece `reflowMarkdown`
-        already knows how to do.
+        its span the way blocks tile the file, recursively.
+
+        **What can be tiled was measured before it was planned** (2026-09-12,
+        against `docs/TODO.md`, `docs/MARKDOWN.md` and `README.md`), because the
+        whole approach depends on child tokens carrying a `map` and not all of
+        them do:
+
+        | Container | Child carrying a `map` | Floor |
+        | --- | --- | --- |
+        | list | `list_item_open` — 19 at level 1 and 23 at level 3 in `docs/TODO.md`, so depth is not a limit | the item, then recursively whatever is inside it |
+        | quote | the ordinary block tokens inside it, `paragraph_open` and the rest | the same kinds the file itself has |
+        | table | `tr_open`, and `thead_open` / `tbody_open` | **the row.** `td_open` carries no `map` at all, so a cell is not a sub-block and cannot be made one from the token stream |
+
+        Fences, rules, indented code and HTML blocks have no children and stay
+        leaves. **Six steps, in this order:**
+
+        1.  **Generalise the tiler.** `modelTopLevelSpans` filters on
+            `token.level !== 0`; it becomes a function of a token slice and a
+            level, with the current behaviour as its level-0 case. A `map` is
+            an absolute line range in the file at every depth, so
+            `modelLineOffsets`, `startOf` and `endOf` are reused untouched and
+            there is no coordinate translation anywhere — which is what makes
+            this a day rather than a second slice 1.
+
+        2.  **Children tile the parent exactly.** Slice 1's invariant one level
+            down: every character of a container's `source` is in exactly one
+            of a child's `source`, a child's `separator`, or the container's
+            own leading text. `takeGap` and the trailing-blank trim come along
+            unchanged, since both are already written against a line range
+            rather than against the file.
+
+        3.  **Serialisation recurses.** `modelSerialise` gains one case: a
+            block whose `source` is null *and* which has children emits its
+            children instead of calling `emit`. An edited item re-emits itself,
+            its ancestors re-emit as the concatenation of untouched siblings
+            around it, and **no sibling is ever re-serialised**. That is the
+            whole result of the slice, and it falls out of the invariant rather
+            than being arranged on top of it.
+
+        4.  **`modelTouch` clears ancestors.** An item edited under a container
+            still claiming its own original bytes would be re-emitted and then
+            overwritten by them, which is the same silent-wrong-file failure
+            `modelTouch` exists to prevent one level up. So touching walks up,
+            which needs a parent link on every block, set at parse. The cost is
+            that the model becomes cyclic and stops being `JSON.stringify`-able
+            — worth naming, and worth paying: nothing has needed to serialise
+            the model yet, and the alternative is searching for the parent on
+            every keystroke.
+
+        5.  **Record the marker and the content indent on each item**, at parse,
+            where the span is already in hand. Byte-exactness needs neither —
+            an item's `source` includes its own marker — but slice 3's emitter
+            has to put both back when the item is edited, and re-deriving them
+            from the source at emit time would be a second place that can
+            disagree with the first.
+
+        6.  **The suite gets the metric, not only the cases.** The number this
+            slice exists to move is the share of a file sitting inside its
+            largest block, so the suite asserts it on `docs/TODO.md` directly,
+            alongside the round trips, the tiling invariant at every depth, and
+            that editing one list item rewrites that item and nothing else.
+
+        **Two to three days, and additive to the stage's one-week line in the
+        estimate table rather than inside it** — 1b was found after that table
+        was written, by the slice that table's first line paid for. Nothing in
+        it is new machinery: it is slice 1's tiler, invariant and serialiser
+        applied one level down, and the one genuinely new rule, ancestor
+        invalidation, is a thing the suite can pin directly.
+
+        **What it deliberately does not reach**: a table cell, per the floor
+        above, and the inline structure inside any of these — that is slice 2,
+        and is unchanged by this.
 
         **"Block-granular is final" in *What is accepted* below is unchanged by
         this.** That sentence is about an edited paragraph re-serialising whole,
         and a list item is a block in every sense that matters here.
-    2.  **The inline model.** A paragraph's or heading's markdown-it inline
-        tokens become the editable structure: text, the three marks, code
-        spans, links (with the `data-ref-label` stamp `referenceAwareLink`
-        already writes), images. This is what an edited block is re-emitted
-        from.
-    3.  **The block serialiser.** An edited block emits markdown in the
-        conventions `sniffMarkdownStyle` read off the file it came from, then
-        `reflowMarkdown` re-wraps it — the same two layers as today, applied to
-        one block instead of to a whole document that then has most of itself
-        restored. `indexMarkdownBlocks` and `restoreSourceWrapping` are what
-        this replaces, and they stay on `main` until stage 4 removes them.
-    4.  **The suite.** `tests/model.test.mjs`, driving this repo's own files as
-        the oracle. It imports `npm:markdown-it@13.0.1` the way
-        `server/deno.json` already imports `npm:hono` — flagged per CLAUDE.md
-        and decided 2026-09-11: the app keeps its CDN tags, the two pins have
-        to be kept in step, and `npm test` wants the network once.
 
-    What this stage deliberately does not do: edit inside a list, a quote or a
-    table. Those are one block each here, holding their source and their token
-    subtree, and become editable in stages 2 and 3. Nothing in `front/` loads
-    `model.js` yet — it joins none of the three registries until stage 4, so
-    `main`'s editor is untouched by every slice above.
+    *   **2. The inline model — not started.** A paragraph's or heading's
+        markdown-it inline tokens become the editable structure: text, the three
+        marks, code spans, links (with the `data-ref-label` stamp
+        `referenceAwareLink` already writes), images. This is what an edited
+        block is re-emitted from.
+
+    *   **3. The block serialiser — not started.** An edited block emits
+        markdown in the conventions `sniffMarkdownStyle` read off the file it
+        came from, then `reflowMarkdown` re-wraps it — the same two layers as
+        today, applied to one block instead of to a whole document that then has
+        most of itself restored. `indexMarkdownBlocks` and
+        `restoreSourceWrapping` are what this replaces, and they stay on `main`
+        until stage 4 removes them. 1b's step 5 is what hands it a list item's
+        marker and indent.
+
+    *   **4. The suite — scaffolded 2026-09-11, and it grows with each slice
+        rather than landing once.** `tests/model.test.mjs` drives this repo's
+        own files as the oracle; the scaffold, the file oracle and the 39 checks
+        covering slice 1 are already in. It imports `npm:markdown-it@13.0.1` the
+        way `server/deno.json` already imports `npm:hono` — flagged per
+        CLAUDE.md and decided 2026-09-11: the app keeps its CDN tags, the two
+        pins have to be kept in step, and `npm test` wants the network once.
+        What is left is per-slice coverage, so this line closes when 3 does.
+
+    What this stage deliberately does not do: edit inside a table cell, or
+    reach the inline structure of anything. Before 1b it did not edit inside a
+    list or a quote either — those were one block each, holding their source and
+    their token subtree, and 1b is exactly the slice that stops that being true.
+    Nothing in `front/` loads `model.js` yet — it joins none of the three
+    registries until stage 4, so `main`'s editor is untouched by every slice
+    above.
 *   **2. Core to parity — not started.**
 *   **3. The 1.1 items — not started.**
 *   **4. Reintegration — not started.**
