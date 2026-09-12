@@ -2746,7 +2746,7 @@ now wants the network once.
 No code changed — this is one metafile — so nothing was run, per this file's own
 rule about it.
 
-## 2026-09-12 — `main`'s three docs-only commits merged into `rewrite`
+## 2026-09-12 — `a3bd2b8` — `main`'s three docs-only commits merged into `rewrite`
 
 **Nothing in `main` had touched code since the branch left it, and the merge
 confirms it: `CHANGELOG.md`, `docs/TODO.md`, `docs/ROADMAP.md` and
