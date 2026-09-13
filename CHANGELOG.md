@@ -3480,7 +3480,7 @@ alone. MARKDOWN.md's line-break row was also overstating things in two columns
 at once, claiming Shift+Enter as an authoring route and calling the round trip
 partial when it is a loss; both corrected.
 
-## 2026-09-13 — The round-trip test nobody can write, recorded where it belongs
+## 2026-09-13 — `569358a` — The round-trip test nobody can write, recorded where it belongs
 
 **No suite opens a document, edits it and saves it** — not through the code that
 runs when a user presses Save. The pieces are covered; the chain they form is
