@@ -2563,3 +2563,68 @@ covers both, and both checks are already idempotent — which is the argument fo
 adding wake points rather than hunting the one true event.
 
 No code changed, so nothing was run.
+
+## 2026-09-13 — TODO 1.8 and 2.2: line breaks, which nothing makes and the save path eats
+
+Two items filed after a question that had a worse answer than expected: is there
+any way in Mandy to put a line break inside a paragraph, without starting a new
+one? No — and it turns out that even the browser's own answer does not survive a
+save.
+
+**TODO 1.8 — nothing in Mandy inserts a line break.** All thirty menu items were
+checked; there is no control, no format-bar button, and no binding. `app.js`
+binds Ctrl+S, Ctrl+O, Ctrl+Shift+P and Ctrl+K and never Shift+Enter, and the
+hand-rolled empty-`<li>` Enter handler explicitly bails out when `shiftKey` is
+set. A break is reachable today only because `contenteditable` inserts a `<br>`
+on Shift+Enter on its own — the engine's behaviour, not Mandy's, and unmeasured
+here like every engine claim that has not been through a check page. Same shape
+as 1.7 and the same answer: `insertLineBreak` is already in REWRITE.md's
+input-layer table, so it is a binding and a model command in 3.1 stage 2.
+
+**TODO 2.2 — and an edited paragraph's break is destroyed on save.** Turndown's
+`br` option is left at its default, the two-trailing-spaces spelling.
+`reflowMarkdown` then hands any over-length line to `wrapMarkdownLine`, which
+splits on whitespace — so the two spaces are consumed as ordinary spacing
+between words and the break is gone from the file, with the paragraph still
+reading correctly on screen. Measured by driving `reflowMarkdown` directly at
+width 80:
+
+| Case | Result |
+| --- | --- |
+| Two-space break, line short enough not to wrap | survives |
+| Two-space break, line long enough to wrap | **lost** |
+| Backslash break, either length | survives |
+
+The backslash survives because it is a non-space character and stays attached to
+the word in front of it — **a second argument for that spelling, independent of
+the one S3 settled on**: it is not only harder for someone else's editor to
+trim, it is the one spelling this editor cannot eat.
+
+Scoped to an edited block: the re-wrap runs before `restoreSourceWrapping` and
+the block key ignores whitespace, so an untouched paragraph carrying a break
+gets its own bytes back and never reaches the wrapper.
+
+The fix is two halves, and the second is needed whichever spelling wins — sniff
+the break spelling and set Turndown's `br` from it, which is S3's settled work,
+**and** make `wrapMarkdownLine` treat a break as a boundary it cannot cross
+rather than whitespace to collapse, the way the five existing guards treat a
+fence, a table row and a maths span.
+
+**Why nobody caught it**, and it is two reasons. Not one of this repo's nine
+markdown files contains a hard break, so no round trip has ever carried one —
+the fidelity claims in CLAUDE.md were checked by round-tripping real files by
+hand, and none of those files could show this. And no suite opens a document,
+edits it and saves it anyway: the pieces of the save path are covered, the chain
+they form is not. This bug sat in the seam between two steps that each pass
+their own test, and was found by calling `reflowMarkdown` directly — so its fix
+is verified by hand, not by `npm test`.
+
+**1.8 needs 2.2, rather than merely relating to it.** A control that makes a
+break the save path then destroys is worse than no control: it turns an obscure
+gap into a data-loss path the user was invited down. 2.2 is pure serialiser work
+in `markdown-style.js`, which lives through the rewrite — so like 2.1 it can be
+fixed on `main` today and the fix carries over, and D6's "consequence for open
+work" paragraph now says so for the whole of section 2 rather than for 2.1
+alone. MARKDOWN.md's line-break row was also overstating things in two columns
+at once, claiming Shift+Enter as an authoring route and calling the round trip
+partial when it is a loss; both corrected.

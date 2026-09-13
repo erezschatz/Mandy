@@ -235,6 +235,36 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     no offset walk across the whole editor to miscount. Kept here until the
     new undo is watched doing this exact case correctly.
 
+*   **1.8** *(needs 3.1; needs 2.2)* **Nothing in Mandy inserts a line
+    break inside a paragraph.** There is no menu item — all thirty were checked
+    on 2026-09-13 — no format-bar button, and no binding: `app.js` binds Ctrl+S,
+    Ctrl+O, Ctrl+Shift+P and Ctrl+K and never Shift+Enter, and the hand-rolled
+    empty-`<li>` Enter handler explicitly *bails out* when `shiftKey` is set. So
+    a break is reachable today only because the browser's own `contenteditable`
+    inserts a `<br>` for Shift+Enter, which is the engine's behaviour and not
+    Mandy's — unmeasured here, like every other engine claim that has not been
+    through a check page.
+
+    The same is true of the format shortcuts — `app.js` binds no Ctrl/Cmd+B or
+    Ctrl/Cmd+I either — and the answer is the same for both:
+    **`insertLineBreak` is already in REWRITE.md's input-layer table**,
+    so the work is a `keydown` binding and a model command in 3.1 stage 2,
+    where there is something to call. Writing it against `execCommand` first is
+    what D4's amendment says not to do.
+
+    **It needs 2.2 rather than merely relating to it.** A control that makes a
+    break the save path then destroys is worse than no control, because it
+    converts an obscure gap into a data-loss path the user was invited down. Fix
+    the serialiser first; it can be done on `main` today and does not wait for
+    the rewrite.
+
+    Worth deciding when it is built, and left open here: whether the control is
+    a keybinding alone or also an **Insert → Line break** item. The argument for
+    the menu item is that Shift+Enter is invisible and this editor's premise
+    (D0) is that nobody should need to know the markup; the argument against is
+    that Insert is for things with no keystroke, and every editor people arrive
+    from uses Shift+Enter without advertising it.
+
 ## 2. Save fidelity
 
 Ways the bytes on disk still differ from what was opened, all verified by
@@ -264,9 +294,63 @@ category fidelity deliberately does not extend to.
     convention to text. It can be written before 3.1, and it is what the
     model's serialiser calls for an edited table block.
 
+*   **2.2** *(bug, data loss; survives 3.1; wanted by 1.8)* **A hard line break
+    inside an edited paragraph is silently destroyed when the line has to be
+    re-wrapped.** Markdown spells a break two ways — two trailing spaces, or a
+    trailing backslash — and Turndown's `br` option is left at its default,
+    which is the two spaces. `reflowMarkdown` then hands any over-length line to
+    `wrapMarkdownLine`, which splits on whitespace: the two trailing spaces are
+    consumed as ordinary spacing between words and the break is gone. The
+    paragraph still reads correctly on screen, and the file it was saved to no
+    longer has the break in it.
+
+    Measured 2026-09-13, driving `reflowMarkdown` directly at width 80:
+
+    | Case | Result |
+    | --- | --- |
+    | Two-space break on a line short enough not to wrap | survives |
+    | Two-space break on a line long enough to wrap | **lost** |
+    | Backslash break, either length | survives |
+
+    The backslash survives because it is a non-space character and stays
+    attached to the word in front of it. That is a second argument for it,
+    independent of the one MARKDOWN.md's **S3** already settled on — it is not
+    only harder for someone *else's* editor to trim, it is the one spelling this
+    editor cannot eat.
+
+    Scope: **an edited block only**. The re-wrap runs before
+    `restoreSourceWrapping` and the block key ignores whitespace, so an
+    untouched paragraph carrying a break gets its own bytes back and never
+    reaches the wrapper. Same shape as every other item in this section.
+
+    Two halves, and the second is needed whichever spelling wins. **Sniff the
+    break spelling** off the opened file and set Turndown's `br` from it, which
+    is S3's settled work and joins the same pass as the fence character. **And
+    make the re-wrap stop eating it**: `wrapMarkdownLine` has to treat a break
+    as a boundary it cannot cross rather than as whitespace to collapse, the way
+    the five existing guards treat a fence, a table row and a maths span.
+
+    Why nobody caught it, and it is two reasons rather than one. **Not one of
+    this repo's nine markdown files contains a hard break**, so no round trip
+    has ever carried one — the fidelity claims in CLAUDE.md were checked by
+    round-tripping real files by hand, and none of those files could show this.
+    And **no suite opens a document, edits it and saves it** anyway: the pieces
+    of the save path are covered, the chain they form is not, so a bug can sit
+    in the seam between two steps that each pass their own test. This one did,
+    and was found by calling `reflowMarkdown` directly.
+
+    **So this item's fix is verified by hand**: open a file with a break on a
+    long line, edit that paragraph, save, and look at the bytes. `npm test`
+    cannot tell you whether it worked.
+
+    Survives 3.1: `sniffMarkdownStyle` and `reflowMarkdown` both live through
+    the rewrite — REWRITE.md's slice 3 calls them per block instead of per
+    document — so this is 2.1's situation exactly. It can be fixed on `main`
+    today and the fix carries over.
+
 ## 3. The editing core
 
-*   **3.1** *(unblocks 1.1.6, 1.1.7, 1.1.8, 1.4, 1.6)*
+*   **3.1** *(unblocks 1.1.6, 1.1.7, 1.1.8, 1.4, 1.6, 1.8)*
     Replace the editing core: hold the document as a block-granular markdown
     model with source spans, render it to the DOM, and treat contenteditable
     as an input method whose `beforeinput` intentions are reinterpreted as
