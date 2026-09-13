@@ -2856,7 +2856,7 @@ this entry — so nothing was run, per this file's rule about it. The
 measurements above were taken by driving the existing `modelParse` and
 markdown-it over the repo's own files, not by changing either.
 
-## 2026-09-12 — Tile any nesting level, not only the file's own
+## 2026-09-12 — `bdd89c7` — Tile any nesting level, not only the file's own
 
 TODO 3.1 stage 1, slice 1b, step 1 of six — the plan is in
 [docs/REWRITE.md](docs/REWRITE.md)'s "Where each stage stands" and landed in the
@@ -2901,7 +2901,7 @@ Ran the `model` suite alone rather than `npm test`, per the rule in CLAUDE.md:
 `front/model.js` is loaded by that suite and by nothing else in the repo. 51
 checks, no failures.
 
-## 2026-09-12 — A container's children tile its own bytes
+## 2026-09-12 — `bdd89c7` — A container's children tile its own bytes
 
 TODO 3.1 stage 1, slice 1b, step 2 of six. Step 1 generalised the tiler; this
 turns what it finds into blocks, so a list now holds its items, an item holds
@@ -2965,7 +2965,7 @@ round trips and every edge case in the suite pass unchanged with the recursion
 on, which is the thing to check hardest — children that did not tile their
 parent would show up there first.
 
-## 2026-09-12 — An edited block inside a list re-emits, and its siblings do not
+## 2026-09-12 — `bdd89c7` — An edited block inside a list re-emits, and its siblings do not
 
 TODO 3.1 stage 1, slice 1b, step 3 of six, and the payoff of the slice.
 `modelSerialise` now delegates to `modelEmitBlock(block, emit)`, which has three
@@ -3012,7 +3012,7 @@ Ran the `model` suite alone per CLAUDE.md's rule: 81 checks, no failures, up fro
 74. The five round trips matter most here — a recursion that emitted a child
 twice, or dropped a separator, shows up there before anywhere else.
 
-## 2026-09-12 — Touching a block clears the containers above it
+## 2026-09-12 — `bdd89c7` — Touching a block clears the containers above it
 
 TODO 3.1 stage 1, slice 1b, step 4 of six, and the step that makes the three
 before it safe to use. `modelTouch` now walks up: every block carries a `parent`,
@@ -3057,7 +3057,7 @@ Ran the `model` suite alone per CLAUDE.md's rule: 87 checks, no failures, up fro
 81 — with the one deliberate failure in between being step 3's pinned hazard,
 which this step inverted.
 
-## 2026-09-12 — Every list item carries its own marker
+## 2026-09-12 — `bdd89c7` — Every list item carries its own marker
 
 TODO 3.1 stage 1, slice 1b, step 5 of six. Nothing in the round trips needs this:
 an item's `source` is its lines whole and already carries the marker it was
@@ -3104,7 +3104,7 @@ sides, and its slice 3 entry points at them.
 Ran the `model` suite alone per CLAUDE.md's rule: 102 checks, no failures, up from
 87.
 
-## 2026-09-12 — The suite owns the number, and slice 1b is done
+## 2026-09-12 — `bdd89c7` — The suite owns the number, and slice 1b is done
 
 TODO 3.1 stage 1, slice 1b, step 6 of six, and with it the slice. The cases in the
 five entries above say the mechanism works on the shapes we thought of; this says
