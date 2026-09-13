@@ -3618,7 +3618,7 @@ stage 2. MARKDOWN.md's line-break row goes from a loss to a tick, with the
 mixed-spelling note on it, and D6's section-2 paragraph now names 2.1 as the one
 still open.
 
-## 2026-09-13 — `main`'s hard-break fix merged into `rewrite`
+## 2026-09-13 — `d4e52de` — `main`'s hard-break fix merged into `rewrite`
 
 A plain `git merge main`. **All the code merged with no conflict at all** —
 `markdown-style.js`'s break guard and sniff, `app.js`'s `br` option, `sw.js` at
