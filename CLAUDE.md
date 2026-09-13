@@ -117,10 +117,20 @@ They cover the invariants that fail *silently* rather than loudly:
   a real markdown-it, since the point is to parse this repo's own files with no
   browser anywhere. What it asserts is D1: `CLAUDE.md`, `README.md`,
   `welcome.md`, `docs/TODO.md` and `docs/REWRITE.md` come back byte-identical,
-  and editing one paragraph rewrites exactly that paragraph. Two of its checks
-  exist only to stop the round trip passing by doing nothing — a parse that
-  found no blocks would hand the file back untouched, which is byte-identical
-  and worthless.
+  and editing one paragraph rewrites exactly that paragraph. Since slice 1b it
+  also asserts the same invariant one level down — a container's children tile
+  its own bytes, at every depth, on those same files — plus the spans the tiler
+  hands back at each level, pinned by exact file line numbers. Four of its
+  checks exist only to stop those two passing by doing nothing: a parse that
+  found no blocks hands the file back untouched, which is byte-identical and
+  worthless, and a model with no children anywhere tiles vacuously, which is
+  exactly the state slice 1 left it in. It also carries **the metric**, because
+  the number slice 1b exists to move should not be something a human measured
+  once and quoted: the worst edit in each of those files as a share of it, the
+  guard that `docs/TODO.md`'s largest top-level block is still a third of the
+  file so the share moved for the right reason, and every one of their ~700
+  blocks edited alone to prove it rewrites exactly itself. The numbers are in the check
+  labels, so a run reads as a report.
 - **tabs** — the per-tab state boundaries and the swap between documents: that
   park and adopt are lossless and adopting nothing is a blank document rather
   than a half-cleared one; the migration off the flat keys and both ways a
@@ -391,10 +401,18 @@ Six things that are decisions rather than details:
   rules; in the suite it is a bare one. A module that fetched its own parser
   could not be tested without a browser, which is the entire reason this stage
   comes before the ones that are at risk.
-- **`modelTouch` is the only door to `source = null`.** That assignment *is* the
-  contract with D1: a path that changes a block's content without going through
-  it leaves the file's old bytes on disk under new content, and the document
-  looks right on screen either way.
+- **`modelTouch` is the only door to `source = null`, and it walks up.** That
+  assignment *is* the contract with D1: a path that changes a block's content
+  without going through it leaves the file's old bytes on disk under new content,
+  and the document looks right on screen either way. The walk is the same rule
+  one level out — a container still holding its `source` is emitted from those
+  bytes and never asked about its children, so an edited item under an untouched
+  list would re-emit into nothing. It clears the whole chain rather than stopping
+  at the first ancestor already cleared, because a stop condition is a second
+  rule about when an ancestor may keep its bytes and there is no such case. The
+  price is the `parent` link that makes it possible: **the model is cyclic and
+  not `JSON.stringify`-able**, which is cheaper than searching the tree for a
+  parent on every keystroke.
 - **Blocks come from top-level tokens' `map`, which is a source span for free.**
   A block's `source` is the exact bytes and no trailing newline; the newline
   that ends its last line belongs to the separator, or every block would carry
@@ -409,20 +427,42 @@ Six things that are decisions rather than details:
   of kind `gap` in its own position, rendered to nothing — and a definition
   wrapped onto a second line, which `scanReferenceDefinitions` cannot see at all
   today, is only a taller one.
-- **A list is currently one block, and that is a known regression rather than
-  the design.** `docs/TODO.md` is 584 lines and sixteen blocks; the largest is
-  239 of them. Editing one item would rewrite 41% of the file — which is the
-  unmergeable diff D1 exists to prevent, and *worse* than the three-layer
+- **A container holds children that tile its own bytes, and the serialiser does
+  not read them yet.** A list was one block, which was a known regression rather
+  than the design: `docs/TODO.md` is 708 lines and sixteen top-level blocks, the
+  largest 239 of them, so editing one item would rewrite a third of the file —
+  the unmergeable diff D1 exists to prevent, and *worse* than the three-layer
   restore this replaces, since `markdownSegments` splits on list markers for
-  exactly this reason. REWRITE.md's slice 1b tiles containers with sub-blocks,
-  recursively, and says what else that drags in: a touched block has to clear
-  its ancestors' `source`, and an edited item's emitter has to put back the
-  marker and the content indent.
+  exactly this reason. Slice 1b is the fix, and its first two steps are in: a
+  list holds its items, an item the blocks inside it, a quote its paragraphs, a
+  table its head, body and rows — five deep on `docs/TODO.md`, with the row as
+  the floor because `td_open` carries no `map`. The same invariant one level
+  down: `leading` plus every child's `source` and `separator` is the parent's
+  `source`, so a child's source is its lines whole and carries its own marker.
+  Serialisation recurses with them (step 3): a block whose `source` is null and
+  which has children emits its children instead of calling the emitter, so an
+  edited child re-emits and **no sibling is ever re-serialised**. `modelTouch`
+  clears the touched block's ancestors so that recursion reaches it (step 4 —
+  see the bullet below). Editing the first bullet in `docs/TODO.md` therefore
+  asks the emitter for a 10-line paragraph where the same edit used to
+  re-serialise the 239-line list around it, and a bullet five blocks down costs
+  one emitter call. Every item also carries its own marker and continuation
+  indent (step 5), recorded at parse by `modelItemPrefix` because slice 3's
+  emitter has to write both back and re-reading them at emit time would be a
+  second place that can disagree. **The metric is the suite's, not a human's**
+  (step 6): editing the worst block in `docs/TODO.md` rewrites 15 of its 708
+  lines where the same edit cost 239 before the slice, and all 697 blocks across
+  the five files the suite drives rewrite exactly themselves when edited one at a
+  time. A blockquote's `> ` chain is the same problem as the marker and is
+  deliberately still open — REWRITE.md's step 5 argues both ways, and this repo
+  has no blockquote in any of its nine markdown files to measure against.
 
 What it does not do yet: hold the inline structure a block is edited through,
-emit an edited block at all (`modelSerialise` throws rather than guess), or let
-anything inside a list, a quote or a table be edited. Those are the rest of
-stage 1 and stages 2 and 3.
+turn an edited *leaf* into markdown at all (`modelSerialise` throws rather than
+guess — an edited container is only a concatenation of bytes that already exist,
+so it needs no emitter), or hand that emitter anything about a blockquote's `> `
+chain, which is the marker question left open. Those are the rest of stage 1 and
+stages 2 and 3.
 
 ### Links and heading anchors
 

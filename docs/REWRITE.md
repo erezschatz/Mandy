@@ -535,8 +535,20 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         the serialiser has to get right. `front/model.js` and
         `tests/model.test.mjs`, 39 checks.
 
-    *   **1b. Sub-blocks inside containers — not started, and it is not
-        optional.** Measured as soon as slice 1 could count, and again on
+    *   **1b. Sub-blocks inside containers — done and tested, 2026-09-12, and it
+        was not optional.** All six steps below are in. The mechanism is: a container's children tile
+        it exactly, one `modelTouch` at a child clears every container above it,
+        and serialisation re-emits that child while handing back every sibling.
+        Editing the first bullet in `docs/TODO.md` asks the emitter for 10 lines
+        where the same edit used to re-serialise the 239-line list it sits in,
+        and a bullet five blocks down costs one emitter call. Every item also
+        carries its own marker and continuation indent, which is what slice 3
+        emits from. The suite asserts the metric rather than leaving it measured
+        by hand: **editing the worst block in `docs/TODO.md` rewrites 15 of its
+        708 lines, 2.1%, where the same edit cost 239 lines before this slice**,
+        and all 697 blocks across the five files it drives rewrite exactly
+        themselves when edited one at a time. Measured as soon as slice 1 could
+        count, and again on
         2026-09-12 after `main`'s items landed in it: `docs/TODO.md` is 708
         lines and **16 blocks**, because a whole section's bullet list is one
         top-level token. The largest is 239 lines — a third of the file — so
@@ -575,51 +587,231 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         Fences, rules, indented code and HTML blocks have no children and stay
         leaves. **Six steps, in this order:**
 
-        1.  **Generalise the tiler.** `modelTopLevelSpans` filters on
-            `token.level !== 0`; it becomes a function of a token slice and a
-            level, with the current behaviour as its level-0 case. A `map` is
-            an absolute line range in the file at every depth, so
+        1.  **Generalise the tiler — done and tested, 2026-09-12.**
+            `modelTopLevelSpans` filtered on `token.level !== 0`; it is now
+            `modelSpansAtLevel(tokens, level)`, a function of a token slice and
+            a level, with the old behaviour as its level-0 case — which is what
+            `modelParse` still asks for and all it asks for until step 2. A
+            `map` is an absolute line range in the file at every depth, so
             `modelLineOffsets`, `startOf` and `endOf` are reused untouched and
             there is no coordinate translation anywhere — which is what makes
             this a day rather than a second slice 1.
 
-        2.  **Children tile the parent exactly.** Slice 1's invariant one level
-            down: every character of a container's `source` is in exactly one
-            of a child's `source`, a child's `separator`, or the container's
-            own leading text. `takeGap` and the trailing-blank trim come along
-            unchanged, since both are already written against a line range
-            rather than against the file.
+            Measured rather than assumed, in twelve checks driving the function
+            directly, since nothing in the model reaches a second level yet: a
+            list tiles into items and those into a paragraph and a nested list,
+            a quote into ordinary blocks, and a table into head and body and
+            then rows. Two of them are for step 2 rather than this one. **A
+            line inside a container can belong to none of its children** — a
+            table's delimiter row and a quote's bare `>` are both unclaimed —
+            so step 2 has to reuse `takeGap` at depth rather than assume the
+            children cover the span. And children nest and never overlap at
+            every depth, which is the invariant step 2 rests on: two siblings
+            claiming the same bytes would write those bytes into the file
+            twice.
 
-        3.  **Serialisation recurses.** `modelSerialise` gains one case: a
-            block whose `source` is null *and* which has children emits its
-            children instead of calling `emit`. An edited item re-emits itself,
-            its ancestors re-emit as the concatenation of untouched siblings
-            around it, and **no sibling is ever re-serialised**. That is the
-            whole result of the slice, and it falls out of the invariant rather
-            than being arranged on top of it.
+            One clause is belt-and-braces rather than measurement: an `inline`
+            token is skipped by type as well as by level. markdown-it puts it
+            one level below the block carrying it, so a container's children
+            are never inlines and the clause never fires today — but if that
+            changed, an inline's span would overlap its own parent's, and the
+            worst case with the guard is a `gap` block holding those bytes
+            exactly once.
 
-        4.  **`modelTouch` clears ancestors.** An item edited under a container
-            still claiming its own original bytes would be re-emitted and then
-            overwritten by them, which is the same silent-wrong-file failure
-            `modelTouch` exists to prevent one level up. So touching walks up,
-            which needs a parent link on every block, set at parse. The cost is
-            that the model becomes cyclic and stops being `JSON.stringify`-able
-            — worth naming, and worth paying: nothing has needed to serialise
-            the model yet, and the alternative is searching for the parent on
-            every keystroke.
+        2.  **Children tile the parent exactly — done and tested, 2026-09-12.**
+            Slice 1's invariant one level down: every character of a
+            container's `source` is in exactly one of a child's `source`, a
+            child's `separator`, or the container's own leading text. `takeGap`
+            and the trailing-blank trim came along unchanged, since both were
+            already written against a line range rather than against the file.
 
-        5.  **Record the marker and the content indent on each item**, at parse,
-            where the span is already in hand. Byte-exactness needs neither —
-            an item's `source` includes its own marker — but slice 3's emitter
-            has to put both back when the item is edited, and re-deriving them
-            from the source at emit time would be a second place that can
-            disagree with the first.
+            What it took was one refactor rather than a second parser:
+            `modelParse`'s body became `modelTileRange(ctx, spans, from, to)`,
+            which tiles *a* line range, and the file is that function over
+            `[0, lines.length)` at level 0. A container is the same call over
+            its own span at its own level plus one, and `prefix` and a
+            container's `leading` are the same field one level apart.
+            Recursion is on *having children* rather than on a list of
+            container kinds — a paragraph's only child token is its `inline`,
+            which the tiler skips — so leaves fall out instead of being
+            enumerated, and there is no kind list to update when a construct
+            gains a level.
 
-        6.  **The suite gets the metric, not only the cases.** The number this
-            slice exists to move is the share of a file sitting inside its
-            largest block, so the suite asserts it on `docs/TODO.md` directly,
-            alongside the round trips, the tiling invariant at every depth, and
-            that editing one list item rewrites that item and nothing else.
+            **A child's `source` is its lines, whole, so it carries its own
+            container's marker**: the paragraph inside `- one` has `- one` as
+            its source, and a paragraph inside a quote starts at `> `. That is
+            what byte-exactness wants, since nothing else claims those
+            characters — step 5 is what records the marker as data for the
+            emitter, and the suite pins the behaviour so it cannot drift
+            silently when step 5 lands.
+
+            Measured on the five repo files the suite already used, and the
+            invariant holds at every depth on all of them — with two checks
+            that the loop is not passing vacuously, since a model with no
+            children anywhere tiles trivially and that is exactly the state
+            slice 1 was in: `docs/TODO.md` comes back as 53 containers nesting
+            five deep. Four more things fell out rather than being built:
+            **a tight list stays tight and a loose one loose**, because the
+            blank line between two items is the first item's separator, which
+            is the same information `markdownSegments` carries today; a
+            **table's delimiter row** and a **blockquote's bare `>`** are gap
+            blocks in their own position, by the mechanism reference
+            definitions already used; a **reference definition inside a list
+            item** stays inside that item, where `appendReferenceDefinitions`
+            would hoist it to the end of the file; and an **empty item or
+            quote** is a leaf holding its own marker rather than a container
+            with nothing in it. Leaves carry `children: null` rather than an
+            empty array, because "has children" is the test step 3 serialises
+            on and an empty array answers yes.
+
+        3.  **Serialisation recurses — done and tested, 2026-09-12.** A block
+            whose `source` is null *and* which has children emits its children
+            instead of calling `emit`. An edited item re-emits itself, its
+            ancestors re-emit as the concatenation of untouched siblings around
+            it, and **no sibling is ever re-serialised**. That is the whole
+            result of the slice, and it fell out of the invariant rather than
+            being arranged on top of it: the new case is literally the inverse
+            of step 2's tiling, `leading` plus each child's emission and
+            separator.
+
+            Three cases now, and the order is the contract —
+            `modelEmitBlock(block, emit)` takes `source` first, children
+            second, `emit` last. The measurement: the first bullet in
+            `docs/TODO.md` is a 10-line paragraph inside a 97-line item inside
+            the file's 239-line list, and editing it asks the emitter for that
+            paragraph **once**, rewrites exactly its bytes, and hands back the
+            other 698 lines untouched. The suite asserts both the bytes and the
+            call count, since a serialiser that re-emitted a sibling correctly
+            would pass the first and still have thrown away the guarantee.
+
+            Two consequences worth naming. **An edited container needs no
+            emitter at all** — it is a concatenation of bytes that already
+            exist, so only a leaf can reach slice 3, which is the only part of
+            this that invents markdown. And **an item is never the block that
+            emits**: it holds a paragraph, so the paragraph is what is asked
+            for, and its bytes start at the item's marker.
+
+            One thing the step deliberately leaves broken, with a check pinning
+            it so step 4 has something to flip: touch a child and nothing else
+            and the container above it still carries its own bytes, so case 1
+            hands those back and **the edit is simply gone**. That is the same
+            silent-wrong-file failure `modelTouch` exists to prevent one level
+            up, which is why step 4 is not optional either.
+
+        4.  **`modelTouch` clears ancestors — done and tested, 2026-09-12.** An
+            item edited under a container still claiming its own original bytes
+            is re-emitted from those bytes and never consulted about its
+            children, so the edit is lost with the document looking right on
+            screen — the same silent-wrong-file failure `modelTouch` exists to
+            prevent one level up. So touching walks up, which needed a parent
+            link on every block, set by the tiler where the children are
+            attached. The cost is that the model is cyclic and no longer
+            `JSON.stringify`-able — named rather than hidden, and worth paying:
+            nothing has needed to serialise the model as JSON, and the
+            alternative is searching the tree for a parent on every keystroke.
+
+            It walks the whole chain rather than stopping at the first ancestor
+            already cleared. Depth is five on this repo's deepest document, and
+            a stop condition would be a second rule about when an ancestor may
+            keep its bytes — there is no such case, and inviting one costs the
+            file.
+
+            This is the step that flipped step 3's pinned hazard, which is why
+            that check was written: the suite now asserts that one touch at a
+            child clears every container above it and **nothing beside it**, that
+            a top-level block has no parent to walk to, and that every child's
+            parent throughout `docs/TODO.md` is the container whose `children` it
+            is in — a link to the wrong block being the one failure here that
+            writes into the file. The sharpest case is the deepest: a bullet
+            nested in a bullet, five blocks down, one touch, one emitter call,
+            and the other 700-odd lines the bytes that were read.
+
+        5.  **Record the marker and the content indent on each item — done and
+            tested, 2026-09-12.** At parse, where the bytes are in hand.
+            Byte-exactness needs neither — an item's `source` includes its own
+            marker — but slice 3's emitter has to put both back when the item is
+            edited, and re-deriving them from the source at emit time would be a
+            second place that can disagree with the first, about the pad above
+            all, which is a document's own convention `sniffMarkdownStyle`
+            already reads for exactly that reason.
+
+            `modelItemPrefix(firstLine)` is a pure function over one line, which
+            is what lets the suite drive the rules directly rather than through a
+            document — the same split `isGhostElement` has from its traversal in
+            `markdown-style.js`. It returns the marker exactly as written,
+            indent and pad included (`"- "`, `"*   "`, `"    - "`, `"1.  "`,
+            `"10) "`), and the continuation indent as **the marker with every
+            character but a tab replaced by a space**. That is one rule rather
+            than two: the width is right by construction, and a tab survives as
+            a tab instead of being counted as one column.
+
+            Measured against the five files the suite drives, on 2026-09-12:
+            all **273** items carry a marker, every one of them agrees with what
+            markdown-it itself reported as the item's `markup` (plus `info` for an
+            ordered item's number), and of the 197 items with a continuation line,
+            all 197 carry exactly the indent that line actually uses. Those counts
+            are **thresholds** in the suite and exact only in this sentence — the
+            oracle is five files this project edits, and an exact count turns a
+            documentation change into a failing test about list items. Which it
+            did, in this slice, on the entry describing this check. A `null` marker would
+            mean a line markdown-it called an item does not start with one this
+            pattern recognises; the fields stay null in that case, so slice 3 has
+            nothing to emit from rather than the model inventing a marker the
+            file never had.
+
+            **A blockquote's `> ` chain is the same problem and is deliberately
+            not answered here.** A paragraph inside a quote has `> quoted` for
+            its source, so slice 3 has to put that back too, and there are two
+            ways to do it. *Record a prefix at parse*, the way an item's marker
+            is recorded: symmetric, one place to be wrong. *Strip and re-apply
+            the chain at emit time*: keeps 1b scoped, at the cost of the second
+            disagreeing place this step exists to avoid. The reason it is open
+            rather than decided is that the shapes differ — an item's marker is
+            a first line plus an indent, while a quote's prefix is on **every**
+            line and nests (`> > `) — and there is no measurement to settle it
+            on: all nine markdown files in this repo contain **zero**
+            blockquotes, so the only evidence available would be invented. It
+            belongs to whoever writes slice 3, with the quote's own
+            `tests/browser-check.html`-style measurement taken first.
+
+        6.  **The suite gets the metric, not only the cases — done and tested,
+            2026-09-12.** The number this slice exists to move is the share of a
+            file an edit re-serialises, so the suite asserts it on `docs/TODO.md`
+            directly, alongside the round trips, the tiling invariant at every
+            depth, and that editing one list item rewrites that item and nothing
+            else.
+
+            The unit is a **leaf**, because a container re-emits as its children
+            and what reaches the emitter always has none. Four checks, and the
+            numbers are in their labels so a run reads as a report rather than as
+            a row of ticks:
+
+            - Editing the worst block in `docs/TODO.md` rewrites **15 of its 708
+              lines (2.1%)**, asserted under 5%.
+            - Its largest **top-level** block is still **239 lines (34%)**,
+              asserted over 25% — the guard that the first number moved because
+              of sub-blocks and not because the file got shorter or its lists
+              got smaller. That block is still there; what changed is that
+              nothing re-serialises it.
+            - No file's worst edit is a tenth of it: CLAUDE.md 1.9%, README.md
+              2.8%, welcome.md 7.4%, TODO.md 2.1%, REWRITE.md 2.2%. The labels
+              carry the live numbers, so the figures here are the day's reading
+              and the suite is the thing that keeps them honest.
+            - The exhaustive version of the single-bullet case: **all 697 blocks
+              across those five files, edited one at a time, rewrite exactly
+              their own bytes and nothing else.** It re-parses per block, since
+              `modelTouch` clears ancestors and a second measurement on the same
+              document would be measuring a document with an edit already in it —
+              0.6s for the sweep, which is the most expensive thing in the suite
+              and the strongest claim in it.
+
+            The sentinel the sweep edits with shares no character with anything
+            in any of the files, at either end: one that did would let the common
+            prefix run into the replacement, so the region measured would be
+            smaller than the block and the check would weaken without failing.
+            That is not a hypothetical — it happened on the first run of this
+            sweep, with a sentinel that began with a space, against the indented
+            continuation paragraphs inside list items.
 
         **Two to three days, and additive to the stage's one-week line in the
         estimate table rather than inside it** — 1b was found after that table
@@ -649,12 +841,15 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         most of itself restored. `indexMarkdownBlocks` and
         `restoreSourceWrapping` are what this replaces, and they stay on `main`
         until stage 4 removes them. 1b's step 5 is what hands it a list item's
-        marker and indent.
+        marker and indent — and what it does **not** hand it is a blockquote's
+        `> ` chain, which that step's entry leaves open with both options
+        argued.
 
     *   **4. The suite — scaffolded 2026-09-11, and it grows with each slice
         rather than landing once.** `tests/model.test.mjs` drives this repo's
         own files as the oracle; the scaffold, the file oracle and the 39 checks
-        covering slice 1 are already in. It imports `npm:markdown-it@13.0.1` the
+        covering slice 1 are already in, and 1b's six steps added twelve,
+        twenty-three, seven, six, fifteen and four more for 106. It imports `npm:markdown-it@13.0.1` the
         way `server/deno.json` already imports `npm:hono` — flagged per
         CLAUDE.md and decided 2026-09-11: the app keeps its CDN tags, the two
         pins have to be kept in step, and `npm test` wants the network once.
