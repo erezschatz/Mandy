@@ -163,6 +163,23 @@ They cover the invariants that fail *silently* rather than loudly:
   agree with any order at all. The seam between `file-api.js` and `undo.js` is
   where stage 4's real bug lived, invisible to either suite alone.
 
+**No suite opens a document, edits it and saves it.** The pieces of the save
+path are covered — `markdown-style.js`'s sniffers and re-wrapper, the Turndown
+options `app.js` asks for, the block index, the ghost-element predicate — but
+never the chain they form, because [tests/dom.mjs](tests/dom.mjs) has no HTML
+parser and its Turndown hands back whatever it was given. A bug can therefore
+sit in the seam between two steps that each pass their own test, and TODO 2.2 is
+one that did. ROADMAP.md's "No automated test opens, edits and saves a document"
+is the entry; the `model` suite is the counter-example, and only because the
+model needs no browser.
+
+**So when a change's real verification is open-edit-save in a browser and no
+suite can reach it, say so, and give the recipe** — which file to open, what to
+change, what to look at afterwards. Never report such a change as verified
+because `npm test` passed: it did not test the thing. This is the same rule the
+check pages below exist under, and the same honesty `npm test` gets for what it
+*does* cover.
+
 ### The browser check
 
 [tests/browser-check.html](tests/browser-check.html) is not part of `npm test`

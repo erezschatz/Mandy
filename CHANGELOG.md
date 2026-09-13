@@ -3479,3 +3479,50 @@ work" paragraph now says so for the whole of section 2 rather than for 2.1
 alone. MARKDOWN.md's line-break row was also overstating things in two columns
 at once, claiming Shift+Enter as an authoring route and calling the round trip
 partial when it is a loss; both corrected.
+
+## 2026-09-13 — The round-trip test nobody can write, recorded where it belongs
+
+**No suite opens a document, edits it and saves it** — not through the code that
+runs when a user presses Save. The pieces are covered; the chain they form is
+not, so a bug can sit in the seam between two steps that each pass their own
+test. TODO 2.2 is one that did, and it was found by calling a single step by
+hand.
+
+Two things stop it, neither an oversight: `tests/dom.mjs` is a hand-built page
+stand-in with **no HTML parser**, so there is nothing to feed in, and the
+Turndown in it is a recorder that hands back what it was given. Fixing either
+means a real DOM implementation as a dependency.
+
+It is in **[docs/ROADMAP.md](docs/ROADMAP.md) rather than TODO.md**, deliberately
+and on the user's call: user-facing behaviour inside somebody else's application
+needs a person or a real engine to observe it and report back, and **a full
+frontend harness is not being planned**. That is accepted rather than carried as
+a gap waiting on tooling — the same position the spike was driven under, by hand,
+in three engines.
+
+Two things the entry says that are more useful than the item itself.
+
+**The model suite is the counter-example, and it is the interesting half.** It
+does take a file, edit one block, serialise it back and compare — 728 blocks
+across six files, byte for byte — and it can only do that because the model goes
+markdown to markdown with no browser in the middle. The running editor has to go
+markdown → HTML → an editing engine → HTML → markdown. So this item is partly
+answered by 3.1 rather than by anything on the roadmap: the more the model owns,
+the more of the round trip is testable with no browser at all.
+
+**And what is within reach is a check page**, which is a genre this repo already
+has five of — `browser-check`, `list-indent-check`, `list-empty-item-check`,
+`paste-check`, `tab-shortcut-check`, plus the stage-0 spike. Every one is the
+same answer to the same problem: only a real engine can say what happens, so the
+page carries its own protocol, a person drives it, and it reports rather than
+leaving the result to be felt. The save path has no such page; one would load the
+app in an `<iframe src="/">` the way two of them already do, edit a block, save,
+and diff — with `tests/fixtures/torture.md` as the document, since it is the only
+file here carrying a hard break at all.
+
+**The standing consequence is the point, and it is now a rule in CLAUDE.md's
+Tests section**: when a change's real verification is open-edit-save in a browser
+and no suite can reach it, say so and give the recipe — which file, what to
+change, what to look at. Never report such a change as verified because
+`npm test` passed, because it did not test the thing. TODO 2.2 now carries its
+own recipe on that basis.

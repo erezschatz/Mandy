@@ -258,3 +258,52 @@ because the editor rewrite (TODO 3.1, [REWRITE.md](REWRITE.md)) will settle it
 either way: a rewrite that holds the document as a model has a module boundary
 problem to solve regardless, and solving it twice would be the waste. If 3.1
 lands without settling it, this stays here.
+
+## No automated test opens, edits and saves a document
+
+**Nothing in `tests/` takes a file, changes a word, saves it, and compares the
+result to what it started as** — not through the code that actually runs when a
+user presses Save. The pieces are tested: `markdown-style.js`'s sniffers and
+re-wrapper directly, the Turndown options `app.js` asks for, the block index,
+the ghost-element predicate. The chain they form is not, so a bug can sit in the
+seam between two steps that each pass their own test. TODO 2.2 is exactly that
+bug — `reflowMarkdown` eats a hard break that Turndown had just written
+correctly — and it was found by calling one step by hand, not by a suite.
+
+Two things stop it, and neither is an oversight. [tests/dom.mjs](../tests/dom.mjs)
+is a hand-built stand-in for the page with **no HTML parser**, so there is no way
+to turn markdown into a document to feed in; and the Turndown in it is a
+recorder that hands back whatever it was given, so nothing is converted. Fixing
+either means a real DOM implementation as a dependency, which this project does
+not have and has not agreed to.
+
+**The model suite is the counter-example, and it is the interesting half.** It
+does take a file, edit one block, serialise it back and compare — 728 blocks
+across six files, one at a time, byte for byte. It can do that *because the
+model goes markdown to markdown with no browser in the middle*. The running
+editor has to go markdown → HTML → an editing engine → HTML → markdown, and
+there is no honest way to test that chain without a real one of those. So this
+item is partly answered by TODO 3.1 rather than by anything here: the more the
+model owns, the more of the round trip is testable with no browser at all.
+
+**What is within reach is a check page, and that is a genre this repo already
+has.** `browser-check`, `list-indent-check`, `list-empty-item-check`,
+`paste-check`, `tab-shortcut-check` and `spike/block-model.html` are all the same
+answer to the same problem: a real engine is the only thing that can say what
+happens, so the page carries its own protocol, a person drives it, and it reports
+what it found rather than leaving it to be felt. **The save path has no such
+page.** One would load the running app in an `<iframe src="/">` the way two of
+them already do, open a document, edit one block, save, and diff the result
+against the source — and `tests/fixtures/torture.md` is the document to do it
+with, since it is the only file here carrying constructs like a hard break at
+all.
+
+That page is the realistic version of this item. A full frontend test harness is
+not being planned: user-facing behaviour in someone else's application needs a
+person or a real engine to observe it and report back, and that is accepted
+rather than treated as a gap waiting on tooling.
+
+**The standing consequence, which matters more than the item**: when a change's
+real verification is open-edit-save in a browser and no suite can reach it,
+**that has to be said out loud**, with the manual recipe, rather than reported as
+though `npm test` covered it. CLAUDE.md's Tests section carries that rule.

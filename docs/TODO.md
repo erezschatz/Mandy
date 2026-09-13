@@ -366,9 +366,13 @@ category fidelity deliberately does not extend to.
 
     Why nobody caught it: not one of this repo's nine markdown files contains a
     hard break, so no round trip ever carried one. `tests/fixtures/torture.md`
-    now does, in both spellings — which is what the fixture is for, though this
-    was found by hand rather than by it, since nothing in the suite drives the
-    save path over the fixture yet.
+    now does, in both spellings — but no suite could have caught it even so,
+    because **none of them opens a document, edits it and saves it**. That gap
+    is ROADMAP.md's "No automated test opens, edits and saves a document", where
+    it sits rather than here because a full frontend harness is not planned; the
+    realistic answer is a check page of the kind `tests/` already has five of.
+    So **this item's fix is verified by hand**: open a file with a break on a
+    long line, edit that paragraph, save, and look at the bytes.
 
     Survives 3.1: `sniffMarkdownStyle` and `reflowMarkdown` both live through
     the rewrite — REWRITE.md's slice 3 calls them per block instead of per
