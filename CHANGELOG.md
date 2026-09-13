@@ -3597,6 +3597,16 @@ only in a block the user was already editing. Left alone deliberately — no rea
 document alternates break spellings on purpose — and now pinned by a check so
 nobody later reads it as the sniffer being broken.
 
+> **Correction, 2026-09-13.** The last two sentences of that paragraph are
+> wrong, and it is a bug. The spelling moves in **every** block holding the
+> minority one, not only an edited one: Turndown writes the sniffed spelling
+> document-wide before layer 3 runs, and `markdownBlockKey` does not normalise
+> style spellings, so such a block no longer keys to its own source, misses the
+> index and is re-wrapped as well as rewritten. Measured by opening a document
+> and serialising it with no edit at all. It reaches the emphasis delimiter the
+> same way. **TODO 2.3** carries it; this run saw only the edited-block half
+> because that is the half it was inspecting.
+
 **And a step this morning's fix skipped: `VERSION` in
 [front/sw.js](front/sw.js) was never bumped**, though the fix changed
 `markdown-style.js` and `app.js`, both shell assets. CLAUDE.md requires the bump
@@ -3611,6 +3621,13 @@ whose filler exists only to give the width sniffer enough ordinary lines to
 report a real number, and it lives beside the manual recipe rather than in
 `tests/`. What belongs in the repo is what a machine can re-run, and that is the
 sixteen checks in `save-fidelity`. **991 checks, no failures.**
+
+> **Correction, 2026-09-13.** It is in the repo now, as
+> [tests/fixtures/break-test.md](../tests/fixtures/break-test.md). Leaving it
+> outside meant it was deleted as scratch the same day and existed only in one
+> browser's `localStorage` by the time anything wanted it again — which is not
+> what "what belongs in the repo is what a machine can re-run" was meant to
+> buy. A fixture a person re-runs still has to survive between the runs.
 
 2.2 is closed and leaves [docs/TODO.md](docs/TODO.md); 1.8 loses its dependency
 on it and is now only about the authoring control, which still waits for 3.1
@@ -3668,3 +3685,58 @@ it is document-wide like the emphasis delimiters, and the new checks in the
 `npm test`: **1107 checks, no failures** — this branch's 1091 plus the sixteen
 that came with the fix. `model` is unchanged at 114, which is the thing to look
 at: nothing in the merge touched the rewrite.
+
+## 2026-09-13 — The empty-bullet check runs in three engines, and finds TODO 2.3 on the way past
+
+[tests/list-empty-item-check.html](tests/list-empty-item-check.html) had been
+carrying "Not yet run in a browser" since it was written on 2026-09-03, which is
+the whole of the time the hand-rolled Enter/Backspace handler has been shipping.
+Run now in **Chrome 152, Firefox 155 and Safari 26.6.2 — no problems in any of
+the three**, all six cases, caret included. The handler is verified.
+
+**The page measures less than it claimed, and the missing half was measured
+separately.** It presses its keys with `new KeyboardEvent(...)`, and a browser
+runs no default action for an untrusted event — so there is no native Enter for
+`preventDefault` to suppress, and the `prevented` it reports says only that the
+handler called it. The CHANGELOG entry that introduced the page named that
+suppression as one of the two things it would answer, and it cannot. Answered
+instead by driving the running app with trusted keystrokes: `beforeinput` never
+fired in any of the six, so the native action is fully suppressed and every
+change in the DOM is the handler's own surgery. CLAUDE.md now says which half
+the page can do.
+
+**And the thing that was not being looked for.** Recovering the app's state
+after the run meant opening a document and serialising it with no edit at all —
+which is how a block nobody had touched turned out to come back changed. A
+minority hard-break spelling (`Charlie one\` → `Charlie one  `) and a minority
+emphasis delimiter (`_underscored_` → `*underscored*`) are both rewritten
+document-wide by Turndown before layer 3 runs, and `markdownBlockKey` does not
+normalise style spellings — so such a block no longer keys to its own source,
+misses the index, and is handed to the re-wrapper, coming back rewritten *and*
+re-wrapped. Layer 3's promise is that an untouched block is byte-identical, and
+for these two options it is not.
+
+Filed as **TODO 2.3**, and it is a bug rather than the behaviour `5d96619`
+recorded it as: that entry saw the rewrite in an edited block and concluded the
+spelling moves "only in a block the user was already editing". It now carries a
+correction, as does the sentence in CLAUDE.md that said the same thing.
+**Closed by 3.1 and needing no work of its own there** — slice 2 step 3 records
+each node's spelling at parse and slice 3 emits it back, so an untouched block is
+never re-emitted and an edited one keeps its own spelling instead of inheriting a
+document-wide guess. No fix on the old core unless it turns up in daily use;
+making the key style-insensitive is one normalisation per sniffed option and a
+second place that can disagree with the serialiser.
+
+**The 2.2 fixture is in the repo**, as
+[tests/fixtures/break-test.md](tests/fixtures/break-test.md). `5d96619` argued it
+should stay out on the grounds that what belongs in the repo is what a machine
+can re-run — and it was then deleted as scratch the same day and survived only in
+one browser's `localStorage`, which is where it had to be recovered from. A
+fixture a person re-runs still has to survive between the runs. CLAUDE.md gains
+what each of its five labelled paragraphs is for, why its filler is load-bearing
+rather than padding, and the run protocol: **Save As to a scratch name, diff,
+delete** — never save over the fixture, which is the pristine copy the diff is
+taken against.
+
+No code changed, so no suite was run: nothing in `tests/` loads a CHANGELOG
+entry, a doc or a fixture nobody imports.

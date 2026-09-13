@@ -1060,6 +1060,19 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         `> ` chain, which that step's entry leaves open with both options
         argued.
 
+        **It closes TODO 2.3 by construction, and that is worth stating because
+        the wording above understates it.** "The conventions `sniffMarkdownStyle`
+        read off the file" is the old core's rule, and 2.3 is what that rule
+        costs: a document-wide sniff rewrites a block spelling a mark the
+        minority way, the rewrite changes the block's content key, the restore
+        layer misses, and a block nobody edited comes back rewritten and
+        re-wrapped. Here the sniff is the **fallback**, not the source of truth —
+        slice 2 step 3 records each node's spelling as written, so an edited
+        block emits what its own bytes said and only genuinely new content asks
+        the sniffer anything. An untouched block is not re-emitted at all, which
+        is the same guarantee one level up. Record first, sniff second, per
+        MARKDOWN.md's **S3**.
+
     *   **4. The suite — scaffolded 2026-09-11, and it grows with each slice
         rather than landing once.** `tests/model.test.mjs` drives this repo's
         own files as the oracle; the scaffold, the file oracle and the 39 checks

@@ -187,6 +187,24 @@ because `npm test` passed: it did not test the thing. This is the same rule the
 check pages below exist under, and the same honesty `npm test` gets for what it
 *does* cover.
 
+[tests/fixtures/break-test.md](tests/fixtures/break-test.md) is the document for
+that recipe on the save path, kept because the alternative was measured: it was
+generated outside the repo for TODO 2.2's verification, deleted as scratch the
+same day, and by the time it was wanted again it survived only in one browser's
+`localStorage`. Its filler is load-bearing rather than padding — `sniffWrapWidth`
+gives up entirely on a file with fewer than three wrapped paragraphs or ten prose
+lines, so a short fixture would pass every check by never wrapping at all — and
+its five labelled paragraphs are one case each: **ALPHA** a two-space break on a
+line long enough to be re-wrapped, **BRAVO** a short-line control, **CHARLIE**
+the backslash spelling, **DELTA** no break but long enough that it must re-wrap,
+**ECHO** untouched and byte-identical.
+
+**Never save over it.** The run is Save As to a scratch name, diff that against
+the fixture, delete the scratch — the fixture is the pristine copy the diff is
+taken against, so a save over it destroys the only thing that makes the next run
+mean anything. It is also the document TODO 2.3 was found with, and CHARLIE is
+the paragraph that finds it.
+
 ### The browser check
 
 [tests/browser-check.html](tests/browser-check.html) is not part of `npm test`
@@ -239,8 +257,19 @@ keydown handler in `app.js` that does Enter and Backspace on an empty `<li>` by
 hand — contenteditable's own handling splits the list and strands `<p><br></p>`
 blocks, which the Deno suite cannot see and only a real engine can confirm gone.
 It reports the resulting shape, the blank-paragraph count and where the caret
-landed. Not yet run in a browser. Same run recipe as its sibling; if the app has
-not booted in the frame after ten seconds it says so instead of hanging.
+landed. Same run recipe as its sibling; if the app has not booted in the frame
+after ten seconds it says so instead of hanging.
+
+**Run 2026-09-13 in Chrome 152, Firefox 155 and Safari 26.6.2 — no problems in
+any of the three**, all six cases, caret included. **It measures less than it
+claims, though, and the missing half was measured by hand.** The page presses
+its keys with `new KeyboardEvent(...)`, which is untrusted, and a browser runs
+no default action for one — so there is no native Enter for `preventDefault` to
+suppress, and the `prevented` it reports says only that the handler called it.
+Whether the real native split is suppressed was answered separately, by driving
+the running app with trusted keystrokes: `beforeinput` never fired in any of the
+six, so every change in the DOM is the handler's own surgery. Anything wanting
+that half again needs a real keyboard rather than this page.
 
 [tests/paste-check.html](tests/paste-check.html) is the last, and the only one
 that cannot be run by a machine at all: it measures what a browser puts in a
@@ -775,8 +804,10 @@ not cover):
     nesting depth, since alternating by level is common), emphasis delimiters,
     ordered-list delimiter and whether it was numbered all-`1.`, autolinks, the
     hard-break spelling (two trailing spaces or a backslash, document-wide like
-    the emphasis delimiters, so a file mixing both has its minority one rewritten
-    in an edited block), and the wrap width. `adoptMarkdownStyle` in `app.js`
+    the emphasis delimiters, so a file mixing both has its minority one
+    rewritten — in **every** block holding it and not only an edited one, which
+    is TODO 2.3 and is not what this sentence claimed until 2026-09-13), and the
+    wrap width. `adoptMarkdownStyle` in `app.js`
     pushes the Turndown-option subset onto the live options object; the rest is
     read by the `listItem` and `autolink` rules. Every default is Turndown's
     own, so a document that sniffs to nothing behaves exactly as it did before
@@ -831,6 +862,21 @@ and `| --- | --- |` are the same table and would never be the same key.
 `normaliseTableRows` collapses padding around pipes and the delimiter row's dash
 runs before the key is taken — but only in a block that holds a delimiter row, so
 a `---` rule and a paragraph containing a pipe both stay literal.
+
+**That normalisation is one case of a rule the key does not follow generally,
+and the gap is TODO 2.3.** The key has to ignore everything the serialiser
+rewrites, or a block that changed in no other way stops matching itself — which
+is the reason `normaliseTableRows` and the punctuation-unescape are in
+`markdownBlockKey` at all. Layer 1's own options are the case nobody covered:
+Turndown writes the *sniffed* hard break and emphasis delimiter into every block
+before layer 3 runs, so a block spelling either of them the minority way keys
+differently from its own source, misses the index, and is handed to layer 2 —
+rewritten and re-wrapped despite the user never touching it. The restore layer
+therefore protects a block whose serialisation is stable and silently fails on
+exactly the blocks where the sniffed style disagrees with the author's local
+spelling. It only bites a document that mixes spellings, and it loses no
+content — but "an untouched block comes back byte-identical" is layer 3's whole
+promise, and this is where it is not true.
 
 CLAUDE.md, README.md and welcome.md all round-trip byte-identical. Editing one
 word in CLAUDE.md changes exactly the paragraph it was in.

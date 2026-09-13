@@ -327,9 +327,53 @@ category fidelity deliberately does not extend to.
     convention to text. It can be written before 3.1, and it is what the
     model's serialiser calls for an edited table block.
 
+*   **2.3** *(bug, closed by 3.1; no fix on the old core unless it turns up in
+    use)* **An untouched block loses a minority spelling.** Layer 3 promises
+    that a block the user never edited comes back byte-identical, and for two of
+    layer 1's own sniffed options it does not.
+
+    `sniffMarkdownStyle` reads the hard break and the emphasis delimiter
+    **document-wide**, and Turndown writes the winner into every block before
+    `restoreSourceWrapping` runs. `markdownBlockKey` collapses whitespace and
+    unescapes punctuation, but knows nothing about style spellings — so a block
+    written the minority way keys differently from its own source, misses the
+    index, and falls through to layer 2, coming back rewritten *and* re-wrapped
+    with no edit anywhere near it.
+
+    Measured 2026-09-13 by opening a document and serialising it, no edit made:
+
+    | Source | Comes back as |
+    | --- | --- |
+    | `Charlie one\` | `Charlie one  ` |
+    | `_underscored_` | `*underscored*` |
+
+    The same reasoning covers any document-wide option whose output differs from
+    the source in a non-whitespace byte; the bullet marker escapes it only
+    because `sniffMarkdownStyle` reads that one per nesting depth.
+
+    **It only bites a document that mixes spellings, and it loses no content** —
+    the break is still a break and the emphasis still emphasis, which is why it
+    went unnoticed through the whole of 2.2. What it costs is the mergeable diff
+    D1 exists for: a save touches lines the user did not.
+
+    **The fix is 3.1 and it needs no work of its own there.** Slice 2 step 3
+    records each node's spelling as written, at parse, and slice 3's emitter
+    puts that back — so an untouched block is never re-emitted at all, and an
+    edited one keeps its own spelling rather than inheriting a document-wide
+    guess. Sniffing survives only for genuinely new content, per MARKDOWN.md's
+    **S3**. Fixing it on the old core means making the key style-insensitive,
+    which is one normalisation per sniffed option and a second place that can
+    disagree with the serialiser — worth it only if this shows up in daily use
+    before 3.1 lands.
+
+    Found while verifying the empty-`<li>` check page, not by the 2.2 work, and
+    `5d96619`'s CHANGELOG entry recorded the opposite: it saw the rewrite in an
+    edited block and concluded the spelling moves "only in a block the user was
+    already editing". That entry now carries a correction.
+
 ## 3. The editing core
 
-*   **3.1** *(unblocks 1.1.6, 1.1.7, 1.1.8, 1.4, 1.6, 1.8)*
+*   **3.1** *(unblocks 1.1.6, 1.1.7, 1.1.8, 1.4, 1.6, 1.8, 2.3)*
     Replace the editing core: hold the document as a block-granular markdown
     model with source spans, render it to the DOM, and treat contenteditable
     as an input method whose `beforeinput` intentions are reinterpreted as
