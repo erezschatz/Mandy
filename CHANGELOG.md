@@ -3686,7 +3686,7 @@ it is document-wide like the emphasis delimiters, and the new checks in the
 that came with the fix. `model` is unchanged at 114, which is the thing to look
 at: nothing in the merge touched the rewrite.
 
-## 2026-09-13 — The empty-bullet check runs in three engines, and finds TODO 2.3 on the way past
+## 2026-09-13 — `df1be92` — The empty-bullet check runs in three engines, and finds TODO 2.3 on the way past
 
 [tests/list-empty-item-check.html](tests/list-empty-item-check.html) had been
 carrying "Not yet run in a browser" since it was written on 2026-09-03, which is
