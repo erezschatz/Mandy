@@ -25,6 +25,32 @@ import { loadSource } from "./dom.mjs";
 
 const repoFile = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
+// The oracle, and it is deliberately two kinds of file.
+//
+// The first five are documents this project maintains by hand, which is what
+// makes them worth testing against: they are the files a regression would
+// actually damage, and they carry the conventions real prose carries.
+//
+// They are also a **biased** sample, and the bias runs one way. Every one was
+// written or reformatted in a single voice, so they are uniformly well-formed —
+// and between them they contain no blockquote, no hard break, no strikethrough
+// and no reference definition at all. A suite driving only these would report
+// full marks on constructs it had never once parsed.
+//
+// `tests/fixtures/torture.md` is the answer to that: one deliberately messy
+// document carrying at least one of everything in docs/MARKDOWN.md, nested far
+// deeper than any real file here goes, and inconsistent everywhere it is legal
+// to be. It does not replace the five — a synthetic file cannot say what this
+// project's own prose does — it covers the half they cannot.
+const ORACLE_FILES = [
+  "CLAUDE.md",
+  "README.md",
+  "front/welcome.md",
+  "docs/TODO.md",
+  "docs/REWRITE.md",
+  "tests/fixtures/torture.md",
+];
+
 export default function run(check) {
   const { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix } = loadSource(
     "model.js",
@@ -41,7 +67,7 @@ export default function run(check) {
   // point of markdown-style.js is that saving one does not rewrite it. Here
   // that is not a restoration pass getting most of it back — it is the model
   // never having thrown the bytes away.
-  for (const path of ["CLAUDE.md", "README.md", "front/welcome.md", "docs/TODO.md", "docs/REWRITE.md"]) {
+  for (const path of ORACLE_FILES) {
     const src = repoFile(path);
     const out = modelSerialise(parse(src));
     const at = out === src ? -1 : [...src].findIndex((c, i) => c !== out[i]);
@@ -198,7 +224,7 @@ export default function run(check) {
     const here = rebuilt === block.source ? [] : [`${path} (${block.kind})`];
     return here.concat(block.children.flatMap((c, i) => mistiled(c, `${path}/${i}`)));
   };
-  for (const path of ["CLAUDE.md", "README.md", "front/welcome.md", "docs/TODO.md", "docs/REWRITE.md"]) {
+  for (const path of ORACLE_FILES) {
     const bad = parse(repoFile(path)).blocks.flatMap((b, i) => mistiled(b, String(i)));
     check(
       `${path}: children tile their parent exactly, at every depth` + (bad.length ? ` (${bad.length} do not: ${bad.slice(0, 3).join(", ")})` : ""),
@@ -508,11 +534,11 @@ export default function run(check) {
     leadings.push(b.leading);
     b.children.forEach(collectLeading);
   };
-  for (const path of ["CLAUDE.md", "README.md", "front/welcome.md", "docs/TODO.md", "docs/REWRITE.md"]) {
+  for (const path of ORACLE_FILES) {
     parse(repoFile(path)).blocks.forEach(collectLeading);
   }
   check(
-    `every container in those five files has empty leading text (${leadings.length} of them)`,
+    `every container in the oracle files has empty leading text (${leadings.length} of them)`,
     leadings.length > 300 && leadings.every((text) => text === ""),
   );
 
@@ -565,20 +591,41 @@ export default function run(check) {
     if (block.kind === "item") itemsSeen.push(block);
     (block.children || []).forEach(collectItems);
   };
-  for (const path of ["CLAUDE.md", "README.md", "front/welcome.md", "docs/TODO.md", "docs/REWRITE.md"]) {
+  for (const path of ORACLE_FILES) {
     parse(repoFile(path)).blocks.forEach(collectItems);
   }
   // A threshold and not the exact count, deliberately: the oracle here is five
   // live files, and an exact number turns every edit to the documentation into a
   // failing test about list items. (It did, in this slice, on the REWRITE.md
   // entry describing this very check.)
+  // An item inside a blockquote has `> ` in front of its own marker, because a
+  // child's source is its lines whole — so `modelItemPrefix`, which reads a
+  // marker off the *start* of the first line, does not find one. It returns
+  // null rather than inventing a marker, which is the safe direction, and the
+  // split below is what says so out loud.
+  //
+  // This is the blockquote-prefix question REWRITE.md's slice 1b step 5 left
+  // open, showing up as a measurement instead of an argument. **It is pinned
+  // here rather than fixed**, the way step 3's hazard was pinned for step 4:
+  // record the quote prefix at parse and these two stop being exceptions, which
+  // is the case for doing it that way rather than stripping at emit time.
+  //
+  // None of the five hand-maintained files can see this. They contain no
+  // blockquote at all — it took the fixture.
+  const quoted = (b) => (b.parent ? b.parent.kind === "quote" || quoted(b.parent) : false);
+  const plainItems = itemsSeen.filter((b) => !quoted(b));
+  const quotedItems = itemsSeen.filter(quoted);
   check(
-    `every item in those five files has a marker (${itemsSeen.length} of them)`,
-    itemsSeen.length > 200 && itemsSeen.every((b) => typeof b.marker === "string"),
+    `every item outside a blockquote has a marker (${plainItems.length} of them)`,
+    plainItems.length > 200 && plainItems.every((b) => typeof b.marker === "string"),
+  );
+  check(
+    `and every item inside one has none, which is slice 3's open question (${quotedItems.length} of them)`,
+    quotedItems.length > 0 && quotedItems.every((b) => b.marker === null),
   );
   check(
     "and the marker matches what markdown-it says the item's markup was",
-    itemsSeen.every((b) => {
+    plainItems.every((b) => {
       const open = b.tokens[0];
       const written = open.info ? open.info + open.markup : open.markup;
       return b.marker.trim() === written;
@@ -590,12 +637,45 @@ export default function run(check) {
   // indent that line actually carries. A file that disagreed — a tab, a lazy
   // continuation — would be a file slice 3 re-wraps differently from the way it
   // was written, and this is where that shows.
-  const continued = itemsSeen
+  const continued = plainItems
     .map((b) => [b, b.source.split("\n").slice(1).find((line) => line.trim() !== "")])
     .filter(([, line]) => line !== undefined);
+  const indentOf = ([, line]) => /^[ \t]*/.exec(line)[0];
   check(
-    `every continued item's indent is the one its own lines use (${continued.length} of them)`,
-    continued.length > 150 && continued.every(([b, line]) => /^[ \t]*/.exec(line)[0] === b.contentIndent),
+    `every continued item carries the indent its own lines use (${continued.length} of them)`,
+    continued.length > 150 && continued.every((c) => indentOf(c) === c[0].contentIndent),
+  );
+  // That check read `> 150 && every(...)` before 2026-09-13 too, and passed —
+  // because not one of the five hand-maintained files indents a list with a tab.
+  // `tests/fixtures/torture.md` does, and it failed: the marker `"-\t"` derived
+  // the indent `" \t"` where the file continues under a bare `"\t"`. Same column,
+  // different bytes. `modelItemPrefix` now reads the written indent instead of
+  // reconstructing it, and believes it only when the two land on the same column
+  // — so the case below is the one that used to be wrong and the two after it
+  // are the ones that must not become wrong in the fixing.
+  const tabItems = continued.filter(([b]) => b.marker.includes("\t"));
+  check(
+    `including the tab-marked ones, which derived a different spelling before (${tabItems.length} of them)`,
+    tabItems.length > 0 && tabItems.every((c) => c[0].contentIndent.includes("\t")),
+  );
+  check(
+    "a lazy continuation is not believed — the marker's own column stands",
+    modelItemPrefix("- item", "lazily continued").contentIndent === "  " &&
+      modelItemPrefix("-\titem", "lazily continued").contentIndent === " \t",
+  );
+  check(
+    "nor is a continuation indented past the marker's column",
+    modelItemPrefix("- item", "      pushed further in").contentIndent === "  ",
+  );
+  check(
+    "an item with no continuation line still derives one",
+    modelItemPrefix("*   item").contentIndent === "    " &&
+      modelItemPrefix("10) item", "").contentIndent === "    ",
+  );
+  check(
+    "and a tab-indented marker is believed only where the columns agree (tab stops are four)",
+    modelItemPrefix("-\titem", "\tcontinued").contentIndent === "\t" &&
+      modelItemPrefix("-\titem", "    continued").contentIndent === "    ",
   );
 
   // ------------------------------------------------------------- the metric
@@ -616,7 +696,7 @@ export default function run(check) {
   };
   const lineCount = (text) => text.split("\n").length;
 
-  const metricFiles = ["CLAUDE.md", "README.md", "front/welcome.md", "docs/TODO.md", "docs/REWRITE.md"];
+  const metricFiles = ORACLE_FILES;
   const worst = metricFiles.map((path) => {
     const text = repoFile(path);
     const doc = parse(text);
@@ -678,7 +758,7 @@ export default function run(check) {
     }
   }
   check(
-    `every block in those five files, edited alone, rewrites exactly itself (${leavesChecked} of them)` +
+    `every block in the oracle files, edited alone, rewrites exactly itself (${leavesChecked} of them)` +
       (notExact.length ? ` — ${notExact.length} did not: ${notExact.slice(0, 3).join(", ")}` : ""),
     leavesChecked > 600 && notExact.length === 0,
   );

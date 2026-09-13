@@ -6,8 +6,8 @@ waiting to happen, and rather than in [CLAUDE.md](../CLAUDE.md) because that
 describes how the code works — this is why it works that way, and what
 changing it would cost. Reopen one by editing it here, not by filing it as a
 TODO again. Where a decision points forward rather than at the current code,
-that part lives in [TODO.md](TODO.md) or [ROADMAP.md](ROADMAP.md) instead — D4
-and D6 both point at [REWRITE.md](REWRITE.md).
+that part lives in [TODO.md](TODO.md) or [ROADMAP.md](ROADMAP.md) instead — D4,
+D6 and D7 all point at [REWRITE.md](REWRITE.md).
 
 D0 is the exception to that description: it is not a question that was argued
 out but the position the rest of them follow from. It is numbered zero because
@@ -348,3 +348,53 @@ The consequence for open work: TODO 1.1.6, 1.1.7, 1.1.8, 1.4 and 1.6 are not
 started on the current core, because everything written there is discarded
 with it. TODO 2.1 is the exception — a pure function that serialises a table,
 the same on both cores.
+
+## D7. The rewrite simplifies the engine; the live editor changes when that helps
+
+Decided 2026-09-13, when a question about where two markdown-it rules should
+live was argued on a premise that turned out to be invented: that the `rewrite`
+branch must not touch the running editor.
+
+It must not *replace* it — `main` keeps a working editor until parity, and
+nothing ships in between. That is **sequencing**, and it is the whole of what
+D6 settled. It had hardened, in CLAUDE.md, in REWRITE.md and in `model.js`'s own
+header, into something stronger and unearned: that the running editor was a
+thing to be preserved, and that a slice touching a file the app loads had spent
+something. It had not. Read that way, the constraint argues for exactly the
+moves the rewrite exists to stop — leaving code where it does not belong,
+because moving it would disturb something.
+
+**What the rewrite is for.** The current core needs the document in two forms at
+once, markdown and DOM, and most of the machinery around it exists to keep the
+two in step: `normaliseEditorMarkup` after every command, the hand-rolled list
+surgery where an engine could not be normalised at all, the content-keyed block
+index and the sniff-and-restore layers, the copies in `localStorage`, the stashes
+that keep Mermaid and LaTeX source alive through a render. None of that is
+markdown being difficult. It is the cost of not owning the document. The rewrite
+stores the markdown alone, renders it into the editor, and reads it back — and
+the machinery goes with the second copy.
+
+**So the rule for touching the live editor is not "don't", it is "for what".**
+
+- A change that **fixes something, or makes a workaround unnecessary**, is the
+  work. Make it.
+- A change that **preserves current behaviour cheaply** is worth having; if
+  preserving it means bending over backwards, it is not.
+- A change that exists to stay **bug-compatible with the DOM or with an engine**
+  is the thing this decision refuses. Markdown is a messy enough specification
+  on its own; nothing is served by carrying the browser's mess forward into a
+  core built to be free of it.
+
+**And the order of repair is model first.** If a change to the engine breaks
+something in the browser, that is what the suite is for — and a correct model
+makes the browser fix simpler, where the reverse has been this project's
+experience twice over. A working model with a broken browser is a bad state; a
+plausible model reached by hacking the browser back into agreement with it is a
+worse one, because it is the state the old core was already in.
+
+The immediate consequence, and the question that produced this: the two custom
+markdown-it rules in `app.js` — `math` and `referenceAwareLink` — move into a
+file of their own as the first step of stage 1's slice 2. The model is defined
+as *markdown parsed by this parser*, so the parser's configuration is part of
+the model layer and is in `app.js` by accident of history rather than by design.
+That the move touches a file the app loads is not a cost to be weighed.

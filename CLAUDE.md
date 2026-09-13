@@ -6,13 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `rewrite` carries TODO 3.1, the editing-core rewrite. **Everything below still
 describes the running editor and still governs changes to it** — the branch has
-replaced nothing yet, and `main` keeps the working editor until parity. What the
-branch has added sits *beside* that editor rather than inside it:
+replaced nothing yet, and `main` keeps the working editor until parity.
 
-- [front/model.js](front/model.js) — the document model, stage 1. **Nothing
-  loads it**, deliberately, until stage 4: it is in none of the three registries
-  below, so nothing done to it can reach the running app. Its own section is
-  under Architecture.
+That is sequencing, and **D7 in [docs/DECISIONS.md](docs/DECISIONS.md) is the
+warning against reading it as anything more.** "The branch has not replaced the
+core yet" is not "the branch must not touch the editor": a change that fixes
+something or makes a workaround unnecessary is the work, and the fact that it
+lands in a file the app loads costs nothing. What the branch must not do is
+carry the old core's compromises into the new one.
+
+Most of what the branch has added so far happens to sit *beside* the running
+editor rather than inside it:
+
+- [front/model.js](front/model.js) — the document model, stage 1. Nothing loads
+  it yet: it is in none of the three registries below, because there is nothing
+  for the app to do with a model that cannot yet render or be edited. Its own
+  section is under Architecture.
 - [spike/block-model.html](spike/block-model.html) — stage 0, which was a gate
   rather than a first step, and throwaway by design. It asked whether an engine
   will announce what it is about to do and let us do it instead. Passed by hand
@@ -113,9 +122,21 @@ They cover the invariants that fail *silently* rather than loudly:
   is why the decision lives in one pure function.
 - **model** — `front/model.js`, TODO 3.1's stage 1, and the only suite with no
   DOM in it: the model is pure string and token work, so it borrows dom.mjs's
-  file helpers and nothing else. It is also the only one with a dependency —
-  a real markdown-it, since the point is to parse this repo's own files with no
-  browser anywhere. What it asserts is D1: `CLAUDE.md`, `README.md`,
+  file helpers and nothing else. Its oracle is `ORACLE_FILES`, and it is
+  deliberately two kinds of file: five documents this project maintains by hand,
+  which are what a regression would actually damage, plus
+  [tests/fixtures/torture.md](tests/fixtures/torture.md) — one deliberately
+  messy document carrying at least one of everything in
+  [docs/MARKDOWN.md](docs/MARKDOWN.md). The fixture exists because the five are
+  a **biased** sample and the bias runs one way: all written in one voice, so
+  uniformly well-formed, and between them holding no blockquote, no hard break,
+  no strikethrough and no reference definition at all. It found two things on
+  its first run that no repo file could: a tab-marked item derived a
+  continuation indent the file does not use, **fixed the same day**, and a list
+  item inside a blockquote gets no marker, which stays pinned as a check because
+  it is slice 3's open question rather than a bug. It is also the only suite with
+  a dependency — a real markdown-it, since the point is to parse this repo's own
+  files with no browser anywhere. What it asserts is D1: `CLAUDE.md`, `README.md`,
   `welcome.md`, `docs/TODO.md` and `docs/REWRITE.md` come back byte-identical,
   and editing one paragraph rewrites exactly that paragraph. Since slice 1b it
   also asserts the same invariant one level down — a container's children tile
@@ -310,11 +331,13 @@ in a way that only shows up later:
 Bump `VERSION` in [sw.js](front/sw.js) when the shell changes; `activate` deletes
 caches whose names don't match.
 
-**`model.js` is the one file that joins none of them, on purpose.** It is stage
-1 of the rewrite and is loaded by nothing until stage 4, which is what keeps the
-running editor untouched while the model is built against it. Skipping a
-registry is otherwise a bug, and where it is deliberate the reason is written
-down — `tabs.js` is absent from `ASSETS` because an exported document holds one
+**`model.js` is the one file that joins none of them, for now.** It is stage 1
+of the rewrite, and until the model can render and be edited there is nothing
+for the app to call. That is a statement about how far the model has got, not a
+quarantine — see D7 in [docs/DECISIONS.md](docs/DECISIONS.md), which is there
+because this sentence used to claim the second thing. Skipping a registry is
+otherwise a bug, and where it is deliberate the reason is written down —
+`tabs.js` is absent from `ASSETS` because an exported document holds one
 document and has no file API.
 
 ### Document state
@@ -449,13 +472,23 @@ Six things that are decisions rather than details:
   one emitter call. Every item also carries its own marker and continuation
   indent (step 5), recorded at parse by `modelItemPrefix` because slice 3's
   emitter has to write both back and re-reading them at emit time would be a
-  second place that can disagree. **The metric is the suite's, not a human's**
-  (step 6): editing the worst block in `docs/TODO.md` rewrites 15 of its 708
-  lines where the same edit cost 239 before the slice, and all 697 blocks across
-  the five files the suite drives rewrite exactly themselves when edited one at a
-  time. A blockquote's `> ` chain is the same problem as the marker and is
-  deliberately still open — REWRITE.md's step 5 argues both ways, and this repo
-  has no blockquote in any of its nine markdown files to measure against.
+  second place that can disagree. The indent is **read off the item's own
+  continuation line** and only derived from the marker where there is no such
+  line: deriving alone turned the marker `"-\t"` into the indent `" \t"` where
+  the file continues under a bare `"\t"` — the same column, different bytes, and
+  an edited item written back under an indent its author never used. **The
+  metric is the suite's, not a human's** (step 6): editing the worst block in
+  `docs/TODO.md` rewrites 15 of its 708 lines where the same edit cost 239
+  before the slice, and all 728 blocks across the five files the suite drives
+  rewrite exactly themselves when edited one at a time. A blockquote's `> `
+  chain is the same problem as the marker, and is **settled the same way**: it is
+  recorded at parse. 1b's step 5 left it open between that and re-applying the
+  chain at emit time, for want of anything to measure — this repo has no
+  blockquote in any of its nine markdown files. `tests/fixtures/torture.md` is
+  the measurement, and it decides it: `modelItemPrefix` returns null for every
+  list item inside a quote, because the marker it looks for sits behind a `> `,
+  so an emit-time strip would be reaching for something parse had already lost.
+  The work lands in slice 3.
 
 What it does not do yet: hold the inline structure a block is edited through,
 turn an edited *leaf* into markdown at all (`modelSerialise` throws rather than

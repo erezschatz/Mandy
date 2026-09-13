@@ -546,7 +546,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         emits from. The suite asserts the metric rather than leaving it measured
         by hand: **editing the worst block in `docs/TODO.md` rewrites 15 of its
         708 lines, 2.1%, where the same edit cost 239 lines before this slice**,
-        and all 697 blocks across the five files it drives rewrite exactly
+        and all 728 blocks across the five files it drives rewrite exactly
         themselves when edited one at a time. Measured as soon as slice 1 could
         count, and again on
         2026-09-12 after `main`'s items landed in it: `docs/TODO.md` is 708
@@ -735,21 +735,39 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             all, which is a document's own convention `sniffMarkdownStyle`
             already reads for exactly that reason.
 
-            `modelItemPrefix(firstLine)` is a pure function over one line, which
-            is what lets the suite drive the rules directly rather than through a
-            document — the same split `isGhostElement` has from its traversal in
-            `markdown-style.js`. It returns the marker exactly as written,
-            indent and pad included (`"- "`, `"*   "`, `"    - "`, `"1.  "`,
-            `"10) "`), and the continuation indent as **the marker with every
-            character but a tab replaced by a space**. That is one rule rather
-            than two: the width is right by construction, and a tab survives as
-            a tab instead of being counted as one column.
+            `modelItemPrefix(firstLine, continuationLine)` is a pure function
+            over one or two lines, which is what lets the suite drive the rules
+            directly rather than through a document — the same split
+            `isGhostElement` has from its traversal in `markdown-style.js`. It
+            returns the marker exactly as written, indent and pad included
+            (`"- "`, `"*   "`, `"    - "`, `"1.  "`, `"10) "`), and the
+            continuation indent **as the item's own continuation line writes
+            it**, falling back to the marker with every character but a tab
+            replaced by a space when there is no such line.
 
-            Measured against the five files the suite drives, on 2026-09-12:
-            all **273** items carry a marker, every one of them agrees with what
-            markdown-it itself reported as the item's `markup` (plus `info` for an
-            ordered item's number), and of the 197 items with a continuation line,
-            all 197 carry exactly the indent that line actually uses. Those counts
+            **That fallback was the whole rule until 2026-09-13, and it was
+            wrong in one place** — found by `tests/fixtures/torture.md` on its
+            first run, because not one of the five hand-maintained files indents
+            a list with a tab. Deriving turns the marker `"-\t"` into `" \t"`,
+            while a file that indents with tabs continues under a bare `"\t"`.
+            Both land on column 4, so the document renders identically and
+            nothing looks wrong; they are different *bytes*, which is the only
+            currency this model deals in, and an edited item would have gone
+            back into the file under an indent its author never used. The fix is
+            not a cleverer derivation but not deriving: an item with a
+            continuation line has already stated its indent. A written indent is
+            believed only when it lands on the marker's own content column, so a
+            lazy continuation carrying none, or a line pushed further in, still
+            gets the derived value — this can only ever swap one indent for
+            another of the same width.
+
+            Measured against the files the suite drives, and re-measured on
+            2026-09-13 with the fixture among them: every item **outside a
+            blockquote** carries a marker, every one agrees with what markdown-it
+            itself reported as the item's `markup` (plus `info` for an ordered
+            item's number), and every item with a continuation line carries
+            exactly the indent that line actually uses — tabs included, which is
+            the half that was not true a day earlier. Those counts
             are **thresholds** in the suite and exact only in this sentence — the
             oracle is five files this project edits, and an exact count turns a
             documentation change into a failing test about list items. Which it
@@ -794,10 +812,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
               got smaller. That block is still there; what changed is that
               nothing re-serialises it.
             - No file's worst edit is a tenth of it: CLAUDE.md 1.9%, README.md
-              2.8%, welcome.md 7.4%, TODO.md 2.1%, REWRITE.md 2.2%. The labels
+              2.8%, welcome.md 7.4%, TODO.md 2.1%, REWRITE.md 1.8%. The labels
               carry the live numbers, so the figures here are the day's reading
               and the suite is the thing that keeps them honest.
-            - The exhaustive version of the single-bullet case: **all 697 blocks
+            - The exhaustive version of the single-bullet case: **all 728 blocks
               across those five files, edited one at a time, rewrite exactly
               their own bytes and nothing else.** It re-parses per block, since
               `modelTouch` clears ancestors and a second measurement on the same
@@ -828,11 +846,208 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         this.** That sentence is about an edited paragraph re-serialising whole,
         and a list item is a block in every sense that matters here.
 
-    *   **2. The inline model — not started.** A paragraph's or heading's
-        markdown-it inline tokens become the editable structure: text, the three
-        marks, code spans, links (with the `data-ref-label` stamp
-        `referenceAwareLink` already writes), images. This is what an edited
-        block is re-emitted from.
+    *   **2. The inline model — planned 2026-09-13, not started.** A paragraph's
+        or heading's markdown-it inline tokens become the editable structure:
+        text, the three marks, code spans, links, images, and the `math` token
+        `app.js`'s own rule pushes. It fills the `inlines` field every block has
+        carried since slice 1, and it is what an edited block is re-emitted from
+        and what stage 2's format commands act on.
+
+        **What the inline tokens carry was measured before this was planned**
+        (2026-09-13, across all nine of this repo's markdown files), the same
+        way 1b's tiling table was — and the first row is what decides the shape
+        of the slice:
+
+        | Measurement | Reading |
+        | --- | --- |
+        | Inline child tokens carrying a `map` | **0 of 11,644** |
+        | Marks whose delimiter is recorded in `markup` | all of them — strong 1,654, em 500, code span 3,128, autolink 6 |
+        | `softbreak` / `hardbreak` | 4,895 / **0** |
+        | Text tokens holding a markdown-active character | 117 of 11,377 — **1.0%** |
+        | Deepest inline nesting | **2** |
+        | Constructs with no occurrence anywhere in the repo | strikethrough, hard break, `html_inline`, reference definition |
+
+        **No inline token carries a `map`, and — this is the finding — that
+        costs nothing.** The obvious move after 1b is to do 1b again one level
+        down, and it is the wrong one. 1b tiled because a list was one block and
+        editing an item rewrote a third of the file: that was a *fidelity*
+        failure and a source span was the fix. There is no such failure here. An
+        edited paragraph re-serialising whole is not a regression to be
+        engineered away — it is exactly what *What is accepted* below promised,
+        and every paragraph nobody touched is already covered by the block's own
+        `source`. So slice 2 is not about fidelity at all. Its job is
+        **editability**: a structure that can be addressed by offset, mutated by
+        a command, and handed to slice 3.
+
+        That is also why the absence is not worth fighting. Deriving inline
+        spans would mean re-scanning each block's source against its own token
+        stream — a second parser, free to disagree with the first, bought for a
+        guarantee nothing asked for.
+
+        **What `inline.content` is, measured**: the block's source with the list
+        marker and the continuation indent already stripped, and the author's
+        wrapping preserved as `\n`. The paragraph inside the `- ` bullet at the
+        top of *The model* above has content starting at its first backtick, not
+        at the dash. So slice 3's three transforms compose in one direction and
+        each already belongs to somebody: the inline tree emits `content`,
+        `reflowMarkdown` re-wraps it, and 1b's step 5 `marker` and
+        `contentIndent` go back in front of it.
+
+        **Step 0 is the parser move settled below** — `math` and
+        `referenceAwareLink` out of `app.js` into a file of their own, so that
+        the suite and the app parse with the same thing. It comes first because
+        steps 3 and 5 cannot be honestly tested without it. **Then six:**
+
+        1.  **The node tree.** `modelInlines(block)` folds markdown-it's flat
+            `_open`/`_close` stream into a tree and fills `inlines`. Marks carry
+            their delimiter **as the author wrote it** — `_` and `*`, `__` and
+            `**` are all distinguished in `markup` — so emphasis fidelity is
+            per-node here rather than the per-document guess
+            `sniffMarkdownStyle` has to make, which is strictly better and costs
+            nothing to keep. Leaves are text, code span, image, `math`, and the
+            two breaks. Recursion is on nesting, not on a list of mark kinds,
+            for the same reason 1b's tiler recursed on *having children*.
+
+        2.  **The text coordinate.** *Selection* above names a model position as
+            `(blockIndex, offset)` in characters of the block's rendered text;
+            this is the step that defines that offset space, as two pure
+            functions in both directions. Four rules that want deciding rather
+            than discovering: a code span's content counts and its backticks do
+            not, a mark's delimiters are zero-width, a `softbreak` is one
+            character, and an image is one atom rather than its alt text. Doing
+            it here rather than in stage 2 is deliberate — with no renderer in
+            the way it is testable with no DOM, which is the whole reason stage
+            1 comes first.
+
+        3.  **Re-emission puts back what was written.** markdown-it discards
+            four spellings, and the measurement is what found them — a code
+            span's padding (`` ` a ` `` and `` `a` `` both give the content `a`,
+            and the padding is *required* when the content opens or closes with
+            a backtick), an escape (`\*not em\*` gives the text `*not em*`), a
+            link's angle-bracket destination (`[t](<u v>)` gives `u%20v`), and a
+            hard break's spelling (two trailing spaces and a trailing backslash
+            both give a bare `hardbreak`).
+
+            **The answer to each is the same, and it is the reason this rewrite
+            exists: back the way it was written.** The parser threw the spelling
+            away; the model still has the bytes, so the model records what the
+            parser discarded, at parse, on the node — exactly what 1b's step 5
+            already does for a list item's marker. There is no house style to
+            pick and no spelling to prefer.
+
+            Only genuinely *new* content — a hard break the user just typed, a
+            code span they just made — has nothing recorded to put back, and
+            that case is already answered too: it follows the document's own
+            convention, which is `sniffMarkdownStyle`'s job and which
+            MARKDOWN.md's **S3** settled for these two in particular ("the
+            rewrite's whole point is better sniffing, so these are not a special
+            case"). Record first, sniff second, house style never.
+
+            So the target here is what it is everywhere else in the model —
+            **byte-identity** — and the check is the round trip the suite
+            already runs, now with a fixture that actually contains these
+            constructs.
+
+        4.  **Escaping.** 1.0% of text tokens hold a character that would
+            re-parse if it were emitted plain — narrow, and silent, which are
+            the two properties that put a thing in this repo's suite. The rule
+            is **minimal escape**: a backslash only where leaving the character
+            alone would change what it parses as, so an edited paragraph does
+            not come back wearing a rash of them the author never wrote. The
+            check is step 3's fixpoint over every text node in the five files
+            the suite already drives, *plus* hand-written adversarial cases —
+            117 real occurrences is not a corpus.
+
+        5.  **Links.** The one construct whose spelling is not in `markup` at
+            all: re-emitting the tree naively reproduces `inline.content` for
+            86.8% of blocks, and **every single mismatch is a link**. Rebuilt
+            from `attrs` instead — href, optional title, and inline-versus-
+            reference off the `data-ref-label` stamp `referenceAwareLink`
+            already writes. CLAUDE.md's existing accepted losses are unchanged
+            and need no new argument: a `[text][]` or bare `[text]` shortcut
+            re-emits in the explicit form.
+
+        6.  **The suite grows again**, the way it did across 1b's six steps, and
+            the numbers go in the check labels so a run reads as a report. It
+            now drives a sixth file: `tests/fixtures/torture.md`, added
+            2026-09-13 because the other five are a biased oracle — written in
+            one voice, uniformly well-formed, and between them holding no
+            blockquote, no hard break, no strikethrough and no reference
+            definition at all. A suite driving only those would have reported
+            full marks on constructs it had never once parsed, and steps 3 and 5
+            are mostly about constructs in that list.
+
+        **What it deliberately does not reach**: a table cell, which is 1b's
+        floor and unchanged by anything here; the block emitter itself, which is
+        slice 3; and the commands that mutate the tree, which are stage 2. The
+        tree has to be able to *express* a mark toggle over a range — it does
+        not have to perform one.
+
+        **Nothing here is open any more. Two questions were closed by argument
+        and one by measurement**; what is left below is the reasoning, because a
+        decision with its reasons deleted is a decision that gets reopened.
+
+        **Settled: the parser configuration moves out of `app.js`, and that is
+        step 0 of this slice.** `math` and `referenceAwareLink` are registered on
+        the markdown-it instance `app.js` builds at its own top level, so the
+        suite — which builds a bare one — can see neither a `math` token nor a
+        `data-ref-label` stamp, and steps 3 and 5 are exactly the two that need
+        them. Three ways were on the table and two of them were bad for reasons
+        worth keeping:
+
+        - *Write a copy of the rules for the suite to use.* Rejected outright: a
+          test that carries its own copy of the logic is not testing anything.
+          The two would drift, and the drift would show up as a green run over a
+          broken editor — the precise failure the suite exists to prevent.
+        - *Have the suite borrow the real rules from `app.js` through
+          `tests/dom.mjs`.* This does work — measured 2026-09-13, the captured
+          rules mount on a real markdown-it and produce both the stamp and the
+          `math` token. It tests the real rules, so it is honest. It was still
+          rejected: the app would build its parser one way and the suite assemble
+          it another, and the configuration would stay in the wrong file.
+        - **Move the two rules into a file of their own.** Taken. The model is
+          defined as *markdown parsed by this parser*, so the parser's
+          configuration is part of the model layer; it lives in `app.js` by
+          accident of history, in among the Turndown rules, the editor bootstrap
+          and the keyboard handling.
+
+        The argument that nearly carried the day for the second option was that
+        the first would "touch a file the app loads", during a branch that had
+        touched none. **That premise was invented and is now refused in writing
+        — D7 in [DECISIONS.md](DECISIONS.md).** `main` keeping a working editor
+        until parity is sequencing; it was never a rule against improving the
+        editor, and read as one it argues for leaving code where it does not
+        belong.
+
+        **Settled: a blockquote's `> ` chain is recorded at parse**, by the same
+        rule as everything in step 3 and as 1b's step 5 marker. 1b left it open
+        between recording the prefix and stripping-and-re-applying at emit time,
+        for want of anything to measure — this repo contains no blockquote at
+        all. `tests/fixtures/torture.md` supplied the measurement and it decides
+        the question twice over. First, `inline.content` has the `> ` chain
+        **already stripped**, exactly as it has the list marker stripped, so the
+        two are the same problem and want the same answer. Second, and harder:
+        **`modelItemPrefix` returns `null` for every list item inside a quote**,
+        because a child's source is its lines whole and the marker it looks for
+        sits behind a `> `. The fixture has two such items and the suite pins
+        them. Recording the prefix makes them ordinary; stripping at emit time
+        leaves them broken at parse, where slice 3 cannot reach. The work lands
+        in slice 3; the choice does not travel with it.
+
+        **Inherited: stage 0's mark-inheritance rule is expressible here and
+        decided in stage 2.** Typing over a fully-bold selection gave plain text
+        in the spike, because a new run inherits the marks to its left and the
+        left edge of a selection sits outside the bold. The rule wanted —
+        inherit from the range that was deleted when there was one, from the
+        left when there was not — belongs to a command rather than to the tree,
+        but the tree has to be able to say what marks a position carries, and
+        step 2 is where that falls out.
+
+        **Two to three days, inside stage 1's one-week line rather than
+        additive to it.** Unlike 1b, nothing here was discovered late: the
+        `inlines` field has been on every block since slice 1 and this is the
+        slice that fills it. The genuinely new machinery is the escaper and the
+        link rebuilder; the rest is a tree fold and two offset functions.
 
     *   **3. The block serialiser — not started.** An edited block emits
         markdown in the conventions `sniffMarkdownStyle` read off the file it
@@ -849,19 +1064,23 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         rather than landing once.** `tests/model.test.mjs` drives this repo's
         own files as the oracle; the scaffold, the file oracle and the 39 checks
         covering slice 1 are already in, and 1b's six steps added twelve,
-        twenty-three, seven, six, fifteen and four more for 106. It imports `npm:markdown-it@13.0.1` the
+        twenty-three, seven, six, fifteen and four more; the torture fixture and
+        the tab-indent fix took it to 114. It imports `npm:markdown-it@13.0.1` the
         way `server/deno.json` already imports `npm:hono` — flagged per
         CLAUDE.md and decided 2026-09-11: the app keeps its CDN tags, the two
         pins have to be kept in step, and `npm test` wants the network once.
         What is left is per-slice coverage, so this line closes when 3 does.
 
     What this stage deliberately does not do: edit inside a table cell, or
-    reach the inline structure of anything. Before 1b it did not edit inside a
-    list or a quote either — those were one block each, holding their source and
-    their token subtree, and 1b is exactly the slice that stops that being true.
-    Nothing in `front/` loads `model.js` yet — it joins none of the three
-    registries until stage 4, so `main`'s editor is untouched by every slice
-    above.
+    reach the inline structure of anything beyond slice 2's tree. Before 1b it
+    did not edit inside a list or a quote either — those were one block each,
+    holding their source and their token subtree, and 1b is exactly the slice that stops that being true.
+    Nothing in `front/` loads `model.js` yet, because until the model can render
+    and be edited there is nothing for the app to call — it joins the three
+    registries at stage 4. That is how far the model has got and not a rule about
+    what the branch may touch: **D7 in [DECISIONS.md](DECISIONS.md)** is there
+    because this sentence used to claim the second thing, and slice 2 opens by
+    moving two rules out of `app.js` on the strength of it.
 *   **2. Core to parity — not started.**
 *   **3. The 1.1 items — not started.**
 *   **4. Reintegration — not started.**

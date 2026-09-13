@@ -3159,3 +3159,260 @@ in the conventions its file uses. The one thing 1b hands slice 3 and the one thi
 it deliberately does not are both recorded in REWRITE.md's step 5 — an item's
 marker and content indent, and a blockquote's `> ` chain, which is open with both
 options argued and nothing in this repo to measure either on.
+
+## 2026-09-13 — Plan stage 1 slice 2, the inline model
+
+No code. [docs/REWRITE.md](docs/REWRITE.md)'s stage-1 entry gets slice 2's plan
+before the slice is built, the way 1b got one — six steps, what it deliberately
+does not reach, and three open questions with both sides argued.
+
+**The plan is written on a measurement, and the measurement changed the plan.**
+Across all nine of this repo's markdown files: **no inline child token carries a
+`map` — zero of 11,644.** The obvious move after 1b is to tile one level down
+again, and that reading is what says not to. 1b tiled because a list was one
+block and editing an item rewrote a third of the file, which was a *fidelity*
+failure a source span fixed. There is no such failure here: an edited paragraph
+re-serialising whole is what *What is accepted* already promised, and every
+untouched paragraph is covered by its block's own `source`. So the absence costs
+nothing, and deriving inline spans would mean a second parser free to disagree
+with the first, bought for a guarantee nobody asked for. **Slice 2 is about
+editability, not fidelity** — a structure addressable by offset, mutable by a
+command, emittable by slice 3.
+
+What else that pass turned up, all of it now in the plan:
+
+- **Every mark's delimiter is in `markup` as the author wrote it** — `_` against
+  `*`, `__` against `**`, one backtick against two. So emphasis fidelity is
+  per-node here, which is strictly better than the per-document guess
+  `sniffMarkdownStyle` has to make, and free.
+- **Four spellings markdown-it discards**: a code span's padding (`` ` a ` ``
+  and `` `a` `` both give `a`, and the padding is *required* when the content
+  opens or closes with a backtick), an escape (`\*not em\*` gives the text
+  `*not em*`), a link's angle-bracket destination (`[t](<u v>)` gives `u%20v`),
+  and a hard break's spelling (two trailing spaces and a trailing backslash both
+  give a bare `hardbreak`). **The answer to all four is the same and it is the
+  reason for the rewrite: back the way it was written.** The parser threw the
+  spelling away, the model still has the bytes, so the model records what the
+  parser discarded — at parse, on the node, exactly as 1b's step 5 already does
+  for a list item's marker. Only genuinely new content has nothing recorded, and
+  that follows the document's own convention, which MARKDOWN.md's **S3** already
+  settled for these two in particular. Record first, sniff second, house style
+  never — so the target stays byte-identity, as everywhere else in the model.
+- **Escaping is narrow and silent**: 117 of 11,377 text tokens, 1.0%. The two
+  properties that put a thing in this repo's suite.
+- **Links are the only construct whose spelling is not in `markup` at all.**
+  Re-emitting the tree naively reproduces `inline.content` for 86.8% of blocks
+  and *every* mismatch is a link, so step 5 rebuilds them from `attrs` plus the
+  `data-ref-label` stamp.
+- **`inline.content` is the block's source with the list marker and continuation
+  indent already stripped**, wrapping preserved as `\n`. So slice 3's three
+  transforms compose and each already belongs to somebody: the tree emits
+  `content`, `reflowMarkdown` re-wraps, 1b's `marker` and `contentIndent` go
+  back in front.
+
+**Three constructs have no oracle in this repo at all** — strikethrough, hard
+breaks and reference definitions occur exactly zero times in nine files, beside
+the blockquotes 1b already found none of. The plan names them rather than
+letting the coverage look uniform; they need hand-written fixtures, which is a
+weaker kind of evidence than the file oracle and should be read as one.
+
+**One open question, not three.** Whether to extract `math` and
+`referenceAwareLink` out of `app.js` so the suite's bare parser can see what
+ships, or stub them — the better option is not the smaller one, and the deciding
+question is whether stage 4 has to extract them anyway. The other two were not
+open on inspection: the hard-break spelling is **S3 in MARKDOWN.md, settled**,
+and 1b's blockquote question is answered by the same "back the way it was
+written" rule as everything in step 3 — the work still lands in slice 3, the
+choice does not travel with it.
+
+**Two live figures in 1b's own entry moved, and were corrected rather than left
+standing**: the five files now hold **728** leaves, not 697, and `REWRITE.md`'s
+worst edit is **1.8%** of it, not 2.2% — both because this entry's own plan made
+`REWRITE.md` 180 lines longer. The CHANGELOG entries above keep the readings
+they landed with, being a record of a day rather than a description of now.
+
+`npm test` run despite this touching no code, for the one reason that applies
+here: **`docs/REWRITE.md` is one of the five files the `model` suite drives as
+its oracle**, so writing a plan into it really can fail a test about list items
+— which is exactly what 1b's step 5 note records happening. **1083 checks, no
+failures**, `model` still 106.
+
+## 2026-09-13 — A torture fixture, because the repo's own prose is a biased oracle
+
+[tests/fixtures/torture.md](tests/fixtures/torture.md), 364 lines, and the
+`model` suite now drives it as a sixth oracle file alongside the five documents
+this project maintains by hand.
+
+**Why the five were not enough.** They are the right files to test against —
+they are what a regression would actually damage — but they are a biased sample
+and the bias runs one way. Every one of them was written or reformatted in a
+single voice, so they are uniformly well-formed; and between them they contain
+**no blockquote, no hard break, no strikethrough and no reference definition at
+all**. A suite driving only those reports full marks on constructs it has never
+once parsed, which is what it had been doing.
+
+The fixture reads as a field report and is a torture test underneath: at least
+one of everything in [docs/MARKDOWN.md](docs/MARKDOWN.md), six levels of list
+nesting, three levels of blockquote, a fence inside a longer fence, markdown
+inside code that must not be parsed, ragged table padding with all four
+alignment spellings, both hard-break spellings, all three fence characters, all
+three rule characters, setext *and* ATX headings at every level, mixed `-`/`*`/`+`
+and `.`/`)` markers changing per depth, tabs beside spaces, escaped everything,
+and the constructs markdown-it does not parse yet — task lists, heading ids,
+footnotes, definition lists, front matter — which have to round-trip as literal
+text until they do. It is legal markdown everywhere and consistent nowhere.
+
+It round-trips byte-identical, tiles at every depth — **85 containers, 13 deep,
+where the deepest real file here reaches 5** — and every one of its 163 leaves,
+edited alone, rewrites exactly itself with one emitter call.
+
+**It found two things on its first run, and neither was reachable from any file
+in this repo.** Both are pinned as checks rather than quietly fixed, the way 1b's
+step 3 pinned a hazard for step 4 to flip:
+
+- **A list item inside a blockquote gets no marker.** A child's source is its
+  lines whole, so such an item's first line starts `> 1. `, and
+  `modelItemPrefix` looks for a marker at the *start* of the line. It returns
+  null rather than inventing one, which is the safe direction — and it leaves
+  slice 3 with nothing to emit from. This is 1b's step-5 blockquote question
+  turning up as a measurement instead of an argument, and it settles it:
+  recording the `> ` chain at parse makes these items ordinary, while stripping
+  and re-applying at emit time leaves them broken at parse where the emitter
+  cannot reach.
+- **A tab-marked item derives a continuation indent the file does not use.**
+  `modelItemPrefix` builds `contentIndent` by replacing every character of the
+  marker but a tab with a space, so `"-\t"` gives `" \t"` where the file itself
+  continues under a bare `"\t"`. Both land on column 4, so nothing looks wrong;
+  they are different bytes, which is the only currency this model deals in. The
+  fix is not a cleverer derivation but not deriving — an item with a
+  continuation line states its own indent — and that reverses a rule 1b's step 5
+  argued for in writing, so it is recorded and left to be decided rather than
+  changed in passing.
+
+`ORACLE_FILES` replaces the file list that had been written out five times, so
+there is one place to add the next one.
+
+**And today's slice 2 plan was corrected where it had got this backwards.** Step
+3 had argued that because markdown-it discards a code span's padding, an escape,
+an angle-bracket destination and a hard break's spelling, re-emission should aim
+at a fixpoint rather than at bytes. That is the wrong answer to the question this
+whole rewrite exists to answer: **the parser threw the spelling away, the model
+still has the bytes, so the model records what the parser discarded** — at parse,
+on the node, exactly as 1b's step 5 already does for a list item's marker. Only
+genuinely new content has nothing to put back, and that follows the document's
+own convention, which MARKDOWN.md's S3 settled for the hard break in as many
+words: "the rewrite's whole point is better sniffing, so these are not a special
+case." Two of the three questions the plan recorded as open were therefore not
+open — one was already settled in MARKDOWN.md and the other is answered by the
+same rule. One remains: whether to extract `math` and `referenceAwareLink` out of
+`app.js` so the suite tests what ships.
+
+`npm test`: **1087 checks, no failures**, `model` 110, up from 106.
+
+## 2026-09-13 — An item's continuation indent is read, not reconstructed
+
+`modelItemPrefix` in [front/model.js](front/model.js) takes the item's first
+non-blank continuation line as a second argument and records **that line's own
+indent**, falling back to deriving one from the marker only where the item has
+no continuation line. The bug this fixes was found by
+[tests/fixtures/torture.md](tests/fixtures/torture.md) hours after it was added,
+and no file in this repo could have found it: not one of the five documents the
+suite drove before indents a list with a tab.
+
+Deriving replaced every character of the marker but a tab with a space, so the
+marker `"-\t"` produced the indent `" \t"` — while a file that indents with tabs
+continues under a bare `"\t"`. Both land on column 4, so the document renders
+identically and nothing looks wrong on screen. They are different **bytes**,
+which is the only currency this model deals in, and slice 3 would have written
+an edited item back into the file under an indent its author never used. That is
+the whole failure mode D1 exists to prevent, arriving through the one field in
+1b that was reconstructed rather than recorded.
+
+**The fix is not a cleverer derivation, it is not deriving.** An item with a
+continuation line has already stated its indent; reading a fact beats
+reconstructing it, which is the rule the rest of the model already runs on. 1b's
+step 5 argued the other way in writing — that reading the indent at *emit* time
+would be a second place free to disagree with the first — and that argument
+survives untouched, because this reads it at parse, where there is still exactly
+one place.
+
+**A written indent is believed only when it lands on the marker's own content
+column**, tab stops at four per CommonMark (`modelIndentColumn`). A lazy
+continuation carrying no indent at all, or a line the author pushed further in,
+is not a plainer spelling of the same indent but a different one, and the derived
+value stands. So the new rule can only ever swap one indent for another of the
+same width — which is exactly the bug and nothing else.
+
+Five checks replace the one that was pinned this morning: the oracle sweep now
+asserts that **every** continued item carries the indent its own lines use, tabs
+included, plus the tab case that used to be wrong and the three that must not
+become wrong in the fixing — a lazy continuation, a continuation pushed past the
+marker's column, and an item with no continuation line at all. The comment above
+them records that the same assertion passed before the fixture existed, which is
+the point of the fixture.
+
+Left open deliberately: **a list item inside a blockquote still gets no marker**,
+because a child's source is its lines whole and the marker sits behind a `> `.
+That is not a bug in the pattern but slice 3's blockquote-prefix question, and
+the fixture's two such items stay pinned as a check until it is answered.
+
+`npm test`: **1091 checks, no failures**, `model` 114, up from 110.
+
+## 2026-09-13 — D7, and the parser question closed
+
+A question about where two markdown-it rules should live turned out to rest on a
+premise nobody had ever decided, so the premise is now a decision and the
+question is closed with it.
+
+**The premise.** `math` and `referenceAwareLink` are registered on the
+markdown-it instance `app.js` builds, so the model suite — which builds a bare
+one — can see neither a `math` token nor a `data-ref-label` stamp. Slice 2's
+steps 3 and 5 are exactly the two that need them. Three ways were on the table,
+and the one that nearly won did so on the argument that moving the rules would
+"touch a file the app loads", during a branch that had touched none.
+
+**That property was never a goal.** `main` keeping a working editor until parity
+is sequencing — it is the whole of what D6 settled — and it had hardened in
+CLAUDE.md, in REWRITE.md and in `model.js`'s own header into something stronger
+and unearned: that the running editor was a thing to be preserved, and that a
+slice reaching a file the app loads had spent something. Read that way it argues
+for exactly what the rewrite exists to stop — leaving code where it does not
+belong because moving it would disturb something.
+
+**D7 in [docs/DECISIONS.md](docs/DECISIONS.md)** records what the rule actually
+is. The current core needs the document in two forms at once, markdown and DOM,
+and nearly everything around it exists to keep the two in step: the
+normalisation after every command, the hand-rolled list surgery, the
+content-keyed index and the sniff-and-restore layers, the copies in
+`localStorage`, the stashes that keep Mermaid and LaTeX source alive. None of
+that is markdown being difficult; it is the cost of not owning the document. So:
+a change that fixes something or makes a workaround unnecessary **is** the work;
+preserving current behaviour is worth having when it is cheap and not when it
+means bending over backwards; and a change that exists to stay bug-compatible
+with the DOM or an engine is refused outright. Markdown is a messy enough
+specification without carrying the browser's mess into a core built to be free
+of it. The order of repair is model first — that is what the suite is for, and a
+correct model makes a browser fix simpler, which is the opposite of this
+project's experience twice over.
+
+**So the rules move into a file of their own, as step 0 of slice 2.** The model
+is defined as *markdown parsed by this parser*, which makes the parser's
+configuration part of the model layer; it sits in `app.js` by accident of
+history, in among the Turndown rules, the editor bootstrap and the keyboard
+handling. The other two options are recorded in REWRITE.md with why they lost:
+a copy of the rules written for the suite is **not a test at all**, and having
+the suite borrow the real rules through `tests/dom.mjs` — measured today, and it
+does work — still leaves the app building its parser one way and the suite
+assembling it another, with the configuration in the wrong file.
+
+**And slice 2 now has nothing open.** The blockquote question closed the same
+day on the fixture's measurement, and what is left in that section is the
+reasoning rather than the debate, because a decision with its reasons deleted is
+one that gets reopened.
+
+The framing pass that followed: CLAUDE.md's branch note and its `model.js`
+section, `model.js`'s own header, REWRITE.md's stage-1 note, and TODO 3.1 — which
+was also **eleven days stale**, still saying the stage-0 gate was half open and
+that no engine had been driven by hand, three days after all three were.
+
+`npm test`: **1091 checks, no failures.**

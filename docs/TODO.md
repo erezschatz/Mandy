@@ -309,8 +309,8 @@ category fidelity deliberately does not extend to.
     Retires D4, `undo.js`'s snapshot design, `execcommand.js`, the content-keyed
     restore in `markdown-style.js`, the Mermaid and LaTeX source stashes, and
     the reason a table cell cannot be edited. Leaves the ~5,300 lines around
-    the core — menus, notify, file API, outline, exports, server — untouched,
-    and the tabbed view nearly so: its swap moves a model reference instead
+    the core — menus, notify, file API, outline, exports, server — substantially
+    alone, and the tabbed view nearly so: its swap moves a model reference instead
     of an HTML string, and REWRITE.md's "What it replaces" section says what
     else changes at reintegration and what is decided there.
 
@@ -333,9 +333,20 @@ category fidelity deliberately does not extend to.
 
     **Started 2026-09-09 on branch `rewrite`.** REWRITE.md's "Where each stage
     stands" is the running status, one line per stage, updated as each lands.
-    Stage 0's page is [spike/block-model.html](../spike/block-model.html), and
-    the gate is half open: the model, the render splice and the caret mapping
-    behave, and no engine has yet been driven by a person's hands.
+
+    **The gate passed**: [spike/block-model.html](../spike/block-model.html) was
+    driven by hand in Blink, Gecko and WebKit on 2026-09-10 — typing, Enter,
+    Backspace, the accent popup and a refused edit inside a read-only block all
+    behave, with the DOM never diverging from the model. The one check that
+    failed is keyboard routing upstream of `beforeinput` and is a gap `main`
+    already has; it became **1.7**.
+
+    Stage 1 is in progress: slices 1 and 1b are done and tested, slice 2 (the
+    inline model) is planned and next, slice 3 (the block serialiser) follows.
+    D7 in [DECISIONS.md](DECISIONS.md) is the rule for what the branch may do to
+    the live editor on the way — slice 2 opens by moving two markdown-it rules
+    out of `app.js`, which is the first change here that reaches a file the app
+    loads.
 
 ## 4. Interface
 

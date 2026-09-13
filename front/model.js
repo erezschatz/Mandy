@@ -1,11 +1,14 @@
 // The document model. TODO 3.1, stage 1 — docs/REWRITE.md is the design.
 //
 // Nothing loads this file yet. It is in none of the three registries
-// (index.html, sw.js's SHELL_ASSETS, html-export.js's ASSETS) and will not be
-// until stage 4, so `main`'s editor is untouched by everything here. What it
-// is: the thing that will own the document once contenteditable stops owning
-// it — an ordered list of blocks, each holding the exact bytes it arrived with
-// and the exact bytes that followed it.
+// (index.html, sw.js's SHELL_ASSETS, html-export.js's ASSETS), because until
+// the model can render and be edited there is nothing for the app to call.
+// That is how far this has got, not a quarantine: D7 in docs/DECISIONS.md is
+// there because this comment used to say the branch's job was to leave the
+// running editor alone, which is not and never was the goal. What it is: the
+// thing that will own the document once contenteditable stops owning it — an
+// ordered list of blocks, each holding the exact bytes it arrived with and the
+// exact bytes that followed it.
 //
 // The one property this stage exists to prove: a file that is opened and saved
 // with nothing edited comes back byte for byte. That is D1, and here it is
@@ -178,17 +181,44 @@ const MODEL_ITEM_MARKER = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)/;
  * above all, which is a document's own convention (`sniffMarkdownStyle` reads it
  * for exactly that reason) and not something to regenerate.
  *
- * `contentIndent` is the marker with every character but a tab replaced by a
- * space, which is one rule rather than two: it is the right width by
- * construction, and a tab in the indent survives as a tab instead of being
- * counted as one column. Measured against this repo's seven markdown files, all
- * 312 items agree with the indent their own continuation lines actually carry.
+ * `contentIndent` is **read off the item's own continuation line** when it has
+ * one, and only derived from the marker when it does not. Deriving alone was
+ * the rule until 2026-09-13, and it was wrong in exactly one place: the marker
+ * with every character but a tab replaced by a space turns `"-\t"` into
+ * `" \t"`, while a file that indents with tabs continues under a bare `"\t"`.
+ * Both land on column 4, so nothing looks wrong on screen — and they are
+ * different bytes, which is the only currency this model deals in. An edited
+ * item would have been written back under an indent its author never used.
+ *
+ * The fix is not a cleverer derivation, it is not deriving: an item that has a
+ * continuation line has already stated its indent, and reading a fact beats
+ * reconstructing it. That is the same rule the rest of the model runs on —
+ * a thing goes back into the file the way it came out of it.
+ *
+ * **Only a column-equivalent line is believed.** If the continuation sits on a
+ * different column from the marker's own content column it is not a plainer
+ * spelling of the same indent, it is a different indent — a lazy continuation
+ * carrying none at all, or a line the author pushed further in — and the
+ * derived value stays, because that is the column the item's content actually
+ * starts at. So this can only ever swap one indent for another of the same
+ * width, which is the whole of the bug it fixes.
+ *
+ * Tab stops are four columns, per CommonMark.
  */
-function modelItemPrefix(firstLine) {
+function modelIndentColumn(indent) {
+  let column = 0;
+  for (const character of indent) column = character === "\t" ? column + 4 - (column % 4) : column + 1;
+  return column;
+}
+
+function modelItemPrefix(firstLine, continuationLine) {
   const match = MODEL_ITEM_MARKER.exec(firstLine);
   if (!match) return null;
   const marker = match[1] + match[2] + match[3];
-  return { marker, contentIndent: marker.replace(/[^\t]/g, " ") };
+  const derived = marker.replace(/[^\t]/g, " ");
+  const written = continuationLine === undefined ? null : /^[ \t]*/.exec(continuationLine)[0];
+  const believable = written !== null && modelIndentColumn(written) === modelIndentColumn(derived);
+  return { marker, contentIndent: believable ? written : derived };
 }
 
 /**
@@ -258,7 +288,16 @@ function modelTileRange(ctx, spans, from, to) {
     // — so the fields stay null and slice 3 has nothing to emit from, rather
     // than the model inventing a marker the file never had.
     if (piece.block.kind === "item") {
-      const prefix = modelItemPrefix(lines[piece.start]);
+      // The item's own first non-blank continuation line, which is what states
+      // the indent rather than leaving it to be reconstructed from the marker.
+      let continuation;
+      for (let line = piece.start + 1; line < piece.end; line += 1) {
+        if (!modelIsBlankLine(lines[line])) {
+          continuation = lines[line];
+          break;
+        }
+      }
+      const prefix = modelItemPrefix(lines[piece.start], continuation);
       if (prefix) {
         piece.block.marker = prefix.marker;
         piece.block.contentIndent = prefix.contentIndent;
