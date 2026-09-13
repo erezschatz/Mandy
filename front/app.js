@@ -334,6 +334,7 @@ const turndownService = new TurndownService({
   bulletListMarker: markdownStyle.bulletListMarker,
   emDelimiter: markdownStyle.emDelimiter,
   strongDelimiter: markdownStyle.strongDelimiter,
+  br: markdownStyle.hardBreak,
 });
 
 // Turndown reads its options object on each replacement rather than closing
@@ -370,6 +371,7 @@ function pushMarkdownStyleOptions() {
   turndownService.options.bulletListMarker = markdownStyle.bulletListMarker;
   turndownService.options.emDelimiter = markdownStyle.emDelimiter;
   turndownService.options.strongDelimiter = markdownStyle.strongDelimiter;
+  turndownService.options.br = markdownStyle.hardBreak;
 }
 
 // The per-tab half of the markdown state above, for the tabbed view: the sniffed

@@ -47,7 +47,7 @@ when there is a decision owed first.
 | **Headings**, ATX `#`–`######` | ✓ | ✓ h1–h3 on the bar, h4–h6 in the Format menu | ✓ byte-exact | = |
 | **Headings**, Setext (`===` / `---` underline) | ✓ | ✗ | ~ byte-exact untouched; an edited setext heading re-emits as ATX | → model keeps `source`; edited still normalises to ATX (block granularity, [REWRITE.md](REWRITE.md)) |
 | **Paragraphs** | ✓ | ✓ (Enter) | ✓ | = |
-| **Line breaks** (two trailing spaces, or `\`) | ✓ | ✗ **nothing in Mandy inserts one** — no item, no binding; Shift+Enter is the browser's own `contenteditable` doing it (**TODO 1.8**) | ✗ **edited: lost.** Turndown emits the two-space spelling and `reflowMarkdown` then eats it whenever the line has to wrap, measured 2026-09-13 (**TODO 2.2**, data loss). Untouched byte-exact, as ever | → **settled**: sniff the break spelling (S3 below), which is 2.2's first half; 1.8's control lands with 3.1 stage 2 |
+| **Line breaks** (two trailing spaces, or `\`) | ✓ | ✗ **nothing in Mandy inserts one** — no item, no binding; Shift+Enter is the browser's own `contenteditable` doing it (**TODO 1.8**) | ✓ since 2026-09-13 (was: lost whenever the line had to wrap). The spelling is sniffed per document and the re-wrapper no longer eats it; a file mixing both spellings has its minority one rewritten in an edited block, the same way `emDelimiter` works | → **S3 done.** 1.8's authoring control still lands with 3.1 stage 2 |
 | **Bold** `**` / `__` | ✓ | ✓ | ✓ delimiter sniffed (`strongDelimiter`) | = |
 | **Italic** `*` / `_` | ✓ | ✓ | ✓ delimiter sniffed (`emDelimiter`) | = |
 | **Bold + italic** `***` | ✓ | ✓ (apply both) | ✓ | = |

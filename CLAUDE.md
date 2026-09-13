@@ -119,7 +119,12 @@ They cover the invariants that fail *silently* rather than loudly:
   and the ghost-element predicate, including the `<br>` asymmetry that decides
   whether a block is a blank line or an inline is a real one. Only the predicate
   — the traversal around it needs an HTML parser the stub does not have, which
-  is why the decision lives in one pure function.
+  is why the decision lives in one pure function. Since 2026-09-13 it also
+  covers the hard break: that the re-wrapper cannot eat one however long the
+  line is, in both spellings, and that `hardBreak` is sniffed off the document
+  and handed to Turndown. That last check sits with the options rather than the
+  re-wrapper deliberately — a sniffer that read the spelling correctly and never
+  handed it over would pass everything else and change nothing.
 - **model** — `front/model.js`, TODO 3.1's stage 1, and the only suite with no
   DOM in it: the model is pure string and token work, so it borrows dom.mjs's
   file helpers and nothing else. Its oracle is `ORACLE_FILES`, and it is
@@ -168,10 +173,12 @@ path are covered — `markdown-style.js`'s sniffers and re-wrapper, the Turndown
 options `app.js` asks for, the block index, the ghost-element predicate — but
 never the chain they form, because [tests/dom.mjs](tests/dom.mjs) has no HTML
 parser and its Turndown hands back whatever it was given. A bug can therefore
-sit in the seam between two steps that each pass their own test, and TODO 2.2 is
-one that did. ROADMAP.md's "No automated test opens, edits and saves a document"
-is the entry; the `model` suite is the counter-example, and only because the
-model needs no browser.
+sit in the seam between two steps that each pass their own test, and the
+hard-break loss fixed on 2026-09-13 is one that did — Turndown wrote the break
+correctly and `reflowMarkdown` then ate it, with each half passing its own
+checks. ROADMAP.md's "No automated test opens, edits and saves a document" is
+the entry; the `model` suite is the counter-example, and only because the model
+needs no browser.
 
 **So when a change's real verification is open-edit-save in a browser and no
 suite can reach it, say so, and give the recipe** — which file to open, what to
@@ -766,11 +773,14 @@ not cover):
 1.  **Sniff.** `sniffMarkdownStyle` reads the incoming markdown for the
     conventions it already follows — rule character, bullet marker and pad (per
     nesting depth, since alternating by level is common), emphasis delimiters,
-    ordered-list delimiter and whether it was numbered all-`1.`, autolinks, and
-    the wrap width. `adoptMarkdownStyle` in `app.js` pushes the Turndown-option
-    subset onto the live options object; the rest is read by the `listItem` and
-    `autolink` rules. Every default is Turndown's own, so a document that sniffs
-    to nothing behaves exactly as it did before any of this.
+    ordered-list delimiter and whether it was numbered all-`1.`, autolinks, the
+    hard-break spelling (two trailing spaces or a backslash, document-wide like
+    the emphasis delimiters, so a file mixing both has its minority one rewritten
+    in an edited block), and the wrap width. `adoptMarkdownStyle` in `app.js`
+    pushes the Turndown-option subset onto the live options object; the rest is
+    read by the `listItem` and `autolink` rules. Every default is Turndown's
+    own, so a document that sniffs to nothing behaves exactly as it did before
+    any of this.
 2.  **Re-wrap.** `reflowMarkdown` breaks the serialiser's one-line paragraphs
     back to the sniffed width. Five guards, each of which silently corrupts the
     file if dropped: fenced code, table rows and maths — a `$$` display block,

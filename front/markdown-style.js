@@ -34,6 +34,12 @@ const MARKDOWN_STYLE_DEFAULTS = {
   // Turndown has no autolink output at all, so without this every one of them
   // comes back as [http://x](http://x).
   autolinks: false,
+  // Which of markdown's two hard-break spellings the source used: two or more
+  // trailing spaces, or a trailing backslash. Turndown's own default is the
+  // spaces, and it stays the default here for the reason every other one does
+  // -- a document that sniffs to nothing serialises exactly as it did before
+  // any of this. MARKDOWN.md's S3 is the decision to read it at all.
+  hardBreak: "  ",
   orderedDelimiter: ".",
   // Whether every ordered item in the source was numbered "1.". CommonMark
   // renumbers on render either way, so both forms look identical on screen and
@@ -210,6 +216,25 @@ function sniffMarkdownStyle(markdown) {
   style.emDelimiter = commonest(em, style.emDelimiter);
 
   style.autolinks = /<https?:\/\/[^>\s]+>/.test(text);
+
+  // Which hard-break spelling the source used (MARKDOWN.md's S3). Both forms
+  // only mean a break when a line of the same paragraph follows, so a run of
+  // trailing spaces before a blank line -- which is ordinary untidiness rather
+  // than an intention -- is not counted as evidence of anything. `lines` has
+  // already had fenced code blanked out, so trailing whitespace inside a code
+  // block cannot vote either.
+  let spaceBreaks = 0;
+  let slashBreaks = 0;
+  lines.forEach((line, i) => {
+    const next = lines[i + 1];
+    if (next === undefined || !next.trim()) return;
+    if (/ {2,}$/.test(line) && line.trim()) spaceBreaks++;
+    else if (/[^\\]\\$/.test(line)) slashBreaks++;
+  });
+  if (spaceBreaks || slashBreaks) {
+    style.hardBreak = slashBreaks > spaceBreaks ? "\\" : "  ";
+  }
+
   style.wrapWidth = sniffWrapWidth(lines);
   return style;
 }
@@ -269,14 +294,26 @@ function wrapMarkdownLine(line, width) {
   const quote = quoted ? quoted[1] : "";
   const rest = line.slice(quote.length);
 
+  // Two or more trailing spaces are a hard line break -- the whole meaning of
+  // the line is in characters that look like nothing. The split below is on
+  // whitespace, so they would be swallowed as ordinary spacing between words
+  // and the break would be gone from the file with the paragraph still reading
+  // correctly on screen (TODO 2.2). Held back here and re-applied to the last
+  // line out, which is where the break belongs however many lines the wrap
+  // produces. The backslash spelling needs none of this: it is a non-space
+  // character, so it stays attached to the word in front of it and rides
+  // through the split already.
+  const hardBreak = (rest.match(/ {2,}$/) || [""])[0];
+  const body = hardBreak ? rest.slice(0, -hardBreak.length) : rest;
+
   // A list item's continuations have to align with its content, not its marker.
-  const item = rest.match(/^(\s*)([-*+]|\d+[.)])(\s+)/);
-  const firstPrefix = quote + (item ? item[0] : rest.match(/^\s*/)[0]);
+  const item = body.match(/^(\s*)([-*+]|\d+[.)])(\s+)/);
+  const firstPrefix = quote + (item ? item[0] : body.match(/^\s*/)[0]);
   const contPrefix = item
     ? quote + " ".repeat(item[0].length)
-    : quote + rest.match(/^\s*/)[0];
+    : quote + body.match(/^\s*/)[0];
 
-  const words = rest.slice(firstPrefix.length - quote.length).split(/\s+/).filter(Boolean);
+  const words = body.slice(firstPrefix.length - quote.length).split(/\s+/).filter(Boolean);
   if (!words.length) return [line];
 
   const wrapped = [];
@@ -300,7 +337,7 @@ function wrapMarkdownLine(line, width) {
     }
     current = candidate;
   }
-  if (current) wrapped.push(prefix + current);
+  if (current) wrapped.push(prefix + current + hardBreak);
   return wrapped;
 }
 
