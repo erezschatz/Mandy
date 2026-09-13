@@ -2674,3 +2674,50 @@ TODO 2.2 is marked *(fixed, unverified in a browser)* and carries the recipe.
 This is the first change to land under the rule added to CLAUDE.md's Tests
 section today, and it is exactly the case that rule is for: `npm test` passing
 says the pieces are right, not that the bug is gone.
+
+## 2026-09-13 — TODO 2.2 verified in the running app, and the service worker bumped
+
+2.2 was marked *(fixed, unverified in a browser)* this morning because no suite
+opens a document, edits it and saves it. It has now been watched doing exactly
+that, in Chrome, through the real app: file opened through the Open dialog,
+three paragraphs edited by typing into the editor, saved through File → Save,
+and the bytes on disk checked against a pristine copy.
+
+**Every check passes.** The paragraph whose break used to be eaten was really
+edited, really re-wrapped — four lines out of one — and its break is still
+there. Two other paragraphs prove the path was genuinely exercised rather than
+passing by default: one with no break at all was re-wrapped, which is what says
+the wrapper ran, and a short-line control plus two untouched blocks came back
+byte-identical through the restore layer. **Three hard breaks in the file before
+the save, three after.**
+
+**One thing the run turned up, and it is a behaviour rather than a bug.** The
+fixture deliberately mixes both spellings — two two-space breaks and one
+backslash — and the backslash came back as two spaces. That is the sniff working
+as designed: `hardBreak` is a **document-wide** option like `emDelimiter`, so the
+majority spelling wins and an edited block is written in it. The break itself is
+never lost, which is the guarantee that matters; only its spelling moves, and
+only in a block the user was already editing. Left alone deliberately — no real
+document alternates break spellings on purpose — and now pinned by a check so
+nobody later reads it as the sniffer being broken.
+
+**And a step this morning's fix skipped: `VERSION` in
+[front/sw.js](front/sw.js) was never bumped**, though the fix changed
+`markdown-style.js` and `app.js`, both shell assets. CLAUDE.md requires the bump
+whenever the shell changes, and without it an offline session keeps the cached
+copies — the fix would simply not be there. v1.30 to v1.31. It is not what made
+the first manual attempt inconclusive, since same-origin requests are
+network-first and a running server wins, but it was a real omission and it would
+have bitten a user who was offline.
+
+The fixture that did the work is not in the repo: it is a generated document
+whose filler exists only to give the width sniffer enough ordinary lines to
+report a real number, and it lives beside the manual recipe rather than in
+`tests/`. What belongs in the repo is what a machine can re-run, and that is the
+sixteen checks in `save-fidelity`. **991 checks, no failures.**
+
+2.2 is closed and leaves [docs/TODO.md](docs/TODO.md); 1.8 loses its dependency
+on it and is now only about the authoring control, which still waits for 3.1
+stage 2. MARKDOWN.md's line-break row goes from a loss to a tick, with the
+mixed-spelling note on it, and D6's section-2 paragraph now names 2.1 as the one
+still open.

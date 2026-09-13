@@ -346,8 +346,8 @@ four to six) stated rather than hoped away.
 
 The consequence for open work: TODO 1.1.6, 1.1.7, 1.1.8, 1.4, 1.6 and 1.8 are
 not started on the current core, because everything written there is discarded
-with it. Section 2 is the exception, and both of its items are — 2.1's table
-formatter and 2.2's break-spelling sniff are pure serialiser work in
+with it. Section 2 is the exception: its items are pure serialiser work in
 `markdown-style.js`, which lives through the rewrite and is called per block
-rather than per document afterwards. Both can be fixed on `main` today and the
-fix carries over; 2.2 is a live data-loss bug, so it should be.
+rather than per document afterwards, so they can be fixed on `main` today and
+the fix carries over. 2.2 was one and was fixed that way on 2026-09-13; 2.1's
+table formatter is the one still open.

@@ -380,6 +380,17 @@ function styleChecks(check) {
     "the commoner spelling wins when a file mixes them",
     sniff("a\\\nb\n\nc\\\nd\n\ne  \nf\n").hardBreak === "\\",
   );
+  // And the consequence of that, which is a real behaviour rather than a gap:
+  // a file mixing both spellings has its minority ones rewritten in the
+  // majority spelling wherever a block is edited. Watched end-to-end through
+  // the running app on 2026-09-13 and left alone deliberately — `hardBreak` is
+  // a document-wide option like `emDelimiter`, not a per-break one, and no real
+  // document alternates break spellings on purpose. **The break itself is never
+  // lost**, which is the guarantee that matters; only its spelling moves.
+  check(
+    "and the minority spelling loses, which is what a document-wide option means",
+    sniff("a  \nb\n\nc  \nd\n\ne\\\nf\n").hardBreak === "  ",
+  );
 
   // Fenced code is not prose and re-wrapping it changes the program inside.
   const fenced = "```\nthis is a very long line of code that must not be broken up\n```\n";
