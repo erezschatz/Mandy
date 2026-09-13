@@ -3160,7 +3160,7 @@ it deliberately does not are both recorded in REWRITE.md's step 5 — an item's
 marker and content indent, and a blockquote's `> ` chain, which is open with both
 options argued and nothing in this repo to measure either on.
 
-## 2026-09-13 — Plan stage 1 slice 2, the inline model
+## 2026-09-13 — `1e35a14` — Plan stage 1 slice 2, the inline model
 
 No code. [docs/REWRITE.md](docs/REWRITE.md)'s stage-1 entry gets slice 2's plan
 before the slice is built, the way 1b got one — six steps, what it deliberately
@@ -3237,7 +3237,7 @@ its oracle**, so writing a plan into it really can fail a test about list items
 — which is exactly what 1b's step 5 note records happening. **1083 checks, no
 failures**, `model` still 106.
 
-## 2026-09-13 — A torture fixture, because the repo's own prose is a biased oracle
+## 2026-09-13 — `1e35a14` — A torture fixture, because the repo's own prose is a biased oracle
 
 [tests/fixtures/torture.md](tests/fixtures/torture.md), 364 lines, and the
 `model` suite now drives it as a sixth oracle file alongside the five documents
@@ -3309,7 +3309,7 @@ same rule. One remains: whether to extract `math` and `referenceAwareLink` out o
 
 `npm test`: **1087 checks, no failures**, `model` 110, up from 106.
 
-## 2026-09-13 — An item's continuation indent is read, not reconstructed
+## 2026-09-13 — `1e35a14` — An item's continuation indent is read, not reconstructed
 
 `modelItemPrefix` in [front/model.js](front/model.js) takes the item's first
 non-blank continuation line as a second argument and records **that line's own
@@ -3358,7 +3358,7 @@ the fixture's two such items stay pinned as a check until it is answered.
 
 `npm test`: **1091 checks, no failures**, `model` 114, up from 110.
 
-## 2026-09-13 — D7, and the parser question closed
+## 2026-09-13 — `1e35a14` — D7, and the parser question closed
 
 A question about where two markdown-it rules should live turned out to rest on a
 premise nobody had ever decided, so the premise is now a decision and the
