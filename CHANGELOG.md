@@ -2628,3 +2628,49 @@ work" paragraph now says so for the whole of section 2 rather than for 2.1
 alone. MARKDOWN.md's line-break row was also overstating things in two columns
 at once, claiming Shift+Enter as an authoring route and calling the round trip
 partial when it is a loss; both corrected.
+
+## 2026-09-13 — TODO 2.2: the hard break the re-wrapper was eating
+
+Both halves of 2.2, in [front/markdown-style.js](front/markdown-style.js).
+
+**The data loss first.** `wrapMarkdownLine` splits its line on whitespace, so
+the two trailing spaces that spell a hard break were swallowed as ordinary
+spacing between words the moment the line was long enough to wrap — the
+paragraph still read correctly on screen, and the break was gone from the file.
+The wrapper now holds a trailing run of spaces back before the split and
+re-applies it to the **last** line it produces, which is where the break belongs
+however many lines the wrap makes. The exact run is preserved rather than
+normalised to two. The backslash spelling needed no guard and never did: it is a
+non-space character, so it rides through the split attached to the word in front
+of it — now checked, so a future change to the wrapper cannot quietly break the
+half that works by construction.
+
+Measured against this change on a file written at 78 columns with two hard
+breaks, one of them on a 153-column line: **the old code returns one break, the
+new code returns two.**
+
+**Then S3, the spelling.** `hardBreak` joins the sniffed style, defaulting to
+Turndown's own `"  "` so a document that sniffs to nothing serialises exactly as
+it did before — the rule every other sniffed option follows. Both spellings only
+mean a break when a line of the same paragraph follows, so trailing spaces before
+a blank line are untidiness rather than evidence and do not vote; fenced code is
+already blanked out of the lines the sniffer reads, so a code block cannot vote
+either. `app.js` hands the result to Turndown as `br`, in the constructor and in
+`pushMarkdownStyleOptions`, which is the pair that must not drift.
+
+Fifteen checks, in `save-fidelity`: the wrapper in isolation at both lengths,
+both spellings, the exact run of spaces, a break inside a list item and inside a
+blockquote, that the wrap still respects its width around a break, the five
+sniffer cases including the two that must *not* count, and — separately, in the
+options block — that the spelling actually reaches Turndown. That last one is
+not redundant: a sniffer that read the spelling perfectly and never handed it
+over would have passed every check in the reflow section and changed nothing.
+**990 checks, no failures**, up from 975.
+
+**Unverified in a browser, and it has to be.** No suite opens a document, edits
+it and saves it — the stub has no HTML parser and its Turndown hands back
+whatever it was given — so nothing above tests the path a user actually takes.
+TODO 2.2 is marked *(fixed, unverified in a browser)* and carries the recipe.
+This is the first change to land under the rule added to CLAUDE.md's Tests
+section today, and it is exactly the case that rule is for: `npm test` passing
+says the pieces are right, not that the bug is gone.

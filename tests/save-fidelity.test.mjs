@@ -44,6 +44,13 @@ export default function run(check) {
   check("headings stay atx", options.headingStyle === "atx");
   check("code blocks stay fenced", options.codeBlockStyle === "fenced");
 
+  // TODO 2.2's second half: the hard-break spelling is a sniffed option like
+  // the rule character and the emphasis delimiters, not a fixed one. Checked
+  // here because this is where "the options app.js actually asks for" lives —
+  // a sniffer that reads the spelling correctly and never hands it to Turndown
+  // would pass every check in the reflow section below and change nothing.
+  check("the hard-break spelling is handed to Turndown", options.br === "  ");
+
   check("output ends with a newline", htmlToMarkdown("hello") === "hello\n");
 
   check(
@@ -296,6 +303,82 @@ function styleChecks(check) {
   check(
     "a wrapped list item indents to its content",
     item.trimEnd().split("\n").slice(1).every((line) => line.startsWith("    ")),
+  );
+
+  // TODO 2.2. A hard break is two or more trailing spaces, and the wrapper
+  // splits on whitespace -- so before this guard the break was swallowed as
+  // ordinary spacing between words the moment its line was long enough to
+  // wrap, with the paragraph still reading correctly on screen and the break
+  // gone from the user's file. The short-line case passed all along, which is
+  // what made it a seam rather than an obvious break: reflowMarkdown hands a
+  // line under the width straight back without ever calling the wrapper.
+  const breakLine = "alpha beta gamma delta epsilon zeta eta theta iota kappa";
+  check(
+    "a hard break survives a line too short to wrap",
+    reflow("one two  \nthree\n", 30).includes("  \n"),
+  );
+  check(
+    "and survives a line long enough to wrap, which is the bug",
+    reflow(breakLine + "  \nnext\n", 30).includes("  \n"),
+  );
+  check(
+    "landing on the last line the wrap produced, not the first",
+    /iota kappa {2}\n/.test(reflow(breakLine + "  \nnext\n", 30)),
+  );
+  check(
+    "the exact run of spaces is preserved, not normalised to two",
+    reflow(breakLine + "   \nnext\n", 30).includes("   \n"),
+  );
+  // The backslash spelling needed no guard -- it is a non-space character, so
+  // it rides through the split attached to the word in front of it. Checked so
+  // that a future change to the wrapper cannot quietly break the half that
+  // works by construction.
+  check(
+    "the backslash spelling survives a wrap too",
+    reflow(breakLine + "\\\nnext\n", 30).includes("\\\n"),
+  );
+  check(
+    "a break inside a list item keeps both the break and the indent",
+    /  \n {2}/.test(reflow("- " + breakLine + "  \n  next\n", 30)),
+  );
+  check(
+    "a break inside a blockquote keeps both the break and the prefix",
+    /  \n>/.test(reflow("> " + breakLine + "  \n> next\n", 30)),
+  );
+  // And the wrap still does its job around the break.
+  check(
+    "wrapping a line that ends in a break still respects the width",
+    reflow(breakLine + "  \nnext\n", 30)
+      .split("\n")
+      .every((line) => line.trimEnd().length <= 30),
+  );
+
+  // S3: which spelling to write is read off the document rather than fixed.
+  // Both forms only mean a break when a line of the same paragraph follows, so
+  // trailing spaces before a blank line are untidiness and not evidence.
+  check(
+    "a file that breaks with two spaces sniffs to two spaces",
+    sniff("one line  \nand its continuation\n\nmore prose here\n").hardBreak === "  ",
+  );
+  check(
+    "a file that breaks with a backslash sniffs to a backslash",
+    sniff("one line\\\nand its continuation\n\nmore prose here\n").hardBreak === "\\",
+  );
+  check(
+    "a file with no break at all keeps Turndown's own default",
+    sniff("just prose\n\nand more of it\n").hardBreak === "  ",
+  );
+  check(
+    "trailing spaces before a blank line are not a break and do not vote",
+    sniff("a paragraph ending untidily  \n\nthe next one\n").hardBreak === "  ",
+  );
+  check(
+    "a backslash before a blank line does not vote either",
+    sniff("a paragraph ending in a slash\\\n\nthe next one\n").hardBreak === "  ",
+  );
+  check(
+    "the commoner spelling wins when a file mixes them",
+    sniff("a\\\nb\n\nc\\\nd\n\ne  \nf\n").hardBreak === "\\",
   );
 
   // Fenced code is not prose and re-wrapping it changes the program inside.

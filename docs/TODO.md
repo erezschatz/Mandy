@@ -294,7 +294,7 @@ category fidelity deliberately does not extend to.
     convention to text. It can be written before 3.1, and it is what the
     model's serialiser calls for an edited table block.
 
-*   **2.2** *(bug, data loss; survives 3.1; wanted by 1.8)* **A hard line break
+*   **2.2** *(fixed, unverified in a browser; wanted by 1.8)* **A hard line break
     inside an edited paragraph is silently destroyed when the line has to be
     re-wrapped.** Markdown spells a break two ways — two trailing spaces, or a
     trailing backslash — and Turndown's `br` option is left at its default,
@@ -342,6 +342,15 @@ category fidelity deliberately does not extend to.
     **So this item's fix is verified by hand**: open a file with a break on a
     long line, edit that paragraph, save, and look at the bytes. `npm test`
     cannot tell you whether it worked.
+
+    **Fixed, and unverified in a browser.** Both halves landed: the wrapper
+    holds a trailing break back and re-applies it to the last line it produces,
+    and `sniffMarkdownStyle` reads the spelling and hands it to Turndown as
+    `br`. Fifteen checks cover what the suite can reach — the wrapper in
+    isolation, both spellings, a break inside an item and inside a quote, and
+    that the option actually arrives at Turndown. What none of them can see is
+    the real open-edit-save path, so what is left is a person watching it
+    happen once.
 
     Survives 3.1: `sniffMarkdownStyle` and `reflowMarkdown` both live through
     the rewrite — REWRITE.md's slice 3 calls them per block instead of per
