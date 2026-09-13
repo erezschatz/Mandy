@@ -3417,7 +3417,7 @@ that no engine had been driven by hand, three days after all three were.
 
 `npm test`: **1091 checks, no failures.**
 
-## 2026-09-13 — TODO 1.8 and 2.2: line breaks, which nothing makes and the save path eats
+## 2026-09-13 — `627f3cb` — TODO 1.8 and 2.2: line breaks, which nothing makes and the save path eats
 
 Two items filed after a question that had a worse answer than expected: is there
 any way in Mandy to put a line break inside a paragraph, without starting a new
