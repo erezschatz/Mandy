@@ -2629,7 +2629,7 @@ alone. MARKDOWN.md's line-break row was also overstating things in two columns
 at once, claiming Shift+Enter as an authoring route and calling the round trip
 partial when it is a loss; both corrected.
 
-## 2026-09-13 — TODO 2.2: the hard break the re-wrapper was eating
+## 2026-09-13 — `8ed18df` — TODO 2.2: the hard break the re-wrapper was eating
 
 Both halves of 2.2, in [front/markdown-style.js](front/markdown-style.js).
 
