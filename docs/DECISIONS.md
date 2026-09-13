@@ -344,10 +344,13 @@ decision here is the order of work, not the feasibility, and it is made with
 the estimate's tail (the input layer, one to two weeks of fallout on top of
 four to six) stated rather than hoped away.
 
-The consequence for open work: TODO 1.1.6, 1.1.7, 1.1.8, 1.4 and 1.6 are not
-started on the current core, because everything written there is discarded
-with it. TODO 2.1 is the exception — a pure function that serialises a table,
-the same on both cores.
+The consequence for open work: TODO 1.1.6, 1.1.7, 1.1.8, 1.4, 1.6 and 1.8 are
+not started on the current core, because everything written there is discarded
+with it. Section 2 is the exception, and both of its items are — 2.1's table
+formatter and 2.2's break-spelling sniff are pure serialiser work in
+`markdown-style.js`, which lives through the rewrite and is called per block
+rather than per document afterwards. Both can be fixed on `main` today and the
+fix carries over; 2.2 is a live data-loss bug, so it should be.
 
 ## D7. The rewrite simplifies the engine; the live editor changes when that helps
 
