@@ -2675,7 +2675,7 @@ This is the first change to land under the rule added to CLAUDE.md's Tests
 section today, and it is exactly the case that rule is for: `npm test` passing
 says the pieces are right, not that the bug is gone.
 
-## 2026-09-13 — TODO 2.2 verified in the running app, and the service worker bumped
+## 2026-09-13 — `5d96619` — TODO 2.2 verified in the running app, and the service worker bumped
 
 2.2 was marked *(fixed, unverified in a browser)* this morning because no suite
 opens a document, edits it and saves it. It has now been watched doing exactly
