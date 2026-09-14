@@ -282,6 +282,133 @@ function modelInlines(block) {
   return root;
 }
 
+// The one character an atom occupies in the offset space below: U+FFFC OBJECT
+// REPLACEMENT CHARACTER, which is what it is for. An image and a rendered
+// equation are the two, and they are atoms for the same reason — what the
+// reader sees is not the characters the model holds, so counting those
+// characters would put the model's offsets and the DOM's out of step by the
+// length of some TeX.
+const MODEL_ATOM = "\uFFFC";
+
+/**
+ * The text a block's inline tree renders to, and the space its offsets count.
+ * Slice 2's step 2, along with the two functions below it.
+ *
+ * *Selection* in docs/REWRITE.md names a model position as
+ * `(blockIndex, offset)`, offset counted in characters of the block's rendered
+ * text. This is that text. **Characters means UTF-16 code units**, because a
+ * DOM `Range` counts those and mapping to one is the whole purpose — an astral
+ * character is two, here and there alike, and the two directions agree.
+ *
+ * Four rules, each a decision rather than a discovery:
+ *
+ * - **A code span's content counts and its backticks do not.** The delimiters
+ *   are markup; the content is text the caret moves through.
+ * - **A mark's delimiters are zero-width.** `**a**` is one character. The marks
+ *   are carried by the tree, not by the text.
+ * - **A break is one character, and that character is a newline** — both
+ *   spellings of a hard break and every soft one. Which spelling it was is on
+ *   the node for step 3 to put back; here it is one position the caret can be
+ *   on either side of.
+ * - **An atom is one character.** An image and an equation each occupy exactly
+ *   one, so a caret can sit before or against it and a delete over it is one
+ *   character wide. Zero would make those two positions the same offset, and
+ *   counting the alt text or the TeX would count characters nobody can see.
+ *
+ * An unknown leaf counts its own content, which is the safe direction: the text
+ * is then at least as long as what it renders, rather than a caret position
+ * short of it.
+ */
+function modelInlineText(nodes) {
+  let out = "";
+  for (const node of nodes || []) {
+    if (node.children) {
+      out += modelInlineText(node.children);
+      continue;
+    }
+    if (node.kind === "image" || node.kind === "math") out += MODEL_ATOM;
+    else if (node.kind === "softbreak" || node.kind === "hardbreak") out += "\n";
+    else out += node.content;
+  }
+  return out;
+}
+
+/**
+ * A node and a position inside it, as an offset into the block's text.
+ *
+ * The inverse of `modelInlineAt`. `within` counts characters into the node's
+ * own text — into its whole subtree when it is a mark, so `within: 0` on a
+ * `strong` is the position just before the first character it marks — and is
+ * clamped to that node's length. Returns null when the node is not in this
+ * tree, the way `undoTextOffset` does when a node is not under its root, so a
+ * caller with a stale node hears about it rather than being handed a 0.
+ */
+function modelInlineOffset(nodes, node, within = 0) {
+  let total = 0;
+  let found = null;
+
+  (function walk(list) {
+    for (const current of list || []) {
+      if (found !== null) return;
+      const length = modelInlineText([current]).length;
+      if (current === node) {
+        found = total + Math.max(0, Math.min(within, length));
+        return;
+      }
+      if (current.children) walk(current.children);
+      if (found !== null) return;
+      if (!current.children) total += length;
+    }
+  })(nodes);
+
+  return found;
+}
+
+/**
+ * The node an offset falls in, how far into it, and the marks around it.
+ *
+ * The inverse of `modelInlineOffset`. Returns `{ node, offset, path }`, where
+ * `path` is the chain of marks and links the position sits inside, outermost
+ * first — which is how the tree answers *what marks does this position carry*,
+ * the question stage 2's typing-inheritance rule is asked on every keystroke.
+ *
+ * **A boundary belongs to the node that ends there**, not to the one that
+ * starts: in `**a**b`, offset 1 is the end of the text inside the mark rather
+ * than the start of the text after it. That is `undoLocateOffset`'s own
+ * `remaining <= length`, kept deliberately — the two have to agree for stage
+ * 2 to port the caret behaviour rather than re-decide it — and it is the same
+ * left bias as "a new run inherits the marks to its left".
+ *
+ * Out of range clamps: past the end lands at the end of the last leaf, which is
+ * what a restore after the text got shorter needs, and a negative offset lands
+ * at the start. An empty tree, or none at all, is `{ node: null, offset: 0 }`
+ * with an empty path — an empty block is a real place for a caret to be.
+ */
+function modelInlineAt(nodes, offset) {
+  let remaining = Math.max(0, offset);
+  let result = null;
+  let last = { node: null, offset: 0, path: [] };
+
+  (function walk(list, path) {
+    for (const current of list || []) {
+      if (result) return;
+      if (current.children) {
+        walk(current.children, path.concat(current));
+        continue;
+      }
+      const length = modelInlineText([current]).length;
+      last = { node: current, offset: length, path };
+      if (remaining <= length) {
+        result = { node: current, offset: remaining, path };
+        return;
+      }
+      remaining -= length;
+    }
+  })(nodes, []);
+
+  return result || last;
+}
+
 // What a list item writes before its content: the indent it sits at, its marker,
 // and the pad after it — `"- "`, `"*   "`, `"  - "`, `"1.  "` — exactly as the
 // author wrote it.

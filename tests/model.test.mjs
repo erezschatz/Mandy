@@ -52,10 +52,14 @@ const ORACLE_FILES = [
 ];
 
 export default function run(check) {
-  const { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix } = loadSource(
+  const {
+    modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix,
+    modelInlineText, modelInlineOffset, modelInlineAt,
+  } = loadSource(
     "model.js",
     {},
-    "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix };",
+    "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix," +
+      " modelInlineText, modelInlineOffset, modelInlineAt };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -936,6 +940,170 @@ export default function run(check) {
     check(
       `an autolink is distinguishable from a written-out link (${seen('link "autolink"')})`,
       seen('link "autolink"') > 0 && seen('link ""') > 0,
+    );
+  }
+
+  // --------------------------------------------- the text coordinate (slice 2)
+
+  // Slice 2's step 2: the space a model position's offset counts in, and the
+  // two functions that map into and out of it. Done here rather than in stage 2
+  // because with no renderer in the way it is testable with no DOM, which is
+  // the whole reason stage 1 comes first.
+  const textOf = (src) => modelInlineText(parse(src).blocks[0].inlines);
+
+  {
+    check("a paragraph with no markup is its own text", textOf("plain words") === "plain words");
+    check(
+      `a mark's delimiters are zero-width (${JSON.stringify(textOf("**a**b"))})`,
+      textOf("**a**b") === "ab" && textOf("_x_") === "x" && textOf("~~y~~") === "y",
+    );
+    check(
+      `a code span's content counts and its backticks do not (${JSON.stringify(textOf("`a b`"))})`,
+      textOf("`a b`") === "a b" && textOf("`` ` ``") === "`",
+    );
+    check(
+      "a soft break is one character, and it is a newline",
+      textOf("one\ntwo") === "one\ntwo",
+    );
+    check(
+      "and so is a hard break, in both spellings",
+      textOf("a  \nb") === "a\nb" && textOf("a\\\nb") === "a\nb",
+    );
+    // The rule the plan named for images, and the same argument for maths: what
+    // the reader sees is not the characters the model holds.
+    check(
+      `an image is one character rather than its alt text (${JSON.stringify(textOf("![alt text](i.png)"))})`,
+      textOf("![alt text](i.png)") === "￼",
+    );
+    check(
+      `an equation is one character rather than its TeX (${JSON.stringify(textOf("$x = a*b*c$"))})`,
+      textOf("$x = a*b*c$") === "￼" && textOf("a $x$ b") === "a ￼ b",
+    );
+    check(
+      "a block with no inline content has no text",
+      modelInlineText(null) === "" && modelInlineText([]) === "",
+    );
+
+    // Both directions, on a tree with a mark, an atom and a break in it.
+    const doc = parse("**bo**ld ![i](u)\nnext");
+    const nodes = doc.blocks[0].inlines;
+    const text = modelInlineText(nodes);
+    check(
+      `the two directions agree on every offset (${JSON.stringify(text)})`,
+      text === "bold ￼\nnext" &&
+        [...text].every((_, i) => {
+          const at = modelInlineAt(nodes, i);
+          return modelInlineOffset(nodes, at.node, at.offset) === i;
+        }),
+    );
+
+    // A boundary belongs to the node that ends there: undoLocateOffset's own
+    // rule, kept so stage 2 ports the caret behaviour rather than re-deciding
+    // it -- and it is what makes a position after a mark still inside it.
+    const bold = modelInlineAt(nodes, 2);
+    const after = modelInlineAt(nodes, 3);
+    check(
+      `a boundary belongs to the node that ends there (${bold.path.map((n) => n.kind).join(",")} / ` +
+        `${after.path.map((n) => n.kind).join(",") || "none"})`,
+      bold.offset === 2 && bold.path.map((n) => n.kind).join(",") === "strong" &&
+        after.path.length === 0 && after.node.content === "ld ",
+    );
+    check(
+      "which is how the tree says what marks a position carries",
+      modelInlineAt(nodes, 0).path.map((n) => n.kind).join(",") === "strong" &&
+        modelInlineAt(nodes, text.length).path.length === 0,
+    );
+
+    // Out of range clamps rather than failing, the way a restore onto text that
+    // got shorter needs it to.
+    const end = modelInlineAt(nodes, 999);
+    check(
+      "past the end lands at the end, and before the start at the start",
+      end.node.content === "next" && end.offset === 4 &&
+        modelInlineAt(nodes, -5).offset === 0,
+    );
+    check(
+      "an empty tree is a position a caret can be in",
+      modelInlineAt(null, 0).node === null && modelInlineAt([], 3).offset === 0,
+    );
+    check(
+      "a node from another tree has no offset in this one",
+      modelInlineOffset(nodes, parse("elsewhere").blocks[0].inlines[0]) === null,
+    );
+    // A mark is addressable too: `within` counts into its whole subtree.
+    check(
+      "a mark's own offset is where what it marks begins",
+      modelInlineOffset(nodes, nodes[0]) === 0 &&
+        modelInlineOffset(nodes, nodes[0], 2) === 2 &&
+        modelInlineOffset(nodes, nodes[0], 99) === 2,
+    );
+  }
+
+  // The oracle again, and the property is the fixpoint: every leaf, at both its
+  // edges and its middle, maps to an offset that maps back to that same place.
+  // A space that disagreed with itself would land the caret somewhere else
+  // after every render.
+  {
+    let leaves = 0;
+    let characters = 0;
+    let atoms = 0;
+    const wrong = [];
+    let plainBlocks = 0;
+    const plainMismatch = [];
+
+    for (const path of ORACLE_FILES) {
+      const walk = (blocks) => {
+        for (const block of blocks) {
+          if (block.inlines) {
+            const nodes = block.inlines;
+            const text = modelInlineText(nodes);
+            characters += text.length;
+            atoms += [...text].filter((c) => c === "￼").length;
+
+            // markdown-it's own record of the block, as an independent reading:
+            // a block whose tree is a single text node has no markup in it, so
+            // the text the model renders is the content the parser recorded.
+            if (nodes.length === 1 && nodes[0].kind === "text") {
+              plainBlocks += 1;
+              if (text !== block.inline.content) {
+                plainMismatch.push(`${path}: ${JSON.stringify(text.slice(0, 30))}`);
+              }
+            }
+
+            const flat = flatten(nodes).filter((n) => !n.children);
+            for (const leaf of flat) {
+              leaves += 1;
+              const length = modelInlineText([leaf]).length;
+              for (const within of [0, Math.floor(length / 2), length]) {
+                const offset = modelInlineOffset(nodes, leaf, within);
+                const back = modelInlineAt(nodes, offset);
+                // The left bias makes one disagreement legitimate: offset 0 of
+                // a leaf is also the end of the leaf before it, and that is the
+                // place the boundary belongs to. Compare the offsets, which is
+                // what a caret is, rather than the node.
+                if (offset === null || modelInlineOffset(nodes, back.node, back.offset) !== offset) {
+                  wrong.push(`${path}: ${JSON.stringify(leaf.content.slice(0, 20))} @${within}`);
+                }
+              }
+            }
+          }
+          if (block.children) walk(block.children);
+        }
+      };
+      walk(parse(repoFile(path)).blocks);
+    }
+
+    check(
+      `every leaf maps to an offset that maps back to it` +
+        ` (${leaves} leaves, ${characters} characters, ${atoms} of them atoms)` +
+        (wrong.length ? ` — ${wrong.length} did not: ${wrong.slice(0, 3).join(", ")}` : ""),
+      wrong.length === 0 && leaves > 9000 && characters > 200000 && atoms > 0,
+    );
+    check(
+      `and in a block with no markup the model's text is what markdown-it recorded` +
+        ` (${plainBlocks} of them)` +
+        (plainMismatch.length ? ` — ${plainMismatch.length} did not` : ""),
+      plainMismatch.length === 0 && plainBlocks > 100,
     );
   }
 

@@ -164,6 +164,11 @@ They cover the invariants that fail *silently* rather than loudly:
   across those files' 819 inline-bearing blocks, all 10,705 nodes are the
   parser's own tokens, each in the tree exactly once and in order, and every
   token left out is one of the 387 empty text tokens the fold drops on purpose.
+  Step 2 adds the offset space over that tree, where the property is a fixpoint:
+  all 10,086 leaves in those files, at both edges and the middle, map to an
+  offset that maps back to the same place — plus the one check the model cannot
+  mark its own homework on, that in the 204 blocks holding no markup at all the
+  text it renders is the content markdown-it recorded.
 - **tabs** — the per-tab state boundaries and the swap between documents: that
   park and adopt are lossless and adopting nothing is a blank document rather
   than a half-cleared one; the migration off the flat keys and both ways a
@@ -481,7 +486,7 @@ back. That is the inversion the whole rewrite is for. Two identical paragraphs
 cannot be confused for one another by a source span, and `indexMarkdownBlocks`
 keys on content precisely because it has no span to use instead.
 
-Seven things that are decisions rather than details:
+Eight things that are decisions rather than details:
 
 - **The parser is injected, never reached for.** `modelParse` takes the
   markdown-it instance as an argument. Both callers now configure it the same
@@ -579,9 +584,24 @@ Seven things that are decisions rather than details:
   from a position beside it. The suite checks that omission as an omission —
   every token not in the tree is an empty text token, and everything else is
   there exactly once, in order.
+- **A position in a block is an offset into the text that tree renders.** Slice
+  2's step 2 is that space plus the two functions in and out of it:
+  `modelInlineText`, `modelInlineOffset`, `modelInlineAt`. A code span's content
+  counts and its backticks do not; a mark's delimiters are zero-width; a break
+  is one character and that character is a newline; an image and an equation are
+  one `\uFFFC` each, because what the reader sees is not the characters the
+  model holds and counting the TeX would put the model's offsets and the DOM's
+  out of step. **Characters means UTF-16 code units**, since a DOM `Range`
+  counts those and mapping to one is the whole purpose. The boundary rule is
+  `undo.js`'s and is kept on purpose: a position at a boundary belongs to the
+  node that *ends* there (`undoLocateOffset`'s `remaining <= length`), out of
+  range clamps to the end, and a node from another tree gets null rather than a
+  0 — so stage 2 ports the caret behaviour instead of re-deciding it.
+  `modelInlineAt` hands back the mark chain as `path`, which is how the tree
+  answers what marks a position carries.
 
-What it does not do yet: address that tree by offset (slice 2's step 2), put
-back the spellings markdown-it discards when it re-emits — a code span's
+What it does not do yet: put back the spellings markdown-it discards when it
+re-emits — a code span's
 padding, an escape, an angle-bracket destination, a hard break's two spellings
 (step 3) — turn an edited *leaf* into markdown at all (`modelSerialise` throws
 rather than guess — an edited container is only a concatenation of bytes that

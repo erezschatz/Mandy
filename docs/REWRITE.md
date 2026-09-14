@@ -846,8 +846,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         this.** That sentence is about an edited paragraph re-serialising whole,
         and a list item is a block in every sense that matters here.
 
-    *   **2. The inline model — in progress: step 0 and step 1 done and tested
-        2026-09-14, steps 2 to 6 not started.** A paragraph's
+    *   **2. The inline model — in progress: steps 0, 1 and 2 done and tested
+        2026-09-14, steps 3 to 6 not started.** A paragraph's
         or heading's markdown-it inline tokens become the editable structure:
         text, the three marks, code spans, links, images, and the `math` token
         `app.js`'s own rule pushes. It fills the `inlines` field every block has
@@ -985,16 +985,57 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             those checks exist only because step 0 moved the parser
             configuration first.
 
-        2.  **The text coordinate.** *Selection* above names a model position as
-            `(blockIndex, offset)` in characters of the block's rendered text;
-            this is the step that defines that offset space, as two pure
-            functions in both directions. Four rules that want deciding rather
-            than discovering: a code span's content counts and its backticks do
-            not, a mark's delimiters are zero-width, a `softbreak` is one
-            character, and an image is one atom rather than its alt text. Doing
-            it here rather than in stage 2 is deliberate — with no renderer in
-            the way it is testable with no DOM, which is the whole reason stage
-            1 comes first.
+        2.  **The text coordinate — done and tested, 2026-09-14.** *Selection*
+            above names a model position as `(blockIndex, offset)` in characters
+            of the block's rendered text; this is the step that defines that
+            offset space. `modelInlineText(nodes)` is the space itself, and
+            `modelInlineOffset` and `modelInlineAt` are the two pure functions
+            in and out of it. Doing it here rather than in stage 2 is
+            deliberate — with no renderer in the way it is testable with no DOM,
+            which is the whole reason stage 1 comes first.
+
+            The four rules the plan named are decided as it named them: a code
+            span's content counts and its backticks do not, a mark's delimiters
+            are zero-width, and an image is one atom rather than its alt text.
+            Three things the step had to settle that the plan did not say:
+
+            - **A break is one character and that character is a newline** —
+              every soft break and both spellings of a hard one. Which spelling
+              it was is on the node for step 3; here it is one position the
+              caret can be on either side of.
+            - **An equation is an atom too**, by the image's own argument rather
+              than by analogy: what the reader sees is a typeset formula, so
+              counting the TeX would count characters nobody can see and put the
+              model's offsets and the DOM's out of step by the length of some
+              maths. Both atoms are one U+FFFC, which is what that character is
+              for. One rather than zero, so a caret can sit on either side of an
+              image and a delete over it is one character wide.
+            - **Characters means UTF-16 code units**, because a DOM `Range`
+              counts those and mapping to one is the entire purpose. An astral
+              character is two, here and there alike, and the two directions
+              agree about it.
+
+            **The boundary rule is `undo.js`'s, deliberately.** A position at a
+            boundary belongs to the node that *ends* there, which is
+            `undoLocateOffset`'s own `remaining <= length`; out of range clamps
+            to the end, which is what a restore onto text that got shorter
+            needs, and `undoTextOffset`'s null for a node that is not in the
+            tree is kept too. Stage 2 then ports the caret behaviour rather than
+            re-deciding it. It is also the same left bias as "a new run inherits
+            the marks to its left", and `modelInlineAt` returns the mark chain
+            as `path` — which is how the tree answers *what marks does this
+            position carry*, the question stage 0 left for stage 2's typing
+            rule.
+
+            Seventeen checks: each rule on its own, both directions agreeing on
+            every offset of a block holding a mark, an atom and a break, and the
+            clamps. Then the oracle, where the property is the fixpoint —
+            **every one of 10,086 leaves, at both edges and its middle, maps to
+            an offset that maps back to the same place**, across 230,189
+            characters of which 9 are atoms. And one check that is not the
+            model marking its own homework: in the 204 blocks whose tree is a
+            single text node there is no markup to render, so the model's text
+            has to be exactly the content markdown-it recorded, and it is.
 
         3.  **Re-emission puts back what was written.** markdown-it discards
             four spellings, and the measurement is what found them — a code

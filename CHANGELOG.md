@@ -3844,3 +3844,51 @@ from `tests/fixtures/torture.md` alone. The `math` and `data-ref-label` checks
 are only possible because step 0 moved the parser configuration this morning.
 
 `npm test`: **1132 checks, no failures.**
+
+## 2026-09-14 — Slice 2 step 2: the text coordinate
+
+A model position is `(blockIndex, offset)`, and this is what the offset counts
+in. `modelInlineText(nodes)` renders a block's inline tree to the text the space
+is over; `modelInlineOffset` and `modelInlineAt` are the two pure functions in
+and out of it. No renderer is involved, which is the point of doing it in stage
+1: the caret arithmetic stage 2 depends on is testable with no DOM anywhere.
+
+**The four rules the plan named are decided as it named them**: a code span's
+content counts and its backticks do not, a mark's delimiters are zero-width, a
+soft break is one character, an image is one atom rather than its alt text.
+**Three more the plan did not say**, each settled here:
+
+- **A break's one character is a newline**, for every soft break and both
+  spellings of a hard one. Which spelling it was is on the node for step 3; here
+  it is one position the caret can be on either side of.
+- **An equation is an atom too**, by the image's own argument and not by
+  analogy: the reader sees a typeset formula, so counting the TeX would count
+  characters nobody can see and put the model's offsets and the DOM's out of
+  step by the length of some maths. Both atoms are one U+FFFC, which is what
+  that character is for — one rather than zero, so a caret can sit on either
+  side of an image and a delete over it is one character wide.
+- **Characters means UTF-16 code units**, because a DOM `Range` counts those and
+  mapping to one is the entire purpose.
+
+**The boundary rule is `undo.js`'s, kept rather than re-decided.** A position at
+a boundary belongs to the node that *ends* there — `undoLocateOffset`'s own
+`remaining <= length` — out of range clamps to the end, which is what a restore
+onto text that got shorter needs, and a node that is not in the tree gets null
+the way `undoTextOffset` gives one. Stage 2 then ports the caret behaviour
+instead of inventing a second set of rules for it. The same left bias is what
+"a new run inherits the marks to its left" means, and `modelInlineAt` hands the
+mark chain back as `path`, which is how the tree answers what marks a position
+carries — the question stage 0 left open for stage 2's typing rule.
+
+**Seventeen checks.** Each rule on its own; both directions agreeing on every
+offset of a block holding a mark, an atom and a break; the clamps; and a node
+borrowed from another tree. Then the oracle, where the property is the fixpoint:
+**every one of 10,086 leaves, at both edges and its middle, maps to an offset
+that maps back to the same place**, across 230,189 characters of which 9 are
+atoms. And one check that is not the model marking its own homework — in the 204
+blocks whose tree is a single text node there is no markup to render, so the
+text the model produces has to be exactly the content markdown-it recorded, and
+it is.
+
+`npm test`: **1149 checks, no failures**, and the whole suite still runs in
+about a second and a half.
