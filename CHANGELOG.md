@@ -3798,7 +3798,7 @@ stop — along with the `data-ref-label` stamp.
 
 `npm test`: **1114 checks, no failures.**
 
-## 2026-09-14 — Slice 2 step 1: a block's inline content is a tree
+## 2026-09-14 — `4c3ac08` — Slice 2 step 1: a block's inline content is a tree
 
 `modelInlines(block)` folds markdown-it's flat inline stream — `+1` opens, `-1`
 closes, `0` is a leaf — into the tree the markup describes, and every paragraph
