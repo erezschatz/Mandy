@@ -3740,3 +3740,60 @@ taken against.
 
 No code changed, so no suite was run: nothing in `tests/` loads a CHANGELOG
 entry, a doc or a fixture nobody imports.
+
+## 2026-09-14 — Slice 2 step 0: the parser configuration moves out of `app.js`
+
+The two markdown-it rules that decide what this project's markdown *means* —
+`math` and `referenceAwareLink` — are out of `app.js` and in
+[front/markdown-parser.js](front/markdown-parser.js). D7 and the argument for
+the move landed yesterday; this is the move.
+
+**One door.** `configureMarkdownParser(md)` registers both rules on an instance
+handed to it. `app.js` calls it on the CDN parser it builds, one line under the
+`window.markdownit()` that builds it; the model suite calls it on the `npm:`
+one. The parser is injected rather than reached for — the same rule `modelParse`
+already followed — so nothing in the file touches the DOM and the suite can load
+it with no stub at all.
+
+**Why it had to happen before slice 2's six steps.** The suite built a bare
+markdown-it, so it could see neither a `math` token nor a `data-ref-label`
+stamp, and steps 3 and 5 are exactly the two about constructs the parser
+discards. A suite driving a parser the app does not use would have reported full
+marks on markdown the app never hands it.
+
+**The move itself is verbatim**: the rules and their comments unchanged, with
+the three registration lines collected into the new function. Nothing about what
+the app parses changed, and the model suite's existing 114 checks passed on the
+configured parser before either new check was written — which is the reassurance
+worth having, since the maths rule claims spans inside every file the suite
+round-trips.
+
+**What it cost is registry rather than logic.** The file joins all three
+registries — `index.html`, `SHELL_ASSETS`, and the editable export's `ASSETS`,
+which it belongs in because an exported document renders markdown too — and
+`sw.js`'s `VERSION` goes to `v1.32`. Four suites that assemble their own bundles
+list it ahead of `app.js`, and `loadApp` in `tests/dom.mjs` loads it, which is
+what keeps `mathSpan` reachable for the `latex` suite: these share one scope the
+way `<script>` tags do.
+
+**Six checks were added rather than only moved.** Two in `model` say what step 0
+was for: its parser emits a `math` token for `$x = a*b*c$` while leaving
+`$5 and $10` as prose, and stamps a reference link with `data-ref-label` and an
+inline one with nothing. Three in `latex` are the load order — before `app.js`
+in `index.html`, before it in the export bundle, present in `SHELL_ASSETS` —
+because `app.js` calls `configureMarkdownParser` at its own top level, so a
+bundle in the wrong order throws on load and takes the editor with it. That
+first one was run against a deliberately broken order and fails there, rather
+than being trusted to be testing something. The sixth is in `self-reproduce`,
+where the export's fetch count was the literal `13`; it now reads `ASSETS` out
+of `html-export.js`, so adding a module to the bundle cannot fail that check for
+the wrong reason — the cannot-drift rule the toolbar suite's two bundle lists
+already follow.
+
+**Verified in the running app as well**, because a load-order break is invisible
+to a suite that loads the same files in an order it chose itself: the editor
+boots with no console errors, and its own CDN parser hands back
+`\mathbb{N} = \{ a \}` intact — the exact escape damage the maths rule exists to
+stop — along with the `data-ref-label` stamp.
+
+`npm test`: **1114 checks, no failures.**

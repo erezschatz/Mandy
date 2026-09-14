@@ -141,7 +141,10 @@ They cover the invariants that fail *silently* rather than loudly:
   item inside a blockquote gets no marker, which stays pinned as a check because
   it is slice 3's open question rather than a bug. It is also the only suite with
   a dependency — a real markdown-it, since the point is to parse this repo's own
-  files with no browser anywhere. What it asserts is D1: `CLAUDE.md`, `README.md`,
+  files with no browser anywhere. Since 2026-09-14 it configures that instance
+  with `configureMarkdownParser`, the same call `app.js` makes, so the suite and
+  the app parse with one configuration rather than the suite seeing a bare
+  parser with no `math` token and no `data-ref-label` stamp in it. What it asserts is D1: `CLAUDE.md`, `README.md`,
   `welcome.md`, `docs/TODO.md` and `docs/REWRITE.md` come back byte-identical,
   and editing one paragraph rewrites exactly that paragraph. Since slice 1b it
   also asserts the same invariant one level down — a container's children tile
@@ -348,7 +351,12 @@ are no imports. Consequences that bite:
   `notify.js` comes next and is depended on the same way: every module below
   reports its failures through `notify` / `ask`, so it must be defined before
   any of their handlers run.
-  After that: `markdown-style.js` defines `sniffMarkdownStyle`,
+  After that: `markdown-parser.js` defines `configureMarkdownParser`, which
+  `app.js` calls at top level on the markdown-it instance it builds — so it must
+  be *before* `app.js` in both bundles, and a bundle that gets that backwards
+  throws on load and takes the whole editor with it, which is why the `latex`
+  suite checks the order in both;
+  `markdown-style.js` defines `sniffMarkdownStyle`,
   `reflowMarkdown`, `indexMarkdownBlocks` and `restoreSourceWrapping`, which
   `app.js` calls at top level and on every save;
   `app.js` defines `editor`, `markdownToHtml`, `htmlToMarkdown`;
@@ -441,9 +449,9 @@ markdown-it has no notion of maths, so `$…$` used to reach MathJax only by
 passing through as text — with every inline rule applied to it en route.
 `\{` and `\}` resolved as markdown escapes before MathJax ever saw them, and
 `$x = a*b*c$` came back italicised with the asterisks gone. `mathSpan` and the
-`math` rule in `app.js` claim the span ahead of markdown-it's `escape` rule and
-re-emit the source verbatim, so the parser now hands MathJax what the author
-wrote. Two things follow from where it sits: the rule runs before `backticks`
+`math` rule in [markdown-parser.js](front/markdown-parser.js) claim the span
+ahead of markdown-it's `escape` rule and re-emit the source verbatim, so the
+parser now hands MathJax what the author wrote. Two things follow from where it sits: the rule runs before `backticks`
 in the chain but positionally after it, so `` `$HOME` `` is still code, not
 maths; and it decides equation-versus-price on two heuristics — an opening `$`
 is never followed by whitespace, a closing one never by a digit — which
@@ -472,11 +480,15 @@ keys on content precisely because it has no span to use instead.
 Six things that are decisions rather than details:
 
 - **The parser is injected, never reached for.** `modelParse` takes the
-  markdown-it instance as an argument. In the app that will be the configured
-  one `app.js` already builds, carrying the `math` and `referenceAwareLink`
-  rules; in the suite it is a bare one. A module that fetched its own parser
-  could not be tested without a browser, which is the entire reason this stage
-  comes before the ones that are at risk.
+  markdown-it instance as an argument. Both callers now configure it the same
+  way, through `configureMarkdownParser` in
+  [markdown-parser.js](front/markdown-parser.js): the app hands over the CDN
+  instance it builds, the suite the `npm:` one, and both carry the `math` and
+  `referenceAwareLink` rules. A module that fetched its own parser could not be
+  tested without a browser, which is the entire reason this stage comes before
+  the ones that are at risk — and a suite parsing with a *bare* instance was the
+  same hole one step along, since it would have reported full marks on
+  constructs the app never hands it.
 - **`modelTouch` is the only door to `source = null`, and it walks up.** That
   assignment *is* the contract with D1: a path that changes a block's content
   without going through it leaves the file's old bytes on disk under new content,
@@ -941,8 +953,8 @@ definition and would have left with twenty copies, unrecoverably.
 The fix is the same two-part shape as Mermaid and LaTeX: stash what parsing
 would otherwise destroy, read it back at serialise time.
 
-- **`referenceAwareLink` in `app.js` replaces markdown-it's own inline `link`
-  rule** via `md.inline.ruler.at("link", …)`, rather than being layered
+- **`referenceAwareLink` in `markdown-parser.js` replaces markdown-it's own
+  inline `link` rule** via `md.inline.ruler.at("link", …)`, rather than being layered
   alongside it — the two syntaxes share one function with no seam to hook, so
   this is a near-verbatim copy of markdown-it 13.0.1's own
   `lib/rules_inline/link.js` with one addition: when the reference branch

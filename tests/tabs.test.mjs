@@ -92,8 +92,8 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
 
   const api = loadSource(
     withTabs
-      ? ["toolbar.js", "markdown-style.js", "app.js", "undo.js", "tabs.js", "file-api.js"]
-      : ["toolbar.js", "markdown-style.js", "app.js", "undo.js", "file-api.js"],
+      ? ["toolbar.js", "markdown-parser.js", "markdown-style.js", "app.js", "undo.js", "tabs.js", "file-api.js"]
+      : ["toolbar.js", "markdown-parser.js", "markdown-style.js", "app.js", "undo.js", "file-api.js"],
     {
       document,
       runCommand: () => true,

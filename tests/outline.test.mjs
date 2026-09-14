@@ -41,7 +41,7 @@ function loadOutline() {
   const timers = [];
 
   return loadSource(
-    ["markdown-style.js", "app.js", "outline.js"],
+    ["markdown-parser.js", "markdown-style.js", "app.js", "outline.js"],
     {
       window: {
         markdownit: markdownitStub([], {}),

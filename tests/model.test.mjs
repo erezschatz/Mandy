@@ -58,8 +58,49 @@ export default function run(check) {
     "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix };",
   );
 
-  const md = markdownit();
+  // The app's own parser configuration, not a bare one: `math` and
+  // referenceAwareLink moved out of app.js into markdown-parser.js on
+  // 2026-09-14 (slice 2's step 0) precisely so this line can exist. A suite
+  // parsing with a bare markdown-it would see no `math` token and no
+  // `data-ref-label` stamp, and those are the two things slice 2's re-emission
+  // and link steps are about — it would report full marks on constructs the app
+  // never hands it.
+  const { configureMarkdownParser } = loadSource(
+    "markdown-parser.js",
+    {},
+    "; return { configureMarkdownParser };",
+  );
+
+  const md = configureMarkdownParser(markdownit());
   const parse = (src) => modelParse(src, md);
+
+  // The two rules are why the file was moved, so the suite says out loud that it
+  // has them. Both read the token stream rather than the model: what is under
+  // test here is only that the parser this suite drives is the app's, which is
+  // the whole of step 0 and the precondition for steps 3 and 5.
+  {
+    const mathTokens = md
+      .parse("An equation $x = a*b*c$ and a price $5 and $10.", {})
+      .filter((t) => t.type === "inline")
+      .flatMap((t) => t.children)
+      .filter((t) => t.type === "math");
+    check(
+      "the suite's parser emits a math token, and reads a price as prose" +
+        ` (${mathTokens.length} token: ${JSON.stringify(mathTokens[0]?.content ?? null)})`,
+      mathTokens.length === 1 && mathTokens[0].content === "x = a*b*c",
+    );
+
+    const linkTokens = md
+      .parse("A [reference][label] and an [inline](u).\n\n[label]: https://example.com\n", {})
+      .filter((t) => t.type === "inline")
+      .flatMap((t) => t.children)
+      .filter((t) => t.type === "link_open");
+    const stamps = linkTokens.map((t) => t.attrGet("data-ref-label"));
+    check(
+      `the suite's parser stamps a reference link with its label (${JSON.stringify(stamps)})`,
+      stamps.length === 2 && stamps[0] === "label" && stamps[1] === null,
+    );
+  }
 
   // ---------------------------------------------------------------- D1 itself
 

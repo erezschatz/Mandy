@@ -846,7 +846,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         this.** That sentence is about an edited paragraph re-serialising whole,
         and a list item is a block in every sense that matters here.
 
-    *   **2. The inline model — planned 2026-09-13, not started.** A paragraph's
+    *   **2. The inline model — in progress: step 0 done and tested 2026-09-14,
+        the six steps not started.** A paragraph's
         or heading's markdown-it inline tokens become the editable structure:
         text, the three marks, code spans, links, images, and the `math` token
         `app.js`'s own rule pushes. It fills the `inlines` field every block has
@@ -893,10 +894,45 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         `reflowMarkdown` re-wraps it, and 1b's step 5 `marker` and
         `contentIndent` go back in front of it.
 
-        **Step 0 is the parser move settled below** — `math` and
-        `referenceAwareLink` out of `app.js` into a file of their own, so that
-        the suite and the app parse with the same thing. It comes first because
-        steps 3 and 5 cannot be honestly tested without it. **Then six:**
+        **Step 0 is the parser move settled below — done and tested
+        2026-09-14.** `math` and `referenceAwareLink` are out of `app.js` and in
+        [front/markdown-parser.js](../front/markdown-parser.js), behind one door,
+        `configureMarkdownParser(md)`: the app hands it the CDN instance it
+        builds, the suite the `npm:` one, and the two now parse with the same
+        configuration. It came first because steps 3 and 5 cannot be honestly
+        tested without it. The move was verbatim — the rules and their comments,
+        unchanged, with the registrations collected into the new function — so
+        nothing about what the app parses changed, and the suite's 114 checks
+        passed on the configured parser before either new check was written.
+
+        What it cost, and all of it is registry rather than logic: the file
+        joins all three registries (it is in the editable export's `ASSETS`
+        because an exported document renders markdown too), `sw.js`'s `VERSION`
+        goes to `v1.32`, four suites that build their own bundles list it ahead
+        of `app.js`, and `loadApp` in `tests/dom.mjs` loads it — which is what
+        keeps `mathSpan` reachable for the `latex` suite, since these share one
+        scope the way `<script>` tags do.
+
+        Six checks were added rather than only moved. Two in the `model` suite
+        say what step 0 was *for*: its parser emits a `math` token for
+        `$x = a*b*c$` while leaving `$5 and $10` as prose, and stamps a
+        reference link with `data-ref-label` and an inline one with nothing.
+        Three in `latex` are the load order — before `app.js` in `index.html`,
+        before it in the export bundle, and present in `SHELL_ASSETS` — because
+        `app.js` calls `configureMarkdownParser` at its own top level and a
+        bundle in the wrong order throws on load and takes the editor with it.
+        That first one was checked against a deliberately broken order and
+        fails there, rather than being trusted to be testing something. The
+        sixth is in `self-reproduce`, where the export's fetch count was the
+        literal `13` and is now read out of `ASSETS` — the same
+        cannot-drift rule the toolbar suite's two bundle lists already follow.
+
+        Verified in the running app as well as in the suite, since a load-order
+        break is invisible to a suite that loads the same files in an order it
+        chose itself: the editor boots with no console errors, and its own CDN
+        parser returns `\mathbb{N} = \{ a \}` intact — the exact escape damage
+        the maths rule exists to stop — and the `data-ref-label` stamp.
+        **Then six:**
 
         1.  **The node tree.** `modelInlines(block)` folds markdown-it's flat
             `_open`/`_close` stream into a tree and fills `inlines`. Marks carry
@@ -988,11 +1024,11 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         decision with its reasons deleted is a decision that gets reopened.
 
         **Settled: the parser configuration moves out of `app.js`, and that is
-        step 0 of this slice.** `math` and `referenceAwareLink` are registered on
-        the markdown-it instance `app.js` builds at its own top level, so the
-        suite — which builds a bare one — can see neither a `math` token nor a
-        `data-ref-label` stamp, and steps 3 and 5 are exactly the two that need
-        them. Three ways were on the table and two of them were bad for reasons
+        step 0 of this slice — landed 2026-09-14.** `math` and
+        `referenceAwareLink` were registered on the markdown-it instance `app.js`
+        builds at its own top level, so the suite — which built a bare one —
+        could see neither a `math` token nor a `data-ref-label` stamp, and steps
+        3 and 5 are exactly the two that need them. Three ways were on the table and two of them were bad for reasons
         worth keeping:
 
         - *Write a copy of the rules for the suite to use.* Rejected outright: a

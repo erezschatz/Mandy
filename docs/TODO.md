@@ -414,11 +414,14 @@ category fidelity deliberately does not extend to.
     already has; it became **1.7**.
 
     Stage 1 is in progress: slices 1 and 1b are done and tested, slice 2 (the
-    inline model) is planned and next, slice 3 (the block serialiser) follows.
-    D7 in [DECISIONS.md](DECISIONS.md) is the rule for what the branch may do to
-    the live editor on the way — slice 2 opens by moving two markdown-it rules
-    out of `app.js`, which is the first change here that reaches a file the app
-    loads.
+    inline model) is under way — its step 0 landed on 2026-09-14 and its six
+    steps have not started — and slice 3 (the block serialiser) follows. D7 in
+    [DECISIONS.md](DECISIONS.md) is the rule for what the branch may do to the
+    live editor on the way, and step 0 is the first change here to take it up:
+    `math` and `referenceAwareLink` are out of `app.js` and in
+    [front/markdown-parser.js](../front/markdown-parser.js), so the suite and the
+    app parse with one configuration rather than the suite seeing a bare
+    parser.
 
 ## 4. Interface
 
