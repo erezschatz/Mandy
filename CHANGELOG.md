@@ -3741,7 +3741,7 @@ taken against.
 No code changed, so no suite was run: nothing in `tests/` loads a CHANGELOG
 entry, a doc or a fixture nobody imports.
 
-## 2026-09-14 — Slice 2 step 0: the parser configuration moves out of `app.js`
+## 2026-09-14 — `030be5c` — Slice 2 step 0: the parser configuration moves out of `app.js`
 
 The two markdown-it rules that decide what this project's markdown *means* —
 `math` and `referenceAwareLink` — are out of `app.js` and in
