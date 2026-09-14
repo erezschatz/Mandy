@@ -159,7 +159,11 @@ They cover the invariants that fail *silently* rather than loudly:
   guard that `docs/TODO.md`'s largest top-level block is still a third of the
   file so the share moved for the right reason, and every one of their ~700
   blocks edited alone to prove it rewrites exactly itself. The numbers are in the check
-  labels, so a run reads as a report.
+  labels, so a run reads as a report. Since slice 2's step 1 it also drives the
+  inline tree, where the invariant is the same shape one level down again:
+  across those files' 819 inline-bearing blocks, all 10,705 nodes are the
+  parser's own tokens, each in the tree exactly once and in order, and every
+  token left out is one of the 387 empty text tokens the fold drops on purpose.
 - **tabs** — the per-tab state boundaries and the swap between documents: that
   park and adopt are lossless and adopting nothing is a blank document rather
   than a half-cleared one; the migration off the flat keys and both ways a
@@ -477,7 +481,7 @@ back. That is the inversion the whole rewrite is for. Two identical paragraphs
 cannot be confused for one another by a source span, and `indexMarkdownBlocks`
 keys on content precisely because it has no span to use instead.
 
-Six things that are decisions rather than details:
+Seven things that are decisions rather than details:
 
 - **The parser is injected, never reached for.** `modelParse` takes the
   markdown-it instance as an argument. Both callers now configure it the same
@@ -554,13 +558,36 @@ Six things that are decisions rather than details:
   list item inside a quote, because the marker it looks for sits behind a `> `,
   so an emit-time strip would be reaching for something parse had already lost.
   The work lands in slice 3.
+- **A block's inline content is a tree, folded on `nesting` alone.** Slice 2's
+  step 1: markdown-it hands inline content over flat, with `+1`/`-1`/`0` on each
+  token, and `modelInlines` folds that back into the tree the markup describes —
+  which is what an edited block will be re-emitted from and what stage 2's
+  format commands act on. Switching on `nesting` rather than on a list of mark
+  kinds is the same rule the block tiler follows one level up: a construct this
+  file has never heard of still nests correctly, and `MODEL_INLINE_KINDS` only
+  names it. Three things it keeps that matter later. **A mark carries the
+  delimiter as written** — `_a_` and `*a*` are both em and are told apart on the
+  node, where `sniffMarkdownStyle` can only guess once per document; the oracle
+  files spell every mark both ways, so this is measured rather than theoretical.
+  **The token stays on the node**, because a link's href, title and
+  `data-ref-label` stamp and an image's `src` are already on it and re-deriving
+  them from the source would be a second parser free to disagree with the first.
+  **An image is one node rather than its alt text**, which is step 2's offset
+  rule arriving early. The one thing the fold drops is a zero-length text token,
+  of which markdown-it leaves one either side of every mark it converts — 387 in
+  the oracle files: they hold no bytes, and a position inside one cannot be told
+  from a position beside it. The suite checks that omission as an omission —
+  every token not in the tree is an empty text token, and everything else is
+  there exactly once, in order.
 
-What it does not do yet: hold the inline structure a block is edited through,
-turn an edited *leaf* into markdown at all (`modelSerialise` throws rather than
-guess — an edited container is only a concatenation of bytes that already exist,
-so it needs no emitter), or hand that emitter anything about a blockquote's `> `
-chain, which is the marker question left open. Those are the rest of stage 1 and
-stages 2 and 3.
+What it does not do yet: address that tree by offset (slice 2's step 2), put
+back the spellings markdown-it discards when it re-emits — a code span's
+padding, an escape, an angle-bracket destination, a hard break's two spellings
+(step 3) — turn an edited *leaf* into markdown at all (`modelSerialise` throws
+rather than guess — an edited container is only a concatenation of bytes that
+already exist, so it needs no emitter), or hand that emitter anything about a
+blockquote's `> ` chain, which is the marker question settled but not yet
+written. Those are the rest of stage 1 and stages 2 and 3.
 
 ### Links and heading anchors
 

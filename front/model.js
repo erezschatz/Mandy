@@ -29,11 +29,12 @@
 // load-order section on collisions in the shared scope.
 //
 // Everything here is a pure function over a string and markdown-it's tokens.
-// The parser is passed in rather than reached for: in the app it will be the
-// same configured instance app.js already builds, carrying the `math` and
-// `referenceAwareLink` rules, and in the Deno suite it is a bare markdown-it.
-// A module that fetched its own parser could not be tested without a browser,
-// which is the whole point of doing this stage first.
+// The parser is passed in rather than reached for, and since slice 2's step 0
+// both callers configure it the same way — `configureMarkdownParser` in
+// markdown-parser.js, carrying the `math` and `referenceAwareLink` rules — so
+// the app hands over its CDN instance, the suite its `npm:` one, and the two
+// parse alike. A module that fetched its own parser could not be tested without
+// a browser, which is the whole point of doing this stage first.
 
 const MODEL_BLOCK_KINDS = {
   paragraph_open: "paragraph",
@@ -55,6 +56,30 @@ const MODEL_BLOCK_KINDS = {
   thead_open: "table-head",
   tbody_open: "table-body",
   tr_open: "row",
+};
+
+// The same table one level down: an inline node's kind, by the token that opens
+// it. Slice 2's step 1. Two of the names differ from the token deliberately —
+// `code-span` because `code` is already a *block* kind here (an indented code
+// block), and `strike` because that is what docs/MARKDOWN.md calls it.
+//
+// `html_inline` is in the table and never occurs: the app builds its parser
+// with markdown-it's defaults, so `html` is off and `<b>x</b>` arrives as text.
+// It is listed because the fallback for an unmapped token is `"unknown"`, and a
+// construct that turned up later should be named rather than silently sharing a
+// bucket with every other surprise.
+const MODEL_INLINE_KINDS = {
+  text: "text",
+  code_inline: "code-span",
+  image: "image",
+  math: "math",
+  softbreak: "softbreak",
+  hardbreak: "hardbreak",
+  html_inline: "html",
+  strong_open: "strong",
+  em_open: "em",
+  s_open: "strike",
+  link_open: "link",
 };
 
 // Line index to character offset, so a block's span can be taken out of the
@@ -129,12 +154,12 @@ const modelIsBlankLine = (line) => line.trim() === "";
 function modelBlockFromSpan(span) {
   const kind = MODEL_BLOCK_KINDS[span.open.type] || "unknown";
   const inline = span.tokens.find((t) => t.type === "inline") || null;
-  return {
+  const block = {
     kind,
     level: kind === "heading" ? Number(span.open.tag.slice(1)) : 0,
     inline: kind === "paragraph" || kind === "heading" ? inline : null,
     tokens: span.tokens,
-    inlines: null,       // stage 2 fills this from `inline`
+    inlines: null,       // filled below, from `inline`
     source: null,        // set by the caller, from the span
     separator: "",
     children: null,      // a container's sub-blocks, tiling its own source
@@ -143,6 +168,12 @@ function modelBlockFromSpan(span) {
     marker: null,        // an item only: see modelItemPrefix
     contentIndent: null,
   };
+  // Eagerly rather than on first edit: the fold is a walk over tokens the
+  // parser has already produced — 980 blocks and ~11,000 tokens across the
+  // files the suite drives — and a field that is filled at exactly one moment
+  // cannot be half-filled when the emitter reads it.
+  block.inlines = modelInlines(block);
+  return block;
 }
 
 // A line no token claimed. Same shape as any other block, with nothing to parse
@@ -162,6 +193,93 @@ function modelGapBlock() {
     marker: null,
     contentIndent: null,
   };
+}
+
+/**
+ * A block's inline content as a tree. Slice 2's step 1.
+ *
+ * markdown-it hands inline content over as a **flat** list of tokens with
+ * `nesting` on each — `+1` opens, `-1` closes, `0` is a leaf — so `**a [b](c)**`
+ * arrives as six tokens in a row rather than as a mark holding a link. This
+ * folds that list back into the tree the structure describes, which is what an
+ * edited block is re-emitted from (step 3) and what stage 2's format commands
+ * act on.
+ *
+ * **The fold is on `nesting`, never on a list of mark kinds** — the same rule
+ * the block tiler follows one level up, and for the same reason: a construct
+ * this file has never heard of still nests correctly, and the kinds table only
+ * names it. An unmapped token comes back as kind `"unknown"` holding its own
+ * markup and content, which is a thing to look at rather than a thing lost.
+ *
+ * **A mark carries the delimiter as the author wrote it.** `_a_` and `*a*` are
+ * both em and are told apart by `markup`; so are `__a__` and `**a**`, and a
+ * code span's backtick run. That is per-node fidelity, where
+ * `sniffMarkdownStyle` can only make one guess for a whole document — strictly
+ * better, and it costs nothing to keep, because the parser already recorded it.
+ *
+ * **The token stays on the node.** Everything the parser kept that this shape
+ * does not name — a link's href, title and `data-ref-label` stamp, an image's
+ * `src` — is read off it by steps 3 and 5 rather than re-derived from the
+ * source, which would be a second parser free to disagree with the first.
+ *
+ * **An image is one node, not its alt text.** markdown-it parses the alt into
+ * `token.children`, and those are deliberately not folded in: the alt is one
+ * atom in step 2's offset space, and its source is already on `token.content`.
+ *
+ * Leaves carry `children: null` rather than `[]`, the same convention blocks
+ * use, because "has children" is the test the emitter switches on.
+ *
+ * **One kind of token is dropped**, and only one: a zero-length text token, of
+ * which markdown-it leaves one on each side of every mark it converts. See the
+ * comment in the loop.
+ *
+ * Returns null for a block with no inline token at all — a fence, a rule, a
+ * gap, and every container, whose text lives in its own children. A table row
+ * is the one place that is a limit rather than a fact: its cells hold inline
+ * tokens, but `td_open` carries no `map`, so a cell is not a block for them to
+ * hang off. That is 1b's floor and is unchanged here.
+ */
+function modelInlines(block) {
+  if (!block.inline) return null;
+
+  const root = [];
+  const stack = [root];
+  for (const token of block.inline.children || []) {
+    // markdown-it's emphasis rule leaves a zero-length text token on each side
+    // of a mark it converted — `**a**` arrives as text("") strong text("") —
+    // and 410 of the 6,303 text tokens in the files the suite drives are these.
+    // They are the parser's bookkeeping rather than anything the author wrote:
+    // they hold no bytes, so dropping them cannot lose one, and keeping them
+    // would put positions in step 2's offset space that no caret can tell from
+    // their neighbours. This is the fold's one omission, and it is checked as
+    // one — the suite asserts that every token it does not carry is an empty
+    // text token.
+    if (token.type === "text" && token.content === "") continue;
+
+    if (token.nesting === -1) {
+      // A close carries nothing an open did not: same markup, no content. An
+      // unmatched one cannot happen from markdown-it, and if it ever did,
+      // popping the root would strand everything after it outside the tree —
+      // so the guard drops the token rather than the rest of the block.
+      if (stack.length > 1) stack.pop();
+      continue;
+    }
+
+    const node = {
+      kind: MODEL_INLINE_KINDS[token.type] || "unknown",
+      markup: token.markup,
+      content: token.content,
+      token,
+      children: null,
+    };
+    stack[stack.length - 1].push(node);
+
+    if (token.nesting === 1) {
+      node.children = [];
+      stack.push(node.children);
+    }
+  }
+  return root;
 }
 
 // What a list item writes before its content: the indent it sits at, its marker,

@@ -3797,3 +3797,50 @@ boots with no console errors, and its own CDN parser hands back
 stop — along with the `data-ref-label` stamp.
 
 `npm test`: **1114 checks, no failures.**
+
+## 2026-09-14 — Slice 2 step 1: a block's inline content is a tree
+
+`modelInlines(block)` folds markdown-it's flat inline stream — `+1` opens, `-1`
+closes, `0` is a leaf — into the tree the markup describes, and every paragraph
+and heading block now carries it in `inlines` as it is built. This is what an
+edited block will be re-emitted from (slice 3) and what stage 2's format
+commands act on; addressing it by offset is step 2 and does not exist yet.
+
+**The fold is on `nesting`, never on a list of mark kinds**, which is the rule
+the block tiler already follows one level up: a construct this file has never
+heard of still nests correctly, and `MODEL_INLINE_KINDS` only names it. Nothing
+in the oracle falls through to `"unknown"`, and the suite says so rather than
+assuming it.
+
+**A mark carries the delimiter as the author wrote it.** `_a_` and `*a*` are
+both em and are told apart on the node; so are `__a__` and `**a**`, and a code
+span's backtick run. `sniffMarkdownStyle` can only make one guess for a whole
+document, and these files spell every mark both ways — em 149/2, strong 507/2,
+code spans 1,491/6 — so per-node fidelity here is measured rather than argued,
+and it costs nothing, because the parser had already recorded it.
+
+**The token stays on the node**, because a link's href, title and
+`data-ref-label` stamp and an image's `src` are on it already, and steps 3 and 5
+read them there rather than re-deriving them from the source — which would be
+the second parser this slice's plan refused when it was written. **An image is
+one node rather than its alt text**: markdown-it parses the alt into the token's
+own children and those are deliberately not folded in.
+
+**One kind of token is dropped, and the measurement found it rather than the
+plan.** markdown-it's emphasis rule leaves a zero-length text token on each side
+of every mark it converts — `**a**` arrives as `text("") strong text("")`, and
+410 of the 6,303 text tokens in the oracle files are these. They hold no bytes,
+so dropping them cannot lose one, and keeping them would put positions in step
+2's offset space that no caret could tell from their neighbours. It is checked
+**as** an omission: every token not in the tree is asserted to be an empty text
+token, so the rule cannot quietly grow a second exception.
+
+**Eighteen checks**, the hand-written constructs one at a time and then the
+oracle: across 819 inline-bearing blocks, all 10,705 nodes are the parser's own
+tokens, each in the tree exactly once and in order. Every kind those files
+contain is named — text 5,723, softbreak 2,677, code span 1,497, strong 509, em
+151, link 136, image 5, math 4, hardbreak 2, strike 1 — and the last four come
+from `tests/fixtures/torture.md` alone. The `math` and `data-ref-label` checks
+are only possible because step 0 moved the parser configuration this morning.
+
+`npm test`: **1132 checks, no failures.**

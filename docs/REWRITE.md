@@ -846,8 +846,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         this.** That sentence is about an edited paragraph re-serialising whole,
         and a list item is a block in every sense that matters here.
 
-    *   **2. The inline model — in progress: step 0 done and tested 2026-09-14,
-        the six steps not started.** A paragraph's
+    *   **2. The inline model — in progress: step 0 and step 1 done and tested
+        2026-09-14, steps 2 to 6 not started.** A paragraph's
         or heading's markdown-it inline tokens become the editable structure:
         text, the three marks, code spans, links, images, and the `math` token
         `app.js`'s own rule pushes. It fills the `inlines` field every block has
@@ -934,15 +934,56 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         the maths rule exists to stop — and the `data-ref-label` stamp.
         **Then six:**
 
-        1.  **The node tree.** `modelInlines(block)` folds markdown-it's flat
-            `_open`/`_close` stream into a tree and fills `inlines`. Marks carry
+        1.  **The node tree — done and tested, 2026-09-14.**
+            `modelInlines(block)` folds markdown-it's flat `_open`/`_close`
+            stream into a tree, and `modelBlockFromSpan` fills `inlines` from it
+            as each block is built — eagerly, because the fold is a walk over
+            tokens the parser has already produced and a field filled at one
+            moment cannot be half-filled when the emitter reads it. Marks carry
             their delimiter **as the author wrote it** — `_` and `*`, `__` and
             `**` are all distinguished in `markup` — so emphasis fidelity is
             per-node here rather than the per-document guess
             `sniffMarkdownStyle` has to make, which is strictly better and costs
-            nothing to keep. Leaves are text, code span, image, `math`, and the
-            two breaks. Recursion is on nesting, not on a list of mark kinds,
-            for the same reason 1b's tiler recursed on *having children*.
+            nothing to keep; the oracle files spell every mark both ways (em
+            149/2, strong 507/2, code spans 1,491/6), so that is measured rather
+            than argued. Leaves are text, code span, image, `math`, and the two
+            breaks. Recursion is on nesting, not on a list of mark kinds, for
+            the same reason 1b's tiler recursed on *having children* — an
+            unmapped construct still nests, and `MODEL_INLINE_KINDS` only names
+            it.
+
+            Two things the step decided rather than inherited. **The token stays
+            on the node**: a link's href, title and `data-ref-label` stamp and an
+            image's `src` are already on it, and steps 3 and 5 read them there
+            rather than re-deriving them from the source, which would be the
+            second parser this slice's plan already refused. **An image is one
+            node, not its alt text** — markdown-it parses the alt into the
+            token's own children and those are deliberately not folded in, which
+            is step 2's "an image is one atom" arriving a step early because the
+            tree is where it has to be true.
+
+            **And one omission, which the measurement found rather than the
+            plan.** markdown-it's emphasis rule leaves a zero-length text token
+            on each side of every mark it converts — `**a**` arrives as
+            `text("") strong text("")`, and 410 of the 6,303 text tokens in the
+            oracle files are these. The fold drops them: they hold no bytes, so
+            nothing can be lost, and keeping them would put positions in step
+            2's offset space that no caret could tell from their neighbours. It
+            is checked *as* an omission, which is the part worth having — every
+            token not in the tree is asserted to be an empty text token, so the
+            rule cannot quietly grow a second exception.
+
+            Eighteen checks: the hand-written constructs one at a time, and then
+            the oracle, where across 819 inline-bearing blocks all 10,705 nodes
+            are the parser's own tokens, each in the tree exactly once and in
+            order. Every kind those files contain is named — text 5,723,
+            softbreak 2,677, code span 1,497, strong 509, em 151, link 136,
+            image 5, math 4, hardbreak 2, strike 1 — with none falling through
+            to `"unknown"`, and the last four of those come from
+            `tests/fixtures/torture.md` alone, which is the fixture earning its
+            place again. The `math` token and the `data-ref-label` stamp in
+            those checks exist only because step 0 moved the parser
+            configuration first.
 
         2.  **The text coordinate.** *Selection* above names a model position as
             `(blockIndex, offset)` in characters of the block's rendered text;

@@ -719,6 +719,226 @@ export default function run(check) {
       modelItemPrefix("-\titem", "    continued").contentIndent === "    ",
   );
 
+  // ------------------------------------------------ the inline tree (slice 2)
+
+  // Slice 2's step 1. markdown-it hands inline content over flat, with
+  // `nesting` on each token; the model folds it back into the tree the markup
+  // describes. What is under test here is the fold and what it keeps — the
+  // offsets into it are step 2, re-emission is step 3, and neither exists yet.
+  const inlinesOf = (src) => parse(src).blocks[0].inlines;
+  const kindsOf = (nodes) => (nodes || []).map((n) => n.kind);
+  const flatten = (nodes, out = []) => {
+    for (const node of nodes || []) {
+      out.push(node);
+      if (node.children) flatten(node.children, out);
+    }
+    return out;
+  };
+  const treeDepth = (nodes, depth = 1) =>
+    (nodes || []).reduce(
+      (max, node) => Math.max(max, node.children ? treeDepth(node.children, depth + 1) : depth),
+      0,
+    );
+
+  {
+    const plain = inlinesOf("just words");
+    check(
+      "a paragraph with no markup in it is one text node",
+      plain.length === 1 && plain[0].kind === "text" &&
+        plain[0].content === "just words" && plain[0].children === null,
+    );
+
+    // The fold itself: six tokens in a row become a mark holding a link.
+    const nested = inlinesOf("**a [b](c) d**");
+    check(
+      `a mark holds what it marks (${JSON.stringify(kindsOf(nested))} → ` +
+        `${JSON.stringify(kindsOf(nested[0].children))})`,
+      nested.length === 1 && nested[0].kind === "strong" &&
+        kindsOf(nested[0].children).join(",") === "text,link,text" &&
+        kindsOf(nested[0].children[1].children).join(",") === "text" &&
+        nested[0].children[1].children[0].content === "b",
+    );
+
+    // Per-node, where sniffMarkdownStyle can only guess once for a document.
+    check(
+      "emphasis keeps the delimiter the author wrote",
+      inlinesOf("*a*")[0].markup === "*" && inlinesOf("_a_")[0].markup === "_" &&
+        inlinesOf("**a**")[0].markup === "**" && inlinesOf("__a__")[0].markup === "__",
+    );
+
+    // The fold's one omission, and the reason `**a**` above is one node rather
+    // than three: markdown-it puts a zero-length text token on each side of a
+    // mark it converted. They hold no bytes, and a position inside one cannot
+    // be told from a position beside it.
+    check(
+      `an empty text token is the parser's bookkeeping, not a node` +
+        ` (${JSON.stringify(kindsOf(inlinesOf("**a**")))})`,
+      kindsOf(inlinesOf("**a**")).join(",") === "strong" &&
+        md.parse("**a**", {})[1].children.filter((t) => t.type === "text").length === 3,
+    );
+    check(
+      "strikethrough is a mark like any other",
+      inlinesOf("~~a~~")[0].kind === "strike" && inlinesOf("~~a~~")[0].markup === "~~",
+    );
+
+    const span = inlinesOf("`a`")[0];
+    const padded = inlinesOf("`` ` ``")[0];
+    check(
+      "a code span keeps its backtick run and is a leaf",
+      span.kind === "code-span" && span.markup === "`" && span.content === "a" &&
+        span.children === null && padded.markup === "``" && padded.content === "`",
+    );
+
+    // One atom, not its alt text: the alt is parsed by markdown-it into the
+    // token's own children, and those are deliberately not folded in.
+    const image = inlinesOf("![alt *em*](i.png)");
+    check(
+      "an image is one node rather than its alt text",
+      image.length === 1 && image[0].kind === "image" &&
+        image[0].children === null && image[0].content === "alt *em*" &&
+        image[0].token.attrGet("src") === "i.png" &&
+        image[0].token.children.length > 1,
+    );
+
+    // The two constructs only the app's own parser produces, which is what
+    // step 0 was for: a bare markdown-it gives neither.
+    const math = inlinesOf("An eq $x = a*b*c$ end");
+    check(
+      `maths survives as one leaf with its delimiter (${JSON.stringify(kindsOf(math))})`,
+      kindsOf(math).join(",") === "text,math,text" && math[1].markup === "$" &&
+        math[1].content === "x = a*b*c",
+    );
+    const ref = parse("A [ref][label] link.\n\n[label]: https://e.com\n").blocks[0].inlines;
+    check(
+      "a link keeps the stamp and href the tree itself does not name",
+      ref[1].kind === "link" && ref[1].token.attrGet("data-ref-label") === "label" &&
+        ref[1].token.attrGet("href") === "https://e.com" &&
+        kindsOf(ref[1].children).join(",") === "text",
+    );
+
+    // Both spellings of a break arrive as the same token — which is step 3's
+    // problem, and is pinned here so the shape it has to solve is on record.
+    check(
+      "both hard-break spellings fold to a hardbreak leaf",
+      kindsOf(inlinesOf("a  \nb")).join(",") === "text,hardbreak,text" &&
+        kindsOf(inlinesOf("a\\\nb")).join(",") === "text,hardbreak,text",
+    );
+    check(
+      "a wrapped line is a softbreak where the author broke it",
+      kindsOf(inlinesOf("one\ntwo")).join(",") === "text,softbreak,text",
+    );
+
+    // A tree hangs off the block that owns the text, at whatever depth that
+    // block sits at — so a list has none and the paragraph inside its item does.
+    const list = parse("- a *b*\n").blocks[0];
+    const itemParagraph = list.children[0].children[0];
+    check(
+      "a container has no tree of its own and its blocks do",
+      list.inlines === null && list.children[0].inlines === null &&
+        kindsOf(itemParagraph.inlines).join(",") === "text,em",
+    );
+    check(
+      "and a block with no inline content has none either",
+      parse("```\ncode\n```\n").blocks[0].inlines === null &&
+        parse("---\n").blocks[0].inlines === null,
+    );
+  }
+
+  // The oracle, and the invariant that matters at this step: the fold moves
+  // every token into the tree exactly once, in order. A fold that dropped a
+  // token would lose the author's text; one that duplicated it would write the
+  // text twice when step 3 emits from the tree.
+  {
+    let blocksFolded = 0;
+    let nodes = 0;
+    let dropped = 0;
+    let depth = 0;
+    const kinds = new Map();
+    const markups = new Map();
+    const wrong = [];
+
+    for (const path of ORACLE_FILES) {
+      const walk = (blocks) => {
+        for (const block of blocks) {
+          if (block.inline) {
+            blocksFolded += 1;
+            depth = Math.max(depth, treeDepth(block.inlines));
+            const flat = flatten(block.inlines);
+            nodes += flat.length;
+            for (const node of flat) {
+              kinds.set(node.kind, (kinds.get(node.kind) || 0) + 1);
+              if (node.kind !== "text") {
+                const key = `${node.kind} ${JSON.stringify(node.markup)}`;
+                markups.set(key, (markups.get(key) || 0) + 1);
+              }
+            }
+            const carried = new Set(flat.map((node) => node.token));
+            const opened = block.inline.children.filter((t) => t.nesting !== -1);
+            const same = flat.length === opened.filter((t) => carried.has(t)).length &&
+              flat.every((node, i) => node.token === opened.filter((t) => carried.has(t))[i]);
+            // Every token left out has to be an empty text token — the fold's
+            // one omission — or the tree is missing something the author wrote.
+            const droppedHere = opened.filter((t) => !carried.has(t));
+            dropped += droppedHere.length;
+            if (!same || droppedHere.some((t) => t.type !== "text" || t.content !== "")) {
+              wrong.push(`${path}: ${JSON.stringify(block.inline.content.slice(0, 30))}`);
+            }
+          }
+          if (block.children) walk(block.children);
+        }
+      };
+      walk(parse(repoFile(path)).blocks);
+    }
+
+    check(
+      `every inline token carrying anything is in the tree exactly once, in order` +
+        ` (${blocksFolded} blocks, ${nodes} nodes, ${dropped} empty text tokens left out)` +
+        (wrong.length ? ` — ${wrong.length} disagreed: ${wrong.slice(0, 3).join(", ")}` : ""),
+      wrong.length === 0 && blocksFolded > 800 && nodes > 10000 && dropped > 0,
+    );
+    // Levels of nodes, leaves included, so a mark holding a link holding text
+    // is 3. REWRITE.md's measured "deepest inline nesting: 2" counts only the
+    // nodes that hold others, which is the same shape read one way rather than
+    // the other — said here because two numbers for one fact invite a bug
+    // report about whichever one is met second.
+    check(
+      `the tree nests as deep as these files do (${depth} levels of nodes, leaves included)`,
+      depth >= 3,
+    );
+
+    // Nothing in the oracle should land in the fallback bucket: an "unknown"
+    // here is a construct the app parses and this file has never been told
+    // about, which step 3 would then have to emit blind.
+    const named = [...kinds].sort((a, b) => b[1] - a[1]);
+    check(
+      `every kind in the oracle is named (${named.map(([k, n]) => `${k} ${n}`).join(", ")})`,
+      !kinds.has("unknown") &&
+        ["text", "softbreak", "code-span", "strong", "em", "link", "image", "math",
+          "hardbreak", "strike"].every((k) => (kinds.get(k) || 0) > 0),
+    );
+
+    // The claim the delimiter-on-the-node design rests on: these files spell
+    // the same mark both ways, and the tree tells them apart rather than
+    // handing step 3 one document-wide guess.
+    const seen = (key) => markups.get(key) || 0;
+    check(
+      `both spellings of every mark occur and are distinguished` +
+        ` (em ${seen('em "*"')}/${seen('em "_"')},` +
+        ` strong ${seen('strong "**"')}/${seen('strong "__"')},` +
+        ` code ${seen('code-span "`"')}/${seen('code-span "``"')})`,
+      seen('em "*"') > 0 && seen('em "_"') > 0 &&
+        seen('strong "**"') > 0 && seen('strong "__"') > 0 &&
+        seen('code-span "`"') > 0 && seen('code-span "``"') > 0,
+    );
+    // markdown-it marks an autolink on the token that opens it, which is the
+    // one spelling a link carries in `markup` at all — the rest of a link's
+    // shape is on `attrs`, and rebuilding from those is step 5.
+    check(
+      `an autolink is distinguishable from a written-out link (${seen('link "autolink"')})`,
+      seen('link "autolink"') > 0 && seen('link ""') > 0,
+    );
+  }
+
   // ------------------------------------------------------------- the metric
 
   // Slice 1b's step 6: the number the slice exists to move, asserted rather
