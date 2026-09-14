@@ -2540,7 +2540,7 @@ exist rather than be guarded: register them only under `MANDY_DEV`.
 
 No code changed, so nothing was run.
 
-## 2026-09-10 — TODO 4.5: the reopened PWA never asks about the file
+## 2026-09-10 — `9c92604` — TODO 4.5: the reopened PWA never asks about the file
 
 **A file that changed while the installed PWA was closed is not reported when
 the app comes back**, recorded rather than fixed. Nothing is lost — Reload
@@ -2721,3 +2721,36 @@ on it and is now only about the authoring control, which still waits for 3.1
 stage 2. MARKDOWN.md's line-break row goes from a loss to a tick, with the
 mixed-spelling note on it, and D6's section-2 paragraph now names 2.1 as the one
 still open.
+
+## 2026-09-14 — Fix the close on a background tab
+
+**Clicking the × on a tab that was not the one on screen removed the document
+and left the tab drawn.** The list was shorter, its storage keys were gone and
+the next page load showed the document really was closed — but until then the
+tab sat there, and clicking it again resolved to a tab that no longer existed,
+so nothing happened at all. From the outside the close read as broken on every
+tab but the active one.
+
+The cause is in how the bar gets redrawn. `renderTabBar()` has exactly one
+caller — `renderCurrentFile()` in [front/file-api.js](front/file-api.js) — which
+is deliberate: that function is already the single "the active document's
+identity changed" hook, so the tab's name and dot cannot fall out of step
+without every other consumer falling out of step too. Closing a background tab
+is the one operation in `tabs.js` that changes the bar while changing nothing
+about the document on screen, so it is the one operation that reaches that hook
+along no path. It returned early after `persistTabList()` and drew nothing.
+
+One line: the background-close branch in `closeTab` now calls `renderTabBar()`
+before returning. The active-tab branch already gets there through
+`adoptActive`, and needs no change.
+
+The `tabs` suite had this covered from both sides and still missed it, which is
+worth recording. Stage 4's close checks assert on the *list* — the ids that are
+left, the keys that are gone, the persisted JSON — and stage 5's bar checks
+build a bar and read it, but never after a close. A redraw that never ran fell
+exactly between them. The new check closes a background tab and then asks the
+bar what it is showing; it fails on the old code with the fix reverted, and
+passes with it. **155 checks in the suite, no failures.**
+
+`VERSION` in [front/sw.js](front/sw.js) goes v1.31 to v1.32, since `tabs.js` is
+a shell asset.

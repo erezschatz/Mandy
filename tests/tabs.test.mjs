@@ -1057,6 +1057,22 @@ export default async function run(check) {
       barTabs(app).length === 1);
   }
 
+  // Closing a background tab is the one close that swaps no document, so it is
+  // also the one that reaches none of the hooks the bar's redraw hangs off. It
+  // left the closed tab drawn over a list it was no longer in, and the next
+  // click on it resolved to nothing -- the close reading as broken rather than
+  // as stale.
+  {
+    const app = boot({ withTabs: true, seed: LEGACY });
+    app.editor.innerHTML = "<p>hello</p>";
+    app.newTab();
+    app.switchToTab(1);
+
+    app.closeTab(2);
+    check("closing a background tab takes it off the bar",
+      barTabs(app).length === 1 && !tabFor(app, 2));
+  }
+
   // The dot, and the settled rule behind it: edited wins outright over
   // disk-changed, because it is the more urgent of the two and the combination
   // needs no third colour — the title says the whole sentence either way.

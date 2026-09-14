@@ -293,6 +293,11 @@ function closeTab(id) {
 
   if (id !== activeTabId) {
     persistTabList();
+    // Nothing about the document on screen changed, so this is the one close
+    // that never reaches renderCurrentFile -- and the bar's only redraw hangs
+    // off exactly that. Without this the tab is gone from the list and still
+    // drawn, and clicking it again resolves to no tab at all.
+    renderTabBar();
     return true;
   }
 
