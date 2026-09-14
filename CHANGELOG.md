@@ -3845,7 +3845,7 @@ are only possible because step 0 moved the parser configuration this morning.
 
 `npm test`: **1132 checks, no failures.**
 
-## 2026-09-14 — Slice 2 step 2: the text coordinate
+## 2026-09-14 — `7d39191` — Slice 2 step 2: the text coordinate
 
 A model position is `(blockIndex, offset)`, and this is what the offset counts
 in. `modelInlineText(nodes)` renders a block's inline tree to the text the space
