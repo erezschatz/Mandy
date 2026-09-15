@@ -3938,3 +3938,40 @@ spelling), 1 soft break with whitespace to strip, 4 escaped characters, 131
 links (1 with an angle-bracket destination), 5 images.
 
 `npm test`: **1164 checks, no failures.**
+
+## 2026-09-15 — Slice 2 step 4: escaping
+
+`modelEscapeText` is the fallback `modelInlineSource` reaches for on a text
+node with nothing recorded — genuinely new content, typed fresh or built by a
+command. The rule is minimal escape: a backslash only where leaving a
+character bare would change what it parses as, verified by reparsing through
+the real parser rather than by re-deriving CommonMark's emphasis-flanking
+rules by hand. `modelFirstConstruct` finds the first real construct in a
+candidate's reparse and escapes its opening delimiter, one at a time, until
+nothing is left to find — which is what keeps the result minimal: `*a*`
+escapes only its opening `*`, because once that one is gone the second has no
+partner left to pair with.
+
+The obvious version of that search — one global question per character, *does
+everything from here on reparse as plain?* — is wrong, and `torture.md`'s own
+adversarial prose found it directly: one real emphasis pair anywhere in a
+sentence failed that question for every character to its left, so a colon and
+a comma with nothing to do with the pair got escaped along with it. Safe, but
+not minimal, and minimal was the point. The fix asks a narrower question,
+localized to where a construct actually begins.
+
+Two things decode silently, with no delimiter pair to find and remove — a
+backslash already in plain text sitting in front of punctuation, and an
+entity-shaped run after an `&` — and hunting for which one to blame by
+reparsing forward from the start of the string never converges: escaping the
+wrong backslash only grows a longer run of them in the same place. Measured
+directly against `already \*escaped\*`, a case `torture.md` also carries.
+`modelEscapeSilentTriggers` fixes both in one static pass first, since neither
+answer depends on anything else in the string, before the construct search
+ever runs.
+
+Twelve hand-written cases, then the oracle: precisely measured rather than
+proxied by "contains a markdown-special character," only **2 of the oracle's
+5,994 text nodes** actually need an escape to round-trip, and both do.
+
+`npm test`: **1177 checks, no failures.**

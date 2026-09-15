@@ -846,8 +846,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         this.** That sentence is about an edited paragraph re-serialising whole,
         and a list item is a block in every sense that matters here.
 
-    *   **2. The inline model — in progress: steps 0 through 3 done and
-        tested (step 3 on 2026-09-15), steps 4 to 6 not started.** A paragraph's
+    *   **2. The inline model — in progress: steps 0 through 4 done and
+        tested (steps 3 and 4 both on 2026-09-15), steps 5 and 6 not started.**
+        A paragraph's
         or heading's markdown-it inline tokens become the editable structure:
         text, the three marks, code spans, links, images, and the `math` token
         `app.js`'s own rule pushes. It fills the `inlines` field every block has
@@ -1137,15 +1138,79 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             node with nothing recorded, which is what makes that the emitter
             steps 4 and 5 build on rather than a separate mechanism.
 
-        4.  **Escaping.** 1.0% of text tokens hold a character that would
-            re-parse if it were emitted plain — narrow, and silent, which are
-            the two properties that put a thing in this repo's suite. The rule
-            is **minimal escape**: a backslash only where leaving the character
-            alone would change what it parses as, so an edited paragraph does
-            not come back wearing a rash of them the author never wrote. The
-            check is step 3's fixpoint over every text node in the five files
-            the suite already drives, *plus* hand-written adversarial cases —
-            117 real occurrences is not a corpus.
+        4.  **Escaping — done and tested, 2026-09-15.** 1.0% of text tokens
+            hold a character that *looks* markdown-active — narrow, and
+            silent, which are the two properties that put a thing in this
+            repo's suite. Measured precisely rather than by that proxy, the
+            number that matters is smaller still: of the oracle's 5,994 text
+            nodes, only **2** actually need a backslash to round-trip, which is
+            what "narrow" turns out to mean once the question is "does leaving
+            this bare change what it parses as" rather than "does this
+            character appear at all." The rule is **minimal escape**: a
+            backslash only where leaving the character alone would change what
+            it parses as, so an edited paragraph does not come back wearing a
+            rash of them the author never wrote.
+
+            **Verified by asking the real parser, not by re-deriving
+            CommonMark's flanking rules by hand** — the same reuse step 3's
+            link-tail parsing already argues for, and for a sharper reason
+            here: whether `*a*` is emphasis depends on what sits on both sides
+            of each delimiter, which is exactly the kind of rule a hand-rolled
+            version is most likely to get subtly wrong in a case nobody wrote
+            down. `modelFirstConstruct` reparses a candidate through
+            `md.parseInline` and walks the result in source order — the same
+            token-consumption arithmetic `modelLeafInline` already does for
+            step 3 — stopping at the first token that is not a plain top-level
+            `text`: a mark's delimiter, a code span's backticks, a link's `[`,
+            wherever a stray `$` paired into maths. `modelEscapeText` escapes
+            that one character, reparses, and repeats until nothing is left to
+            find, which is what makes the result minimal rather than merely
+            correct: `*a*` escapes only its opening delimiter, because once it
+            is gone the second `*` has no partner left and the very next check
+            already comes back flat.
+
+            **The obvious version of that search is wrong, and it was tried
+            first.** Asking one global question per character — *does
+            everything from here on reparse as plain text?* — is blind to
+            which construct is actually responsible, so one real pair anywhere
+            in the string fails the check for every character to its left,
+            including punctuation with nothing to do with it.
+            `tests/fixtures/torture.md`'s own adversarial prose found this
+            directly: that version escaped a colon and a comma in front of two
+            *unrelated* emphasis pairs later in the same sentence — safe,
+            since escaping only ever removes a meaning, but not minimal, and
+            minimal was the entire point. `modelFirstConstruct`'s narrower
+            question — where does the *first* real construct begin, judged
+            from its own position rather than the whole string's — was the
+            fix.
+
+            **Two things decode silently, with no delimiter pair to find and
+            remove, and both needed a different mechanism entirely.** A
+            backslash already sitting in plain text in front of punctuation,
+            and an entity-shaped run after an `&`, both collapse into an
+            ordinary flat `text` token when reparsed — the structural check
+            step 3's consumption arithmetic relies on cannot see that the
+            *content* is nonetheless wrong, and hunting for which backslash to
+            blame by reparsing forward from the start of the string never
+            converges: escaping the wrong one only grows a longer run of
+            backslashes in the same place, forever — measured directly against
+            `already \*escaped\*`, a nested case `torture.md` also carries.
+            `modelEscapeSilentTriggers` runs first and fixes both statically,
+            with no reparsing at all, because neither answer depends on
+            anything else in the string: a backslash before an escapable
+            character always needs a second one in front of it to stay
+            literal, and an entity-shaped run always needs its `&` escaped.
+            `modelFirstConstruct` only ever has to run after that pass has
+            already made its one guarantee true.
+
+            Twelve hand-written cases — each named construct's opening
+            delimiter alone, two independent pairs in one run leaving
+            everything between them untouched, characters with nowhere to
+            pair staying bare, both silent triggers, and the nested case that
+            broke the first design — then the oracle: **every one of 5,994
+            text nodes across the oracle escapes to something that decodes
+            back to itself**, run through the real parser rather than trusted
+            on the function's own say-so.
 
         5.  **Links.** The one construct whose spelling is not in `markup` at
             all: re-emitting the tree naively reproduces `inline.content` for

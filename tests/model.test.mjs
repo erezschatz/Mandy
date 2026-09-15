@@ -54,12 +54,12 @@ const ORACLE_FILES = [
 export default function run(check) {
   const {
     modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix,
-    modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource,
+    modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText,
   } = loadSource(
     "model.js",
     {},
     "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix," +
-      " modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource };",
+      " modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -1130,16 +1130,16 @@ export default function run(check) {
   const firstBlock = (src) => parse(src).blocks[0];
   const roundTrips = (src) => {
     const block = firstBlock(src);
-    return modelInlineSource(block.inlines) === block.inline.content;
+    return modelInlineSource(block.inlines, md) === block.inline.content;
   };
 
   {
     check(
-      `a code span with no padding keeps none (${JSON.stringify(modelInlineSource(firstBlock("`a`").inlines))})`,
+      `a code span with no padding keeps none (${JSON.stringify(modelInlineSource(firstBlock("`a`").inlines, md))})`,
       roundTrips("`a`"),
     );
     check(
-      `and one with padding keeps it, rather than the content markdown-it stripped (${JSON.stringify(modelInlineSource(firstBlock("` a `").inlines))})`,
+      `and one with padding keeps it, rather than the content markdown-it stripped (${JSON.stringify(modelInlineSource(firstBlock("` a `").inlines, md))})`,
       roundTrips("` a `"),
     );
     check(
@@ -1147,13 +1147,13 @@ export default function run(check) {
       roundTrips("`` `a` ``") && roundTrips("`` a` ``"),
     );
     check(
-      `an escape is preserved, backslash and all (${JSON.stringify(modelInlineSource(firstBlock("\\*not em\\*").inlines))})`,
+      `an escape is preserved, backslash and all (${JSON.stringify(modelInlineSource(firstBlock("\\*not em\\*").inlines, md))})`,
       roundTrips("\\*not em\\*") &&
         // and a real mark right beside an escaped one is not confused for it
         roundTrips("\\*a\\* and *b*"),
     );
     check(
-      `both hard-break spellings keep their own bytes (${JSON.stringify(modelInlineSource(firstBlock("a  \nb").inlines))} / ${JSON.stringify(modelInlineSource(firstBlock("a\\\nb").inlines))})`,
+      `both hard-break spellings keep their own bytes (${JSON.stringify(modelInlineSource(firstBlock("a  \nb").inlines, md))} / ${JSON.stringify(modelInlineSource(firstBlock("a\\\nb").inlines, md))})`,
       roundTrips("a  \nb") && roundTrips("a\\\nb"),
     );
     check(
@@ -1165,7 +1165,7 @@ export default function run(check) {
       roundTrips("a \n  b") && roundTrips("a\n  b") && roundTrips("a  \n"),
     );
     check(
-      `a bare link destination and an angle-bracket one keep their own spelling (${JSON.stringify(modelInlineSource(firstBlock("[t](<u v>)").inlines))})`,
+      `a bare link destination and an angle-bracket one keep their own spelling (${JSON.stringify(modelInlineSource(firstBlock("[t](<u v>)").inlines, md))})`,
       roundTrips("[t](u)") && roundTrips("[t](<u v>)"),
     );
     check(
@@ -1219,7 +1219,7 @@ export default function run(check) {
         for (const block of list) {
           if (block.inlines) {
             blocks += 1;
-            const out = modelInlineSource(block.inlines);
+            const out = modelInlineSource(block.inlines, md);
             if (out !== block.inline.content) {
               wrong.push(`${path}: ${JSON.stringify(block.inline.content.slice(0, 30))}`);
             }
@@ -1233,6 +1233,126 @@ export default function run(check) {
       `every inline-bearing block in the oracle reconstructs its own source exactly (${blocks} blocks)` +
         (wrong.length ? ` — ${wrong.length} did not: ${wrong.slice(0, 3).join(", ")}` : ""),
       wrong.length === 0 && blocks > 800,
+    );
+  }
+
+  // ------------------------------------------------------------ escaping
+  //                                                          (slice 2, step 4)
+
+  // `modelEscapeText` is what `modelInlineSource` falls back to for a text
+  // node with no `raw` recorded — genuinely new content, typed fresh or built
+  // by a command — and the property under test is minimal escaping: a
+  // backslash only where leaving the character bare would change what it
+  // parses as. `escapes` decodes the result back through the real parser
+  // rather than trusting the function's own opinion of itself, the same
+  // discipline the block-level checks in this suite already hold: a function
+  // that escaped everything indiscriminately would pass a bare correctness
+  // check and fail this one.
+  const escapes = (text) => {
+    const escaped = modelEscapeText(md, text);
+    const children = md.parseInline(escaped, {})[0]?.children || [];
+    const decoded = children.length === 1 && children[0].type === "text" ? children[0].content : null;
+    return { escaped, decoded };
+  };
+
+  {
+    check(
+      "plain prose with nothing markdown-active needs no escape at all",
+      escapes("plain words").escaped === "plain words",
+    );
+    check(
+      `a single emphasis pair escapes only its opening delimiter (${JSON.stringify(escapes("*a*").escaped)})`,
+      escapes("*a*").escaped === "\\*a*" && escapes("_x_").escaped === "\\_x_",
+    );
+    check(
+      "and the same is true with plain text on either side of the pair",
+      escapes("a*b*c").decoded === "a*b*c",
+    );
+    check(
+      "two independent pairs in one run are each escaped once, and nothing between them is touched",
+      escapes("say *this*, and _that_, plainly").escaped === "say \\*this*, and \\_that_, plainly",
+    );
+    check(
+      "a code span, an autolink, and strikethrough each escape their own opening delimiter",
+      escapes("a `code` span").escaped === "a \\`code` span" &&
+        escapes("<https://x>").escaped === "\\<https://x>" &&
+        escapes("~~gone~~").escaped === "\\~~gone~~",
+    );
+    check(
+      "a link-shaped bracket pair and a bare dollar sign both escape",
+      escapes("[text](url)").escaped === "\\[text](url)" && escapes("equation $x$").escaped === "equation \\$x$",
+    );
+    check(
+      "characters with nowhere to pair — a lone bracket, a lone dollar, spaced-out asterisks — stay bare",
+      escapes("[text]").escaped === "[text]" &&
+        escapes("price is $5 and $10").escaped === "price is $5 and $10" &&
+        escapes("5 * 3 * 2 is arithmetic").escaped === "5 * 3 * 2 is arithmetic",
+    );
+    check(
+      "a backslash before a letter is already literal and needs no second one",
+      escapes("path\\to\\file").escaped === "path\\to\\file",
+    );
+    check(
+      "an HTML entity and a numeric character reference are both escaped so they stay literal text",
+      escapes("a &amp; b").decoded === "a &amp; b" && escapes("a &#65; b").decoded === "a &#65; b",
+    );
+    check(
+      "a bare ampersand with no entity shape after it needs nothing",
+      escapes("Q & A").escaped === "Q & A",
+    );
+    check(
+      `a backslash already sitting in front of punctuation is not mistaken for the escape it looks like (${JSON.stringify(escapes("already \\*escaped\\*").escaped)})`,
+      escapes("already \\*escaped\\*").decoded === "already \\*escaped\\*",
+    );
+    check(
+      "which is what stops the naive whole-string check from looping forever on it",
+      escapes("a\\\\b").decoded === "a\\\\b",
+    );
+  }
+
+  // The oracle: every text node's own content, run through `modelEscapeText`
+  // and decoded back through the real parser, has to reproduce that content
+  // exactly — the same fixpoint property step 3's offset space is checked
+  // with, applied to the direction step 3 does not reach. Unlike every other
+  // check in this file, almost none of these text nodes are expected to need
+  // an escape at all: this is the corpus REWRITE.md's own measurement (1.0%
+  // of text tokens) was taken against, so the count of how many did is a
+  // number worth reporting rather than a threshold worth enforcing.
+  {
+    let total = 0;
+    let escaped = 0;
+    const wrong = [];
+    for (const path of ORACLE_FILES) {
+      const walk = (list) => {
+        for (const block of list) {
+          if (block.inlines) {
+            const flatten = (nodes, out = []) => {
+              for (const n of nodes || []) {
+                out.push(n);
+                if (n.children) flatten(n.children, out);
+              }
+              return out;
+            };
+            for (const node of flatten(block.inlines)) {
+              if (node.kind !== "text") continue;
+              total += 1;
+              const { escaped: out, decoded } = escapes(node.content);
+              if (out !== node.content) escaped += 1;
+              if (decoded !== node.content) {
+                wrong.push(`${path}: ${JSON.stringify(node.content.slice(0, 30))}`);
+              }
+            }
+          }
+          if (block.children) walk(block.children);
+        }
+      };
+      walk(parse(repoFile(path)).blocks);
+    }
+    check(
+      `every text node in the oracle escapes to something that decodes back to itself` +
+        ` (${total} nodes, ${escaped} needed an escape)` +
+        (wrong.length ? ` — ${wrong.length} did not: ${wrong.slice(0, 3).join(", ")}` : ""),
+      wrong.length === 0 && total > 5000,
     );
   }
 

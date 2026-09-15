@@ -563,6 +563,143 @@ function modelUnresolvedSpelling(node) {
   return new Error(`cannot recover the raw spelling of a ${node.kind} node: ${JSON.stringify(node.content)}`);
 }
 
+// A literal backslash immediately before a CommonMark-escapable character, or
+// an `&` that starts a run shaped like a real HTML entity or numeric
+// character reference — the two things markdown-it decodes on its own, with
+// no delimiter pair to find and remove the way a mark's or a link's has.
+// Fixed here rather than by reparsing and searching, unlike everything else
+// `modelEscapeText` handles: a literal backslash before punctuation always
+// needs a second one in front of it to stay literal, and an entity-shaped run
+// always needs its `&` escaped, regardless of anything else in the string —
+// there is no context that changes either answer, which is exactly what makes
+// them safe to fix in one static pass before the construct search below ever
+// runs. Left alone, both are invisible to that search: a self-decoding run
+// still reparses to exactly one flat `text` token, just not the one the
+// caller meant, and hunting for *which* backslash to blame by re-parsing
+// forwards from the start of the string never converges — escaping the wrong
+// one only grows a longer run of backslashes in the same place forever.
+function modelEscapeSilentTriggers(text) {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\\" && MODEL_ESCAPABLE.test(text[i + 1] || "")) {
+      out += "\\\\";
+    } else if (ch === "&" && /^&(#x[0-9a-f]+|#[0-9]+|[a-z][a-z0-9]*);/i.test(text.slice(i))) {
+      out += "\\&";
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/**
+ * Where, in a candidate that has already been through
+ * `modelEscapeSilentTriggers` but is *not yet* flat, the first remaining
+ * construct begins — the position `modelEscapeText` should slip a backslash
+ * in front of.
+ *
+ * A naive version of this search asks one global question per character —
+ * *does everything from here on reparse as plain text?* — and it is wrong:
+ * that question is blind to which construct is actually responsible, so one
+ * real pair anywhere in the string fails the check for every character to its
+ * left, including punctuation with nothing to do with it. Measured against
+ * `tests/fixtures/torture.md`'s own deliberately adversarial prose, that
+ * version escaped a colon and a comma in front of two unrelated emphasis
+ * pairs later in the same sentence — safe, since escaping never adds a
+ * meaning, but not minimal, and minimal is the entire point (see
+ * `modelEscapeText`).
+ *
+ * So this asks a narrower question instead, using the same token-consumption
+ * arithmetic step 3 already built for `modelLeafInline`: walk the candidate's
+ * own reparse in source order, consuming each text token's raw span with
+ * `modelScanEscaped` exactly as an unedited leaf would, and stop at the first
+ * token that is not a plain top-level `text` — the position where a mark
+ * opens, a code span's backticks start, a link's `[`, or wherever a stray `$`
+ * paired into maths. That position depends on nothing to its right, which is
+ * what makes it safe to escape and move on rather than re-deriving the whole
+ * string's flanking rules from scratch.
+ *
+ * Assumes there is nothing left for `modelScanEscaped` to fail on — no
+ * unescaped backslash-before-punctuation, no entity — which is exactly what
+ * the pre-pass guarantees, so a failure here is this function's own bug
+ * rather than a case to recover from, and it throws rather than guessing at
+ * one.
+ *
+ * Returns -1 on a candidate that is already flat, which callers use as the
+ * stopping condition rather than a special case.
+ */
+function modelFirstConstruct(md, candidate) {
+  const children = md.parseInline(candidate, {})[0]?.children || [];
+  if (children.length === 1 && children[0].type === "text") return -1;
+
+  let pos = 0;
+  for (const token of children) {
+    if (token.nesting === -1) continue; // a closer's position was fixed by its opener
+    if (token.type !== "text") return pos;
+    const scan = modelScanEscaped(candidate, pos, token.content);
+    if (!scan) throw new Error(`modelEscapeSilentTriggers left something unresolved: ${JSON.stringify(candidate)}`);
+    pos += scan.length;
+  }
+  return pos; // defensive: children.length > 1 with every token "text" cannot happen (text_collapse merges adjacent text)
+}
+
+/**
+ * The minimal backslash-escaping of a run of plain text — content with
+ * nothing recorded to put back, because it is genuinely new: typed fresh, or
+ * built by an editing command rather than folded from a parse. 1.0% of this
+ * repo's own text tokens hold a character that would re-parse as something
+ * else if handed back plain, which is narrow enough that a rash of escapes
+ * nobody wrote would be a worse failure than the one this fixes — MARKDOWN.md's
+ * **S3** already settled this as the sniffer's whole argument extended one
+ * level down: record first (step 3), sniff second, house style never, and
+ * "escape everything that could possibly be markup" is exactly the house
+ * style this refuses to have an opinion of its own.
+ *
+ * **Verified by asking the real parser, not by re-deriving CommonMark's
+ * flanking rules by hand** — the same reuse step 3's link-tail parsing already
+ * argues for, and for a sharper reason here: whether `*a*` is emphasis depends
+ * on what is on both sides of each delimiter, which is exactly the kind of
+ * rule a hand-rolled version is most likely to get subtly wrong in a case
+ * nobody thought to write down.
+ *
+ * Two passes. `modelEscapeSilentTriggers` first, for the two things markdown-it
+ * decodes with no delimiter of their own — a backslash already in the plain
+ * text, an entity-shaped run — because those have no position a reparse can
+ * blame; then `modelFirstConstruct`, repeated: find the first real construct
+ * left, escape its opening character, reparse, repeat. Each escape can only
+ * unblock the parser (never introduce a new pairing that was not already
+ * possible from characters already present), so the loop always terminates,
+ * and it terminates having touched only the characters that were actually
+ * responsible. `*a*` escapes only its opening delimiter, because once it is
+ * gone the second `*` has no partner left to pair with and the very next
+ * check already comes back flat.
+ *
+ * The guard bound is generous rather than exact — one escape can, in the
+ * pathological case, only ever remove one construct's worth of tokens, so the
+ * number of iterations is bounded by how many independent constructs `text`
+ * could possibly contain, which is at most its length. Thrown rather than
+ * returned if that bound is ever hit, the same call `modelUnresolvedSpelling`
+ * makes one level up: silently handing back a candidate that still is not
+ * flat would write a file that does not say what the editor thinks it does.
+ *
+ * What this does not reach: a character that is only ambiguous alongside a
+ * *sibling* node's content (two texts either side of an untouched mark, say)
+ * is judged on this node's own text alone, and a leading block marker (`#`,
+ * `>`, a list marker) is not this function's question at all — only the
+ * block emitter that places a leaf at a block's true start can answer that,
+ * and it does not exist yet.
+ */
+function modelEscapeText(md, text) {
+  let candidate = modelEscapeSilentTriggers(text);
+  for (let guard = 0; guard <= text.length; guard++) {
+    const at = modelFirstConstruct(md, candidate);
+    if (at < 0) return candidate;
+    candidate = candidate.slice(0, at) + "\\" + candidate.slice(at);
+  }
+  throw new Error(`could not escape to a flat reparse: ${JSON.stringify(text)}`);
+}
+
 /**
  * An inline tree back to the raw text it was folded from — the inverse of
  * `modelInlines`, for the nodes it recorded a spelling on. On a tree nothing
@@ -571,18 +708,20 @@ function modelUnresolvedSpelling(node) {
  * byte-identical once slice 3 gives a container-level emitter something to
  * call this from.
  *
- * `node.raw ?? node.content` is the fallback that makes genuinely new content
- * fall through cleanly: a mark or a text run built by an editing command
- * rather than folded from a parse has no `raw` at all, and renders from its
- * plain content instead — which is step 4's problem (minimal escaping) and
- * step 5's (a link rebuilt from `attrs`), not this function's.
+ * `node.raw ?? modelEscapeText(md, node.content)` is the fallback that makes
+ * genuinely new content fall through cleanly: a mark or a text run built by an
+ * editing command rather than folded from a parse has no `raw` at all, and
+ * step 4 is what makes rendering it from plain content safe rather than merely
+ * convenient. A link's own fallback is still bare `attrs` reconstruction —
+ * step 5, not started — because rebuilding `[text](href)` from scratch needs
+ * more than escaping the text.
  */
-function modelInlineSource(nodes) {
+function modelInlineSource(nodes, md) {
   let out = "";
   for (const node of nodes || []) {
     switch (node.kind) {
       case "text":
-        out += node.raw ?? node.content;
+        out += node.raw ?? modelEscapeText(md, node.content);
         break;
       case "code-span":
         out += node.markup + (node.raw ?? node.content) + node.markup;
@@ -597,15 +736,15 @@ function modelInlineSource(nodes) {
         out += node.markup + node.content + node.markup;
         break;
       case "image":
-        out += "![" + (node.raw ?? node.content) + "]" + (node.tail ?? "");
+        out += "![" + (node.raw ?? modelEscapeText(md, node.content)) + "]" + (node.tail ?? "");
         break;
       case "link":
-        if (node.markup === "autolink") out += "<" + modelInlineSource(node.children) + ">";
-        else out += "[" + modelInlineSource(node.children) + "]" + (node.tail ?? "");
+        if (node.markup === "autolink") out += "<" + modelInlineSource(node.children, md) + ">";
+        else out += "[" + modelInlineSource(node.children, md) + "]" + (node.tail ?? "");
         break;
       default:
-        if (node.children) out += node.markup + modelInlineSource(node.children) + node.markup;
-        else out += node.raw ?? node.content;
+        if (node.children) out += node.markup + modelInlineSource(node.children, md) + node.markup;
+        else out += node.raw ?? modelEscapeText(md, node.content);
     }
   }
   return out;
