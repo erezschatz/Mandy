@@ -196,6 +196,206 @@ Neither is worth a pane on its own, which is why this waited: one preference
 does not justify the surface, and a Settings pane built for one preference
 tends to acquire the rest by accident rather than by decision.
 
+**A document's theme** is the third, as of 2026-09-15, and the first with a
+per-document scope rather than a per-user one — the section below. Presets can
+ship ahead of the pane as a menu; anything past picking a preset by name is
+what the pane is for.
+
+## Document themes, and the HTML question behind them
+
+Recorded 2026-09-15, out of a discussion that kept coming back and had not
+reached a resolution on its own. The worry: content increasingly arrives and
+leaves as HTML, HTML is a canvas where markdown is a typewriter, and Mandy is a
+markdown editor by decision (D0) at the moment the documents people admire are
+styled pages. Building gas cars while the market goes electric — there will be
+business for years, just not the cool kids' business, and maybe it runs out.
+The question put was *can Mandy have both, and what would it take*. The answer
+is that "both" means two different things, one of which the rewrite makes
+nearly free and the other of which is a second product wearing Mandy's skin.
+The refusals are D7 in [DECISIONS.md](DECISIONS.md), which is where they stop
+being relitigated; this section keeps the tiers with their costs, and then the
+one feature that came out of it.
+
+### Two things called HTML
+
+There is HTML as a *render* of a document, and HTML as a *source* people author
+and hand around. 3.1's core move — the model owns the document and the DOM is
+a view of it — is what draws the line between them: **design lives in a
+renderer, editing lives in a model.** One model with more than one way of
+rendering it is cheap. Two models are two products, and nothing converts
+between them without loss, which is exactly the two-products-in-one feeling
+that made this hard to settle.
+
+Four tiers were on the table. Weeks are [REWRITE.md](REWRITE.md)'s weeks.
+
+- **Import, one way.** TODO 6.4: HTML in, markdown from then on, styling gone.
+  It rescues text and structure and says so. Planned, touches no core, lands
+  whenever it is picked up.
+- **Opaque HTML blocks.** An `html_block` carried on the invisible-block
+  mechanism the reference definitions already force 3.1 to add, rendered
+  sanitised into the DOM as itself, selected whole like an image, never edited
+  inline, bytes preserved on save — what CommonMark calls an HTML block anyway.
+  About a week on the new core, plus reopening `html: false` (S1 in
+  [MARKDOWN.md](MARKDOWN.md)), plus a sanitiser, which with no dependencies is
+  a hand-rolled allowlist and the part that was actually risky. **Refused,
+  D7**: an opaque block is a block whose only editing surface is its source,
+  which is the source pane D0 refuses, through the back door.
+- **A document that carries its own design.** Tokens, not markup: the feature
+  below. This is the version of "both" that is not two products.
+- **An editable HTML canvas.** A tree model rather than a block list, because a
+  `<div class="grid">` nests arbitrarily and markdown-it's block tokens cannot
+  hold it. A second fidelity stack, because the browser's own parser does not
+  round-trip HTML — it requotes attributes, re-encodes entities and rewrites
+  whitespace — so D1 for HTML means a source-preserving HTML parser Mandy would
+  own. A second control set, a properties panel rather than a Format menu. A
+  second undo shape. And a conversion to markdown that is lossy by definition.
+  Months, not weeks, and it is precisely the tree-shaped, normalising model
+  REWRITE.md's first constraint rejected, so it would want an engine.
+  **Refused, D7**: a second product, not a feature.
+
+So the honest engineering answer is that the third tier is "both" and the
+fourth is two products, and the rewrite's block-model choice is what draws the
+line. It was drawn on purpose in REWRITE.md, not by omission.
+
+### Where the leg up actually is
+
+A product reading, hedged, because nobody knows where this goes. The thing
+driving HTML-as-canvas is models producing one-off deliverables — reports,
+pages, dashboards. Those are terminal outputs the way PDF and DOCX are, and
+this project already decided terminal outputs do not extend the collaboration
+chain (the editable export's `ASSETS` argument in CLAUDE.md). The thing driving
+markdown is the same models in the other direction: every spec, README,
+CLAUDE.md, skill file and PR description is markdown, and there is more of it
+than a year ago. D0 says Mandy exists for that second loop. If a styled page
+comes back needing a change, the workflow that survives is *edit the source
+and regenerate*, and Mandy is the source editor.
+
+**Import is rescue; export is the product.** Markdown in, designed HTML out,
+with nobody writing HTML, is a position the canvas tools cannot hold and is
+consistent with everything already recorded. The foot in the electric-car
+door, if there is one, is on the export side.
+
+Where this is genuinely uncertain is whether HTML becomes something people
+*author again* rather than regenerate. If it does, the fourth tier matters and
+Mandy is not that tool — better said now than half-built later. The evidence
+that settles it is cheap and should be collected: each time an HTML document
+arrives, note whether the edit wanted is to the text or to the layout. If it is
+always the text, 6.4 plus the theme below is the whole answer.
+
+### The feature: a theme per document
+
+Purple H1s, green H2s, a different body font, a background — for *this*
+document, not every document. Two reasons, and they are the same two the
+discussion started from: working in a document should feel like more than a
+nice way to read it, and the exports should look like the document did. No
+interactive gimmicks; a theme has no script and never will. It looks better
+and that is all it does.
+
+**Where the theme lives is the whole design.** Three places, and only one keeps
+D0, D1 and `html: false` untouched.
+
+- **Outside the file, keyed by path — chosen for the first version.** The
+  `.md` never changes. The theme follows the file across close and reopen, and
+  both exports inline it the way they inline `app.css` today, which is where a
+  theme pays off: the reader of a static export gets the purple headings. What
+  it does not do is travel when the bare `.md` is sent to another Mandy — and
+  today nothing travels that way; send-for-review goes through the editable
+  export, which carries its CSS. **Not keyed by tab**: the tab store vanishes
+  on close, and "this document has purple headings" is a statement about the
+  document, so the durable store is a path→theme map. The tab still needs a
+  live copy — an unsaved document has no path yet — so the theme is also a
+  seventh `documentKey`, `theme`, seeded from the map on open and written back
+  to it on save, the same two-store shape `path` and `dir` already have.
+  `localStorage` first. A sidecar file beside the `.md` would travel through
+  git, which for a repo of specs is genuinely attractive, but it needs the
+  server's write gate widened past `MARKDOWN_EXTENSIONS`, which is a security
+  property CLAUDE.md records, so it is its own decision and not the first
+  version.
+- **In the file, as front matter — a later stage, if ever.** It travels with
+  the file, and in 3.1's model it is free to preserve: source lines no block
+  token covers are kept byte-exact as an invisible block. Against it: a block
+  of machine-written configuration at the top of every themed document, which
+  other renderers show as a table or as text, and which makes the file no
+  longer pure content. There is a D0 irony in it being YAML, and the irony is
+  survivable — D0's objection is to a *human* writing it — but it is a
+  decision to reopen with the trade in front of you, not to inherit.
+- **In the file, as attributes on elements — refused, D7.** `{.callout}` on a
+  paragraph, a colour on a span. One-off formatting is how documents rot, it
+  is markup in the file, and it is the ceiling named below.
+
+**What a theme is: tokens, not CSS.** `app.css` already runs on custom
+properties, in light and dark pairs — `--text-heading`,
+`--text-heading-secondary`, `--bg-editor`, `--accent-blue`,
+`--border-blockquote` and the rest. A document theme is a set of overrides to
+those plus a few tokens the stylesheet does not have yet: a colour per heading
+level (today H2 and H3 share `--text-heading-secondary` and H4–H6 have none of
+their own), a body font, a heading font and a mono font (today a literal
+`"Courier New"` in two places), and probably a measure. Tokens are what let a
+purple heading compose with the dark toggle instead of fighting it — the toggle
+is the reader's preference, the theme is the document's, and they are
+independent axes only if every token carries a light and a dark value. They
+are also what keeps the picker small: a colour or a font per token, plus a
+handful of built-in presets. **The human picks, the machine writes the CSS**,
+which is D0 applied to design. Arbitrary CSS in the picker is refused for the
+same reason element attributes are: it is a second authoring surface, and it
+is what would make an exported document unpredictable in someone else's
+browser.
+
+**How it is applied.** The tokens are set on `#editor`, not on the root, so
+chrome stays chrome — the toolbar, the outline and the dialogs keep the app's
+own look, and only the document changes. Set by `style.setProperty`, never
+written into the document's markup, for the `--link-hint` reason: anything
+stamped inside `#editor` reaches Turndown. The two exports each gain a
+`<style id="doc-theme">` beside `app-style`, and the editable export reads it
+back the way it reads `app-style`, so a themed document re-exports themed —
+the self-reproduce suite gets a check for it. PDF comes along for free, since
+html2pdf rasterises what is on screen; DOCX ignores it, since `docx-export.js`
+carries its own styling, and DOCX is a terminal format anyway. An exported
+document shows the *author's* theme to the reader, unlike light and dark, which
+follow the reader's OS — the theme is nearer to content than to preference,
+and the per-mode pairs are what let both be true at once.
+
+**The ceiling, named.** A theme can say what every H2 looks like. It cannot say
+that *this* paragraph is red, or put two columns inside the text, or draw a
+card around a list. Those are markup, they are what the canvas tier is for,
+and a markdown document has no honest spelling for them. Anyone who needs them
+needs a different tool, and Mandy should say so rather than approximate.
+
+**A third layer, later: sniff a theme out of imported HTML.** The same idea as
+`sniffMarkdownStyle` — read what the incoming document already does and adopt
+the subset the tokens can name. An LLM-generated report's heading colours,
+fonts and background are usually class-based and semantic, so most of them
+map; its layout, cards and per-element styling do not, and the sniff should
+say so with a `notify` rather than approximate. One mechanical caveat decides
+its shape: computed styles need a live document, and 6.4's rule is that an
+imported string never reaches a live node before conversion. A sandboxed
+`<iframe srcdoc>` with scripts refused is the honest way around that, and
+whether it is airtight is a measurement question of the browser-check kind,
+watched once. It is a heuristic in the `sniffWrapWidth` mould — it gives up
+rather than guesses — and it is not designed until 6.4 and the theme store
+both exist, because it is nothing but the two of them joined.
+
+**Stages**, each *not started*, none waiting on 3.1 — all of this reads the
+rendered DOM and `app.css`, which the rewrite leaves alone.
+
+1. **Tokens.** The per-level heading colours, the three font tokens and the
+   measure added to `app.css` in both light and dark, replacing the literals.
+   No visible change; the point is that a theme has something to override.
+2. **The store.** The path→theme map, the `theme` document key, the seed on
+   open and the write on save. The `file-path` suite drives its fake disk
+   through open, save and Save As and checks the theme follows the path.
+3. **Apply and export.** `setProperty` on `#editor` on every adopt;
+   `<style id="doc-theme">` in both exports, read back by the editable one.
+   The `static-export` and `self-reproduce` suites each gain a check.
+4. **Presets.** A handful of named themes and a way to pick one — an `ask()`
+   with actions or a View menu entry is enough for names, so this ships ahead
+   of the pane. A theme that is not a preset is what the pane is for.
+5. **The picker.** Per-document scope in the settings pane above: a colour or
+   a font per token, light and dark, with the current mode edited in place.
+6. **Front matter**, if the theme ever needs to ride the `.md` itself. A
+   decision, not a stage, until someone asks for it.
+7. **Sniff from HTML**, after 6.4 lands. Same status.
+
 ## Save fidelity past the point of diminishing returns
 
 Both of these refine a system that already works. D1 holds today — an untouched

@@ -627,7 +627,11 @@ category fidelity deliberately does not extend to.
     paste, and the call site moves rather than the decision. What is lost on the
     way in is worth saying once — `<details>`, `<div align>` and `<img width>`
     flatten to their text, because that is what a markdown document can hold.
-    Import rescues prose and structure, not a page.
+    Import rescues prose and structure, not a page. The presentation half of
+    that page — what a document looks like, as opposed to what it says — has
+    its own answer, and it is a theme rather than a format: the "Document
+    themes" section of [ROADMAP.md](ROADMAP.md), which also records why an
+    editable HTML document is refused rather than deferred.
 *   **6.5** *(survives 3.1)* The service worker intercepts navigations, which
     breaks logging in to any host that puts an auth gate in front of Mandy.
     Found fitting Mandy behind Atrium as a chamber; it is not an Atrium quirk,

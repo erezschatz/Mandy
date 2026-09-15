@@ -7,7 +7,8 @@ describes how the code works — this is why it works that way, and what
 changing it would cost. Reopen one by editing it here, not by filing it as a
 TODO again. Where a decision points forward rather than at the current code,
 that part lives in [TODO.md](TODO.md) or [ROADMAP.md](ROADMAP.md) instead — D4
-and D6 both point at [REWRITE.md](REWRITE.md).
+and D6 both point at [REWRITE.md](REWRITE.md), and D7 at the theme section of
+[ROADMAP.md](ROADMAP.md).
 
 D0 is the exception to that description: it is not a question that was argued
 out but the position the rest of them follow from. It is numbered zero because
@@ -351,3 +352,125 @@ with it. Section 2 is the exception: its items are pure serialiser work in
 rather than per document afterwards, so they can be fixed on `main` today and
 the fix carries over. 2.2 was one and was fixed that way on 2026-09-13; 2.1's
 table formatter is the one still open.
+
+## D7. Mandy holds a document, never a page
+
+The question, put on 2026-09-15 after being put several times before without
+sticking: the documents people admire now are styled HTML pages, markdown next
+to them is a typewriter, and Mandy is a markdown editor by conviction. Is that
+building gas cars while the market goes electric? Can Mandy have both — edit
+markdown as it does, and also hold, style and edit HTML — and what would it
+take?
+
+Settled: **no, and not for want of a plan.** The road is not taken because
+every version of it ends with a person editing markup again, one level up from
+where D0 found them. This entry says why, road by road, because the question
+will be asked again and the answer has to be the same each time.
+
+### A document is what it says; a page is how it looks
+
+That is the whole distinction, and D0 already contains it. A document is
+content with structure — headings, paragraphs, lists, tables, emphasis, links.
+A page is a document plus a rendering: the colours, the type, the measure, the
+layout. HTML conflates them, which is its power as a delivery format and its
+disease as a source one, and it is why nobody should be editing it by hand any
+more than they should be editing markdown by hand.
+
+Mandy holds the first. It *makes* the second, twice already — the static export
+and the editable export are pages, rendered from the document through a
+stylesheet — and can make it better-looking than it does today, which is the
+half of the question that gets a yes. What it will not do is hold a page as the
+thing being edited, because a page's source is markup, and the moment the
+editor's document *is* markup the separation D0 exists to enforce has been
+given back.
+
+The seam between the two is not a metaphor. [REWRITE.md](REWRITE.md) puts the
+document in a model and makes the DOM a view of it, which places design in the
+renderer and editing in the model by construction. One model, rendered as many
+ways as anyone likes, is cheap. Two models is two products, and nothing
+converts between them without loss — which is exactly the "two products in one
+skin" unease that kept this question from settling on its own.
+
+### The three roads, and why each one is closed
+
+**Raw HTML inside the document.** The cheapest road and the most tempting: keep
+an HTML block as an opaque island — bytes preserved, rendered as itself,
+selected whole like an image, never edited inline. It would cost about a week
+on the new core and sit on the invisible-block mechanism the reference
+definitions already need. It is closed because of what an opaque block *is*: a
+block whose only editing surface is its source. The person who needs to change
+a word inside it opens the markup, which is the source pane D0 refuses, arrived
+at through the back door. `html: false` in the parser is not a setting, it is
+D0 in one line, and reopening it for this would be reopening D0. The same
+ground that dropped underline and center ([ROADMAP.md](ROADMAP.md)), and it
+holds regardless of the sanitiser question, which would have been the
+dangerous part on its own.
+
+**Styling on elements.** `{.callout}` on a paragraph, a colour on a span, an
+alignment on an image. This is one-off formatting, the thing every word
+processor learned to regret: direct formatting is how documents rot, because
+nothing about the document says *why* this paragraph is red, so nothing can
+keep it red for a reason or make it not-red for one. It is also markup in the
+file — a spelling no CommonMark renderer knows and GitHub shows as literal
+text — and inventing a friendlier spelling for it is precisely the move D0
+names as the one that produced YAML. Closed. The document gets styles, in the
+word-processor sense of named ones that apply to a kind of thing; it never gets
+formatting that applies to one thing.
+
+**An editable page.** The full road: Mandy as a canvas, the HTML held and
+edited with its layout, its cards and its columns, and markdown as one export
+among several. Closed as a second product rather than a feature, on three
+grounds that do not depend on each other.
+
+- *D1 has no HTML implementation and cannot get one cheaply.* The browser's own
+  parser does not round-trip HTML — it requotes attributes, re-encodes
+  entities, rewrites whitespace and closes what it finds open — so "a saved
+  file gets its own bytes back" would need a source-preserving HTML parser
+  Mandy owned outright. That is a fidelity stack the size of the one it has,
+  for a second format.
+- *The model is the wrong shape on purpose.* A `<div class="grid">` nests
+  arbitrarily; a document is a list of blocks. REWRITE.md's first constraint
+  rejects the tree-shaped, normalising model for the markdown document because
+  normalising destroys what D1 keeps. A page would need exactly that model, so
+  a page editor inside Mandy is the rejected design built alongside the chosen
+  one, with an engine dependency the rewrite refused as its price of entry.
+- *The controls are a different application.* A Format menu says what a thing
+  is. A page needs a properties panel that says where it goes and what it
+  looks like. That is Webflow with a markdown export, and Webflow exists.
+
+### What is taken instead
+
+**Design lives in the renderer, and the document carries a theme.** A theme is
+a set of tokens — a colour per heading level, three fonts, a background, a
+measure, each in a light and a dark value — that a document owns and both
+exports inline. The human picks, the machine writes the CSS: D0 applied to
+design. The ceiling is named rather than hidden: a theme can say what every H2
+looks like and cannot say that this one paragraph is red, and anyone who needs
+the second needs a different tool. The design is the theme section of
+[ROADMAP.md](ROADMAP.md).
+
+**Import is rescue; export is the product.** TODO 6.4 takes HTML in and keeps
+markdown from then on — prose and structure, never the page. The way out is
+where Mandy earns its place: markdown in, a designed page out, with nobody
+having written a line of HTML. That is a position a canvas tool cannot hold,
+and it is the one this project has held since D0.
+
+### The gas cars
+
+The analogy fails at the axle, and it is worth saying where. What is driving
+HTML-as-canvas is models producing one-off deliverables — reports, pages,
+dashboards — and those are terminal outputs, the way PDF and DOCX are terminal:
+nobody edits one and sends it back, they edit the source and regenerate. What
+is driving markdown is the same models in the other direction, and the
+specs, READMEs, skill files and PR descriptions they read and write are more
+numerous than a year ago, not fewer. Mandy is the source editor for that loop.
+The electric cars are the deliverables; Mandy is not competing with them, it is
+upstream of them.
+
+Hedged where it should be: nobody knows whether HTML becomes something people
+*author again* rather than regenerate. If it does, the third road matters and
+Mandy is not that tool — a conclusion, not a loss, and better reached now than
+after half of it is built. The evidence that would reopen this entry is cheap
+and should be collected: each time an HTML document arrives for editing, note
+whether the change wanted is to the text or to the layout. A run of layout is
+the signal. A run of text is this decision confirmed.

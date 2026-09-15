@@ -2722,7 +2722,7 @@ stage 2. MARKDOWN.md's line-break row goes from a loss to a tick, with the
 mixed-spelling note on it, and D6's section-2 paragraph now names 2.1 as the one
 still open.
 
-## 2026-09-14 — Fix the close on a background tab
+## 2026-09-14 — `38cc4d7` — Fix the close on a background tab
 
 **Clicking the × on a tab that was not the one on screen removed the document
 and left the tab drawn.** The list was shorter, its storage keys were gone and
@@ -2754,3 +2754,80 @@ passes with it. **155 checks in the suite, no failures.**
 
 `VERSION` in [front/sw.js](front/sw.js) goes v1.31 to v1.32, since `tabs.js` is
 a shell asset.
+
+## 2026-09-15 — Document themes on the roadmap; editable HTML refused
+
+**The HTML question is settled in writing rather than relitigated again.** A
+new "Document themes, and the HTML question behind them" section in
+[docs/ROADMAP.md](docs/ROADMAP.md) records the discussion whole: the worry that
+a markdown editor is late to a party moving to styled HTML, the question of
+whether Mandy can have both, and the answer — that "both" names two different
+things. HTML as a *render* of a document is nearly free once 3.1's model owns
+the document, because design lives in a renderer and editing in a model; HTML
+as a *source* people author is a second product, a tree model with its own
+fidelity stack, its own controls and a lossy conversion between the two.
+
+Four tiers are recorded with their cost and fate. Import, one way, is TODO 6.4
+as planned. **Opaque HTML blocks are refused**, not on cost but on D0: they put
+raw markup into the document a person is editing, the same ground that dropped
+underline and center. **An editable HTML canvas is refused** as not a feature
+of Mandy at all. The one that survives is a document that carries its own
+design, and it is the feature the section then specifies.
+
+**A theme per document**: heading colours per level, fonts, a background, for
+this document rather than every document. Three decisions carry it. The theme
+lives *outside the file*, in a path-keyed map with a seventh `theme` document
+key as its live copy, so the `.md` never changes and D0, D1 and `html: false`
+stay untouched — front matter is named as a later decision, element attributes
+as refused. It is *tokens, not CSS*: overrides to `app.css`'s custom properties
+plus a few the stylesheet does not have yet, in light and dark pairs so the
+document's theme and the reader's mode stay independent axes, with the human
+picking and the machine writing. And it is applied on `#editor` by
+`setProperty`, never stamped into the markup, and inlined into both exports as
+a `<style id="doc-theme">` the editable export reads back. The ceiling is
+named — a theme cannot make one paragraph red — and a third layer, sniffing a
+theme out of imported HTML the way `sniffMarkdownStyle` sniffs bullets, is
+sketched for after 6.4 with its one mechanical caveat, that computed styles
+need a live document and 6.4 forbids one. Seven stages, all *not started*,
+none waiting on 3.1.
+
+The product reading is recorded too, hedged: import is rescue, export is the
+product, and the evidence that would settle the gas-cars worry is to note, each
+time an HTML document arrives, whether the edit wanted is to the text or to the
+layout.
+
+The settings-pane section gains the theme picker as the third thing that wants
+a pane, and TODO 6.4 gains a pointer to the section, since it is the other half
+of the same page.
+
+No code changed, so nothing was run — `tests/` reads none of these files.
+
+## 2026-09-15 — D7: Mandy holds a document, never a page
+
+**The three refusals the morning's roadmap entry carried are promoted to a
+decision.** [docs/DECISIONS.md](docs/DECISIONS.md) gains D7, and it is argued
+rather than copied: the decisions file is the manifesto, so the entry says why
+each road *cannot* be taken instead of listing that it was not. The spine is
+one sentence — a document is what it says, a page is how it looks — and D0
+already contains it: HTML conflates the two, which is its power as a delivery
+format and its disease as a source one.
+
+Three roads, each closed on its own ground. **Raw HTML inside the document**,
+because an opaque block is a block whose only editing surface is its source —
+the source pane D0 refuses, through the back door — and `html: false` is D0 in
+one line, not a parser setting. **Styling on elements**, because direct
+formatting is how documents rot and inventing a spelling for it is the move
+that produced YAML. **An editable page**, on three independent grounds: D1 has
+no HTML implementation and the browser's parser cannot give it one, the model
+is block-shaped on purpose where a page needs the tree-shaped normalising one
+REWRITE.md rejected, and the controls are a different application. What is
+taken instead is the theme — design in the renderer, D0 applied to design —
+with import as rescue and export as the product. The gas-cars analogy is
+answered at the axle: the electric cars are the deliverables, and Mandy is
+upstream of them. The entry ends with what would reopen it.
+
+The roadmap section's refusals now point at D7 with a clause each rather than
+carrying the argument twice, and the decisions file's header names D7 among
+the entries that point forward.
+
+No code changed, so nothing was run — `tests/` reads none of these files.
