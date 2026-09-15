@@ -3976,7 +3976,7 @@ proxied by "contains a markdown-special character," only **2 of the oracle's
 
 `npm test`: **1177 checks, no failures.**
 
-## 2026-09-15 — Slice 2 step 5: links
+## 2026-09-15 — `c98df2e` — Slice 2 step 5: links
 
 The one construct whose spelling never lived in `markup` at all, which is why
 it was the whole argument for step 3 recording a tail from source in the first
