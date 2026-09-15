@@ -3975,3 +3975,38 @@ proxied by "contains a markdown-special character," only **2 of the oracle's
 5,994 text nodes** actually need an escape to round-trip, and both do.
 
 `npm test`: **1177 checks, no failures.**
+
+## 2026-09-15 — Slice 2 step 5: links
+
+The one construct whose spelling never lived in `markup` at all, which is why
+it was the whole argument for step 3 recording a tail from source in the first
+place: re-emitting the tree naively reproduced `inline.content` for 86.8% of
+blocks, and every single mismatch was a link. Step 3 answers that for anything
+untouched. This is the other half — a link or image with no `tail` because a
+command built it fresh or changed only its destination — rebuilt from
+`attrs` instead: `modelRebuildTail` reads href (or `src`), an optional title,
+and inline-versus-reference off the `data-ref-label` stamp `referenceAwareLink`
+already writes, the same read step 3's own tail-parsing does. CLAUDE.md's
+existing accepted loss is unchanged: a `[text][]` or bare `[text]` shortcut
+rebuilds in the explicit form.
+
+The destination and title are new markdown, not a spelling put back, and that
+cuts the other way from step 3's own measurement: `attrGet("href")` is already
+what `normalizeLink` made of whatever was typed, usually percent-encoded, so a
+bare destination is correct far more often here than in real documents.
+`modelEscapeLinkDestination` wraps in `<...>` only when the resolved string
+still has whitespace, a paren, an angle bracket, or a control character in it,
+escaping `\` before `<` and `>` so the escapes this adds are never mistaken for
+one the destination already had.
+
+Eight hand-written cases, each verified by reparsing the *rebuilt* markdown —
+definition included where one is needed — and comparing its `attrs` against
+the original token's, the same discipline step 3 already holds for its own
+raw tail. Nothing in the oracle exercises this on its own, since every parsed
+link already carries the tail step 3 recorded — which is exactly why each case
+here clears `tail` by hand rather than finding one.
+
+Slice 2 is done: all six steps (0 through 5, with 6 — the suite growing — folded
+into each as it landed) are in.
+
+`npm test`: **1185 checks, no failures.**

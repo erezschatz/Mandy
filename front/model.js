@@ -700,6 +700,64 @@ function modelEscapeText(md, text) {
   throw new Error(`could not escape to a flat reparse: ${JSON.stringify(text)}`);
 }
 
+// A link destination as CommonMark accepts it plain — no whitespace, no
+// unescaped parenthesis, no control character — which the `<...>` form below
+// exists precisely to hold whatever this can't: something already normalised
+// by `normalizeLink` (a %-encoded space, say) almost always lands here, since
+// encoding is what removed the characters that would have forced the other
+// form in the first place.
+const MODEL_BARE_DESTINATION = /^[^\s()<>\x00-\x1f]*$/;
+
+/**
+ * A link or image destination, as markdown rather than as the resolved string
+ * `href` on the token — `attrGet("href")` is already what `normalizeLink`
+ * made of whatever was typed, not what a fresh command would type, so this is
+ * new markdown built from it rather than a spelling put back.
+ *
+ * Bare whenever nothing forces the alternative — the common case, since a
+ * normalised URL rarely still carries a raw space or paren. Wrapped in
+ * `<...>` otherwise, with `\` escaped first so the two escapes it adds for
+ * `<` and `>` are never themselves mistaken for one the destination already
+ * had — order matters here the way it does in `modelEscapeSilentTriggers`.
+ */
+function modelEscapeLinkDestination(href) {
+  if (MODEL_BARE_DESTINATION.test(href)) return href;
+  return "<" + href.replace(/\\/g, "\\\\").replace(/</g, "\\<").replace(/>/g, "\\>") + ">";
+}
+
+// A link or image title as markdown: double-quoted, with a literal backslash
+// or double quote escaped first-then-second for the same reason the
+// destination above orders its two escapes — inserting `\"` for an existing
+// quote must not itself look like an existing escaped backslash.
+function modelEscapeLinkTitle(title) {
+  return '"' + title.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+}
+
+/**
+ * The `(dest "title")` or `[label]` tail `modelInlineSource` falls back to for
+ * a link or an image with no `tail` recorded — one built fresh by a command,
+ * or one whose destination a command changed, rather than one carried
+ * untouched from a parse. Reference-versus-inline is read off `data-ref-label`
+ * exactly as step 3's own tail-parsing does, not re-decided here: a link
+ * still stamped with a label re-emits as a reference, in the label's
+ * **explicit** form regardless of whatever shortcut or collapsed form the
+ * source might once have used — CLAUDE.md's own accepted loss for an edited
+ * reference link, unchanged and needing no new argument here.
+ *
+ * What this does not reach, on purpose: whether the label still resolves to a
+ * definition anywhere in the document is a question about the whole document,
+ * which a single node's own `token` cannot answer, and belongs to whatever
+ * block-level emitter eventually calls this — the same boundary
+ * `scanReferenceDefinitions` already draws on the running app.
+ */
+function modelRebuildTail(token, destAttr) {
+  const label = token.attrGet("data-ref-label");
+  if (label !== null) return "[" + label + "]";
+  const dest = modelEscapeLinkDestination(token.attrGet(destAttr) || "");
+  const title = token.attrGet("title");
+  return title === null ? "(" + dest + ")" : "(" + dest + " " + modelEscapeLinkTitle(title) + ")";
+}
+
 /**
  * An inline tree back to the raw text it was folded from — the inverse of
  * `modelInlines`, for the nodes it recorded a spelling on. On a tree nothing
@@ -711,10 +769,11 @@ function modelEscapeText(md, text) {
  * `node.raw ?? modelEscapeText(md, node.content)` is the fallback that makes
  * genuinely new content fall through cleanly: a mark or a text run built by an
  * editing command rather than folded from a parse has no `raw` at all, and
- * step 4 is what makes rendering it from plain content safe rather than merely
- * convenient. A link's own fallback is still bare `attrs` reconstruction —
- * step 5, not started — because rebuilding `[text](href)` from scratch needs
- * more than escaping the text.
+ * step 4 is what makes rendering it from plain content safe rather than
+ * merely convenient. `node.tail ?? modelRebuildTail(...)` is step 5's version
+ * of the same fallback, one level up: a link or image whose destination
+ * changed, or one built fresh, has no `tail` either, and is rebuilt from its
+ * token's `attrs` instead of the bytes nobody wrote yet.
  */
 function modelInlineSource(nodes, md) {
   let out = "";
@@ -736,11 +795,15 @@ function modelInlineSource(nodes, md) {
         out += node.markup + node.content + node.markup;
         break;
       case "image":
-        out += "![" + (node.raw ?? modelEscapeText(md, node.content)) + "]" + (node.tail ?? "");
+        out += "![" + (node.raw ?? modelEscapeText(md, node.content)) + "]" +
+          (node.tail ?? modelRebuildTail(node.token, "src"));
         break;
       case "link":
         if (node.markup === "autolink") out += "<" + modelInlineSource(node.children, md) + ">";
-        else out += "[" + modelInlineSource(node.children, md) + "]" + (node.tail ?? "");
+        else {
+          out += "[" + modelInlineSource(node.children, md) + "]" +
+            (node.tail ?? modelRebuildTail(node.token, "href"));
+        }
         break;
       default:
         if (node.children) out += node.markup + modelInlineSource(node.children, md) + node.markup;

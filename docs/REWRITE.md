@@ -846,8 +846,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         this.** That sentence is about an edited paragraph re-serialising whole,
         and a list item is a block in every sense that matters here.
 
-    *   **2. The inline model — in progress: steps 0 through 4 done and
-        tested (steps 3 and 4 both on 2026-09-15), steps 5 and 6 not started.**
+    *   **2. The inline model — in progress: steps 0 through 5 done and
+        tested (steps 3, 4 and 5 all on 2026-09-15), step 6 (the suite grows
+        again) folded into each step as it landed rather than left for last.**
         A paragraph's
         or heading's markdown-it inline tokens become the editable structure:
         text, the three marks, code spans, links, images, and the `math` token
@@ -1212,14 +1213,56 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             back to itself**, run through the real parser rather than trusted
             on the function's own say-so.
 
-        5.  **Links.** The one construct whose spelling is not in `markup` at
-            all: re-emitting the tree naively reproduces `inline.content` for
-            86.8% of blocks, and **every single mismatch is a link**. Rebuilt
-            from `attrs` instead — href, optional title, and inline-versus-
-            reference off the `data-ref-label` stamp `referenceAwareLink`
-            already writes. CLAUDE.md's existing accepted losses are unchanged
-            and need no new argument: a `[text][]` or bare `[text]` shortcut
-            re-emits in the explicit form.
+        5.  **Links — done and tested, 2026-09-15.** The one construct whose
+            spelling is not in `markup` at all: re-emitting the tree naively
+            reproduces `inline.content` for 86.8% of blocks, and **every single
+            mismatch is a link** — the measurement that was step 3's whole
+            argument for recording a tail from source in the first place.
+            Step 3 answers that for anything untouched; this is the other
+            half, for a link or image with no `tail` because a command built
+            it fresh or changed only its destination. Rebuilt from `attrs`
+            instead — `modelRebuildTail(token, destAttr)` reads href (or
+            `src`), an optional title, and inline-versus-reference off the
+            `data-ref-label` stamp `referenceAwareLink` already writes, the
+            same read step 3's own tail-parsing does rather than a second
+            decision about what the stamp means. CLAUDE.md's existing accepted
+            losses are unchanged and need no new argument: a `[text][]` or bare
+            `[text]` shortcut rebuilds in the explicit form, because the stamp
+            only ever records which label resolved, never which of the three
+            spellings asked for it.
+
+            **The destination and title are new markdown, not a spelling put
+            back**, and that difference matters: `token.attrGet("href")` is
+            already what `normalizeLink` made of whatever was typed —
+            percent-encoded, most often — not what a fresh command would type,
+            so a bare destination is correct far more often than step 3's own
+            measurement of *existing* documents would suggest.
+            `modelEscapeLinkDestination` wraps in `<...>` only when the
+            resolved string still contains whitespace, a paren, an angle
+            bracket, or a control character, escaping `\`, `<` and `>` inside
+            in that order — backslash first, so the two escapes this adds for
+            `<` and `>` are never mistaken for one the destination already
+            had, the same ordering rule `modelEscapeSilentTriggers` follows a
+            level down. `modelEscapeLinkTitle` quotes and escapes the same way.
+
+            **What this does not reach, on purpose:** whether a rebuilt
+            reference's label still resolves to a definition anywhere in the
+            document is a question about the whole document, which a single
+            node's own `token` cannot answer — that belongs to whichever
+            block-level emitter eventually calls this, the same boundary
+            `scanReferenceDefinitions` already draws on the running app.
+
+            Eight hand-written cases — a bare destination, a title, a title
+            holding its own quote and its own backslash, a destination that
+            normalises to something bare-safe, a reference link rebuilt from
+            each of its three source spellings, an image, and a destination
+            that genuinely needs the bracketed form — each verified the same
+            way step 3 verifies a link's raw tail: reparse the *rebuilt*
+            markdown, definition included where one is needed, and compare its
+            `attrs` against the original token's. Nothing in the oracle
+            exercises this on its own, since every parsed link already carries
+            the tail step 3 recorded; that absence is exactly why every case
+            here clears `tail` by hand rather than finding one.
 
         6.  **The suite grows again**, the way it did across 1b's six steps, and
             the numbers go in the check labels so a run reads as a report. It

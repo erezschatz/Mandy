@@ -1356,6 +1356,83 @@ export default function run(check) {
     );
   }
 
+  // --------------------------------------------------------------- links
+  //                                                          (slice 2, step 5)
+
+  // `node.tail` covers a link or image untouched from a parse (step 3); this
+  // is the other half, for one built fresh or whose destination a command
+  // changed — nothing in the oracle exercises it on its own, since every
+  // parsed link keeps the tail it arrived with, so each case here clears
+  // `tail` by hand to stand in for what a future editing command will leave
+  // behind: a token with `attrs` and nothing else.
+  //
+  // The check reparses the *rebuilt* markdown — through the full document,
+  // reference definitions included, not the isolated node — and compares its
+  // `attrs` against the original token's, which is the only honest way to
+  // confirm a rebuilt tail means the same thing rather than merely looking
+  // plausible.
+  const flattenInlines = (nodes, out = []) => {
+    for (const n of nodes || []) {
+      out.push(n);
+      if (n.children) flattenInlines(n.children, out);
+    }
+    return out;
+  };
+  // `suffix` carries a reference definition into the parse when the case
+  // needs one — the source has to include it for `referenceAwareLink` to
+  // resolve the link at all, the same reason step 3's own reference-link
+  // cases parse the definition and the usage together.
+  const rebuildsTo = (kind, src, suffix = "") => {
+    const block = firstBlock(src + suffix);
+    const node = flattenInlines(block.inlines).find((n) => n.kind === kind);
+    const before = JSON.stringify(node.token.attrs);
+    node.tail = undefined;
+    const rebuilt = modelInlineSource(block.inlines, md);
+    const reparsedToken = md
+      .parse(rebuilt + suffix, {})
+      .filter((t) => t.type === "inline")
+      .flatMap((t) => t.children)
+      .find((t) => t.type === (kind === "image" ? "image" : "link_open"));
+    return { rebuilt, matches: JSON.stringify(reparsedToken?.attrs) === before };
+  };
+
+  {
+    check(
+      `a plain inline destination rebuilds bare (${JSON.stringify(rebuildsTo("link", "[t](url)").rebuilt)})`,
+      rebuildsTo("link", "[t](url)").matches,
+    );
+    check(
+      "a title rebuilds alongside the destination",
+      rebuildsTo("link", '[t](url "my title")').matches,
+    );
+    check(
+      "a title holding a literal quote and a literal backslash both round-trip",
+      rebuildsTo("link", '[t](url "a \\"quoted\\" title")').matches &&
+        rebuildsTo("link", '[t](url "back\\\\slash")').matches,
+    );
+    check(
+      `a destination normalised to something with no bare-illegal characters stays bare (${JSON.stringify(rebuildsTo("link", "[t](<url with space>)").rebuilt)})`,
+      rebuildsTo("link", "[t](<url with space>)").matches,
+    );
+    check(
+      "a reference link rebuilds in its label's explicit form, definition included in the reparse",
+      rebuildsTo("link", "[t][label]", "\n\n[label]: https://example.com").matches,
+    );
+    check(
+      "the same is true starting from the collapsed and shortcut forms",
+      rebuildsTo("link", "[label][]", "\n\n[label]: https://example.com").matches &&
+        rebuildsTo("link", "[label]", "\n\n[label]: https://example.com").matches,
+    );
+    check(
+      "an image rebuilds the same way, inline and with a title",
+      rebuildsTo("image", "![alt](i.png)").matches && rebuildsTo("image", '![alt](i.png "cap")').matches,
+    );
+    check(
+      `a destination containing a literal angle bracket or backslash escapes inside the brackets (${JSON.stringify(rebuildsTo("image", "![a](<x\\\\y\\<z>)").rebuilt)})`,
+      rebuildsTo("image", "![a](<x\\\\y\\<z>)").matches,
+    );
+  }
+
   // ------------------------------------------------------------- the metric
 
   // Slice 1b's step 6: the number the slice exists to move, asserted rather
