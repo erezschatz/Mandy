@@ -151,7 +151,7 @@ const modelIsBlankLine = (line) => line.trim() === "";
 // the token a paragraph or heading carries its content in — the editable
 // structure once stage 2 converts it. Every other kind keeps its token slice
 // and is edited as a whole for now.
-function modelBlockFromSpan(span) {
+function modelBlockFromSpan(span, md) {
   const kind = MODEL_BLOCK_KINDS[span.open.type] || "unknown";
   const inline = span.tokens.find((t) => t.type === "inline") || null;
   const block = {
@@ -172,7 +172,7 @@ function modelBlockFromSpan(span) {
   // parser has already produced — 980 blocks and ~11,000 tokens across the
   // files the suite drives — and a field that is filled at exactly one moment
   // cannot be half-filled when the emitter reads it.
-  block.inlines = modelInlines(block);
+  block.inlines = modelInlines(block, md);
   return block;
 }
 
@@ -239,11 +239,26 @@ function modelGapBlock() {
  * tokens, but `td_open` carries no `map`, so a cell is not a block for them to
  * hang off. That is 1b's floor and is unchanged here.
  */
-function modelInlines(block) {
+function modelInlines(block, md) {
   if (!block.inline) return null;
+  const content = block.inline.content;
 
   const root = [];
   const stack = [root];
+  // The node currently open at each level of `stack`, parallel to it and one
+  // longer than deep — `opens[0]` is null, standing for the root, which has no
+  // closing delimiter to consume. Needed because a close token carries none of
+  // the information consuming its delimiter needs (which mark, which link):
+  // that lives on the node the matching open token built, and this is how the
+  // loop still has it by the time nesting === -1 arrives.
+  const opens = [null];
+  // The cursor into `content` — this block's raw markdown, marker and
+  // continuation indent already stripped (see the fold's own doc comment) —
+  // that step 3's raw-source tracking advances token by token. Token order is
+  // source order, so this is a single left-to-right pass, the same shape as
+  // `modelTileRange`'s over lines rather than characters.
+  let pos = 0;
+
   for (const token of block.inline.children || []) {
     // markdown-it's emphasis rule leaves a zero-length text token on each side
     // of a mark it converted — `**a**` arrives as text("") strong text("") —
@@ -261,7 +276,9 @@ function modelInlines(block) {
       // unmatched one cannot happen from markdown-it, and if it ever did,
       // popping the root would strand everything after it outside the tree —
       // so the guard drops the token rather than the rest of the block.
-      if (stack.length > 1) stack.pop();
+      const open = opens[opens.length - 1];
+      if (open) pos = modelCloseInline(open, content, pos, md);
+      if (stack.length > 1) { stack.pop(); opens.pop(); }
       continue;
     }
 
@@ -275,11 +292,323 @@ function modelInlines(block) {
     stack[stack.length - 1].push(node);
 
     if (token.nesting === 1) {
+      pos = modelOpenInline(node, pos);
       node.children = [];
       stack.push(node.children);
+      opens.push(node);
+    } else {
+      pos = modelLeafInline(node, content, pos, md);
     }
   }
   return root;
+}
+
+// CommonMark's escapable set — the only characters a backslash can neutralise.
+// `\q` is not one of these and is not an escape at all: both the backslash and
+// the `q` reach the text token, so the plain-character branch below already
+// handles it without this table's help.
+const MODEL_ESCAPABLE = /[!"#$%&'()*+,\-./:;<=>?@[\]\\^_`{|}~]/;
+
+/**
+ * A leaf's rendered text, matched back onto the raw bytes it came from.
+ *
+ * markdown-it decodes a backslash escape before the text token ever exists —
+ * `\*not em\*` arrives as the single token `*not em*`, with no per-character
+ * record of which asterisk had a backslash in front of it — so the only way
+ * back is to walk `content` and `plain` together and notice where they part
+ * company for exactly the two characters an escape costs.
+ *
+ * Returns `{ raw, length }` on a clean match — `raw` is the exact source text,
+ * escapes included, and `length` is how much of `content` it consumed, which is
+ * this block's contribution to keeping every later node's cursor in sync.
+ * Returns `null` when it cannot resolve the next character at all, which today
+ * means an HTML entity or numeric character reference: markdown-it decodes
+ * those too, and unlike an escape there is no fixed-width pattern to match
+ * back to. Unmeasured and accepted — none of this repo's own markdown files
+ * carry a live one, `docs/MARKDOWN.md` does not track entities as a construct,
+ * and the one literal `&nbsp;` in CLAUDE.md sits inside a code span, which
+ * never reaches this function at all.
+ */
+function modelScanEscaped(content, pos, plain) {
+  let i = pos;
+  let j = 0;
+  let raw = "";
+  while (j < plain.length) {
+    if (content[i] === "\\" && MODEL_ESCAPABLE.test(content[i + 1] || "") && content[i + 1] === plain[j]) {
+      raw += content.slice(i, i + 2);
+      i += 2;
+      j += 1;
+      continue;
+    }
+    if (content[i] === plain[j]) {
+      raw += content[i];
+      i += 1;
+      j += 1;
+      continue;
+    }
+    return null;
+  }
+  return { raw, length: i - pos };
+}
+
+// The whitespace CommonMark strips from the start of a paragraph's
+// continuation line. Both breaks below read it the same way, immediately
+// after their own newline: a hard break's raw span is its spelling plus the
+// newline plus this, and a soft break's is the newline plus this, because the
+// indent is invisible to rendering but is still bytes the source spent —
+// **`raw` is the *inverse* of rendering, not of what CommonMark keeps**, and an
+// untouched break sitting next to an edited sibling has to give every one of
+// those bytes back or D1 stops being true one line into the next one.
+function modelContinuationIndent(content, pos) {
+  return /^[ \t]*/.exec(content.slice(pos))[0];
+}
+
+// The closing backtick run for a code span opened by `markup` at `pos`: the
+// first occurrence of that exact run that is not itself part of a longer one.
+// CommonMark's own rule — an opening and closing run must match in length, and
+// a run one backtick longer on either side does not count as a delimiter at
+// all — so `` ``a` `` ` `` has to skip the lone backtick inside it rather than
+// closing there. Returns -1 for an unterminated span, which cannot happen for
+// a code-span token markdown-it already committed to; kept as a return value
+// rather than an assumption because nothing here re-validates the parser's
+// own decision.
+function modelCodeSpanClose(content, pos, markup) {
+  let search = pos;
+  for (;;) {
+    const idx = content.indexOf(markup, search);
+    if (idx < 0) return -1;
+    const before = idx > 0 ? content[idx - 1] : "";
+    const after = content[idx + markup.length] || "";
+    if (before !== "`" && after !== "`") return idx;
+    search = idx + 1;
+  }
+}
+
+/**
+ * The raw text after a link's or image's closing `]`: `(dest "title")`,
+ * `[label]`, or nothing at all for a shortcut reference. One function for
+ * both constructs because the grammar is one function upstream too — a link
+ * and an image differ only in the `!` before the `[`, which the caller has
+ * already consumed by the time this runs — and because which of the three
+ * forms is in front of the cursor is answered by looking at one character
+ * rather than by being told: `(` is inline, `[` is a reference (empty for the
+ * collapsed form), anything else is a shortcut with nothing left to read.
+ *
+ * The inline branch calls `md.helpers.parseLinkDestination` and
+ * `parseLinkTitle` rather than re-deriving the grammar by hand — the same
+ * reuse `referenceAwareLink` in markdown-parser.js already argues for, and for
+ * the same reason: an angle-bracket destination, an escaped paren inside a
+ * bare one, and a quoted-versus-parenthesised title all have escaping and
+ * nesting rules a hand-rolled version would have to get right a second time.
+ * It mirrors that rule's own skip-parse-skip-parse-skip loop exactly, which is
+ * what makes the returned raw span include the destination's brackets and the
+ * title's quotes verbatim rather than a value already stripped of them.
+ *
+ * The reference branch does not use `md.helpers.parseLinkLabel`, which needs a
+ * live inline-parser state to skip nested tokens correctly — this repo's own
+ * files nest nothing inside a reference label, so a plain search for the next
+ * `]` is the measured-sufficient version rather than the fully general one.
+ */
+function modelLinkOrImageTail(content, pos, md) {
+  if (content[pos] === "[") {
+    const end = content.indexOf("]", pos + 1);
+    if (end < 0) return { raw: "", length: 0 };
+    return { raw: content.slice(pos, end + 1), length: end + 1 - pos };
+  }
+  if (content[pos] === "(") {
+    let cursor = pos + 1;
+    const skipWs = () => {
+      while (cursor < content.length && /[ \t\n]/.test(content[cursor])) cursor += 1;
+    };
+    skipWs();
+    const dest = md.helpers.parseLinkDestination(content, cursor, content.length);
+    if (dest.ok) cursor = dest.pos;
+    skipWs();
+    const title = md.helpers.parseLinkTitle(content, cursor, content.length);
+    if (title.ok) cursor = title.pos;
+    skipWs();
+    if (content[cursor] === ")") cursor += 1;
+    return { raw: content.slice(pos, cursor), length: cursor - pos };
+  }
+  return { raw: "", length: 0 }; // a shortcut: `![alt]` or `[text]`, nothing after it
+}
+
+// The raw markup a mark's or a link's *open* token consumes: a mark's own
+// delimiter, exactly as written (`markup` already carries it, per-node, which
+// is slice 2 step 1's whole point); `[` for a link's opening bracket, whose
+// token carries no markup of its own except to say "autolink" instead of the
+// text `<` it actually wrote.
+function modelOpenInline(node, pos) {
+  if (node.kind === "link") return pos + 1; // "<" or "[" — both one character
+  return pos + node.markup.length;
+}
+
+// The raw markup a mark's or a link's *close* token consumes: a mark's own
+// closing delimiter, or a link's `]` (`>` for an autolink) plus whatever
+// `modelLinkOrImageTail` finds after it — recorded on the node here rather
+// than by the caller, since the close token is the only place in the loop
+// that still has the node once its children are done.
+function modelCloseInline(node, content, pos, md) {
+  if (node.kind === "link") {
+    if (node.markup === "autolink") return pos + 1; // ">"
+    const cursor = pos + 1; // "]"
+    const tail = modelLinkOrImageTail(content, cursor, md);
+    node.tail = tail.raw;
+    return cursor + tail.length;
+  }
+  return pos + node.markup.length;
+}
+
+/**
+ * A leaf token's raw span, and — for the four kinds step 3 exists for — the
+ * bytes markdown-it's own token discarded, recorded on the node the way 1b's
+ * step 5 records a list item's marker: at parse, where the bytes are in hand,
+ * because re-deriving them at emit time would be a second place free to
+ * disagree with this one.
+ *
+ * - **`code-span`** keeps its padding (or the absence of it) in `raw`, the
+ *   exact text between the backtick runs — markdown-it's `content` has already
+ *   had a required single space stripped from each side when the span opens or
+ *   closes on a backtick itself.
+ * - **`hardbreak`** keeps which spelling in `raw`: markdown-it hands back a
+ *   bare token for both a trailing backslash and two-or-more trailing spaces,
+ *   which is the one divergence measured across this repo's own files that
+ *   drove TODO 2.3 under the current design and is closed here by construction
+ *   instead of by a document-wide sniff.
+ * - **`image`** keeps its alt text's raw spelling in `raw` and its destination
+ *   tail in `tail` — not one of the plan's four named spellings, but needed for
+ *   the same reason a mark needs its delimiters recorded: an image sitting
+ *   untouched next to an edited sibling still has to reconstruct exactly, and
+ *   nothing else on the node says how.
+ * - **`text`** and the `unknown` fallback keep their raw spelling, escapes
+ *   included, in `raw` — this is the "an escape" item in the plan's list of
+ *   four, folded into the same field text already needed reconstructed.
+ * - **`softbreak`** keeps the whole separator CommonMark discards as
+ *   insignificant — a trailing run of spaces before the newline, if any, and
+ *   the next line's own leading indent — in `raw`. A fifth thing the plan does
+ *   not name, and it is not optional the way it might look: this is invisible
+ *   to rendering, not to the file, and an untouched break the emitter has to
+ *   reproduce next to an edited sibling needs every one of those bytes back or
+ *   D1 is only true until the next line.
+ * - **`math`** needs nothing recorded: `mathSpan` in markdown-parser.js takes
+ *   its content as a verbatim slice with no escaping applied at all, so
+ *   `markup + content + markup` already is the raw span.
+ */
+function modelLeafInline(node, content, pos, md) {
+  switch (node.kind) {
+    case "code-span": {
+      const start = pos + node.markup.length;
+      const close = modelCodeSpanClose(content, start, node.markup);
+      node.raw = content.slice(start, close);
+      return close + node.markup.length;
+    }
+    case "hardbreak": {
+      const spelling = content[pos] === "\\" ? "\\" : /^ {2,}(?=\n)/.exec(content.slice(pos))[0];
+      const after = pos + spelling.length + 1; // past the spelling and the newline
+      const indent = modelContinuationIndent(content, after);
+      node.raw = spelling + "\n" + indent;
+      return after + indent.length;
+    }
+    case "softbreak": {
+      // A paragraph's continuation line loses its own leading indentation to
+      // CommonMark before inline parsing ever runs — not only a break's own
+      // trailing spaces, which is why `raw` carries both: the trailing run (if
+      // any), the newline, and the next line's stripped indent. Miss the
+      // second half and the cursor lands inside that indent instead of at the
+      // line's first real character, and every node after the break reads
+      // short by however wide it was.
+      const trailing = /^[ \t]*(?=\n)/.exec(content.slice(pos))[0];
+      const after = pos + trailing.length + 1; // past the trailing run and the newline
+      const indent = modelContinuationIndent(content, after);
+      node.raw = trailing + "\n" + indent;
+      return after + indent.length;
+    }
+    case "math":
+      return pos + node.markup.length + node.content.length + node.markup.length;
+    case "image": {
+      let cursor = pos + 2; // "!["
+      const scan = modelScanEscaped(content, cursor, node.content);
+      if (!scan) throw modelUnresolvedSpelling(node);
+      node.raw = scan.raw;
+      cursor += scan.length + 1; // the scanned alt text, then "]"
+      const tail = modelLinkOrImageTail(content, cursor, md);
+      node.tail = tail.raw;
+      return cursor + tail.length;
+    }
+    default: {
+      const scan = modelScanEscaped(content, pos, node.content);
+      if (!scan) throw modelUnresolvedSpelling(node);
+      node.raw = scan.raw;
+      return pos + scan.length;
+    }
+  }
+}
+
+// `modelScanEscaped` gives up on exactly one thing today: an HTML entity or a
+// numeric character reference, which markdown-it decodes the same way it
+// decodes a backslash escape and with the same total loss of the original
+// spelling — but with no fixed-width pattern to scan back through, unlike an
+// escape's "backslash plus one character". Thrown rather than papered over
+// with a guess: a wrong guess here does not just misrender this one node, it
+// leaves the cursor short for every sibling after it, which is the exact
+// silent-wrong-file failure `modelEmitBlock`'s own throw exists to prevent one
+// level up. Unmeasured and accepted for now — none of this repo's own markdown
+// files carry a live entity, `docs/MARKDOWN.md` does not track them as a
+// construct at all, and the one literal `&nbsp;` in CLAUDE.md sits inside a
+// code span, which never reaches this function. Whoever gives entities a
+// spelling of their own — plausibly step 4, which is already about characters
+// that need special handling — replaces this throw rather than working around
+// it.
+function modelUnresolvedSpelling(node) {
+  return new Error(`cannot recover the raw spelling of a ${node.kind} node: ${JSON.stringify(node.content)}`);
+}
+
+/**
+ * An inline tree back to the raw text it was folded from — the inverse of
+ * `modelInlines`, for the nodes it recorded a spelling on. On a tree nothing
+ * has touched, this reproduces `block.inline.content` exactly, which is what
+ * lets an untouched leaf sitting beside an edited one still come back
+ * byte-identical once slice 3 gives a container-level emitter something to
+ * call this from.
+ *
+ * `node.raw ?? node.content` is the fallback that makes genuinely new content
+ * fall through cleanly: a mark or a text run built by an editing command
+ * rather than folded from a parse has no `raw` at all, and renders from its
+ * plain content instead — which is step 4's problem (minimal escaping) and
+ * step 5's (a link rebuilt from `attrs`), not this function's.
+ */
+function modelInlineSource(nodes) {
+  let out = "";
+  for (const node of nodes || []) {
+    switch (node.kind) {
+      case "text":
+        out += node.raw ?? node.content;
+        break;
+      case "code-span":
+        out += node.markup + (node.raw ?? node.content) + node.markup;
+        break;
+      case "softbreak":
+        out += node.raw ?? "\n";
+        break;
+      case "hardbreak":
+        out += node.raw ?? "  \n";
+        break;
+      case "math":
+        out += node.markup + node.content + node.markup;
+        break;
+      case "image":
+        out += "![" + (node.raw ?? node.content) + "]" + (node.tail ?? "");
+        break;
+      case "link":
+        if (node.markup === "autolink") out += "<" + modelInlineSource(node.children) + ">";
+        else out += "[" + modelInlineSource(node.children) + "]" + (node.tail ?? "");
+        break;
+      default:
+        if (node.children) out += node.markup + modelInlineSource(node.children) + node.markup;
+        else out += node.raw ?? node.content;
+    }
+  }
+  return out;
 }
 
 // The one character an atom occupies in the offset space below: U+FFFC OBJECT
@@ -484,7 +813,7 @@ function modelItemPrefix(firstLine, continuationLine) {
  * narrower range and no coordinate translation anywhere.
  */
 function modelTileRange(ctx, spans, from, to) {
-  const { markdown, lines, startOf, endOf } = ctx;
+  const { markdown, lines, startOf, endOf, md } = ctx;
   const pieces = [];
   let line = from;
 
@@ -511,7 +840,7 @@ function modelTileRange(ctx, spans, from, to) {
     // so there is no kind here where a blank last line is content.
     let end = span.end;
     while (end > span.start + 1 && modelIsBlankLine(lines[end - 1])) end -= 1;
-    pieces.push({ block: modelBlockFromSpan(span), start: span.start, end, span });
+    pieces.push({ block: modelBlockFromSpan(span, md), start: span.start, end, span });
     line = Math.max(line, span.end);
   }
   if (line < to) takeGap(line, to);
@@ -624,7 +953,7 @@ function modelParse(markdown, md) {
   const endOf = (line) => (line < offsets.length ? Math.min(offsets[line] - 1, markdown.length) : markdown.length);
 
   const tiled = modelTileRange(
-    { markdown, lines, startOf, endOf },
+    { markdown, lines, startOf, endOf, md },
     modelSpansAtLevel(md.parse(markdown, {}), 0),
     0,
     lines.length,

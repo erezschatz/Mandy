@@ -846,8 +846,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         this.** That sentence is about an edited paragraph re-serialising whole,
         and a list item is a block in every sense that matters here.
 
-    *   **2. The inline model — in progress: steps 0, 1 and 2 done and tested
-        2026-09-14, steps 3 to 6 not started.** A paragraph's
+    *   **2. The inline model — in progress: steps 0 through 3 done and
+        tested (step 3 on 2026-09-15), steps 4 to 6 not started.** A paragraph's
         or heading's markdown-it inline tokens become the editable structure:
         text, the three marks, code spans, links, images, and the `math` token
         `app.js`'s own rule pushes. It fills the `inlines` field every block has
@@ -1037,21 +1037,94 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             single text node there is no markup to render, so the model's text
             has to be exactly the content markdown-it recorded, and it is.
 
-        3.  **Re-emission puts back what was written.** markdown-it discards
-            four spellings, and the measurement is what found them — a code
-            span's padding (`` ` a ` `` and `` `a` `` both give the content `a`,
-            and the padding is *required* when the content opens or closes with
-            a backtick), an escape (`\*not em\*` gives the text `*not em*`), a
-            link's angle-bracket destination (`[t](<u v>)` gives `u%20v`), and a
-            hard break's spelling (two trailing spaces and a trailing backslash
-            both give a bare `hardbreak`).
+        3.  **Re-emission puts back what was written — done and tested,
+            2026-09-15.** markdown-it discards four spellings, and the
+            measurement is what found them — a code span's padding (`` ` a ` ``
+            and `` `a` `` both give the content `a`, and the padding is
+            *required* when the content opens or closes with a backtick), an
+            escape (`\*not em\*` gives the text `*not em*`), a link's
+            angle-bracket destination (`[t](<u v>)` gives `u%20v`), and a hard
+            break's spelling (two trailing spaces and a trailing backslash both
+            give a bare `hardbreak`).
 
             **The answer to each is the same, and it is the reason this rewrite
             exists: back the way it was written.** The parser threw the spelling
             away; the model still has the bytes, so the model records what the
             parser discarded, at parse, on the node — exactly what 1b's step 5
             already does for a list item's marker. There is no house style to
-            pick and no spelling to prefer.
+            pick and no spelling to prefer. `modelInlines` now carries a raw
+            cursor through `inline.content` alongside the token walk it already
+            did for slice 2's step 1, so this landed as one pass rather than a
+            second walk over the tree: a leaf records its own `raw` (a mark's
+            open and close, its delimiters) and a link or image its `tail` —
+            the parenthesised destination, the reference `[label]`, or nothing
+            for a shortcut — as the cursor reaches it, in source order, which
+            is the same order the fold already visits nodes in.
+
+            **A fifth thing surfaced that the plan did not name, and it is not
+            optional the way it looks.** CommonMark strips the whitespace
+            around a line break twice over — a trailing run of spaces before
+            it, the next line's own leading indent after it — and both are
+            invisible to rendering, not to the file. Missing the second half
+            doesn't just misrender one break: it leaves every sibling after it
+            reading from the wrong cursor position for the rest of the block,
+            which is exactly how `tests/fixtures/torture.md`'s HTML-block
+            paragraph (an indented `<strong>` line inside a raw `<div>`, kept
+            as prose because `html: false`) found it — the first oracle file
+            with a continuation line indented at all. Both halves are recorded
+            together in a break's own `raw`, newline included, so `modelInlines`
+            never has to explain the character twice.
+
+            **Reused rather than reimplemented for the same reason
+            `referenceAwareLink` was copied instead of hand-rolled (D4's
+            argument, one level in): a link's destination-and-title tail calls
+            `md.helpers.parseLinkDestination` / `parseLinkTitle` directly**,
+            mirroring that rule's own skip–parse–skip–parse–skip loop rather
+            than re-deriving the escaping and angle-bracket rules by hand. The
+            reference-label tail (`[label]`) does not reach for
+            `parseLinkLabel`, which needs a live inline-parser state to skip
+            nested tokens correctly — measured against this repo's own files,
+            no reference label nests anything, so a plain search for the next
+            `]` is the sufficient version rather than the fully general one.
+            **Images get the same treatment as links, one level down from the
+            plan's own list**: not one of the four named spellings, but an
+            untouched image sitting beside an edited sibling still has to
+            reconstruct exactly, and nothing else on the node says how — so an
+            image's alt text and destination tail are recorded the same way a
+            link's are.
+
+            **One failure mode is a thrown error rather than a guess.** An HTML
+            entity or numeric character reference is decoded by markdown-it the
+            same way an escape is, but with no fixed-width pattern to scan back
+            through — so where an escape's raw-text scan can always resolve, an
+            entity's cannot, and guessing at a length would leave the cursor
+            wrong for every node after it in the block: the exact
+            silent-wrong-file failure `modelTouch` and `modelEmitBlock`'s own
+            throw already exist to prevent one level up. Thrown and accepted
+            rather than worked around, since it is unmeasured in the sense that
+            matters — none of this repo's own markdown files carry a live
+            entity, `docs/MARKDOWN.md` does not track them as a construct at
+            all, and the one literal `&nbsp;` in CLAUDE.md sits inside a code
+            span, which never reaches this path.
+
+            So the target here is what it is everywhere else in the model —
+            **byte-identity** — and the check is `modelInlineSource`, the
+            inverse of `modelInlines`: an inline tree back to the raw text it
+            was folded from, checked against the block's own `inline.content`
+            rather than against the caller's whole input, since a reference
+            link's definition line is a `gap` block of its own and the paragraph
+            using it does not own those bytes. Fourteen hand-written cases —
+            each of the four named spellings both ways, the fifth (a break's
+            surrounding whitespace), a title in both quote styles, an autolink,
+            all three reference-link forms, an image inline and by reference,
+            nested marks, and the thrown entity failure — then the oracle: every
+            one of **830 inline-bearing blocks reconstructs its own source
+            exactly**, which given the repo's own diet of these constructs
+            (1,538 code spans, 7 of them padded; 2 hard breaks, one of each
+            spelling; 1 soft break with whitespace to strip; 4 escaped
+            characters; 131 links, 1 with an angle-bracket destination; 5
+            images) is a claim about `tests/fixtures/torture.md` covering
+            exactly the same gap it closed for slice 2's steps 0 through 2.
 
             Only genuinely *new* content — a hard break the user just typed, a
             code span they just made — has nothing recorded to put back, and
@@ -1059,12 +1132,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             convention, which is `sniffMarkdownStyle`'s job and which
             MARKDOWN.md's **S3** settled for these two in particular ("the
             rewrite's whole point is better sniffing, so these are not a special
-            case"). Record first, sniff second, house style never.
-
-            So the target here is what it is everywhere else in the model —
-            **byte-identity** — and the check is the round trip the suite
-            already runs, now with a fixture that actually contains these
-            constructs.
+            case"). Record first, sniff second, house style never —
+            `modelInlineSource` already falls through to plain `content` for a
+            node with nothing recorded, which is what makes that the emitter
+            steps 4 and 5 build on rather than a separate mechanism.
 
         4.  **Escaping.** 1.0% of text tokens hold a character that would
             re-parse if it were emitted plain — narrow, and silent, which are

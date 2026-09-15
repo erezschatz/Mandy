@@ -3892,3 +3892,49 @@ it is.
 
 `npm test`: **1149 checks, no failures**, and the whole suite still runs in
 about a second and a half.
+
+## 2026-09-15 — Slice 2 step 3: put back what was written
+
+markdown-it discards four spellings on the way from source to token: a code
+span's padding, a backslash escape, a link's angle-bracket destination, and
+which of two hard-break spellings was used. The model still has the bytes, so
+`modelInlines` now carries a raw cursor through a block's inline content
+alongside the token walk it already did for step 1, and a leaf records what the
+parser threw away — a mark's own delimiters, a link or image's destination
+tail — as the cursor reaches it. `modelInlineSource`, the new inverse of
+`modelInlines`, is the check: an inline tree back to the raw text it was folded
+from, which on an untouched tree has to equal the block's own `inline.content`
+byte for byte.
+
+A fifth thing surfaced that the plan did not name: CommonMark strips the
+whitespace around a line break on both sides of it — a trailing run before, the
+next line's own indent after — and both are invisible to rendering, not to the
+file. Missing the second half doesn't just misrender one break, it leaves
+every sibling after it reading from the wrong cursor position for the rest of
+the block, which is how `tests/fixtures/torture.md`'s HTML-block paragraph (an
+indented line inside a raw `<div>`, kept as prose since `html: false`) found
+it — the first oracle file with an indented continuation line at all.
+
+A link's destination-and-title tail calls `md.helpers.parseLinkDestination` /
+`parseLinkTitle` directly, the same reuse `referenceAwareLink` already argues
+for rather than re-deriving that grammar by hand. Images get the same
+treatment as links even though they are not one of the plan's four named
+spellings: an untouched image beside an edited sibling still has to
+reconstruct exactly, and nothing else on the node says how.
+
+One failure mode is a thrown error rather than a guess: an HTML entity or
+numeric character reference is decoded the way an escape is, but with no
+fixed-width pattern to scan back through, so a wrong guess would leave every
+later node's cursor wrong for the rest of the block — the same silent-wrong-file
+failure `modelTouch` and `modelEmitBlock`'s own throw already guard one level
+up. Accepted rather than worked around: no oracle file carries a live entity,
+`docs/MARKDOWN.md` does not track them as a construct, and the one literal
+`&nbsp;` in CLAUDE.md sits inside a code span, which never reaches this path.
+
+Fourteen hand-written cases, then the oracle: every one of **830 inline-bearing
+blocks reconstructs its own source exactly**, against the repo's own diet of
+these constructs — 1,538 code spans (7 padded), 2 hard breaks (one of each
+spelling), 1 soft break with whitespace to strip, 4 escaped characters, 131
+links (1 with an angle-bracket destination), 5 images.
+
+`npm test`: **1164 checks, no failures.**

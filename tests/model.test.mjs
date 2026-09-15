@@ -54,12 +54,12 @@ const ORACLE_FILES = [
 export default function run(check) {
   const {
     modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix,
-    modelInlineText, modelInlineOffset, modelInlineAt,
+    modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource,
   } = loadSource(
     "model.js",
     {},
     "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix," +
-      " modelInlineText, modelInlineOffset, modelInlineAt };",
+      " modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -1104,6 +1104,135 @@ export default function run(check) {
         ` (${plainBlocks} of them)` +
         (plainMismatch.length ? ` — ${plainMismatch.length} did not` : ""),
       plainMismatch.length === 0 && plainBlocks > 100,
+    );
+  }
+
+  // ------------------------------------------------ put back what was written
+  //                                                             (slice 2, step 3)
+
+  // markdown-it discards four spellings on the way from source to token: a
+  // code span's padding, a backslash escape, a link's angle-bracket
+  // destination, and which of the two hard-break spellings was used — plus a
+  // fifth the plan does not name, the whitespace a soft or hard break's own
+  // line surrenders to CommonMark on both sides of it. All five are recorded
+  // on the node at parse time, in `raw` (and a link or image's tail in `tail`),
+  // rather than re-derived at emit time: the same rule 1b's step 5 follows for
+  // a list item's marker, and for the same reason — record first, so there is
+  // only one place that can be wrong about it.
+  //
+  // `modelInlineSource` is the inverse of `modelInlines`: an inline tree back
+  // to the raw text it was folded from, for every node that carries one of
+  // these fields. `roundTrips` checks it against the block's own
+  // `inline.content` rather than the caller's raw `src`, since a reference
+  // link's definition line is a `gap` block of its own — this is the check
+  // slice 1b's tiling invariant does not reach, because an untouched block
+  // never asks its tree anything at all.
+  const firstBlock = (src) => parse(src).blocks[0];
+  const roundTrips = (src) => {
+    const block = firstBlock(src);
+    return modelInlineSource(block.inlines) === block.inline.content;
+  };
+
+  {
+    check(
+      `a code span with no padding keeps none (${JSON.stringify(modelInlineSource(firstBlock("`a`").inlines))})`,
+      roundTrips("`a`"),
+    );
+    check(
+      `and one with padding keeps it, rather than the content markdown-it stripped (${JSON.stringify(modelInlineSource(firstBlock("` a `").inlines))})`,
+      roundTrips("` a `"),
+    );
+    check(
+      "padding forced by a leading or trailing backtick round-trips too",
+      roundTrips("`` `a` ``") && roundTrips("`` a` ``"),
+    );
+    check(
+      `an escape is preserved, backslash and all (${JSON.stringify(modelInlineSource(firstBlock("\\*not em\\*").inlines))})`,
+      roundTrips("\\*not em\\*") &&
+        // and a real mark right beside an escaped one is not confused for it
+        roundTrips("\\*a\\* and *b*"),
+    );
+    check(
+      `both hard-break spellings keep their own bytes (${JSON.stringify(modelInlineSource(firstBlock("a  \nb").inlines))} / ${JSON.stringify(modelInlineSource(firstBlock("a\\\nb").inlines))})`,
+      roundTrips("a  \nb") && roundTrips("a\\\nb"),
+    );
+    check(
+      "a hard break's exact space count survives, not just its being a break",
+      roundTrips("a    \nb"),
+    );
+    check(
+      "a soft break's own trailing space and the next line's stripped indent both survive",
+      roundTrips("a \n  b") && roundTrips("a\n  b") && roundTrips("a  \n"),
+    );
+    check(
+      `a bare link destination and an angle-bracket one keep their own spelling (${JSON.stringify(modelInlineSource(firstBlock("[t](<u v>)").inlines))})`,
+      roundTrips("[t](u)") && roundTrips("[t](<u v>)"),
+    );
+    check(
+      "a title round-trips along with the destination, in both quote styles",
+      roundTrips('[t](u "title")') && roundTrips("[t](u 'title')"),
+    );
+    check(
+      "an autolink round-trips, angle brackets and all",
+      roundTrips("<https://example.com>"),
+    );
+    check(
+      "a reference link's tail round-trips in each of its three forms",
+      roundTrips("[t][label]\n\n[label]: u") &&
+        roundTrips("[label][]\n\n[label]: u") &&
+        roundTrips("[label]\n\n[label]: u"),
+    );
+    check(
+      "an image's alt text and its tail both round-trip, inline and reference alike",
+      roundTrips("![alt text](i.png \"title\")") && roundTrips("![alt][ref]\n\n[ref]: u.png"),
+    );
+    check(
+      "marks nest without losing track of the cursor between them",
+      roundTrips("**bo *ld* text** and `code` and ~~gone~~"),
+    );
+    check(
+      "an HTML entity is a named, thrown failure rather than a silent one" +
+        " (unmeasured: no oracle file carries a live one)",
+      (() => {
+        try {
+          parse("a &amp; b");
+          return false;
+        } catch (e) {
+          return /raw spelling/.test(e.message);
+        }
+      })(),
+    );
+  }
+
+  // The oracle again. Every inline-bearing block, at every depth — a table
+  // cell is still 1b's floor and holds no tree of its own — reconstructs its
+  // own `inline.content` exactly. `docs/TODO.md`'s own diet has no images or
+  // reference links to speak of; the walk still visits every block that does,
+  // in `tests/fixtures/torture.md`, the same way the earlier oracle checks in
+  // this suite lean on it for the constructs the five hand-maintained files
+  // never once use.
+  {
+    let blocks = 0;
+    const wrong = [];
+    for (const path of ORACLE_FILES) {
+      const walk = (list) => {
+        for (const block of list) {
+          if (block.inlines) {
+            blocks += 1;
+            const out = modelInlineSource(block.inlines);
+            if (out !== block.inline.content) {
+              wrong.push(`${path}: ${JSON.stringify(block.inline.content.slice(0, 30))}`);
+            }
+          }
+          if (block.children) walk(block.children);
+        }
+      };
+      walk(parse(repoFile(path)).blocks);
+    }
+    check(
+      `every inline-bearing block in the oracle reconstructs its own source exactly (${blocks} blocks)` +
+        (wrong.length ? ` — ${wrong.length} did not: ${wrong.slice(0, 3).join(", ")}` : ""),
+      wrong.length === 0 && blocks > 800,
     );
   }
 
