@@ -3939,7 +3939,7 @@ links (1 with an angle-bracket destination), 5 images.
 
 `npm test`: **1164 checks, no failures.**
 
-## 2026-09-15 — Slice 2 step 4: escaping
+## 2026-09-15 — `217daaa` — Slice 2 step 4: escaping
 
 `modelEscapeText` is the fallback `modelInlineSource` reaches for on a text
 node with nothing recorded — genuinely new content, typed fresh or built by a
