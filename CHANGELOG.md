@@ -3893,7 +3893,7 @@ it is.
 `npm test`: **1149 checks, no failures**, and the whole suite still runs in
 about a second and a half.
 
-## 2026-09-15 — Slice 2 step 3: put back what was written
+## 2026-09-15 — `c89bd5f` — Slice 2 step 3: put back what was written
 
 markdown-it discards four spellings on the way from source to token: a code
 span's padding, a backslash escape, a link's angle-bracket destination, and
