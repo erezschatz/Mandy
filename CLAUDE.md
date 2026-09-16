@@ -878,10 +878,13 @@ permission the app may not have, so both report failure by pointing at the
 keyboard, which never needed it.
 
 **`.toolbar` is one row now, in both the app and an exported document** — it
-was two rows in the app until the redesign's stage 3 (TODO 4.9,
-`docs/redesign/`) moved the tab strip out to a sibling appended right after
-`.toolbar`, on the page rather than on the sticky teal row, so it scrolls
-away with the document instead of staying pinned. `.toolbar` itself holds two
+was two rows in the app until the chrome redesign (`docs/redesign/`, closed
+out in CHANGELOG.md) moved the tab strip out to a sibling appended right
+after `.toolbar`, on the page rather than inside the teal row. It is sticky
+in its own right, pinned just below `.toolbar`: it briefly scrolled away
+with the document instead, which read as the strip vanishing on any
+downward scroll rather than as the feature the design doc called it.
+`.toolbar` itself holds two
 groups kept apart by its own `space-between`: `.toolbar-left` (the app mark
 and the menus) always, and `.toolbar-right` (the open file's directory, then
 the theme toggle) in the app only — an exported document has no file on disk
@@ -933,21 +936,27 @@ Six things that are decisions rather than details:
   `flashButton` is gone. Anything new that wants to report on a click has the
   same problem and the same answer.
 - **`--toolbar-height` is a plain fixed value, not a formula**, since the
-  redesign's stage 3 (TODO 4.9, `docs/redesign/`) moved the tab strip out of
-  `.toolbar` to a sibling appended right after it — the row is the mark and
-  the menus, and in the app the open file's directory and the theme toggle,
-  none of which can make it taller than the `40px` both variants now share.
-  It used to be a sum of two rows' worth of padding and font-size custom
-  properties, and before that a per-variant `:root[data-variant="export"]`
-  override shortened it for the export's one-row bar — neither is left to
-  repoint now that both variants only ever had one row to begin with. The
-  toolbar still ships empty and the two render-blocking CDN scripts still sit
-  above `toolbar.js`, so the reservation is still what stops everything below
-  jumping once the script runs; it is a literal now rather than a chain of
-  variables, which is safer, not more fragile — there is nothing left for it
-  to go stale against. The tab strip, being a sibling rather than part of
-  `.toolbar`, reserves its own height separately: see `.tab-bar`'s
-  `min-height` in `app.css`.
+  chrome redesign (`docs/redesign/`, closed out in CHANGELOG.md) moved the
+  tab strip out of `.toolbar` to a sibling appended right after it — the row
+  is the mark and the menus, and in the app the open file's directory and
+  the theme toggle, none of which can make it taller than the `40px` both
+  variants now share. It used to be a sum of two rows' worth of padding and
+  font-size custom properties, and before that a per-variant
+  `:root[data-variant="export"]` override shortened it for the export's
+  one-row bar — neither is left to repoint now that both variants only ever
+  had one row to begin with. The toolbar still ships empty and the two
+  render-blocking CDN scripts still sit above `toolbar.js`, so the
+  reservation is still what stops everything below jumping once the script
+  runs; it is a literal now rather than a chain of variables, which is
+  safer, not more fragile — there is nothing left for it to go stale
+  against. The tab strip, being a sibling rather than part of `.toolbar`,
+  reserves its own height separately through `--tab-bar-height`
+  (`.tab-bar`'s `min-height`) — and is sticky in its own right rather than
+  scrolling away, so `.outline`'s sticky offset reads both variables
+  together (`calc(var(--toolbar-height) + var(--tab-bar-height))`). That
+  brought the per-variant override back, just for a different value: an
+  exported document has no tab bar at all, so `[data-variant="export"]`
+  redefines `--tab-bar-height` to `0px` rather than the app's `44px`.
 - **The theme toggle carries a `title`, and `theme-manager.js` moves it.** It
   is a two-segment sun/moon switch with no label of its own — CSS alone
   decides which segment is lit, off the same `data-theme` attribute

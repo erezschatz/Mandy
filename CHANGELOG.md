@@ -3199,3 +3199,58 @@ it, no assertion changed. Watched in a real browser: Open and Save As in
 both themes, `ask()` at warn and error severity, `askForInput`, all four
 toast severities, and the outlined danger button in both themes — the one
 place doc and screenshot disagreeing would have mattered.
+
+## 2026-09-16 — Redesign stage 7: print block, and the whole thing closes out
+
+**The `@media print` block forces the redesign's light tokens now**, the
+last piece of `docs/redesign/design_handoff_mandy_chrome/README.md` (TODO
+4.9, which this entry closes) still on the old palette. Every literal is the
+light-theme value spelled out again rather than a `var()` — this block's
+whole job is forcing light regardless of theme, and a custom property would
+still resolve to dark mode's value when printed from a dark session, since
+`@media print` does not leave the page's own cascade. Confirmed directly:
+`#editor`'s printed background is `rgb(255, 255, 255)` even when captured
+from a session that had just been switched to dark.
+
+Two things not in the doc's own list, added because leaving them would have
+shipped a visible regression or a dead rule:
+
+- **`#editor`'s `max-width: 68ch`** is a screen concession the doc's
+  fidelity list never mentions resetting, because it postdates the doc — it
+  is stage 2's own addition. Without `max-width: none` in print, a
+  printed page would have kept the narrow reading column and turned a third
+  of the sheet into blank margin. Confirmed: `#editor`'s printed width now
+  equals the full available width, not 68 characters of it.
+- **`#editor h1`'s `border-bottom-color` override** had nothing left to
+  color — stage 2 removed the border-bottom itself from the live view weeks
+  before this stage, and the print override for its color was never retired
+  alongside it. Gone now rather than left setting a color on a border that
+  does not exist.
+
+`th`'s print-only shaded background is also gone, matching the live table's
+own hairline-only redesign from stage 2 — the doc's list did not call this
+out explicitly, but leaving it would have meant print and screen disagreeing
+about whether tables are striped.
+
+**Full `npm test` (994 checks, all suites) and `deno task check` both
+pass.** The closing browser pass TODO 4.9 asked for: light and dark up and
+down every stage's surface, the outline open with two tabs in both themes,
+375px and 768px width with no horizontal overflow at either (`scrollWidth`
+measured, not eyeballed), and the print block itself rendered via
+`page.emulateMedia({ media: "print" })` in both a light and a dark session.
+
+**TODO 4.9 is done.** Seven stages, three bugs caught in the design doc
+before any code landed (grid-column collision, the narrow-width menu-row
+overflow, the tab-strip layout jump), one caught only by using the shipped
+result (the tab strip scrolling away read as broken, not as the doc's
+stated intent — see the follow-up two entries below stage 3's), one still
+open on purpose (TODO 4.10, the native scrollbar, deferred past this item
+on request), and three related features written down rather than built
+(TODO 4.11, and the two ROADMAP.md entries for document margins and split
+screen). The full stage-by-stage record stays in this file rather than in
+`docs/TODO.md`, which drops the finished item now — every reference to
+"TODO 4.9" elsewhere in the repo (`CLAUDE.md`, `app.css`, `index.html`,
+`ROADMAP.md`, the design doc itself) is repointed to
+`docs/redesign/design_handoff_mandy_chrome/README.md` in this same commit,
+since the number itself stops meaning anything once the item it named is
+gone.

@@ -10,8 +10,10 @@
          From docs/redesign/design_handoff_mandy_chrome/README.md, "Design
          tokens". Names are the doc's; a few pre-redesign names survive
          alongside them (--bg-toolbar, --text-toolbar, --shadow-light,
-         --shadow-medium, --notify-fg-on-accent) because the doc leaves their
-         consumers alone until a later stage repaints them — see TODO 4.9.
+         --shadow-medium, --notify-fg-on-accent) because the doc never
+         names a replacement for them — see the chrome redesign's
+         CHANGELOG.md entries (2026-09-16) for what each stage actually
+         touched.
          ======================================== */
       :root {
         /* Surfaces */
@@ -43,9 +45,9 @@
         --code-bg: #f5f7f6;
         --selection: #cfe3e0;
         /* Loaded from Google Fonts rather than self-hosted — see the
-           "Fonts stay a remote dependency" amendment in the design doc and
-           TODO 4.9. Georgia is what both engines fall back to before the
-           network font arrives and whenever it can't. */
+           "Fonts stay a remote dependency" amendment in the design doc.
+           Georgia is what both engines fall back to before the network font
+           arrives and whenever it can't. */
         --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
 
         /* Not part of the new token table: the toolbar's own background and
@@ -171,8 +173,8 @@
          it, an unspanned sibling after a spanned .toolbar lands in the
          outline's own grid cell — the outline and #editor each pushed one
          cell out of place for as long as the sidebar is open. Caught in
-         review before this stage shipped; see the design doc's amendments
-         and TODO 4.9. */
+         review before the chrome redesign shipped; see the design doc's
+         amendments. */
       :root[data-outline="open"] .tab-bar {
         grid-column: 1 / -1;
       }
@@ -951,63 +953,76 @@
          Print/PDF Export Styles
          Force light mode and clean layout
          ======================================== */
+      /* Forces light values regardless of theme — a printed page is paper,
+         which has no dark mode — using the same literals app.css's light
+         :root carries, since @media print has to survive being the one
+         place in the file that cannot simply read var(--ink) and trust the
+         cascade: dark mode's own custom properties are still in scope here
+         if the page was printed from a dark session, so light has to be
+         spelled out again. */
       @media print {
         body {
           background: #ffffff !important;
-          color: #333333 !important;
+          color: #1b2422 !important;
         }
 
         #editor {
           background: #ffffff !important;
-          color: #333333 !important;
+          color: #1b2422 !important;
           border: none !important;
           margin: 0 !important;
+          /* Not in the design doc's list — added here rather than left to
+             carry over by accident. The measured 68ch column is a screen
+             concession to line length on a wide monitor; a printed page is
+             already narrow, and without this a print-out kept the column and
+             wasted a third of the page as a blank right margin. */
+          max-width: none !important;
           padding: 2rem !important;
           min-height: auto !important;
         }
 
-        #editor h1 {
-          color: #2c3e50 !important;
-          border-bottom-color: #eeeeee !important;
-        }
-
+        /* h1 no longer has a border-bottom to color in print either — stage
+           2 of the redesign removed it from the live view, and this block's
+           own override for it went with it rather than being left dangling
+           on a property nothing sets a border for any more. */
+        #editor h1,
         #editor h2,
         #editor h3 {
-          color: #34495e !important;
+          color: #111917 !important;
         }
 
         #editor blockquote {
-          border-left-color: #3498db !important;
+          border-left-color: #0c4c4a !important;
         }
 
         #editor code {
-          background: #f4f4f4 !important;
+          background: #f5f7f6 !important;
           color: #c7254e !important;
         }
 
         #editor pre {
-          background: #f4f4f4 !important;
+          background: #f5f7f6 !important;
         }
 
         #editor pre code {
-          color: #333333 !important;
+          color: #1b2422 !important;
         }
 
         #editor a {
-          color: #3498db !important;
+          color: #0c4c4a !important;
         }
 
+        /* Literal, not var(--rule-faint): this block forces light values
+           regardless of theme, and a var() here would still resolve to
+           dark mode's value when printed from a dark session — the same
+           reason every other color in this block is a literal too. */
         #editor table {
-          border-color: #ddd !important;
+          border-color: #eaefed !important;
         }
 
         #editor th,
         #editor td {
-          border-color: #ddd !important;
-        }
-
-        #editor th {
-          background: #f5f5f5 !important;
+          border-color: #eaefed !important;
         }
       }
 

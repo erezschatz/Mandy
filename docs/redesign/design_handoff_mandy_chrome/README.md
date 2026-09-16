@@ -27,7 +27,7 @@ itself. Nothing else in this document changed.
   and the editable export both lose the serif face with no network reachable,
   falling back to `Georgia, "Times New Roman", serif` — the stack `app.css`
   already names. Revisit self-hosting if that fallback turns out to matter in
-  practice; TODO 4.9 in [docs/TODO.md](../../TODO.md) carries the decision.
+  practice; CHANGELOG.md's 2026-09-16 stage 1 entry carries the decision.
 - **A real layout bug in the tab-strip move, caught before it shipped.**
   "Structural changes" item 1 moves the tab bar out of `.toolbar` to a sibling
   inside `.container`. `.container` is a CSS grid only while the outline

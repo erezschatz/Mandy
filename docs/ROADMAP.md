@@ -201,8 +201,9 @@ per-document scope rather than a per-user one — the section below. Presets can
 ship ahead of the pane as a menu; anything past picking a preset by name is
 what the pane is for.
 
-**The document's margins** are the fourth, as of the redesign (TODO 4.9,
-`docs/redesign/`). `#editor`'s `max-width: 68ch` is one fixed measured column
+**The document's margins** are the fourth, as of the chrome redesign
+(`docs/redesign/`, closed out in CHANGELOG.md).
+`#editor`'s `max-width: 68ch` is one fixed measured column
 for every reader, and the same redesign is what makes that worth a knob at
 all: a wide monitor now sits on visibly more spare width beside the column
 than the pre-redesign full-bleed editor ever left on screen, which is exactly
@@ -214,7 +215,7 @@ window the prose gets," just anchored from a different edge.
 ## Split screen
 
 Two open documents side by side rather than one tab at a time, which the
-redesign (TODO 4.9) is what makes this worth having: the measured `#editor`
+chrome redesign is what makes this worth having: the measured `#editor`
 column stopped assuming it owns the full window the moment it capped itself
 at `68ch`, and a wide monitor now has room for a second one next to it rather
 than the pre-redesign full-bleed editor ever leaving space to.
@@ -233,8 +234,9 @@ tab drag to a side to open the split, is it a toolbar action, or both.
 
 ## A tab strip that hides itself on purpose
 
-The redesign's stage 3 (TODO 4.9, `docs/redesign/`) briefly shipped the tab
-strip scrolling away with the document — the design doc's own call, "outside
+The chrome redesign's stage 3 (`docs/redesign/`, closed out in
+CHANGELOG.md) briefly shipped the tab strip scrolling away with the
+document — the design doc's own call, "outside
 the sticky toolbar... intended" — and it read as a bug the moment it was
 actually used rather than just reviewed: the strip vanished on any downward
 scroll and only came back once you scrolled all the way back to the top,
