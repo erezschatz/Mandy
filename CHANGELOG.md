@@ -4011,7 +4011,7 @@ into each as it landed) are in.
 
 `npm test`: **1185 checks, no failures.**
 
-## 2026-09-16 — Slice 3 planned: the block serialiser
+## 2026-09-16 — `0d35912` — Slice 3 planned: the block serialiser
 
 Written before it is built, per CLAUDE.md. `docs/REWRITE.md`'s slice 3 entry
 was three paragraphs of intent; it is now the plan — a measurement table, six
@@ -4066,7 +4066,7 @@ No code changed, so no suite covers this — but `docs/REWRITE.md` is one of the
 six files the `model` suite drives as its oracle, so a documentation change to
 it is a change under test. `npm test`: **1185 checks, no failures.**
 
-## 2026-09-16 — The quoted metrics catch up with the suite
+## 2026-09-16 — `0d35912` — The quoted metrics catch up with the suite
 
 `docs/TODO.md` grew from 708 lines to 794 and `docs/REWRITE.md` gained the slice
 3 plan above, so most of the figures quoted in prose were a reading from an
@@ -4115,7 +4115,7 @@ recording D8 below moved them again.
 
 `npm test`: **1185 checks, no failures.**
 
-## 2026-09-16 — D8: the branch goes back to `main` twice, and the two points are marked
+## 2026-09-16 — `0d35912` — D8: the branch goes back to `main` twice, and the two points are marked
 
 The question was whether `rewrite` could merge back at each stage boundary.
 It can at two of them, and the stage boundary is not the unit — the useful
@@ -4167,7 +4167,7 @@ at D7.
 
 `npm test`: **1185 checks, no failures.**
 
-## 2026-09-16 — The oracle becomes a fixture, and the counts leave the prose
+## 2026-09-16 — `0d35912` — The oracle becomes a fixture, and the counts leave the prose
 
 Two problems with one cause, fixed together. The `model` suite read five living
 project documents as its test data, and those same documents described the
