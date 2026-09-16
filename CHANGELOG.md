@@ -3305,3 +3305,32 @@ in an actual installed Windows PWA before it ships — recorded in
 PWA's own titlebar".
 
 No code changed, so nothing was run — `tests/` reads none of these files.
+
+## 2026-09-16 — The real Mandy logo replaces the placeholder banner
+
+**`front/welcome-banner.png` and `front/welcome-banner-dark.png` are the
+actual logo now**, not the placeholder swapped in when the welcome document
+was renamed from Marky to Mandy. Source was a transparent, tightly-cropped
+4200×1232 PNG — trimmed of its remaining transparent margin, resized to
+960×274 (2x for a retina display at the old file's implied width), and
+shipped transparent rather than flattened onto a baked-in background the way
+the placeholder was.
+
+Transparent means no background color to keep in sync with the theme at
+all: dropping the old cream/near-black rectangles was a deliberate
+simplification, not just a side effect of the source being transparent — the
+mark now sits directly on `#editor`'s own `--paper`, so it can never drift
+from whatever that token is. Dark mode still needs a distinct file, since
+the source's brand teal has real contrast against white and almost none
+against `--paper` dark — `welcome-banner-dark.png` is the same crop with the
+teal (`#004c4c`-ish, sampled from the source rather than assumed) recolored
+to the existing mint `#7fd3c6` via `magick -fuzz 35% -fill ... -opaque ...`,
+leaving the brand orange untouched, the same treatment the placeholder's
+dark variant already used. The `[data-theme="dark"] #editor
+img[src$="welcome-banner.png"] { content: url(...) }` swap in `app.css`
+needed no change — same two filenames, same mechanism.
+
+No code changed. Watched in a real browser: light, dark, and 420px width,
+confirming the new (much wider, shallower — the old file's aspect ratio
+included padding the source crop doesn't have) proportions still read well
+scaled down.
