@@ -522,6 +522,48 @@ category fidelity deliberately does not extend to.
     call and nothing else. Nothing here reloads or merges on its own either —
     the report is the whole feature, and what to do about it stays the user's.
 
+*   **4.6** *(undecided)* `newTab()` in [tabs.js](../front/tabs.js) is the only
+    "new tab" there is, and it means one specific thing: park the active
+    document, push a bare `{ id }` onto `openTabs`, and let `adoptActive` find
+    no bundle and no storage for it — which blanks the editor the same way a
+    restored-but-never-shown tab does. That is the right behaviour for the
+    toolbar's **New**, which used to reset the document in place and now makes
+    a tab instead (see the "New and Clear are two different weights" section
+    above), but it is not the only thing a user reaches for a new tab to do.
+    Wants a second entry point — a tab that opens blank *and* immediately opens
+    the file browser into it, the way a browser's Ctrl+T-then-navigate does —
+    so opening a file into a fresh tab is one action instead of New followed by
+    Open. Needs a name for the menu that does not collide with plain New, and a
+    decision on what happens to the blank tab it made if the browse dialog is
+    cancelled: left as an empty tab, or closed back out.
+
+*   **4.7** *(undecided)* The Open dialog's starting directory
+    (`showOpenDialog()` / `loadDir()` in [file-api.js](../front/file-api.js))
+    is the last directory *that tab* browsed, stored under `documentKey("dir")`
+    — so it is not literally hardcoded to home, but a tab that has never
+    browsed has no value there, and `newTab()` seeds nothing, so every fresh
+    tab's first Open lands on home regardless of what the rest of the session
+    has been browsing. That is most of what reads as "always defaults to
+    home." The other half is that there is no list of recently opened files at
+    all — `grep -rn recent front/` finds nothing — so returning to a file
+    opened two tabs or two sessions ago means re-browsing to it by hand even
+    though Mandy already knows its path from `DOCUMENT_KEYS.path`. A recent-
+    files list is the bigger piece and the one worth deciding first: where it
+    lives (the open dialog itself, or a new menu item), how long an entry
+    survives a file being moved or deleted, and whether it is global or, like
+    the six document keys, per-tab.
+
+*   **4.8** *(undecided)* No way to reorder tabs. `renderTabBar()` in
+    [tabs.js](../front/tabs.js) redraws `#tabBar` from `openTabs` on every
+    change, and each tab is a plain `<div class="tab">` built by `buildTab()`
+    with no drag handlers anywhere — `grep -n drag front/tabs.js` is empty.
+    `openTabs` is the source of truth and already drives the redraw, so a
+    reorder is a splice on that array followed by the existing
+    `renderTabBar()`/`persistTabList()` pair; the work is the drag UI itself —
+    HTML5 drag-and-drop or manual pointer tracking, a drop-position indicator,
+    and deciding whether it needs a keyboard equivalent for parity with the
+    arrow-key menu navigation the rest of the toolbar has.
+
 ## 6. Product
 
 *   **6.1** Rewrite the README to better fit the project's state

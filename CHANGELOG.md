@@ -2755,7 +2755,7 @@ passes with it. **155 checks in the suite, no failures.**
 `VERSION` in [front/sw.js](front/sw.js) goes v1.31 to v1.32, since `tabs.js` is
 a shell asset.
 
-## 2026-09-15 — Document themes on the roadmap; editable HTML refused
+## 2026-09-15 — `6a3dfc9` — Document themes on the roadmap; editable HTML refused
 
 **The HTML question is settled in writing rather than relitigated again.** A
 new "Document themes, and the HTML question behind them" section in
@@ -2802,7 +2802,7 @@ of the same page.
 
 No code changed, so nothing was run — `tests/` reads none of these files.
 
-## 2026-09-15 — D7: Mandy holds a document, never a page
+## 2026-09-15 — `6a3dfc9` — D7: Mandy holds a document, never a page
 
 **The three refusals the morning's roadmap entry carried are promoted to a
 decision.** [docs/DECISIONS.md](docs/DECISIONS.md) gains D7, and it is argued
@@ -2829,5 +2829,19 @@ upstream of them. The entry ends with what would reopen it.
 The roadmap section's refusals now point at D7 with a clause each rather than
 carrying the argument twice, and the decisions file's header names D7 among
 the entries that point forward.
+
+No code changed, so nothing was run — `tests/` reads none of these files.
+
+## 2026-09-16 — Three tab/file-browser items added to the TODO
+
+**4.6, 4.7 and 4.8** in [docs/TODO.md](docs/TODO.md), all *(undecided)*: New
+is one action today — `newTab()` in [front/tabs.js](front/tabs.js) always
+blanks the tab, never opens the file browser — with no second entry point for
+"new tab, then pick a file"; the Open dialog's starting directory is per-tab
+rather than hardcoded to home, but a fresh tab has none stored so its first
+Open lands there anyway, and there is no recent-files list at all
+(`grep -rn recent front/` is empty); and nothing in `tabs.js` supports
+reordering tabs by drag, though `openTabs` already drives `renderTabBar()`
+from a single array, so the redraw side is free.
 
 No code changed, so nothing was run — `tests/` reads none of these files.
