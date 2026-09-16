@@ -3137,3 +3137,21 @@ same inner span instead of setting `textContent` directly. Confirmed:
   already shaped for; what is missing is presentational (a second mount
   point, a split ratio) and deciding what "the active document" means to
   the format bar and the outline once there can be two on screen at once.
+
+## 2026-09-16 — TODO 6.7: register as a file handler for .md/.markdown
+
+**A new capability, not a gap in an existing one** — `front/manifest.json`
+has no `file_handlers` member at all, so an installed Mandy has never shown
+up in the OS's own "Open with" for a markdown file. Recorded as TODO 6.7
+rather than built: declaring `file_handlers` is the easy half, but the
+launch arrives through the File Handling API's `window.launchQueue`, which
+hands back a `FileSystemFileHandle` — not a path — and every part of the
+document model (`currentFilePath`, the server's mtime staleness check,
+`.toolbar-path`'s directory display) is path-shaped. Two ways to resolve
+that are written down, genuinely undecided between: read/write the handle
+directly via the File System Access API and accept the tab has no path to
+show, or use the handle only to prompt the user back into the existing
+server-backed open flow. Chromium-only support for the API as of this
+writing may settle which is worth building at all.
+
+No code changed, so nothing was run — `tests/` reads none of these files.

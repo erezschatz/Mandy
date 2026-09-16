@@ -981,3 +981,40 @@ category fidelity deliberately does not extend to.
     only when it is set, so a deployed instance has no such endpoints to reason
     about. The check pages are run by hand from a dev server, which is exactly
     when the var is set, so nothing about how they are used changes.
+
+*   **6.7** *(undecided)* Register Mandy as a file handler for `.md` /
+    `.markdown` so an installed PWA shows up in the OS's own "Open with" for a
+    markdown file, and can be set as the default. [front/manifest.json](../front/manifest.json)
+    has no `file_handlers` member at all today — this is a new capability,
+    not a gap in an existing one.
+
+    **Not just a manifest edit.** Declaring `file_handlers` is what makes the
+    OS offer Mandy, but the launch itself arrives through the File Handling
+    API — `window.launchQueue.setConsumer(launchParams => ...)` — and nothing
+    in `front/` today calls it (`grep -rn launchQueue front/` is empty).
+    What it hands back is a `FileSystemFileHandle`, not a path string. That is
+    the real design question, not the JSON: every part of the app's document
+    model is path-shaped — `file-api.js`'s `currentFilePath`, the mtime/dirty
+    staleness checks the server's `/api/file` answers, `DOCUMENT_KEYS.path`,
+    and now `.toolbar-path`'s directory display (this session) — and a
+    `FileSystemFileHandle` has no path a page is ever allowed to read, by
+    design, for the same reason a `<input type="file">` upload never exposed
+    one.
+
+    Two shapes the resolution could take, genuinely undecided:
+    - **Read/write the handle directly** via the File System Access API
+      (`handle.getFile()`, `handle.createWritable()`), bypassing
+      `/api/browse` / `/api/file` entirely for a file opened this way. Works
+      in Chromium, needs no server round-trip, but the tab has no path to
+      show — `renderToolbarPath()` and the mtime-based disk-changed check
+      both go silent for it, same as they already do for a document with no
+      `currentFilePath` at all.
+    - **Ask the handle for a name only, and reopen through the server** by
+      prompting the user to confirm/browse to the same file so Mandy gets a
+      real path back — clunky (the OS already told the app which file), but
+      keeps every document on the one existing path-based model rather than
+      forking a second one for files opened this way.
+
+    Worth settling which, and whether Firefox/Safari's lack of File Handling
+    API support (Chromium-only as of this writing) makes the second shape the
+    only one worth building at all, before writing any code.
