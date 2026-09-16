@@ -4281,7 +4281,7 @@ starts with the chain recorded for it, a recorded chain is only ever indent and
 
 `npm test`: **1195 checks, no failures**, 197 of them in `model`.
 
-## 2026-09-16 — Slice 3 step 2: the heading's shape
+## 2026-09-16 — `c418f52` — Slice 3 step 2: the heading's shape
 
 `modelHeadingShape` and a `headingShape` field — `{ open, close, underline }`,
 recorded at parse beside the quote chain step 1 landed this morning and the
