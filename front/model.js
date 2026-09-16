@@ -168,6 +168,7 @@ function modelBlockFromSpan(span, md) {
     marker: null,        // an item only: see modelItemPrefix
     contentIndent: null,
     quotePrefixes: null,  // inside a quote only: see modelQuotePrefix
+    headingShape: null,   // a heading only: see modelHeadingShape
   };
   // Eagerly rather than on first edit: the fold is a walk over tokens the
   // parser has already produced — 980 blocks and ~11,000 tokens across the
@@ -194,6 +195,7 @@ function modelGapBlock() {
     marker: null,
     contentIndent: null,
     quotePrefixes: null,  // inside a quote only: see modelQuotePrefix
+    headingShape: null,   // a heading only: see modelHeadingShape
   };
 }
 
@@ -994,6 +996,58 @@ function modelQuotePrefix(line, depth) {
   return prefix;
 }
 
+// An ATX heading's opening run: up to three spaces of indent, one to six
+// hashes, and the whitespace that separates them from the content.
+const MODEL_ATX_OPEN = /^[ \t]{0,3}#{1,6}[ \t]*/;
+
+/**
+ * Which of markdown's three heading spellings wrote this heading, recorded at
+ * parse. Slice 3's step 2.
+ *
+ * A heading's `level` has been on the block since slice 1 and says nothing
+ * about how it was written: `# Title`, `# Title #` and `Title` over `=====`
+ * are all level 1, and `======` and `===` are the same heading in different
+ * bytes. So this is recorded rather than derived, for the reason everything in
+ * this model is — the file said it, and reconstructing it at emit time would
+ * be a second place free to disagree.
+ *
+ * It is the one affix in the model that is a **suffix**. Every other thing
+ * markdown-it strips is in front of the content — a list marker, a quote's
+ * chain, an indent — and a closing hash run and a setext underline are both
+ * behind it, which is why the ten blocks in the oracle whose source is *not* a
+ * per-line prefix plus their inline source are all headings.
+ *
+ * `markup` is the parser's own statement of which spelling it read — a hash run
+ * for ATX, `-` or `=` for setext — so the branch is taken on what markdown-it
+ * recorded rather than on a guess about line counts.
+ *
+ * Returns `{ open, close, underline }`: what precedes the content, what follows
+ * it, and the setext underline as written, `null` for ATX. **Verified against
+ * `inline.content` rather than trusted**, and `null` when it does not line up,
+ * the same safe direction `modelItemPrefix` takes — step 3 then has nothing to
+ * emit from rather than the model inventing a spelling the file never had. The
+ * case that reaches it is an indented multi-line setext body, which no file
+ * here has; a single-line one is handled, and an indented ATX is what `open`
+ * already carries.
+ */
+function modelHeadingShape(lines, content, markup) {
+  if (markup === "=" || markup === "-") {
+    const body = lines.slice(0, -1).join("\n");
+    const open = /^[ \t]*/.exec(body)[0];
+    if (body.slice(open.length) !== content) return null;
+    return { open, close: "", underline: lines[lines.length - 1] };
+  }
+  if (lines.length !== 1) return null;
+  const match = MODEL_ATX_OPEN.exec(lines[0]);
+  if (!match) return null;
+  const rest = lines[0].slice(match[0].length);
+  if (!rest.startsWith(content)) return null;
+  // Whatever is left after the content is the closing run and the whitespace
+  // around it, taken whole: `### x ###` and `### x #` differ only in bytes the
+  // renderer throws away, which is exactly the kind of difference this records.
+  return { open: match[0], close: rest.slice(content.length), underline: null };
+}
+
 const MODEL_ITEM_MARKER = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)/;
 
 /**
@@ -1125,6 +1179,20 @@ function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
       for (let line = piece.start; line < piece.end; line += 1) {
         piece.block.quotePrefixes.push(modelQuotePrefix(lines[line], quoteDepth));
       }
+    }
+
+    // The same thing for a heading, and the only affix in the model that is a
+    // suffix: a closing hash run and a setext underline both sit behind the
+    // content. Read off the chain-stripped lines, since a heading inside a
+    // quote has both markers in front of it and step 1 has claimed the outer.
+    if (piece.block.kind === "heading" && piece.block.inline) {
+      const stripped = [];
+      for (let line = piece.start; line < piece.end; line += 1) stripped.push(unquote(lines[line]));
+      piece.block.headingShape = modelHeadingShape(
+        stripped,
+        piece.block.inline.content,
+        piece.block.tokens[0].markup,
+      );
     }
 
     if (piece.block.kind === "item") {

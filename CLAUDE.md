@@ -602,7 +602,19 @@ Eight things that are decisions rather than details:
   inside, so a block records the chain of the quotes it is *in* and never its
   own — a quote is a container and re-emits from its children. It is also what
   makes an item behind a `> ` an ordinary item: `modelItemPrefix` now scans the
-  line with the chain already claimed, where before it found no marker at all. 1b's step 5 left it open between that and re-applying the
+  line with the chain already claimed, where before it found no marker at all.
+- **A heading's spelling is recorded too, and it is the model's one suffix.**
+  Slice 3's step 2, same day. `level` has been on the block since slice 1 and
+  says nothing about how the heading was written — `# T`, `# T #` and `T` over
+  `=====` are all level 1, and `======` and `===` are the same heading in
+  different bytes — so `modelHeadingShape` records `{ open, close, underline }`.
+  Everything else markdown-it strips sits in *front* of the content; a closing
+  hash run and a setext underline sit behind it, which is why the only blocks in
+  the oracle whose source is not a per-line prefix plus their inline source are
+  headings. The branch is taken on the parser's own `markup` rather than on a
+  line count, and the result is checked against `inline.content` rather than
+  trusted: a shape that does not line up is null, so the emitter has nothing to
+  work from instead of the model inventing a spelling. 1b's step 5 left it open between that and re-applying the
   chain at emit time, for want of anything to measure — this repo has no
   blockquote in any of its nine markdown files. `tests/fixtures/torture.md` is
   the measurement, and it decides it: `modelItemPrefix` returns null for every

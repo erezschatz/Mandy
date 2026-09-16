@@ -732,6 +732,78 @@ export default function run(check) {
     );
   }
 
+  // ---- Slice 3, step 2: the heading's shape -----------------------------
+  //
+  // A heading's `level` says nothing about how it was written, so the spelling
+  // is recorded. This is the one affix in the model that is a **suffix** — a
+  // closing hash run and a setext underline both sit behind the content — which
+  // is why the ten blocks in the oracle whose source is not a per-line prefix
+  // plus their inline source are all headings.
+  {
+    const shapeOf = (src) => {
+      const doc = parse(src);
+      const find = (b) => (b.kind === "heading" ? b : (b.children || []).map(find).find(Boolean));
+      return doc.blocks.map(find).find(Boolean);
+    };
+    const sh = (src) => shapeOf(src).headingShape;
+
+    check("a plain ATX heading records its opening run", sh("### Title\n").open === "### ");
+    check("and nothing to close it", sh("### Title\n").close === "" && sh("### Title\n").underline === null);
+    check(
+      "a closing hash run is recorded whole, with the space in front of it",
+      sh("#### Title ####\n").close === " ####",
+    );
+    // `### x ###` and `### x #` differ only in bytes the renderer throws away,
+    // which is the kind of difference this exists to keep.
+    check("a closing run of a different length is a different spelling", sh("### Title #\n").close === " #");
+    check(
+      "a setext heading records its underline as written, not normalised",
+      sh("Title\n====\n").underline === "====" && sh("Title\n----------\n").underline === "----------",
+    );
+    check("a setext heading has no opening run", sh("Title\n====\n").open === "");
+    check(
+      "a heading inside a quote records the hashes, not the chain in front of them",
+      sh("> ### Quoted\n").open === "### ",
+    );
+    check("an empty ATX heading is a shape rather than a null", sh("###\n").open === "###");
+  }
+
+  // The oracle, and the property is byte-level: **the recorded shape puts the
+  // heading back together.** Byte-exactness cannot fail for an untouched
+  // heading, which re-emits from `source`; what this asserts is that step 3 has
+  // everything it needs to write one that was edited, which is the only reason
+  // any of this is recorded.
+  {
+    const headings = [];
+    const walk = (b) => (b.children ? b.children.forEach(walk) : b.kind === "heading" && headings.push(b));
+    for (const path of ORACLE_FILES) parse(repoFile(path)).blocks.forEach(walk);
+
+    check(
+      `every heading in the oracle has a recorded shape (${headings.length} of them)`,
+      headings.length > 50 && headings.every((b) => b.headingShape !== null),
+    );
+
+    const rebuild = (b) => {
+      const at = (i) => (b.quotePrefixes ? b.quotePrefixes[i] : "");
+      const { open, close, underline } = b.headingShape;
+      if (underline === null) return at(0) + open + b.inline.content + close;
+      const body = (open + b.inline.content).split("\n");
+      return body.map((line, i) => at(i) + line).join("\n") + "\n" + at(body.length) + underline;
+    };
+    const rebuilt = headings.filter((b) => rebuild(b) === b.source);
+    check(
+      `and it reassembles the heading's own bytes, chain included (${rebuilt.length}/${headings.length})`,
+      rebuilt.length === headings.length,
+    );
+
+    const setext = headings.filter((b) => b.headingShape.underline !== null);
+    const closed = headings.filter((b) => b.headingShape.close !== "");
+    check(
+      `the oracle holds all three spellings, so none of this is untested (${setext.length} setext, ${closed.length} with a closing run)`,
+      setext.length > 0 && closed.length > 0 && headings.length > setext.length + closed.length,
+    );
+  }
+
   // Every item in the five files, cross-checked against the parser rather than
   // against itself: markdown-it reports the marker character on the token
   // (`markup`, plus `info` for an ordered item's number), so a regex that had

@@ -4280,3 +4280,57 @@ starts with the chain recorded for it, a recorded chain is only ever indent and
 `>`, and the content check above.
 
 `npm test`: **1195 checks, no failures**, 197 of them in `model`.
+
+## 2026-09-16 — Slice 3 step 2: the heading's shape
+
+`modelHeadingShape` and a `headingShape` field — `{ open, close, underline }`,
+recorded at parse beside the quote chain step 1 landed this morning and the
+list-item marker 1b's step 5 records in the same place.
+
+A heading's `level` has been on the block since slice 1 and says nothing about
+how the heading was written. `# Title`, `# Title #` and `Title` over `=====` are
+all level 1; `======` and `===` are the same heading in different bytes. So the
+spelling is recorded rather than derived, for the reason everything in this
+model is: the file said it, and reconstructing it at emit time would be a second
+place free to disagree with the first.
+
+**It is the model's one suffix.** Everything else markdown-it strips sits in
+front of the content — a list marker, a quote's chain, an indent — while a
+closing hash run and a setext underline sit behind it. That is exactly why the
+ten blocks in the oracle whose source is *not* a per-line prefix plus their
+inline source are all headings, which is the row in slice 3's measurement table
+that this step exists to answer. Step 1 produced the same finding independently,
+from the other side: its content check failed when written wide, on
+`> ### A heading inside a quote`, because the `### ` comes off the content as
+well as the chain.
+
+Two things it does rather than trust. **The branch is taken on the parser's own
+`markup`** — a hash run for ATX, `-` or `=` for setext — rather than on a guess
+about line counts, which is the same rule the rest of the model runs on: read
+what markdown-it recorded. And **the result is verified against
+`inline.content`**, with `null` when it does not line up, the safe direction
+`modelItemPrefix` already takes — step 3 then has nothing to emit from rather
+than the model inventing a spelling the file never had. Measured before writing
+it and again after: all 94 headings in the oracle resolve, 86 plain ATX, 3 with
+a closing run, 7 setext, and nothing left unresolved.
+
+Eleven checks. Eight by hand, one per spelling and per edge: each of the three,
+a closing run of a length that differs from the opening one (`### x #` is not
+`### x ###`, and the difference is only bytes the renderer throws away), a
+setext underline that is not normalised to a canonical length, a heading inside
+a quote recording the hashes rather than the chain in front of them, and an
+empty ATX heading being a shape rather than a null. Then the oracle, where the
+property is byte-level and is the one step 3 rests on: **the recorded shape
+reassembles each heading's own source, chain included, 94 of 94.** An untouched
+heading re-emits from `source` and cannot fail; what this asserts is that an
+edited one has everything it needs. A third check keeps the other two honest by
+asserting the oracle actually holds all three spellings, so none of it is
+passing untested.
+
+One consequence worth naming rather than meeting again later: `torture.md` opens
+with YAML front matter, and the app's parser has no front-matter rule, so the
+`---` / `title: …` / `---` block arrives as a setext h2 and now re-emits as one.
+Byte-correct, semantically wrong. `MODEL_BLOCK_KINDS` already names a
+`front_matter` kind for whenever that is worth fixing; it is not this slice's.
+
+`npm test`: **1206 checks, no failures**, 208 of them in `model`.

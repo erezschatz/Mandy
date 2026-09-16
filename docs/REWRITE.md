@@ -1450,9 +1450,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             as well. That is not a chain recorded wrongly, it is the next marker
             down, and step 2 is what records it.
 
-        2.  **The heading's shape — not started.** The ten exceptions above, and
-            the only place in the model where an affix is a suffix. Three
-            spellings: ATX with its own `#` run, ATX with a closing run
+        2.  **The heading's shape — done and tested, 2026-09-16.**
+            `modelHeadingShape` and the `headingShape` field: the ten exceptions
+            above, and the only place in the model where an affix is a suffix.
+            Three spellings: ATX with its own `#` run, ATX with a closing run
             (`#### x ####`, 3 in `torture.md`), and setext with an underline
             character and a length (7 more). Recorded rather than derived, for
             the reason everything here is: `======` and `===` are the same
@@ -1460,14 +1461,31 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             block has carried since slice 1 — says nothing about which of the
             three wrote it.
 
-            One thing this makes survive that is worth naming rather than
+            **The branch is taken on the parser's own `markup`** — a hash run
+            for ATX, `-` or `=` for setext — rather than on a guess about line
+            counts, which is the same rule the rest of the model follows: read
+            what markdown-it recorded instead of re-deriving it. And the result
+            is **verified against `inline.content` rather than trusted**, so a
+            shape that does not line up comes back null and step 3 has nothing
+            to emit from, exactly the safe direction `modelItemPrefix` already
+            takes. Measured before it was written and again after: all 94
+            headings in the oracle resolve, with no unresolved case to leave a
+            null behind.
+
+            The check that matters is byte-level and is the one step 3 rests
+            on: **the recorded shape reassembles each heading's own source,
+            chain included.** An untouched heading re-emits from `source` and
+            cannot fail; what this asserts is that an edited one has everything
+            it needs, which is the only reason any of it is recorded.
+
+            One thing it makes survive that is worth naming rather than
             discovering later: `torture.md` opens with YAML front matter, and
             the app's parser has no front-matter rule, so `---` / `title: …` /
-            `---` arrives as a **setext h2** and would re-emit as one. Recording
-            the shape makes that byte-correct while leaving it semantically
-            wrong. `MODEL_BLOCK_KINDS` already names a `front_matter` kind for
-            whenever that is worth fixing; it is not this slice's to fix, and
-            saying so is cheaper than meeting it again in slice 3's suite.
+            `---` arrives as a **setext h2** and re-emits as one. Recording the
+            shape makes that byte-correct while leaving it semantically wrong.
+            `MODEL_BLOCK_KINDS` already names a `front_matter` kind for whenever
+            that is worth fixing; it is not this slice's to fix, and saying so
+            is cheaper than meeting it again in slice 3's suite.
 
         3.  **`modelEmitLeaf` composes — not started.** Slice 2's
             `modelInlineSource` for the content, then the affixes back **in the
