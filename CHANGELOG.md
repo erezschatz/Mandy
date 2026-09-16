@@ -2946,3 +2946,11 @@ sample against a live `npm run serve` — headings, the hairline table, the
 non-italic blockquote, and inline code all match the doc, the Google Fonts
 serif loads and renders, and the console raised nothing. `npm test` (992
 checks, all suites) still passes.
+
+**One gap in the doc, found by eye rather than against the spec:**
+`--selection` ("text selection highlight") sits in the token table but no
+rule in any of the six sections consumes it, so selecting text still showed
+the browser's default blue. `#editor ::selection { background:
+var(--selection) }` closes it, scoped to `#editor` since the chrome has
+nothing worth selecting. Screenshotted a selected paragraph in both themes —
+teal tint in light, the darker teal in dark, no blue left anywhere.

@@ -647,6 +647,14 @@ category fidelity deliberately does not extend to.
        sudo) where the previous stage found none — light, dark, phone width,
        and a table/blockquote/code sample all screenshotted and match the
        doc. No console errors.
+
+       **One gap the doc itself leaves**, caught by eye against the running
+       app rather than against the spec: `--selection` ("text selection
+       highlight") is in the token table but no rule anywhere in the six
+       sections consumes it, so selecting text still showed the browser's
+       default blue. `#editor ::selection { background: var(--selection) }`
+       closes it — scoped to `#editor` since nothing in the chrome is worth
+       selecting.
     3. Menu row to a single 40px row; move the tab strip out (**with the
        `grid-column` fix**); rewrite `tests/toolbar.test.mjs` and
        `tests/tabs.test.mjs`, both of which assert on the DOM shape this stage

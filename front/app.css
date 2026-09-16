@@ -486,6 +486,14 @@
         line-height: 1.7;
       }
 
+      /* The doc names --selection ("text selection highlight") in its token
+         table but shows no rule for it anywhere in the six sections — the
+         browser default blue was never repointed. Scoped to #editor: the
+         chrome has nothing worth selecting. */
+      #editor ::selection {
+        background: var(--selection);
+      }
+
       #editor h1 {
         font-size: 35px;
         line-height: 1.2;
