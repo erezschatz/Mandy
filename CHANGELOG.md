@@ -3279,3 +3279,29 @@ alongside a stray `--tab-bar-height` literal in `CLAUDE.md` (`44px`, now
 `36px`) caught and fixed while in the area.
 `npm test` (994 checks) passes untouched; watched in a real browser, light
 and dark, with the outline open.
+
+## 2026-09-16 — ROADMAP: the app mark doubled by a Windows PWA titlebar
+
+**Recorded rather than fixed**: installed as a PWA on Windows, `.app-mark`
+(the white Mandy mark `buildAppMark()` puts at the left of the menu row)
+sits directly under the OS's own titlebar, which already shows the app's
+icon from the manifest — reported as looking doubled there, not as a
+problem on macOS, where an installed PWA's titlebar does not repeat the
+icon the same way.
+
+Answers a question asked first: detecting "is this a PWA on Windows" is a
+heuristic, not one clean check. `@media (display-mode: standalone)` reliably
+answers "installed app window, not a browser tab" but not which OS — macOS
+reports `standalone` too — so telling them apart means pairing it with a
+platform sniff, for which `toolbar.js`'s `IS_MAC` (used today only for ⌘
+versus Ctrl in shortcut labels) is already the precedent. The sturdier fix
+doesn't hide the mark at all: Window Controls Overlay
+(`"display_override": ["window-controls-overlay"]`) is the Chromium/Windows
+API that lets the app draw its own content into the titlebar space instead
+of the OS repeating the icon there, which is one icon in one bar rather than
+one hidden and one left in place. Chromium/Windows-only, and wants measuring
+in an actual installed Windows PWA before it ships — recorded in
+[docs/ROADMAP.md](docs/ROADMAP.md) under "The app mark, doubled by a Windows
+PWA's own titlebar".
+
+No code changed, so nothing was run — `tests/` reads none of these files.

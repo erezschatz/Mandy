@@ -255,6 +255,45 @@ rather than falling out of a redesign that was after something else. Same
 strip still needs to reserve its space and sit at a known offset whether it
 is always visible or hiding conditionally.
 
+## The app mark, doubled by a Windows PWA's own titlebar
+
+`buildAppMark()` in `toolbar.js` puts the white Mandy mark (`.app-mark` in
+`app.css`) at the left of the menu row — installed as a PWA on Windows, it
+sits directly under the OS's own titlebar, which already carries the app's
+icon from the manifest (`front/manifest.json`). Reported as looking doubled
+there; not reported as a problem on macOS, where an installed PWA's titlebar
+is a minimal traffic-lights strip rather than one that repeats the icon
+prominently — so this is specifically a Windows-PWA case, not a general
+"hide the mark when installed" one.
+
+**Detecting "is this a PWA on Windows" is a heuristic, not one clean check.**
+`@media (display-mode: standalone)` reliably answers "is this an installed
+app window, not a browser tab" — well supported, no guessing needed. It does
+not by itself answer *which OS*, and macOS also reports `standalone`, so
+telling the two apart means pairing it with a platform sniff. The precedent
+for that already exists: `toolbar.js`'s `IS_MAC` does the same kind of check
+(`/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)`) to
+decide ⌘ versus Ctrl in shortcut labels, just never yet for a structural or
+visual change. An `IS_WINDOWS` counterpart plus a `display-mode: standalone`
+media query would identify the situation correctly in the common case, but
+it is still sniffing rather than a platform telling you its own chrome
+layout, and Windows/Chromium could change what the installed titlebar looks
+like without anything here noticing.
+
+**The sturdier fix doesn't hide the mark — it reclaims the space.** Window
+Controls Overlay (`"display_override": ["window-controls-overlay"]` in the
+manifest) is the Chromium/Windows API for exactly this class of problem: the
+OS titlebar shrinks to just the minimize/maximize/close buttons in a corner,
+and the app draws its own content — the menu row, in this case — into the
+rest of what used to be titlebar space, reading `env(titlebar-area-x)` /
+`-y` / `-width` / `-height` in CSS and `navigator.windowControlsOverlay` in
+JS to lay out around the remaining OS-drawn buttons. That turns the doubled
+icon into one icon in one bar, rather than one hidden and one left in place.
+Chromium/Windows (and ChromeOS) only — nothing for Firefox or Safari, which
+keep today's layout unaffected either way — and per this repo's own standing
+rule about engine claims, it wants measuring in an actual installed Windows
+PWA before anything ships, not trusting the spec.
+
 ## Document themes, and the HTML question behind them
 
 Recorded 2026-09-15, out of a discussion that kept coming back and had not
