@@ -3254,3 +3254,28 @@ screen). The full stage-by-stage record stays in this file rather than in
 `docs/redesign/design_handoff_mandy_chrome/README.md` in this same commit,
 since the number itself stops meaning anything once the item it named is
 gone.
+
+## 2026-09-16 — Two post-ship tweaks to the redesign
+
+**The outline sidebar's "Outline" section label is gone** — user feedback
+given after the redesign had already closed out. `renderOutline()` in
+`outline.js` no longer builds `.outline-label`, and the now-unused CSS rule
+went with it.
+
+**The tab strip is roughly 2mm shorter.** `.tab`'s padding drops from the
+design doc's `7px 11px 8px` to `3px 11px 4px` — split off the top and
+bottom, sides untouched — which trims about 7.5px (2mm at the standard 96dpi
+CSS reference) off the row's overall height. `--tab-bar-height`, the
+reservation that keeps an empty `#tabBar` from jumping once `tabs.js`
+populates it, moved from the measured `44px` to a freshly measured `36px` to
+match — confirmed empty and populated still agree exactly, so the layout-jump
+fix from the redesign's stage 3 follow-up still holds. `.outline`'s sticky
+offset reads `--tab-bar-height` already, so it follows without its own
+change.
+
+Both amendments recorded as the fifth note in
+[docs/redesign/design_handoff_mandy_chrome/README.md](docs/redesign/design_handoff_mandy_chrome/README.md),
+alongside a stray `--tab-bar-height` literal in `CLAUDE.md` (`44px`, now
+`36px`) caught and fixed while in the area.
+`npm test` (994 checks) passes untouched; watched in a real browser, light
+and dark, with the outline open.

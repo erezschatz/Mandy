@@ -203,16 +203,6 @@
         border-right: 1px solid var(--rule);
       }
 
-      .outline-label {
-        font-weight: 600;
-        font-size: 11px;
-        line-height: 1;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: var(--ink-muted);
-        padding: 0 8px 12px;
-      }
-
       .outline-list {
         list-style: none;
         display: flex;
@@ -275,9 +265,10 @@
          away with the document, which read as the tab strip randomly
          vanishing rather than as a feature, and left the sticky chrome only
          40px tall where it used to be the whole bar. Reserved the same way
-         .toolbar-height is: measured against the real rendered row (44px)
-         rather than derived, so an empty #tabBar takes the same space before
-         tabs.js fills it as a populated one does after.
+         .toolbar-height is: measured against the real rendered row (36px,
+         trimmed down ~2mm from the design doc's own 44px — see .tab's
+         padding below) rather than derived, so an empty #tabBar takes the
+         same space before tabs.js fills it as a populated one does after.
 
          Present only in the app — an exported document has no tab bar at
          all — so .outline's sticky offset needs to know which is true to
@@ -286,7 +277,7 @@
          moment you scroll up, the way a mobile browser's address bar does,
          rather than always-visible. */
       :root {
-        --tab-bar-height: 44px;
+        --tab-bar-height: 36px;
       }
 
       :root[data-variant="export"] {
@@ -1074,7 +1065,10 @@
         gap: 7px;
         flex: 0 1 auto;
         min-width: 0;
-        padding: 7px 11px 8px;
+        /* Trimmed ~2mm (~7.5px at 96dpi) off the row's overall height from
+           the design doc's own 7px/8px, split off the top and bottom rather
+           than the sides. */
+        padding: 3px 11px 4px;
         border-radius: 7px 7px 0 0;
         color: var(--ink-muted);
         background: transparent;

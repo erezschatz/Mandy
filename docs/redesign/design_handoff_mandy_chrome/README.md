@@ -14,9 +14,10 @@ given this tool a lot of thought."
 
 ## Amendments (2026-09-16)
 
-Four notes against the spec below. The first three are from an implementation
+Five notes against the spec below. The first three are from an implementation
 review done before any code landed; the fourth was found while building stage 3
-itself. Nothing else in this document changed.
+itself; the fifth is user feedback given after the redesign had already shipped
+and closed out. Nothing else in this document changed.
 
 - **Fonts stay a remote dependency, not self-hosted.** "Document typography"
   says to add `front/fonts/` and self-host Source Serif 4 as `@font-face` woff2
@@ -43,6 +44,8 @@ itself. Nothing else in this document changed.
   is a priority, not a decoration.** It was not asked for, but it is the fix
   for the case in TODO 4.3 where two open tabs share a filename — the active
   tab's full-enough location is now visible without hovering for the tooltip.
+  Do not let it fall out in a pass that trims the menu row for space; TODO 4.3
+  is cross-referenced so it is not lost twice.
 - **§01's one-row menu bar does not fit six triggers at 375px next to the
   toggle, measured while building stage 3.** The app's old two-row bar never
   had to: the menus had the whole row to themselves, and CLAUDE.md's claim
@@ -58,8 +61,14 @@ itself. Nothing else in this document changed.
   against the real six labels rather than guessed, and `justify-content:
   center` is gone from `.menubar` — there is nothing left to center once the
   row fits.
-  Do not let it fall out in a pass that trims the menu row for space; TODO 4.3
-  is cross-referenced so it is not lost twice.
+- **The outline's section label and the tab strip's full height, both asked
+  to change after the redesign had already closed out.** The "Outline"
+  section label §03 added (`.outline-label`) is gone — `outlineNav.innerHTML`
+  no longer builds one, and the CSS rule went with it. `.tab`'s padding drops
+  from the doc's `7px 11px 8px` to `3px 11px 4px`, trimming roughly 2mm
+  (~7.5px at 96dpi) off the tab strip's overall height; `--tab-bar-height`
+  moved from `44px` to the newly measured `36px` to match, and `.outline`'s
+  sticky offset, which reads that variable, follows automatically.
 
 ## About the design files
 

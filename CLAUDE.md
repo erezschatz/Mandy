@@ -956,7 +956,7 @@ Six things that are decisions rather than details:
   together (`calc(var(--toolbar-height) + var(--tab-bar-height))`). That
   brought the per-variant override back, just for a different value: an
   exported document has no tab bar at all, so `[data-variant="export"]`
-  redefines `--tab-bar-height` to `0px` rather than the app's `44px`.
+  redefines `--tab-bar-height` to `0px` rather than the app's `36px`.
 - **The theme toggle carries a `title`, and `theme-manager.js` moves it.** It
   is a two-segment sun/moon switch with no label of its own — CSS alone
   decides which segment is lit, off the same `data-theme` attribute

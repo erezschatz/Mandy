@@ -150,11 +150,6 @@ function renderOutline() {
 
   outlineNav.innerHTML = "";
 
-  const label = document.createElement("p");
-  label.className = "outline-label";
-  label.textContent = "Outline";
-  outlineNav.appendChild(label);
-
   if (!list.children.length) {
     const empty = document.createElement("p");
     empty.className = "outline-empty";
