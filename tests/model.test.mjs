@@ -13,11 +13,15 @@
 // CLAUDE.md and decided on 2026-09-11 — the app keeps its CDN script tag, so
 // **that tag and deno.json are two halves of one pin and move together**.
 //
-// The oracle is this repo. CLAUDE.md, README.md, welcome.md and docs/TODO.md
-// are real files with real reference links, tight lists, tables, fences and
-// maths in them, and the claim under test is that opening and saving one
-// changes nothing whatsoever. Fixtures would prove that the model round-trips
-// what the model finds easy.
+// The oracle is real prose, held as fixtures. It drove the living project
+// files until 2026-09-16, which was right while this was a fork being hacked
+// on and is wrong now, for two reasons that are the same reason. A living file
+// cannot be written for the test — nobody is going to put a quote inside a
+// list in README.md to cover a construct — so coverage is hostage to what the
+// documents happen to need to say. And the documents describe the suite, so
+// every count quoted in one moved the moment the other was edited: a
+// documentation change became a failing test about list items, and refreshing
+// the figures moved them again. See `corpus/` below.
 
 import markdownit from "markdown-it";
 import { readFileSync } from "node:fs";
@@ -27,11 +31,27 @@ const repoFile = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 
 
 // The oracle, and it is deliberately two kinds of file.
 //
-// The first five are documents this project maintains by hand, which is what
-// makes them worth testing against: they are the files a regression would
-// actually damage, and they carry the conventions real prose carries.
+// The first five are **frozen copies**, taken on 2026-09-16, of five documents
+// this project maintains by hand. Copies rather than references, and prose
+// rather than invention: what makes them worth testing against is that a human
+// wrote them to be read, so they carry the conventions real prose carries —
+// tight lists, reference links, tables, fences, maths, a wrap width somebody
+// chose. A file written to exercise the parser would prove only that the model
+// round-trips what the model finds easy.
 //
-// They are also a **biased** sample, and the bias runs one way. Every one was
+// Being copies is what makes them usable. They can be edited to cover a
+// construct, because nothing reads them but this file; and editing the
+// originals cannot move a number here, which it did constantly while these
+// were references — these files quote the suite's own counts, so the two
+// chased each other.
+//
+// **Anything in `corpus/` is oracle.** There is no README in there and no file
+// that is not in the list below, so a new file is a deliberate addition rather
+// than something to be discovered. Refreshing one is a deliberate act too: copy
+// the living file over it, run the suite, and expect the counts in the labels
+// to move.
+//
+// They are a **biased** sample, and the bias runs one way. Every one was
 // written or reformatted in a single voice, so they are uniformly well-formed —
 // and between them they contain no blockquote, no hard break, no strikethrough
 // and no reference definition at all. A suite driving only these would report
@@ -40,16 +60,17 @@ const repoFile = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 
 // `tests/fixtures/torture.md` is the answer to that: one deliberately messy
 // document carrying at least one of everything in docs/MARKDOWN.md, nested far
 // deeper than any real file here goes, and inconsistent everywhere it is legal
-// to be. It does not replace the five — a synthetic file cannot say what this
-// project's own prose does — it covers the half they cannot.
-const ORACLE_FILES = [
-  "CLAUDE.md",
-  "README.md",
-  "front/welcome.md",
-  "docs/TODO.md",
-  "docs/REWRITE.md",
-  "tests/fixtures/torture.md",
-];
+// to be. It does not replace the five — an invented file cannot say what real
+// prose does — it covers the half they cannot.
+const CORPUS = {
+  claude: "tests/fixtures/corpus/claude.md",
+  readme: "tests/fixtures/corpus/readme.md",
+  welcome: "tests/fixtures/corpus/welcome.md",
+  todo: "tests/fixtures/corpus/todo.md",
+  rewrite: "tests/fixtures/corpus/rewrite.md",
+};
+
+const ORACLE_FILES = [...Object.values(CORPUS), "tests/fixtures/torture.md"];
 
 export default function run(check) {
   const {
@@ -250,11 +271,11 @@ export default function run(check) {
   check("children stay inside their parent's span and never overlap, at every depth", top.every(nests));
 
   // On the file the slice exists for. One bullet list is a third of
-  // docs/TODO.md today; what step 1 buys is that the tiler can see inside it
+  // corpus/todo.md today; what step 1 buys is that the tiler can see inside it
   // at all, which is the thing nothing could do before.
-  const todo = md.parse(repoFile("docs/TODO.md"), {});
+  const todo = md.parse(repoFile(CORPUS.todo), {});
   const biggest = modelSpansAtLevel(todo, 0).reduce((a, b) => (b.end - b.start > a.end - a.start ? b : a));
-  check("the largest block in docs/TODO.md is a container", biggest.open.type.endsWith("list_open"));
+  check("the largest block in corpus/todo.md is a container", biggest.open.type.endsWith("list_open"));
   check("and it tiles into many children rather than staying one span", childrenOf(biggest).length > 5);
 
   // ----------------------------------------------- children, and what tiles what
@@ -280,11 +301,11 @@ export default function run(check) {
   // And that the loop above is not passing by finding nothing: a model with no
   // children anywhere tiles vacuously, which is exactly the state slice 1 was
   // in and exactly what step 2 had to change.
-  const todoDoc = parse(repoFile("docs/TODO.md"));
+  const todoDoc = parse(repoFile(CORPUS.todo));
   const depthOf = (b) => (b.children ? 1 + Math.max(...b.children.map(depthOf)) : 1);
   const containers = (b) => (b.children ? 1 : 0) + (b.children || []).reduce((n, c) => n + containers(c), 0);
   check(
-    "docs/TODO.md tiles into containers rather than staying flat",
+    "corpus/todo.md tiles into containers rather than staying flat",
     todoDoc.blocks.reduce((n, b) => n + containers(b), 0) > 40,
   );
   check(
@@ -352,8 +373,8 @@ export default function run(check) {
   // a construct nothing below can render or emit, and it should be found by the
   // suite rather than by a document.
   const everyKind = (block) => [block.kind].concat((block.children || []).flatMap(everyKind));
-  const kinds = new Set(parse(repoFile("CLAUDE.md")).blocks.flatMap(everyKind));
-  check(`CLAUDE.md holds no unknown kind at any depth (${[...kinds].sort().join(",")})`, !kinds.has("unknown"));
+  const kinds = new Set(parse(repoFile(CORPUS.claude)).blocks.flatMap(everyKind));
+  check(`corpus/claude.md holds no unknown kind at any depth (${[...kinds].sort().join(",")})`, !kinds.has("unknown"));
 
   // ------------------------------------------------- reference definitions
 
@@ -385,13 +406,13 @@ export default function run(check) {
 
   // ------------------------------------------------------- editing a block
 
-  const src = repoFile("CLAUDE.md");
+  const src = repoFile(CORPUS.claude);
   const claude = parse(src);
 
   // Without this the round trip above could pass by doing nothing at all: a
   // parse that found no blocks would leave the whole file in `prefix` and
   // hand it back unchanged, which is byte-identical and worthless.
-  check("CLAUDE.md parses to blocks rather than one undigested lump", claude.blocks.length > 100);
+  check("corpus/claude.md parses to blocks rather than one undigested lump", claude.blocks.length > 100);
   check("with nothing left over in the prefix", claude.prefix === "");
   check("and every block is a kind the model knows", claude.blocks.every((b) => b.kind !== "unknown"));
   check("every block arrives carrying its source", claude.blocks.every((b) => typeof b.source === "string"));
@@ -443,8 +464,8 @@ export default function run(check) {
     return null;
   };
 
-  const todoSrc = repoFile("docs/TODO.md");
-  // The first bullet in the file, found by its own marker: docs/TODO.md writes
+  const todoSrc = repoFile(CORPUS.todo);
+  // The first bullet in the file, found by its own marker: corpus/todo.md writes
   // them `*   `, which is a convention sniffMarkdownStyle reads off the file and
   // slice 3's emitter will have to put back.
   const inList = (blocks) =>
@@ -461,7 +482,7 @@ export default function run(check) {
   const edited = parse(todoSrc);
   const chain = inList(edited.blocks);
   check(
-    "a bullet unique in docs/TODO.md is what the check below edits",
+    "a bullet unique in corpus/todo.md is what the check below edits",
     chain !== null && chain.map((b) => b.kind).join("/") === "list/item/paragraph",
   );
 
@@ -475,10 +496,10 @@ export default function run(check) {
   });
   const itemAt = todoSrc.indexOf(itemSource);
   check(
-    "editing one bullet rewrites exactly that bullet, and nothing else in 708 lines",
+    `editing one bullet rewrites exactly that bullet, and nothing else in ${todoSrc.split("\n").length} lines`,
     listOut === todoSrc.slice(0, itemAt) + "*   ZZZITEM" + todoSrc.slice(itemAt + itemSource.length),
   );
-  // The list this bullet is in is 239 lines of docs/TODO.md. Before slice 1b it
+  // The list this bullet is in is the largest block in corpus/todo.md. Before slice 1b it
   // was one block, so the same edit re-serialised a third of the file.
   check("and the serialiser is asked for that block and nothing else", asked === 1);
 
@@ -504,7 +525,7 @@ export default function run(check) {
   const misparented = (block) =>
     (block.children || []).flatMap((child) => (child.parent === block ? misparented(child) : [child.kind]));
   check(
-    "every child's parent is the container holding it, throughout docs/TODO.md",
+    "every child's parent is the container holding it, throughout corpus/todo.md",
     parse(todoSrc).blocks.flatMap(misparented).length === 0,
   );
 
@@ -536,7 +557,7 @@ export default function run(check) {
   deep.blocks.forEach((b) => findDeepest(b, 1));
   const deepSource = deepest.source;
   check(
-    "the deepest leaf in docs/TODO.md is five blocks down and unique in the file",
+    "the deepest leaf in corpus/todo.md is five blocks down and unique in the file",
     deepestAt === 5 && todoSrc.indexOf(deepSource) === todoSrc.lastIndexOf(deepSource),
   );
   modelTouch(deepest);
@@ -665,7 +686,7 @@ export default function run(check) {
     plainItems.length > 200 && plainItems.every((b) => typeof b.marker === "string"),
   );
   check(
-    `and every item inside one has none, which is slice 3's open question (${quotedItems.length} of them)`,
+    `and every item inside one has none, which is what slice 3 records the quote chain to fix (${quotedItems.length} of them)`,
     quotedItems.length > 0 && quotedItems.every((b) => b.marker === null),
   );
   check(
@@ -1206,7 +1227,7 @@ export default function run(check) {
 
   // The oracle again. Every inline-bearing block, at every depth — a table
   // cell is still 1b's floor and holds no tree of its own — reconstructs its
-  // own `inline.content` exactly. `docs/TODO.md`'s own diet has no images or
+  // own `inline.content` exactly. `corpus/todo.md`'s own diet has no images or
   // reference links to speak of; the walk still visits every block that does,
   // in `tests/fixtures/torture.md`, the same way the earlier oracle checks in
   // this suite lean on it for the constructs the five hand-maintained files
@@ -1463,10 +1484,10 @@ export default function run(check) {
     };
   });
   const share = (f) => (f.leaf / f.lines) * 100;
-  const worstTodo = worst.find((f) => f.path === "docs/TODO.md");
+  const worstTodo = worst.find((f) => f.path === CORPUS.todo);
 
   check(
-    `editing the worst block in docs/TODO.md rewrites ${worstTodo.leaf} of its ${worstTodo.lines} lines (${share(worstTodo).toFixed(1)}%)`,
+    `editing the worst block in corpus/todo.md rewrites ${worstTodo.leaf} of its ${worstTodo.lines} lines (${share(worstTodo).toFixed(1)}%)`,
     share(worstTodo) < 5,
   );
   // The guard on that number: it has to have moved because of sub-blocks, not

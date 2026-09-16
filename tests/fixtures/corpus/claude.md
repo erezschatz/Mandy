@@ -73,19 +73,6 @@ by importing it directly; `tests/run.mjs` runs them all.
 One suite is the exception to both halves of that: `model` needs no stub and
 does need a dependency. See its entry below.
 
-**No suite reads a living project file as test data, and no metafile quotes a
-number a suite computes.** Both rules were broken by the same arrangement and
-were fixed together on 2026-09-16 (D8's sibling problem, written up in the
-`model` entry below). Test data belongs in [tests/fixtures/](tests/fixtures/),
-where it can be edited to cover a construct — a living document cannot be, since
-nobody is going to put a quote inside a list in `README.md` for a test, so
-coverage ends up hostage to what the prose happens to need to say. And a count
-belongs in the check label that computes it and nowhere else: while `CLAUDE.md`
-and `docs/REWRITE.md` both described the suite *and* were read by it, editing
-either moved the numbers quoted in both, and refreshing those moved them again.
-A figure written in prose is one that will be wrong later; the labels are the
-report.
-
 They cover the invariants that fail *silently* rather than loudly:
 
 - **toolbar** — every item a variant renders has a handler in a script that
@@ -148,39 +135,25 @@ They cover the invariants that fail *silently* rather than loudly:
   handed it over would pass everything else and change nothing.
 - **model** — `front/model.js`, TODO 3.1's stage 1, and the only suite with no
   DOM in it: the model is pure string and token work, so it borrows dom.mjs's
-  file helpers and nothing else. Its oracle is `ORACLE_FILES`, and every file in
-  it is a **fixture** — `tests/fixtures/corpus/`, five frozen copies taken on
-  2026-09-16 of documents this project maintains by hand, plus
-  [tests/fixtures/torture.md](tests/fixtures/torture.md).
-
-  **It drove the living files until then, and that was the wrong shape.** Real
-  prose is what makes the oracle worth having — a human wrote it to be read, so
-  it carries the conventions prose carries rather than the ones a parser test
-  would think to invent — but a *living* file cannot be written for the test.
-  Nobody is going to put a quote inside a list in `README.md` to cover a
-  construct, so coverage was hostage to what the documents happened to need to
-  say. And these documents describe the suite, so every count quoted in one
-  moved the moment the other was edited: a documentation change became a failing
-  test about list items, and refreshing the figures moved them again. Copies fix
-  both at once — they can be edited to cover a construct, and editing the
-  originals cannot move a number here. **Anything in `corpus/` is oracle**;
-  there is no README in there and nothing that is not in the list, so a new file
-  is a deliberate addition. Refreshing one is deliberate too: copy the living
-  file over it and expect the counts in the labels to move.
-
-  `torture.md` is a different answer to a different half. The five are a
-  **biased** sample and the bias runs one way: all written in one voice, so
+  file helpers and nothing else. Its oracle is `ORACLE_FILES`, and it is
+  deliberately two kinds of file: five documents this project maintains by hand,
+  which are what a regression would actually damage, plus
+  [tests/fixtures/torture.md](tests/fixtures/torture.md) — one deliberately
+  messy document carrying at least one of everything in
+  [docs/MARKDOWN.md](docs/MARKDOWN.md). The fixture exists because the five are
+  a **biased** sample and the bias runs one way: all written in one voice, so
   uniformly well-formed, and between them holding no blockquote, no hard break,
   no strikethrough and no reference definition at all. It found two things on
   its first run that no repo file could: a tab-marked item derived a
   continuation indent the file does not use, **fixed the same day**, and a list
-  item inside a blockquote gets no marker, which stays pinned as a check — the
-  thing slice 3 records the quote chain to fix. It is also the only suite with
-  a dependency — a real markdown-it, since the point is to parse real markdown
-  with no browser anywhere. Since 2026-09-14 it configures that instance
+  item inside a blockquote gets no marker, which stays pinned as a check because
+  it is slice 3's open question rather than a bug. It is also the only suite with
+  a dependency — a real markdown-it, since the point is to parse this repo's own
+  files with no browser anywhere. Since 2026-09-14 it configures that instance
   with `configureMarkdownParser`, the same call `app.js` makes, so the suite and
   the app parse with one configuration rather than the suite seeing a bare
-  parser with no `math` token and no `data-ref-label` stamp in it. What it asserts is D1: every file in the oracle comes back byte-identical,
+  parser with no `math` token and no `data-ref-label` stamp in it. What it asserts is D1: `CLAUDE.md`, `README.md`,
+  `welcome.md`, `docs/TODO.md` and `docs/REWRITE.md` come back byte-identical,
   and editing one paragraph rewrites exactly that paragraph. Since slice 1b it
   also asserts the same invariant one level down — a container's children tile
   its own bytes, at every depth, on those same files — plus the spans the tiler
@@ -191,19 +164,18 @@ They cover the invariants that fail *silently* rather than loudly:
   exactly the state slice 1 left it in. It also carries **the metric**, because
   the number slice 1b exists to move should not be something a human measured
   once and quoted: the worst edit in each of those files as a share of it, the
-  guard that `corpus/todo.md`'s largest top-level block is still a third of the
-  file so the share moved for the right reason, and every block in the oracle
-  edited alone to prove it rewrites exactly itself. **The counts live in the
-  check labels and nowhere else**, so a run reads as a report and no prose
-  anywhere has to be kept in step with them. Since slice 2's step 1 it also drives the
+  guard that `docs/TODO.md`'s largest top-level block is still a third of the
+  file so the share moved for the right reason, and every one of their ~970
+  blocks edited alone to prove it rewrites exactly itself. The numbers are in the check
+  labels, so a run reads as a report. Since slice 2's step 1 it also drives the
   inline tree, where the invariant is the same shape one level down again:
-  across every inline-bearing block in the oracle, all of the nodes are the
+  across those files' 861 inline-bearing blocks, all 12,060 nodes are the
   parser's own tokens, each in the tree exactly once and in order, and every
-  token left out is one of the empty text tokens the fold drops on purpose.
+  token left out is one of the 423 empty text tokens the fold drops on purpose.
   Step 2 adds the offset space over that tree, where the property is a fixpoint:
-  every leaf in those files, at both edges and the middle, maps to an
+  all 11,190 leaves in those files, at both edges and the middle, map to an
   offset that maps back to the same place — plus the one check the model cannot
-  mark its own homework on, that in a block holding no markup at all the
+  mark its own homework on, that in the 204 blocks holding no markup at all the
   text it renders is the content markdown-it recorded.
 - **tabs** — the per-tab state boundaries and the swap between documents: that
   park and adopt are lossless and adopting nothing is a blank document rather
@@ -562,9 +534,8 @@ Eight things that are decisions rather than details:
   today, is only a taller one.
 - **A container holds children that tile its own bytes, and the serialiser does
   not read them yet.** A list was one block, which was a known regression rather
-  than the design: `docs/TODO.md` was 708 lines and sixteen top-level blocks when
-  this was measured on 2026-09-12, the largest 239 of them, so editing one item
-  would rewrite a third of the file —
+  than the design: `docs/TODO.md` is 794 lines and sixteen top-level blocks, the
+  largest 267 of them, so editing one item would rewrite a third of the file —
   the unmergeable diff D1 exists to prevent, and *worse* than the three-layer
   restore this replaces, since `markdownSegments` splits on list markers for
   exactly this reason. Slice 1b is the fix, and its first two steps are in: a
@@ -579,7 +550,7 @@ Eight things that are decisions rather than details:
   clears the touched block's ancestors so that recursion reaches it (step 4 —
   see the bullet below). Editing the first bullet in `docs/TODO.md` therefore
   asks the emitter for a 10-line paragraph where the same edit used to
-  re-serialise the whole list around it, and a bullet five blocks down costs
+  re-serialise the 267-line list around it, and a bullet five blocks down costs
   one emitter call. Every item also carries its own marker and continuation
   indent (step 5), recorded at parse by `modelItemPrefix` because slice 3's
   emitter has to write both back and re-reading them at emit time would be a
@@ -589,10 +560,9 @@ Eight things that are decisions rather than details:
   the file continues under a bare `"\t"` — the same column, different bytes, and
   an edited item written back under an indent its author never used. **The
   metric is the suite's, not a human's** (step 6): editing the worst block in
-  the oracle's copy of `docs/TODO.md` rewrites a handful of its lines where the
-  same edit cost the whole enclosing list before the slice, and every block the
-  suite drives rewrites exactly itself when edited one at a time. The figures
-  are in the labels. A blockquote's `> `
+  `docs/TODO.md` rewrites 15 of its 794 lines where the same edit cost 267
+  before the slice, and all 975 blocks across the six files the suite drives
+  rewrite exactly themselves when edited one at a time. A blockquote's `> `
   chain is the same problem as the marker, and is **settled the same way**: it is
   recorded at parse. 1b's step 5 left it open between that and re-applying the
   chain at emit time, for want of anything to measure — this repo has no
@@ -617,8 +587,8 @@ Eight things that are decisions rather than details:
   them from the source would be a second parser free to disagree with the first.
   **An image is one node rather than its alt text**, which is step 2's offset
   rule arriving early. The one thing the fold drops is a zero-length text token,
-  of which markdown-it leaves one either side of every mark it converts, of which
-  the oracle holds several hundred: they hold no bytes, and a position inside one cannot be told
+  of which markdown-it leaves one either side of every mark it converts — 423 in
+  the oracle files: they hold no bytes, and a position inside one cannot be told
   from a position beside it. The suite checks that omission as an omission —
   every token not in the tree is an empty text token, and everything else is
   there exactly once, in order.

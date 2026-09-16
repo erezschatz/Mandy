@@ -4010,3 +4010,220 @@ Slice 2 is done: all six steps (0 through 5, with 6 — the suite growing — fo
 into each as it landed) are in.
 
 `npm test`: **1185 checks, no failures.**
+
+## 2026-09-16 — Slice 3 planned: the block serialiser
+
+Written before it is built, per CLAUDE.md. `docs/REWRITE.md`'s slice 3 entry
+was three paragraphs of intent; it is now the plan — a measurement table, six
+steps in order, and the decisions argued where they are made rather than left
+to whoever starts.
+
+The measurement came first, the way 1b's tiling table and slice 2's inline
+table did, across all six oracle files. Two readings shape the slice. **Of the
+975 leaves — the only blocks that can reach the emitter — just 861 carry an
+inline tree**, and the other 114 (72 table rows, 21 gaps, 14 fences, 6 rules,
+1 indented code block) have nothing to emit *from*: their content is source and
+is edited as source, so a command sets `source` rather than nulling it and the
+emitter is never reached. That answers `modelEmitBlock`'s existing throw for
+five kinds out of seven, and makes it a constraint on stage 2's input layer
+rather than work for this slice.
+
+The second is the one that decides the shape: **851 of those 861 blocks have a
+`source` that is a per-line prefix plus the inline source slice 2's step 3
+already reconstructs byte-exactly.** So the block emitter is an affix problem
+rather than a serialisation problem — put back what markdown-it stripped off
+`inline.content`, which is the same sentence 1b's step 5 and slice 2's step 3
+are each an instance of, arriving a third time one level up. The ten exceptions
+are all headings, all in the torture fixture, and all **suffixes**: 7 setext and
+3 with closing hashes.
+
+Three more measurements settled things the plan would otherwise have guessed.
+A quote chain is recorded **per line, not per block** — `torture.md` has a
+paragraph whose chain is `["> ", ""]`, a lazy continuation carrying no `>` at
+all, and another starting at `"  > "`. The quote chain sits **outside** the item
+marker, because `> 1. A list inside a quote.` has the content
+`A list inside a quote.` with both stripped. And `wrapMarkdownLine` re-derives
+a continuation indent that disagrees with the recorded one on **1 of 341**
+items — the marker `"-\t"`, where it would write two spaces over the file's own
+tab, which is 1b's step 5 bug sitting unfixed one layer along. So the wrapper
+gains first-line and continuation prefixes instead of guessing at them; D7 is
+why touching a file the app loads costs nothing.
+
+Two things the plan picks up that were already owed to it. Slice 2's step 5
+declined to say whether a rebuilt reference label still resolves, naming
+"whichever block-level emitter eventually calls this" as the owner — this is
+that emitter, and the model can answer it where `main` cannot, because a
+definition is a `gap` block in its own position rather than something
+`appendReferenceDefinitions` collects at the end of the file. And S3's fence
+character sniff turns out to have **no caller in this slice**, since a fence is
+one of the five source-edited kinds and is never re-emitted; it lands with
+stage 2's Code command, the first thing that can make a fence out of nothing.
+
+Slice 2's own status line was still reading "in progress" here while the
+2026-09-15 entry above already recorded it done; it now says what happened.
+
+No code changed, so no suite covers this — but `docs/REWRITE.md` is one of the
+six files the `model` suite drives as its oracle, so a documentation change to
+it is a change under test. `npm test`: **1185 checks, no failures.**
+
+## 2026-09-16 — The quoted metrics catch up with the suite
+
+`docs/TODO.md` grew from 708 lines to 794 and `docs/REWRITE.md` gained the slice
+3 plan above, so most of the figures quoted in prose were a reading from an
+earlier day. The suite never drifted — its thresholds held and its labels
+carried the live numbers throughout, which is exactly the arrangement 1b's step
+6 chose so that a documentation change could not turn into a failing test about
+list items. The prose is what went stale, and CLAUDE.md states these in the
+present tense rather than as a dated reading, so there it was simply wrong.
+
+Refreshed from the suite's own labels rather than from a fresh hand count:
+`docs/TODO.md` is **794 lines, still sixteen top-level blocks, the largest 267**
+(was 708 / 239); the worst edit in it rewrites 15 lines, **1.9%** (was 2.1%);
+per-file worst edits are CLAUDE.md 2.6%, README.md 2.8%, welcome.md 7.4%,
+TODO.md 1.9%, REWRITE.md 1.2% and the torture fixture 2.7%; the exhaustive
+sweep is **975 blocks across six files** (was 728 across five — the fixture
+joined the oracle on 2026-09-13 and that sentence had not noticed). Slice 2's
+inline figures likewise: **861 inline-bearing blocks, 12,060 nodes, 423 empty
+text tokens, 11,190 leaves over 255,119 characters, 6,412 text nodes**, and the
+per-kind and per-spelling counts with them. `docs/TODO.md` now tiles into 58
+containers rather than 53, still five deep.
+
+**Two figures were deliberately left alone**, and the rule is worth stating
+because it will come up again: a measurement that is *dated and attached to why
+a decision was taken* stays as it was taken. 1b's tiling table, slice 2's inline
+token table and step 3's construct diet are evidence for choices already made,
+and refreshing them would rewrite the record a decision rests on — the same
+argument the file already makes for keeping a decision's reasons rather than
+deleting them. What gets refreshed is a present-tense claim about the current
+state, or a description of what the suite asserts, because those have a live
+label to be checked against. Step 3's `7 of them padded` and `4 escaped
+characters` also stay because the only counts available for them were my own
+re-derivation, which disagreed with the recorded ones — a second measurement
+free to disagree with the first is the thing this whole model exists to avoid,
+and publishing one as a correction would be worse than leaving a stale number.
+
+Two **check labels** were stale in a way prose cannot be, since a label claims
+to be a live report: one hardcoded "nothing else in 708 lines" against a file
+that is now 794 — it reads its length from the source now — and one still
+calling the blockquote chain "slice 3's open question" when slice 2 settled it
+on 2026-09-15. That second one now says what slice 3 will do about it.
+
+The refresh is self-referential — these files are the suite's own oracle, so
+writing a number into one moves it. It converged by making every replacement after the first digit-for-digit, which
+changes no line, node or character count — three passes in the end, because
+recording D8 below moved them again.
+
+`npm test`: **1185 checks, no failures.**
+
+## 2026-09-16 — D8: the branch goes back to `main` twice, and the two points are marked
+
+The question was whether `rewrite` could merge back at each stage boundary.
+It can at two of them, and the stage boundary is not the unit — the useful
+seams are one finer and one coarser than the stage list. **D8** in
+[docs/DECISIONS.md](docs/DECISIONS.md) records it.
+
+**Why merge at all**, and neither reason is risk management: the work gets
+exercised in the editor that is actually in daily use rather than only in a
+suite, and the two branches stop drifting. The second is measured rather than
+feared — `d4e52de`, the one merge taken so far in the other direction, merged
+every line of *code* with no conflict at all, and every single conflict was in
+prose, plus one duplicate git could not match at all. The code converges; the
+documents are what diverge, and they diverge with time.
+
+**Stage 1 merges**, and changes nothing the editor does: `model.js` is in none
+of the three registries. Which means the first reason does not apply to it, and
+D8 says so rather than glossing — an inert model is not exercised by sitting on
+`main`. What is exercised is `markdown-parser.js`, slice 2's step 0, a real
+refactor of the running editor's parser configuration that does the editor good
+on `main` and none on a branch.
+
+**Stages 2 and 3 do not**, and the unusable window is not a stage but
+build-order steps 2 through 4 — render, input, formats — with nowhere to stop
+inside it. The end of stage 2 is a genuine boundary and still the wrong merge,
+though not because the app would break: the ~5,300 untouched lines read the
+rendered DOM, which still exists, so a save would work *the old way*. That is
+the objection rather than the reassurance — all of the input layer's risk, none
+of the fidelity, because the save path is still the three-layer restore.
+
+**Stage 4 merges and cannot be taken back**, and the hazard is data rather than
+code: autosave changes format and the first load after landing converts a
+pre-rewrite `content` key once, through Turndown. That autosave may be the only
+copy of someone's unsaved work, so the conversion is tested before the merge,
+not after — `git revert` does not put the storage back.
+
+Neither merge reopens D6 or D7. Stage 1 replaces nothing, which is exactly the
+distinction D7 already draws between sequencing and preservation; stage 4 *is*
+parity, which is the point where "nothing ships in between" stops applying
+rather than being broken. Stage 5 then happens on `main` by construction, since
+IME, autocorrect and Safari's quirks are what only real documents turn up.
+
+**The reminders are on the stage lines in [docs/REWRITE.md](docs/REWRITE.md)**,
+not on a calendar: a stage closes when it closes, and that file's "Where each
+stage stands" is already updated as part of every landing, so it is the one
+place the note cannot be missed at the moment it applies. Stages 2, 3 and 5 say
+why they are *not* merge points, so the absence reads as a decision rather than
+an oversight. CLAUDE.md's branch note points at D8 for the same reason it points
+at D7.
+
+`npm test`: **1185 checks, no failures.**
+
+## 2026-09-16 — The oracle becomes a fixture, and the counts leave the prose
+
+Two problems with one cause, fixed together. The `model` suite read five living
+project documents as its test data, and those same documents described the
+suite — so each held the other hostage.
+
+**A living file cannot be written for the test.** Nobody is going to put a
+quote inside a list in `README.md` to cover a construct, so coverage was
+hostage to whatever the prose happened to need to say. That is exactly why
+`tests/fixtures/torture.md` had to be invented on 2026-09-13: the five held no
+blockquote, no hard break, no strikethrough and no reference definition between
+them, and no amount of writing about markdown was going to change that.
+
+**And every count quoted in one moved the moment the other was edited.** This
+was not theoretical and it was not cheap: a documentation change had already
+turned into a failing test about list items, and refreshing the stale figures
+earlier the same day took three convergence passes — the last one done entirely
+in digit-for-digit replacements so that writing a number would stop changing it.
+Reading the documents under test was fine while this was a fork being hacked on.
+It is not a practice to carry forward.
+
+So `tests/fixtures/corpus/` now holds frozen copies — `claude.md`, `readme.md`,
+`welcome.md`, `todo.md`, `rewrite.md`, taken today and byte-identical to their
+originals at the moment of copying. **Copies rather than invention**, because
+what makes the oracle worth having is that a human wrote these to be read: they
+carry the conventions real prose carries, and a file written to exercise the
+parser would prove only that the model round-trips what the model finds easy.
+Copies rather than references, because a copy can be edited to cover a case and
+cannot be moved by editing the original. Anything in `corpus/` is oracle —
+there is no README in there and nothing outside the list — so adding a file is
+deliberate, and so is refreshing one: copy the living file over it and expect
+the labels to move.
+
+Verified rather than asserted: appending to `CLAUDE.md` and `docs/REWRITE.md`
+and rerunning now leaves every count byte-identical, where an hour ago it moved
+six of them.
+
+**The counts came out of the prose at the same time**, which is the other half
+of the same fix. CLAUDE.md and REWRITE.md quoted the block, node, leaf,
+character and text-node totals, the per-kind and per-spelling lists, the
+per-file worst-edit percentages and the running check count; all of it now
+reads qualitatively and points at the labels, which compute it. Two classes were
+deliberately kept: **thresholds**, which are the assertion rather than a
+reading (under 5%, over 25%), and **dated measurements that justify a decision**
+— 1b's tiling table, slice 2's inline-token table, slice 3's own — since
+refreshing those would rewrite the evidence a choice rests on. Where such a
+measurement was phrased in the present tense it now says what it is: 1b's
+argument reads "`docs/TODO.md` **was** 708 lines when this was measured on
+2026-09-12" rather than quoting today's length.
+
+CLAUDE.md's Tests section carries both as a standing rule now, so the next suite
+does not have to rediscover either.
+
+Two check labels also stopped being reports and started being claims, and were
+fixed with the rest: one hardcoded `708 lines` against a file that had grown to
+794 — it reads the length from the source now — and one still calling the
+blockquote chain "slice 3's open question" after slice 2 settled it.
+
+`npm test`: **1185 checks, no failures** — the same 187 in `model`, on the
+fixtures.

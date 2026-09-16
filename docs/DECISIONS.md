@@ -7,7 +7,7 @@ describes how the code works — this is why it works that way, and what
 changing it would cost. Reopen one by editing it here, not by filing it as a
 TODO again. Where a decision points forward rather than at the current code,
 that part lives in [TODO.md](TODO.md) or [ROADMAP.md](ROADMAP.md) instead — D4,
-D6 and D7 all point at [REWRITE.md](REWRITE.md).
+D6, D7 and D8 all point at [REWRITE.md](REWRITE.md).
 
 D0 is the exception to that description: it is not a question that was argued
 out but the position the rest of them follow from. It is numbered zero because
@@ -401,3 +401,81 @@ file of their own as the first step of stage 1's slice 2. The model is defined
 as *markdown parsed by this parser*, so the parser's configuration is part of
 the model layer and is in `app.js` by accident of history rather than by design.
 That the move touches a file the app loads is not a cost to be weighed.
+
+## D8. The branch merges to `main` twice: at the end of stage 1, and at the end of stage 4
+
+Decided 2026-09-16, asking whether `rewrite` could go back to `main` at each
+stage boundary. It can at two of them, and the stage boundary turns out not to
+be the unit — the useful seams are one finer and one coarser than the stage
+list.
+
+**Two reasons to merge at all, and neither is risk management.** The branch
+exists to be finished, not to be safe. What merging buys is that **the work gets
+exercised in the editor actually in daily use** rather than only in a suite, and
+that **the two branches stop drifting**. The second is measured rather than
+feared: the one merge taken so far in the other direction, `d4e52de` on
+2026-09-13, merged **every line of code with no conflict at all** — and every
+single conflict was in prose, all of them artefacts of the same item having
+reached `main` as an adapted cherry-pick rather than by merging, plus one
+duplicate git could not match and that had to be removed by hand. The code
+converges. The documents are what diverge, and they diverge with time.
+
+### Stage 1 — merge
+
+It changes nothing the editor does. `model.js` is in none of the three
+registries, so nothing loads it; what lands is a file the app never calls, a
+suite, and a `deno.json`.
+
+**Which means the first of the two reasons above does not apply to it, and that
+is worth saying rather than glossing.** An inert model is not exercised by being
+on `main`. What *is* exercised is the rest of what the stage carried:
+`markdown-parser.js` — slice 2's step 0 — is a real refactor of the running
+editor's parser configuration, in all three registries, and it is the kind of
+change D7 says to make rather than defer. It does the editor good on `main` and
+none on a branch. Stage 1 is therefore merged for the refactors and for the
+drift, and the model comes along inert.
+
+### Stages 2 and 3 — no
+
+**The unusable window is not a stage, it is build-order steps 2 through 4** —
+render, then input, then formats. Between a renderer that exists and formats at
+parity the editor draws a document it cannot properly be edited in, and there is
+no stopping point inside that.
+
+End of stage 2 is a genuine boundary — "everything the app does today, on the
+new core" — and it is still the wrong merge, though **not because the app would
+break**. It would not: the replaced-code table records that the ~5,300 untouched
+lines read the rendered DOM, which still exists. `file-api.js` would go on
+reading `editor.innerHTML`, Turndown would go on serialising it, and a save
+would work *the old way*. That is the objection. Merging there takes the whole
+of the input layer's risk onto `main` while the save path is still the
+three-layer restore, which is the thing the rewrite is for — all of the exposure,
+none of the fidelity.
+
+### Stage 4 — merge, and it cannot be taken back
+
+This is the one that is irreversible, and the hazard is data rather than code.
+Autosave changes from HTML to the model's serialised form, the `source` key
+leaves `DOCUMENT_KEYS`, and the first load after landing has to recognise a
+pre-rewrite `content` key and convert it once through Turndown. **That autosave
+may be the only copy of unsaved work.** Once `main` has run the conversion, a
+`git revert` does not put the storage back, so this merge wants the conversion
+tested before it lands and not after.
+
+### What it costs, named rather than hoped away
+
+**Stage 5 is by construction what only real documents turn up** — IME beyond the
+accent popup, autocorrect, spellcheck, Safari's quirks. Merging at the end of
+stage 4 means `main` carries that tail for one to two weeks. That is the trade
+taken deliberately: a rough `main` for a fortnight, against a branch that has
+diverged for eight weeks and whose documents conflict every time either side is
+edited. The first reason for merging at all is the same reason the tail gets
+found — the editor in daily use is the only place stage 5's list comes from.
+
+### This does not reopen D6 or D7
+
+Both say `main` keeps a working editor until parity and nothing ships in
+between. Neither merge contradicts it. Stage 1 **replaces nothing** — it is
+inert by construction, which is what D7 already distinguishes from sequencing.
+Stage 4 **is** parity: that is what reintegration means, and the point where the
+sentence stops applying rather than being broken.
