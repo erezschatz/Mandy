@@ -716,7 +716,10 @@ category fidelity deliberately does not extend to.
        a mobile browser's address bar does — is worth building on purpose
        rather than falling out of this stage sideways; recorded in
        [docs/ROADMAP.md](ROADMAP.md) under "A tab strip that hides itself on
-       purpose".
+       purpose". **What making the tab strip sticky did not fix — the
+       browser's own scrollbar still runs the full viewport height, its track
+       visibly passing behind the sticky chrome instead of starting below
+       it** — is a separate item, 4.10.
     5. Format bar, menu panel.
     6. Dialogs — open/save (including the `.file-dialog-path` rewrite the
        doc's §04 describes but its own "Structural changes" list omits) and
@@ -724,6 +727,48 @@ category fidelity deliberately does not extend to.
     7. Print block; full `npm test`; a manual pass in a real browser — light
        and dark, outline open, narrow width — per this repo's own rule that a
        UI change is not done until it has been used, not just tested.
+
+*   **4.10** *(bug, after the redesign)* The browser's own scrollbar still
+    runs the full viewport height, behind the now-sticky `.toolbar` and
+    `.tab-bar` — its track starts at the very top of the window rather than
+    below the chrome, so it visibly cuts across the teal bar and the tab
+    strip instead of representing only the document beneath them. Reported
+    against a screenshot of the real app, not a mockup.
+
+    The native scrollbar always represents the extent of whatever element is
+    actually scrolling. Right now that is `body`/`html` — `.toolbar` and
+    `.tab-bar` are `position: sticky` *within* that scroll, which pins them
+    visually but does nothing to the scrollbar, since sticky elements do not
+    leave the scrolling box they are sticky inside of. No CSS property
+    shrinks where a native scrollbar's track starts within one scrolling
+    container; the only fix is the one apps with this exact look (Gmail,
+    Notion) use — stop the page itself from scrolling and give the content
+    below the chrome its own scroll container instead:
+
+    - `.toolbar` and `.tab-bar` move to plain normal flow, no longer
+      `position: sticky`, since they would no longer be inside the thing that
+      scrolls at all.
+    - A new wrapper around `#formatBar`, `.outline` and `#editor` gets
+      `overflow-y: auto` and a height derived from the viewport minus the
+      chrome — the same `--toolbar-height` / `--tab-bar-height` arithmetic
+      4.9 already built, reused rather than duplicated.
+    - **Two call sites read window-level scroll position today and would have
+      to read the new container's instead:** `format-bar.js`'s
+      `barRect()` (`window.pageYOffset || document.documentElement.scrollTop`,
+      used to clamp the floating bar above/below the selection against the
+      sticky toolbar) and `app.js`'s `scrollToAnchor` (`window.scrollY` /
+      `window.scrollTo`, for Ctrl/Cmd+click on a heading link). Both are
+      exercised by existing suites — `format-bar.test.mjs` alone has 79
+      checks — so this is a real, testable change, not a CSS-only one.
+    - `.outline`'s own sticky positioning inside the new container needs
+      re-checking once the outer page no longer scrolls at all — it may
+      simplify to a plain height-and-`overflow-y` sidebar inside the same
+      container rather than needing `position: sticky` of its own.
+
+    Deliberately not folded into TODO 4.9: it touches tested interaction code
+    well past the CSS the redesign otherwise confines itself to, and the
+    redesign's remaining stages (format bar, dialogs, print) do not reach it
+    either way. Do after 4.9 finishes, not mid-stream.
 
 ## 6. Product
 

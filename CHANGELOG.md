@@ -3048,3 +3048,24 @@ than always visible — is deliberately not what shipped here. Recorded in
 
 `npm test` (994 checks) passes — nothing in `tests/` reads computed sticky
 positioning, so none of it needed updating for this.
+
+## 2026-09-16 — TODO 4.10: the native scrollbar still runs the full page
+
+**Making the tab strip sticky did not fix everything reported against it.**
+The browser's own scrollbar still spans the whole viewport, its track
+visibly passing behind `.toolbar` and `.tab-bar` rather than starting below
+them — because both are `position: sticky` *inside* the page's own scroll,
+and a native scrollbar always represents the scrolling box's full extent
+regardless of what is sticky-pinned inside it. No CSS property changes where
+a native scrollbar's track begins within one scrolling container.
+
+The real fix is an inner scroll container — stop the page itself from
+scrolling, move `.toolbar`/`.tab-bar` to plain normal flow above it, and give
+everything below the chrome its own `overflow-y: auto`, the way Gmail or
+Notion do it. Recorded as TODO 4.10 rather than fixed now: it reaches past
+the redesign's CSS into two tested call sites that read window-level scroll
+position today (`format-bar.js`'s bar positioning, `app.js`'s heading-anchor
+scroll), and the user asked for it to wait until after TODO 4.9 finishes
+rather than land mid-stream.
+
+No code changed, so nothing was run — `tests/` reads none of these files.
