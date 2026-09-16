@@ -13,7 +13,7 @@ const HOME = "/home/x";
 const DIALOG_IDS = [
   "formatBar", "fileInput", "fileDialog", "dialogTitle", "dialogClose",
   "dialogPathBar", "dialogEntries", "dialogSaveRow", "dialogFilename",
-  "dialogSaveConfirm",
+  "dialogSaveCancel", "dialogSaveConfirm",
 ];
 
 // Lets a test park the answer the next dialog gives, and read back what it was

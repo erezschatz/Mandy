@@ -8,6 +8,7 @@ const dialogPathBar = document.getElementById("dialogPathBar");
 const dialogEntries = document.getElementById("dialogEntries");
 const dialogSaveRow = document.getElementById("dialogSaveRow");
 const dialogFilename = document.getElementById("dialogFilename");
+const dialogSaveCancel = document.getElementById("dialogSaveCancel");
 const dialogSaveConfirm = document.getElementById("dialogSaveConfirm");
 // Built by toolbar.js's buildToolbarPath(), app variant only — undefined in
 // every test stub that does not load toolbar.js for real, which is why every
@@ -391,19 +392,21 @@ async function loadDir(dirPath) {
 
   dialogDir = data.path;
   localStorage.setItem(documentKey("dir"), data.path);
-  // The path bar clips from the left (direction: rtl) to keep the tail of deep
-  // paths visible; the inner LTR span keeps the path itself rendering normally.
-  dialogPathBar.innerHTML = "";
-  const pathText = document.createElement("span");
-  pathText.dir = "ltr";
-  pathText.textContent = data.path;
-  dialogPathBar.appendChild(pathText);
+  // Tilde-collapsed now rather than clipped from the left with direction:
+  // rtl — the same fix renderToolbarPath() needed, since this text is a
+  // plain string with no inner dir="ltr" span and the RTL trick reorders
+  // neutral characters as well as truncating. Tilde-collapsing shortens most
+  // paths enough on its own; the CSS text-overflow: ellipsis on
+  // .file-dialog-path is the fallback for what is still too long, and now
+  // clips from the right like ordinary text instead of the left.
+  dialogPathBar.textContent = tildeCollapse(data.path);
+  dialogPathBar.title = data.path;
   dialogEntries.innerHTML = "";
 
   if (data.parent) {
     const up = document.createElement("div");
     up.className = "dialog-entry is-up";
-    up.textContent = "../";
+    up.textContent = "↑ parent directory";
     up.addEventListener("click", () => loadDir(data.parent));
     dialogEntries.appendChild(up);
   }
@@ -824,6 +827,7 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 dialogClose.addEventListener("click", closeDialog);
+dialogSaveCancel.addEventListener("click", closeDialog);
 dialogSaveConfirm.addEventListener("click", confirmSaveName);
 
 dialogFilename.addEventListener("keydown", (e) => {

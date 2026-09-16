@@ -190,12 +190,14 @@
     <div id="fileDialog" class="file-dialog">
       <div class="file-dialog-content">
         <div class="file-dialog-header">
-          <h2 id="dialogTitle">Open file</h2>
-          <button id="dialogClose" class="file-dialog-close" title="Close">
-            &times;
-          </button>
+          <div class="file-dialog-title-row">
+            <h2 id="dialogTitle">Open file</h2>
+            <button id="dialogClose" class="file-dialog-close" title="Close">
+              &times;
+            </button>
+          </div>
+          <div id="dialogPathBar" class="file-dialog-path"></div>
         </div>
-        <div id="dialogPathBar" class="file-dialog-path"></div>
         <div id="dialogEntries" class="file-dialog-entries"></div>
         <div id="dialogSaveRow" class="file-dialog-save-row">
           <input
@@ -204,7 +206,16 @@
             placeholder="filename.md"
             spellcheck="false"
           />
-          <button id="dialogSaveConfirm">Save</button>
+          <button
+            id="dialogSaveCancel"
+            class="notify-btn notify-btn-quiet"
+            type="button"
+          >
+            Cancel
+          </button>
+          <button id="dialogSaveConfirm" class="notify-btn notify-btn-primary">
+            Save
+          </button>
         </div>
       </div>
     </div>

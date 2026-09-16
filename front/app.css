@@ -158,7 +158,7 @@
          grid cell; the toolbar spans both columns and the row below is the
          outline beside the editor. */
       :root[data-outline="open"] .container {
-        --outline-width: 16rem;
+        --outline-width: 248px;
         display: grid;
         grid-template-columns: var(--outline-width) minmax(0, 1fr);
       }
@@ -197,16 +197,25 @@
           100vh - var(--toolbar-height) - var(--tab-bar-height) - 2rem
         );
         overflow-y: auto;
-        padding: 1rem 0.5rem 1rem 1rem;
-        margin: 1rem 0 1rem 1rem;
+        padding: 28px 14px 28px 24px;
         border-right: 1px solid var(--rule);
+      }
+
+      .outline-label {
+        font-weight: 600;
+        font-size: 11px;
+        line-height: 1;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--ink-muted);
+        padding: 0 8px 12px;
       }
 
       .outline-list {
         list-style: none;
         display: flex;
         flex-direction: column;
-        gap: 0.15rem;
+        gap: 1px;
       }
 
       .outline-item a {
@@ -215,9 +224,8 @@
            type scale below is the absolute heading level, so the two channels
            stay independent: a stray H6 one rung under an H1 renders small
            beside a large one instead of five rungs deep. */
-        padding: 0.2rem 0.4rem 0.2rem
-          calc(0.4rem + var(--outline-depth, 0) * 0.85rem);
-        border-radius: 3px;
+        padding: 5px 8px 5px calc(8px + var(--outline-depth, 0) * 14px);
+        border-radius: 5px;
         color: var(--ink);
         text-decoration: none;
         overflow: hidden;
@@ -227,7 +235,6 @@
 
       .outline-item a:hover {
         background: var(--tint);
-        color: var(--accent);
       }
 
       .outline-item[data-depth="1"] { --outline-depth: 1; }
@@ -236,12 +243,12 @@
       .outline-item[data-depth="4"] { --outline-depth: 4; }
       .outline-item[data-depth="5"] { --outline-depth: 5; }
 
-      .outline-item[data-level="1"] { font-size: 0.95rem; font-weight: 600; }
-      .outline-item[data-level="2"] { font-size: 0.9rem; font-weight: 500; }
-      .outline-item[data-level="3"] { font-size: 0.85rem; }
-      .outline-item[data-level="4"] { font-size: 0.8rem; opacity: 0.9; }
-      .outline-item[data-level="5"] { font-size: 0.78rem; opacity: 0.8; }
-      .outline-item[data-level="6"] { font-size: 0.75rem; opacity: 0.7; }
+      .outline-item[data-level="1"] { font-size: 13.5px; font-weight: 600; }
+      .outline-item[data-level="2"] { font-size: 13px; font-weight: 500; }
+      .outline-item[data-level="3"] { font-size: 13px; font-weight: 500; }
+      .outline-item[data-level="4"] { font-size: 12.5px; opacity: 0.9; }
+      .outline-item[data-level="5"] { font-size: 12.5px; opacity: 0.8; }
+      .outline-item[data-level="6"] { font-size: 12px; opacity: 0.7; }
 
       .outline-empty {
         font-size: 0.85rem;
@@ -1150,67 +1157,86 @@
       .file-dialog-content {
         background: var(--paper);
         color: var(--ink);
-        border-radius: 8px;
-        box-shadow: 0 8px 30px var(--shadow-medium);
-        width: min(560px, 92vw);
+        border-radius: 12px;
+        box-shadow: 0 24px 60px rgba(12, 32, 30, 0.22),
+          0 2px 6px rgba(12, 32, 30, 0.1);
+        width: min(580px, 92vw);
         max-height: 80vh;
         display: flex;
         flex-direction: column;
         overflow: hidden;
       }
 
+      /* No longer a teal band — paper, with the title row and the current
+         directory stacked under it instead of the directory living in its
+         own strip (.file-dialog-path, below). */
       .file-dialog-header {
+        padding: 16px 18px 12px;
+        background: var(--paper);
+        border-bottom: 1px solid var(--rule-faint);
+      }
+
+      .file-dialog-title-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1rem 1.25rem;
-        background: var(--bg-toolbar);
-        color: var(--text-toolbar);
       }
 
       .file-dialog-header h2 {
-        font-size: 1.1rem;
+        font-size: 15px;
         font-weight: 600;
+        color: var(--ink-strong);
       }
 
       .file-dialog-close {
         background: none;
         border: none;
-        color: var(--text-toolbar);
+        border-radius: 6px;
+        color: var(--ink-faint);
         font-size: 1.5rem;
         line-height: 1;
         cursor: pointer;
         padding: 0 0.25rem;
       }
 
-      .file-dialog-path {
-        padding: 0.6rem 1.25rem;
+      .file-dialog-close:hover {
         background: var(--tint);
-        border-bottom: 1px solid var(--rule);
-        font-family: "Courier New", Courier, monospace;
-        font-size: 0.85rem;
-        color: var(--ink-muted);
+        color: var(--ink);
+      }
+
+      /* Tilde-collapsed by tildeCollapse() in file-api.js rather than clipped
+         with direction: rtl — the old strip's own trick, and the same fix
+         renderToolbarPath() needed for the same reordering bug. Ellipsis
+         here is only the fallback for a tilde-collapsed path still too long,
+         so it clips from the right like ordinary text. */
+      .file-dialog-path {
+        margin-top: 4px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        direction: rtl;
-        text-align: left;
+        font: 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.02em;
+        color: var(--ink-muted);
       }
 
       .file-dialog-entries {
         flex: 1;
         overflow-y: auto;
         min-height: 240px;
+        padding: 6px;
       }
 
+      /* No row borders — hover and the paper background are what separate
+         one entry from the next now. */
       .dialog-entry {
         display: flex;
         justify-content: space-between;
         align-items: center;
         gap: 1rem;
-        padding: 0.5rem 1.25rem;
+        padding: 7px 12px;
+        border-radius: 7px;
+        font-size: 13.5px;
         cursor: pointer;
-        border-bottom: 1px solid var(--rule-faint);
         transition: background var(--transition-speed);
       }
 
@@ -1220,7 +1246,7 @@
 
       .dialog-entry.is-dir .dialog-entry-name,
       .dialog-entry.is-up {
-        font-weight: 600;
+        font-weight: 500;
         color: var(--accent);
       }
 
@@ -1231,7 +1257,7 @@
       }
 
       .dialog-entry-modified {
-        font-size: 0.8rem;
+        font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace;
         color: var(--ink-faint);
         flex-shrink: 0;
       }
@@ -1245,33 +1271,25 @@
       .file-dialog-save-row {
         display: none;
         gap: 0.5rem;
-        padding: 0.85rem 1.25rem;
+        padding: 12px 14px;
         border-top: 1px solid var(--rule-faint);
         background: var(--paper-sunken);
       }
 
       .file-dialog-save-row input {
         flex: 1;
-        padding: 0.5rem 0.75rem;
+        padding: 8px 11px;
         border: 1px solid var(--field-border);
-        border-radius: 4px;
+        border-radius: 7px;
         background: var(--paper);
         color: var(--ink);
-        font-size: 0.95rem;
+        font-size: 13.5px;
       }
 
       .file-dialog-save-row input:focus {
         outline: none;
         border-color: var(--accent);
-      }
-
-      .file-dialog-save-row button {
-        background: var(--accent);
-        color: #ffffff;
-      }
-
-      .file-dialog-save-row button:hover {
-        background: var(--accent-hover);
+        box-shadow: 0 0 0 3px var(--accent-ring);
       }
 
       /* ========================================
@@ -1287,27 +1305,28 @@
         z-index: 1200;
         display: flex;
         flex-direction: column;
-        gap: 0.6rem;
+        gap: 10px;
         width: min(28rem, calc(100vw - 2rem));
         /* The stack spans a column the page still has to be usable through, so
            it ignores the pointer everywhere the toasts themselves are not. */
         pointer-events: none;
       }
 
+      /* No left accent bar — the severity reads from the icon's own color
+         instead, so a toast's shape no longer changes with what it says. */
       .notify-toast {
         pointer-events: auto;
         display: flex;
         align-items: flex-start;
-        gap: 0.65rem;
-        padding: 0.75rem 0.85rem;
-        border-radius: 8px;
+        gap: 10px;
+        padding: 12px 13px;
+        border-radius: 10px;
         border: 1px solid var(--rule);
-        border-left: 3px solid var(--accent);
         background: var(--paper);
         color: var(--ink);
-        box-shadow: 0 6px 24px var(--shadow-medium);
-        font-size: 0.9rem;
-        line-height: 1.45;
+        box-shadow: 0 8px 24px rgba(12, 32, 30, 0.1);
+        font-size: 13.5px;
+        line-height: 1.5;
         opacity: 0;
         transform: translateY(0.5rem);
         transition:
@@ -1323,28 +1342,30 @@
       .notify-icon {
         display: flex;
         flex-shrink: 0;
+      }
+
+      /* Plain colored icon in a toast; a tinted disc in a dialog header — see
+         the .notify-dialog-header rules below. Scoped by ancestor so one
+         function in notify.js (notifyIcon()) can build both. */
+      .notify-toast .notify-icon {
         padding-top: 0.1rem;
         color: var(--accent);
       }
 
-      .notify-error .notify-icon {
-        color: var(--notify-error);
-      }
-      .notify-warn .notify-icon {
-        color: var(--notify-warn);
-      }
-      .notify-success .notify-icon {
-        color: var(--notify-success);
+      .notify-toast .notify-icon svg {
+        width: 16px;
+        height: 16px;
+        stroke-width: 2.2;
       }
 
-      .notify-toast.notify-error {
-        border-left-color: var(--notify-error);
+      .notify-toast.notify-error .notify-icon {
+        color: var(--notify-error);
       }
-      .notify-toast.notify-warn {
-        border-left-color: var(--notify-warn);
+      .notify-toast.notify-warn .notify-icon {
+        color: var(--notify-warn);
       }
-      .notify-toast.notify-success {
-        border-left-color: var(--notify-success);
+      .notify-toast.notify-success .notify-icon {
+        color: var(--notify-success);
       }
 
       .notify-body {
@@ -1383,16 +1404,17 @@
       .notify-close {
         background: none;
         border: none;
+        border-radius: 6px;
         color: var(--ink-faint);
         cursor: pointer;
         flex-shrink: 0;
         font-size: 1.25rem;
         line-height: 1;
-        padding: 0 0.15rem;
+        padding: 4px 6px;
       }
 
       .notify-close:hover {
-        color: var(--ink);
+        background: var(--tint);
       }
 
       /* ── Modal dialog ── */
@@ -1415,64 +1437,125 @@
       }
 
       .notify-dialog {
-        width: min(30rem, 100%);
-        padding: 1.1rem 1.25rem 1rem;
-        border-radius: 8px;
+        width: min(456px, 100%);
+        padding: 20px;
+        border-radius: 12px;
         background: var(--paper);
         color: var(--ink);
-        box-shadow: 0 8px 30px var(--shadow-medium);
+        box-shadow: 0 24px 60px rgba(12, 32, 30, 0.22);
       }
 
       .notify-dialog-header {
         display: flex;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      /* The severity icon's plain-color form is .notify-toast's — here it is
+         a tinted disc instead, one pair of background/foreground per
+         severity, matched between themes rather than derived: a disc dim
+         enough to read as a tint in light mode is not the same color that
+         reads as one in dark. */
+      .notify-dialog-header .notify-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
         align-items: center;
-        gap: 0.55rem;
+        justify-content: center;
+        flex: none;
+      }
+
+      .notify-dialog-header .notify-icon svg {
+        width: 15px;
+        height: 15px;
+        stroke-width: 2.2;
+      }
+
+      .notify-dialog.notify-warn .notify-icon {
+        background: #fbeedd;
+        color: #8a5a12;
+      }
+      .notify-dialog.notify-error .notify-icon {
+        background: #fbeceb;
+        color: #9c2f24;
+      }
+      .notify-dialog.notify-success .notify-icon {
+        background: #e3f2ec;
+        color: #15705f;
+      }
+      .notify-dialog.notify-info .notify-icon {
+        background: #e4efed;
+        color: #0c4c4a;
+      }
+
+      [data-theme="dark"] .notify-dialog.notify-warn .notify-icon {
+        background: #3a2f1b;
+        color: #f0b429;
+      }
+      [data-theme="dark"] .notify-dialog.notify-error .notify-icon {
+        background: #3a221f;
+        color: #ff7a6d;
+      }
+      [data-theme="dark"] .notify-dialog.notify-success .notify-icon {
+        background: #1b2f2a;
+        color: #5dd39e;
+      }
+      [data-theme="dark"] .notify-dialog.notify-info .notify-icon {
+        background: #16292c;
+        color: #7fd3c6;
       }
 
       .notify-dialog-title {
         flex: 1;
-        font-size: 1.05rem;
+        font-size: 15px;
         font-weight: 600;
         color: var(--ink-strong);
+        margin: 4px 0 0;
       }
 
       .notify-dialog-message {
-        margin: 0.6rem 0 0;
-        color: var(--ink);
+        margin: 6px 0 0;
+        color: var(--ink-soft);
+        font-size: 13.5px;
+        line-height: 1.55;
         overflow-wrap: anywhere;
       }
 
       .notify-dialog-input {
         display: block;
         width: 100%;
-        margin-top: 0.5rem;
-        padding: 0.5rem 0.75rem;
+        margin-top: 8px;
+        padding: 8px 11px;
         border: 1px solid var(--field-border);
-        border-radius: 4px;
+        border-radius: 7px;
         background: var(--paper);
         color: var(--ink);
-        font-size: 0.95rem;
+        /* Mono rather than the dialog's own sans: this field holds URLs and
+           filenames, which read better in a face where every character is
+           the same width. */
+        font: 13.5px ui-monospace, SFMono-Regular, Menlo, monospace;
       }
 
       .notify-dialog-input:focus {
         outline: none;
         border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-ring);
       }
 
       .notify-dialog-actions {
         display: flex;
         justify-content: flex-end;
-        gap: 0.5rem;
-        margin-top: 1.1rem;
+        gap: 8px;
+        margin-top: 20px;
       }
 
       .notify-btn {
         border: 1px solid transparent;
-        border-radius: 4px;
+        border-radius: 7px;
         cursor: pointer;
-        font-size: 0.9rem;
+        font-size: 13.5px;
         font-weight: 600;
-        padding: 0.45rem 0.9rem;
+        padding: 8px 14px;
       }
 
       .notify-btn:focus-visible {
@@ -1481,31 +1564,49 @@
       }
 
       .notify-btn-quiet {
-        background: var(--tint);
+        background: var(--paper);
         border-color: var(--field-border);
         color: var(--ink);
+        font-weight: 500;
       }
 
       .notify-btn-quiet:hover {
-        background: var(--tint-accent);
+        background: var(--tint);
       }
 
       .notify-btn-primary {
+        padding: 8px 16px;
         background: var(--accent);
+        border-color: var(--accent);
         color: #ffffff;
+      }
+
+      [data-theme="dark"] .notify-btn-primary {
+        color: #eafcf8;
       }
 
       .notify-btn-primary:hover {
         background: var(--accent-hover);
       }
 
+      /* Outlined, not filled — this is the one that matters most: in the
+         unsaved-changes dialog the safe action (Save) is the primary and
+         Discard must not out-shout it by being the only filled button in
+         the row. */
       .notify-btn-danger {
-        background: var(--notify-error);
-        color: var(--notify-fg-on-accent);
+        background: var(--paper);
+        border-color: var(--field-border);
+        color: var(--notify-error);
       }
 
       .notify-btn-danger:hover {
-        filter: brightness(1.1);
+        background: #fdf2f0;
+        border-color: #e6b5ae;
+      }
+
+      [data-theme="dark"] .notify-btn-danger:hover {
+        background: #2a1e1c;
+        border-color: #5c3530;
       }
 
       @media (prefers-reduced-motion: reduce) {

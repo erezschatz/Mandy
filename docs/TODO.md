@@ -743,7 +743,56 @@ category fidelity deliberately does not extend to.
        active fill.
     6. Dialogs — open/save (including the `.file-dialog-path` rewrite the
        doc's §04 describes but its own "Structural changes" list omits) and
-       `notify.js`'s toasts/confirm/prompt.
+       `notify.js`'s toasts/confirm/prompt — *done*. The file dialog's header
+       is paper now, not a teal band, with the current directory moved into
+       it as a second line — `renderToolbarPath()`'s exact fix reused, since
+       the old strip had the identical RTL-reordering bug: `~/dev/Saar/docs`
+       rendered as `dev/Saar/docs/~` (reported against the running app, not
+       the mockup, and fixed the same way — tilde-collapse the text instead
+       of clipping it with `direction: rtl`). The save row gained a real
+       Cancel button beside Save, both now wearing `notify.js`'s own button
+       classes (`.notify-btn-quiet` / `.notify-btn-primary`) rather than a
+       third set of button styles for one row. Entries dropped their row
+       borders and dividers for hover/radius instead, and the parent entry
+       reads "↑ parent directory".
+
+       `notify.js`'s severity icon moved into a tinted disc in a dialog
+       header (light+dark pairs for all four severities) while staying a
+       plain colored icon in a toast — one shared `notifyIcon()` function,
+       scoped by ancestor selector rather than forked in JS. Toasts dropped
+       their left accent bar; danger buttons went from filled to outlined,
+       which is the one change with real stakes rather than just polish — an
+       outlined Discard next to a filled Save is what keeps the destructive
+       option from outshouting the safe one in the unsaved-changes dialog,
+       exactly the case `ask()` exists for.
+
+       **One thing in the doc's §04 deliberately not built**: a "selected"
+       row state (`background: var(--tint-accent)`) distinct from hover.
+       Nothing in `file-api.js` tracks which row is selected today — clicking
+       a file opens it immediately in Open mode, or fills the filename field
+       in Save mode, with no lingering selection afterward — so there is no
+       state for the rule to key off without adding one, which would be a
+       real feature (most plausibly, highlighting the entry matching the
+       current `dialogFilename` value) rather than a restyle. Left undone
+       rather than adding dead CSS for a class nothing ever applies.
+
+       A third pickup while in the area, same as stages 3 and 5 before it:
+       the outline sidebar's own restyle (§03 — 248px width, the new
+       "OUTLINE" section label, item padding/radius, the six-level type
+       scale), which the doc's suggested order never actually assigns to a
+       stage. `outline.js` gained one new element (`.outline-label`,
+       rebuilt alongside the list on every render rather than left static,
+       since the cost of rebuilding one `<p>` on every debounced mutation is
+       nothing next to a second code path to keep in step).
+
+       `npm test` (994 checks) passes — `dialogSaveCancel` needed adding to
+       two test stubs' `DIALOG_IDS` lists (`tests/file-path.test.mjs`,
+       `tests/tabs.test.mjs`) so `document.getElementById` could find the new
+       button, but no assertion changed. Watched in a real browser: Open and
+       Save As in both themes, `ask()` at warn and error severity,
+       `askForInput`, all four toast severities, and the outlined danger
+       button specifically in both themes since that is the one where doc
+       and screenshot disagreeing would have mattered.
     7. Print block; full `npm test`; a manual pass in a real browser — light
        and dark, outline open, narrow width — per this repo's own rule that a
        UI change is not done until it has been used, not just tested.

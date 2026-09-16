@@ -3155,3 +3155,47 @@ server-backed open flow. Chromium-only support for the API as of this
 writing may settle which is worth building at all.
 
 No code changed, so nothing was run — `tests/` reads none of these files.
+
+## 2026-09-16 — Redesign stage 6: dialogs, notify, and the outline's own restyle
+
+**The file dialog's header is paper now, not a teal band** — TODO 4.9's
+stage 6. The current directory moved into it as a second line under the
+title, and hit the exact bug `renderToolbarPath()` already had: the old
+`.file-dialog-path` strip clipped with `direction: rtl`, which reorders
+neutral characters, not just where the text truncates. Fixed the same way —
+tilde-collapse the string instead of clipping it — rather than carrying the
+bug into its new home. The save row gained a real Cancel beside Save, both
+now wearing `notify.js`'s own button classes instead of a third button style
+existing only for this one row; entries dropped their row borders for
+hover/radius; the parent entry reads "↑ parent directory" now, not "../".
+
+**`notify.js`'s severity icon becomes a tinted disc in a dialog header,
+staying a plain colored icon in a toast** — one shared `notifyIcon()`
+function in JS, split by an ancestor selector in CSS rather than forked.
+Toasts drop their left accent bar. Danger buttons go from filled to
+outlined, which is the one change here with real stakes: an outlined
+Discard next to a filled Save is what keeps the destructive option from
+outshouting the safe one in the unsaved-changes dialog, the exact case
+`ask()` exists for.
+
+**One thing in the doc deliberately not built**: a "selected" dialog-entry
+state distinct from hover. Nothing tracks which row is selected today —
+clicking a file acts on it immediately rather than leaving it selected — so
+there is no state for the rule to key off without adding a real feature
+first. Left undone rather than shipping a CSS class nothing ever applies.
+
+**A third pickup while in the area, after stage 3's dark toolbar border and
+stage 5's format-bar/menu-panel**: the outline sidebar's own restyle from
+§03, which the doc's suggested order never assigned to a stage at all —
+248px width, a new "Outline" section label, item padding/radius, and the
+six-level type scale. `outline.js` gained one element (`.outline-label`,
+rebuilt each render alongside the list rather than kept static, since a
+second code path to keep in step costs more than rebuilding one `<p>` on a
+debounced mutation).
+
+`npm test` (994 checks) passes — the new `dialogSaveCancel` button needed
+adding to two test stubs' `DIALOG_IDS` lists so `getElementById` could find
+it, no assertion changed. Watched in a real browser: Open and Save As in
+both themes, `ask()` at warn and error severity, `askForInput`, all four
+toast severities, and the outlined danger button in both themes — the one
+place doc and screenshot disagreeing would have mattered.
