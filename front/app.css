@@ -187,8 +187,10 @@
         display: block;
         align-self: start;
         position: sticky;
-        top: var(--toolbar-height);
-        max-height: calc(100vh - var(--toolbar-height) - 2rem);
+        top: calc(var(--toolbar-height) + var(--tab-bar-height));
+        max-height: calc(
+          100vh - var(--toolbar-height) - var(--tab-bar-height) - 2rem
+        );
         overflow-y: auto;
         padding: 1rem 0.5rem 1rem 1rem;
         margin: 1rem 0 1rem 1rem;
@@ -248,12 +250,33 @@
          Fixed rather than derived now: the row holds only the mark, the
          menus and (in the app) the path and the toggle, none of which can
          make it taller than this, so there is nothing left to compute it
-         from. `:root[data-variant="export"]` used to redefine this to a
-         shorter value — the app's second row, the tab strip, has moved
-         outside .toolbar entirely, so both variants reserve the same one
-         row now and the override had nothing left to say. */
+         from. Both variants share this one value — the tab strip, which
+         used to make the app's row taller, is a sibling of .toolbar now,
+         not part of it, so it needs its own entry below instead. */
       :root {
         --toolbar-height: 40px;
+      }
+
+      /* The tab bar is sticky too, right below .toolbar — it used to scroll
+         away with the document, which read as the tab strip randomly
+         vanishing rather than as a feature, and left the sticky chrome only
+         40px tall where it used to be the whole bar. Reserved the same way
+         .toolbar-height is: measured against the real rendered row (44px)
+         rather than derived, so an empty #tabBar takes the same space before
+         tabs.js fills it as a populated one does after.
+
+         Present only in the app — an exported document has no tab bar at
+         all — so .outline's sticky offset needs to know which is true to
+         sit below both bars rather than under the tab strip. `docs/ROADMAP.md`
+         has the fancier version of this: hide on scroll down, reappear the
+         moment you scroll up, the way a mobile browser's address bar does,
+         rather than always-visible. */
+      :root {
+        --tab-bar-height: 44px;
+      }
+
+      :root[data-variant="export"] {
+        --tab-bar-height: 0px;
       }
 
       /* One row, fixed rather than padding-derived — toolbar.js fills this in,
@@ -964,25 +987,33 @@
          The Tab Bar
          ======================================== */
       /* A sibling of .toolbar now — appended right after it by
-         buildToolbar() in toolbar.js — rather than a second row inside the
-         sticky teal bar. On the page, not on the teal, so it scrolls away
-         with the document instead of staying pinned.
+         buildToolbar() in toolbar.js — rather than a second row inside it.
+         On the page, not on the teal, but sticky in its own right, right
+         below .toolbar: it used to scroll away with the document on
+         purpose, which in practice read as the tab strip vanishing on any
+         downward scroll and only coming back once you scrolled all the way
+         back to the top. docs/ROADMAP.md has the version of "goes away
+         while scrolling" worth building on purpose — hide going down,
+         reappear the instant you scroll up — this is not it.
 
          min-height reserves the row before tabs.js has populated it, the
          same trick .toolbar's own fixed height plays and for the same
          reason: toolbar.js builds this element empty, and CDN scripts above
          it in load order delay when it actually fills — get this wrong and
          #editor jumps once tabs.js finally runs. Measured against the real
-         rendered row rather than derived, since nothing here reserves a
-         second thing that has to agree with it the way .toolbar's height
-         once had to agree with the tab row inside it. */
+         rendered row rather than derived, and read from the same
+         --tab-bar-height .outline's sticky offset uses, so the two cannot
+         quietly drift out of agreement. */
       .tab-bar {
+        position: sticky;
+        top: var(--toolbar-height);
+        z-index: 90;
         background: var(--bg-page);
         padding: 8px 20px 0;
         display: flex;
         align-items: flex-end;
         gap: 2px;
-        min-height: 44px;
+        min-height: var(--tab-bar-height);
         /* Scrolls rather than wrapping: a second line here would change the
            bar's height, and #editor is positioned right below it. */
         overflow-x: auto;

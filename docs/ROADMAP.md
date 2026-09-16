@@ -201,6 +201,28 @@ per-document scope rather than a per-user one — the section below. Presets can
 ship ahead of the pane as a menu; anything past picking a preset by name is
 what the pane is for.
 
+## A tab strip that hides itself on purpose
+
+The redesign's stage 3 (TODO 4.9, `docs/redesign/`) briefly shipped the tab
+strip scrolling away with the document — the design doc's own call, "outside
+the sticky toolbar... intended" — and it read as a bug the moment it was
+actually used rather than just reviewed: the strip vanished on any downward
+scroll and only came back once you scrolled all the way back to the top,
+which is not how the mechanism it resembles behaves anywhere else. It was
+made sticky instead, pinned under the menu row like the rest of the chrome,
+which is correct but plain.
+
+The idea worth building on purpose, later: hide the tab strip going down,
+show it again the instant you scroll up even one pixel — a mobile browser's
+address bar, not a page element that happens to scroll off. That is a real
+feature (scroll-direction tracking, a transform or height transition, a
+decision about the threshold and about what happens mid-transition if the
+direction reverses), not a CSS property, and it wants building deliberately
+rather than falling out of a redesign that was after something else. Same
+`.tab-bar` `min-height`/`position: sticky` this stage landed either way — the
+strip still needs to reserve its space and sit at a known offset whether it
+is always visible or hiding conditionally.
+
 ## Document themes, and the HTML question behind them
 
 Recorded 2026-09-15, out of a discussion that kept coming back and had not

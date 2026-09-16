@@ -697,6 +697,26 @@ category fidelity deliberately does not extend to.
        first attempt at that screenshot silently tested nothing), the outline
        open in both themes, two tabs, and 375px width, with the layout-jump
        and overflow claims above measured directly rather than eyeballed.
+
+       **A fourth gap, found only by using it rather than by reviewing or
+       measuring it: the tab strip scrolling away with the document — the
+       design doc's own explicit call — read as a bug, not a feature, the
+       moment it was actually scrolled.** It vanished on any downward scroll
+       and only returned at the very top, and dragged the browser's own
+       scrollbar visually across the now-shorter sticky chrome with it. Fixed
+       by making `.tab-bar` sticky too, right under `.toolbar`
+       (`position: sticky; top: var(--toolbar-height)`), which brought back a
+       per-variant CSS override this stage had just retired — not for
+       `--toolbar-height` itself, which still does not differ between app and
+       export, but for a new `--tab-bar-height` (`44px` in the app, `0px` in
+       export, which has no tab bar) that `.outline`'s sticky offset now reads
+       alongside `--toolbar-height` so the sidebar sits below both bars rather
+       than under the tab strip. The fancier version of "the tab strip goes
+       away sometimes" — hide going down, reappear instantly going up, the way
+       a mobile browser's address bar does — is worth building on purpose
+       rather than falling out of this stage sideways; recorded in
+       [docs/ROADMAP.md](ROADMAP.md) under "A tab strip that hides itself on
+       purpose".
     5. Format bar, menu panel.
     6. Dialogs — open/save (including the `.file-dialog-path` rewrite the
        doc's §04 describes but its own "Structural changes" list omits) and

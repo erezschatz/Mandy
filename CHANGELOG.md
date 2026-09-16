@@ -3022,3 +3022,29 @@ sets. Screenshotted: light and dark, the outline sidebar open in both
 width before and after the narrow-width fix, with the tab-bar reservation and
 the menu-row overflow measured directly (`getBoundingClientRect`,
 `scrollWidth` vs `clientWidth`) rather than eyeballed.
+
+## 2026-09-16 — Redesign stage 3 follow-up: the tab strip stays put
+
+**The tab strip scrolling away with the document — stage 3's implementation
+of the design doc's own explicit "intended" — read as a bug the moment it was
+used rather than reviewed.** Reported: it vanished on any downward scroll and
+only came back at the very top, and made the browser's own scrollbar look
+like it was cutting across the now-shorter sticky chrome. `.tab-bar` is
+sticky now too, pinned right under `.toolbar`.
+
+That brought back one thing this stage had just retired: a per-variant CSS
+override, though for a different value than before. `--toolbar-height` still
+does not differ between app and export — the new `--tab-bar-height` does
+(`44px` in the app, `0px` in export, which has no tab bar at all), and
+`.outline`'s sticky `top` now reads both so the sidebar sits below the tab
+strip rather than under it. Watched in a browser: scrolled a document with
+both bars staying pinned, and scrolled the outline open to confirm its offset
+follows the new total rather than just `--toolbar-height` alone.
+
+The better version of this — hide the strip going down, bring it back the
+instant you scroll up, the way a mobile browser's address bar does, rather
+than always visible — is deliberately not what shipped here. Recorded in
+[docs/ROADMAP.md](docs/ROADMAP.md) as its own feature to build on purpose.
+
+`npm test` (994 checks) passes — nothing in `tests/` reads computed sticky
+positioning, so none of it needed updating for this.
