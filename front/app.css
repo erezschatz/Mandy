@@ -300,6 +300,13 @@
         z-index: 100;
       }
 
+      /* The one place the teal steps back: too dark to carry the row on its
+         own at this size, so dark mode gets a hairline instead of relying on
+         the shadow above to separate it from the tab strip. */
+      [data-theme="dark"] .toolbar {
+        border-bottom: 1px solid #1e2729;
+      }
+
       .toolbar-left {
         display: flex;
         align-items: center;
@@ -383,15 +390,16 @@
       .menu-panel {
         display: none;
         position: absolute;
-        top: calc(100% + 0.35rem);
-        left: 0;
+        top: calc(100% + 7px);
+        left: -4px;
         z-index: 200;
-        min-width: 15rem;
-        padding: 0.3rem;
+        min-width: 244px;
+        padding: 6px;
         border: 1px solid var(--rule);
-        border-radius: 6px;
+        border-radius: 10px;
         background: var(--paper);
-        box-shadow: 0 8px 24px var(--shadow-medium);
+        box-shadow: 0 14px 36px rgba(12, 32, 30, 0.14),
+          0 1px 2px rgba(12, 32, 30, 0.08);
       }
 
       .menu[data-open] > .menu-panel {
@@ -407,16 +415,16 @@
       .menu-item {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 10px;
         width: 100%;
-        padding: 0.4rem 0.6rem;
+        padding: 7px 10px;
         border: none;
-        border-radius: 4px;
+        border-radius: 6px;
         background: none;
         color: var(--ink);
         cursor: pointer;
         font-family: inherit;
-        font-size: 0.9rem;
+        font-size: 13.5px;
         text-align: left;
         white-space: nowrap;
       }
@@ -437,7 +445,7 @@
       .menu-check {
         display: flex;
         flex: 0 0 auto;
-        width: 14px;
+        width: 13px;
         color: var(--accent);
         visibility: hidden;
       }
@@ -452,15 +460,16 @@
 
       .menu-shortcut {
         flex: 0 0 auto;
-        padding-left: 1.5rem;
+        padding-left: 28px;
+        font: 400 11.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.04em;
         color: var(--ink-faint);
-        font-size: 0.8rem;
         font-variant-numeric: tabular-nums;
       }
 
       .menu-separator {
         height: 1px;
-        margin: 0.3rem 0.4rem;
+        margin: 5px 10px;
         background: var(--rule-faint);
       }
 
@@ -758,11 +767,12 @@
         position: absolute;
         background: var(--paper);
         border: 1px solid var(--rule);
-        border-radius: 6px;
-        padding: 0.5rem;
+        border-radius: 9px;
+        padding: 5px;
         display: none;
-        gap: 0.25rem;
-        box-shadow: 0 4px 12px var(--shadow-medium);
+        gap: 2px;
+        box-shadow: 0 12px 30px rgba(12, 32, 30, 0.14),
+          0 1px 2px rgba(12, 32, 30, 0.07);
         z-index: 1000;
         align-items: center;
       }
@@ -771,46 +781,52 @@
         display: flex;
       }
 
+      /* min-width rather than a fixed width: an icon button's content is
+         exactly 30px including padding and stays square, but a text one
+         (P, H1, H2, H3) is two characters wider than that and is meant to
+         grow past it rather than clip. */
       .format-btn {
-        background: var(--paper);
-        color: var(--ink);
-        border: 1px solid var(--rule);
-        padding: 0.4rem 0.6rem;
-        border-radius: 4px;
+        background: none;
+        color: var(--ink-soft);
+        border: none;
+        padding: 0 8px;
+        min-width: 30px;
+        height: 30px;
+        border-radius: 6px;
         cursor: pointer;
-        font-size: 0.85rem;
+        font-size: 12.5px;
         font-weight: 600;
-        min-width: 32px;
-        height: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
       }
 
-      .format-btn:hover {
-        background: var(--tint);
-        border-color: var(--field-border);
+      .format-btn svg {
+        width: 15px;
+        height: 15px;
       }
 
-      .format-btn:active {
+      .format-btn:hover {
         background: var(--tint);
-        transform: translateY(0);
+        color: var(--ink-strong);
       }
 
       .format-btn.active {
         background: var(--accent);
-        color: var(--text-toolbar);
-        border-color: var(--accent);
+        color: var(--paper);
       }
 
       /* Some but not all of the selection has this format — a selection that
          mixed bold and non-bold text used to read as one or the other with
          nothing on screen to say it was actually both. Outlined rather than
-         filled so it cannot be mistaken for .active at a glance. */
+         filled so it cannot be mistaken for .active at a glance. box-sizing:
+         border-box keeps the ring inside the button's own 30px box instead
+         of growing it. */
       .format-btn.mixed {
-        background: var(--paper);
+        background: none;
         color: var(--accent);
-        border-color: var(--accent);
+        border: 1px solid var(--accent);
+        box-sizing: border-box;
       }
 
       /* Hidden by mode rather than removed — setBarMode in format-bar.js drops
@@ -824,9 +840,9 @@
 
       .separator {
         width: 1px;
-        height: 24px;
+        height: 18px;
         background: var(--rule);
-        margin: 0 0.25rem;
+        margin: 0 4px;
       }
 
       @media (max-width: 768px) {

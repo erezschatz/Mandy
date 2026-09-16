@@ -720,7 +720,27 @@ category fidelity deliberately does not extend to.
        browser's own scrollbar still runs the full viewport height, its track
        visibly passing behind the sticky chrome instead of starting below
        it** — is a separate item, 4.10.
-    5. Format bar, menu panel.
+    5. Format bar, menu panel — *done*. Pure restyle, no structural change:
+       every rule in the doc's §02 applied directly (`.menu-panel`,
+       `.menu-item`, `.menu-check`, `.menu-shortcut`, `.menu-separator`,
+       `.format-bar`, `.format-btn` and its `.active`/`.mixed` states, the
+       inline-group `.separator`). `.format-btn` drops its border entirely
+       and goes from a fixed 32×32 box to `min-width: 30px` with
+       `padding: 0 8px` — square for the icon buttons, naturally wider for
+       the text ones (P, H1, H2, H3) — which needed no markup change, just
+       letting content size win over a fixed width. Icon SVGs shrink from
+       16px to 15px via a `.format-btn svg` override rather than editing the
+       markup in both `index.html` and `html-export.js`.
+
+       One pickup from §03 while in the area, not its own stage: the dark
+       menu row's `1px solid #1e2729` bottom border — "the one place the
+       teal steps back" — hadn't landed with stage 3's dark tokens, since it
+       is new geometry rather than a value substitution. `npm test` (994
+       checks) passes untouched — nothing here changed DOM shape, so nothing
+       in `tests/` needed updating. Watched in a real browser: the File menu
+       open in both themes, the format bar in selection/caret/active/mixed,
+       confirming the mixed state's outline ring reads distinctly from the
+       active fill.
     6. Dialogs — open/save (including the `.file-dialog-path` rewrite the
        doc's §04 describes but its own "Structural changes" list omits) and
        `notify.js`'s toasts/confirm/prompt.

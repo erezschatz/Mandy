@@ -3069,3 +3069,30 @@ scroll), and the user asked for it to wait until after TODO 4.9 finishes
 rather than land mid-stream.
 
 No code changed, so nothing was run — `tests/` reads none of these files.
+
+## 2026-09-16 — Redesign stage 5: format bar, menu panel
+
+**Pure restyle — TODO 4.9's stage 5, and the first stage with no structural
+change at all.** Every rule in the design doc's §02 lands directly:
+`.menu-panel`, `.menu-item`, `.menu-check`, `.menu-shortcut`,
+`.menu-separator`, `.format-bar`, `.format-btn` and its `.active`/`.mixed`
+states, the inline-group `.separator`.
+
+`.format-btn` drops its border and goes from a fixed 32×32 box to
+`min-width: 30px; padding: 0 8px` — square for the six icon buttons, wider
+for the four text ones (P, H1, H2, H3) — which fell out of letting content
+size win over a fixed width rather than needing any markup change. Icon SVGs
+shrink from 16px to 15px through a `.format-btn svg` CSS override instead of
+editing the SVGs themselves in both `index.html` and `html-export.js`.
+
+One pickup from §03 while in the area rather than its own stage: the dark
+menu row's `1px solid #1e2729` bottom border — "the one place the teal steps
+back" — had not landed with stage 3's dark tokens, since it is new geometry
+rather than a value substitution the token pass would have caught.
+
+`npm test` (994 checks) passes untouched — nothing in this stage changed DOM
+shape, so nothing in `tests/` needed updating, the first stage since 1 where
+that has been true. Watched in a real browser: the File menu open in both
+themes, and the format bar in selection, caret, active and mixed states,
+confirming the mixed state's outline ring reads distinctly from the active
+fill rather than just in the spec's prose.
