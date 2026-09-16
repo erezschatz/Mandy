@@ -201,6 +201,36 @@ per-document scope rather than a per-user one — the section below. Presets can
 ship ahead of the pane as a menu; anything past picking a preset by name is
 what the pane is for.
 
+**The document's margins** are the fourth, as of the redesign (TODO 4.9,
+`docs/redesign/`). `#editor`'s `max-width: 68ch` is one fixed measured column
+for every reader, and the same redesign is what makes that worth a knob at
+all: a wide monitor now sits on visibly more spare width beside the column
+than the pre-redesign full-bleed editor ever left on screen, which is exactly
+the real estate TODO 4.11 wants to let the outline sidebar grow into instead.
+Whether the column width is the preference, or the side margins are, is a
+decision for whenever this is picked up — either reads as "how much of the
+window the prose gets," just anchored from a different edge.
+
+## Split screen
+
+Two open documents side by side rather than one tab at a time, which the
+redesign (TODO 4.9) is what makes this worth having: the measured `#editor`
+column stopped assuming it owns the full window the moment it capped itself
+at `68ch`, and a wide monitor now has room for a second one next to it rather
+than the pre-redesign full-bleed editor ever leaving space to.
+
+The document model is already shaped for this — `tabs.js`'s park/adopt pair
+moves a whole document's state (content, undo history, file identity,
+markdown style) as one bundle per tab, which is exactly the unit a second
+visible pane would need, and nothing about it assumes there is only ever one
+tab on screen. What is missing is entirely presentational: a second `#editor`
+mount point, a way to pick which two tabs are paired, and a split ratio to
+remember — plus everything downstream of "the active document" that assumes
+there is exactly one (the format bar's positioning, the outline sidebar,
+which document Ctrl+S writes to) now has to ask which pane, not just whether
+there is one. Wants a decision on the interaction before the layout: does a
+tab drag to a side to open the split, is it a toolbar action, or both.
+
 ## A tab strip that hides itself on purpose
 
 The redesign's stage 3 (TODO 4.9, `docs/redesign/`) briefly shipped the tab

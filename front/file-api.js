@@ -63,7 +63,18 @@ function tildeCollapse(path) {
 function renderToolbarPath() {
   if (!toolbarPath) return;
   const dir = currentFilePath ? parentDir(currentFilePath) : null;
-  toolbarPath.textContent = dir ? tildeCollapse(dir) : "";
+  const text = dir ? tildeCollapse(dir) : "";
+  // Same fix as the file dialog's own path bar: direction: rtl (to clip
+  // from the left) reorders neutral characters — "~", "/" — by the bidi
+  // algorithm's own rules once the container is RTL, not just the visible
+  // truncation, so "~/dev/Saar/docs" was rendering as "dev/Saar/docs/~".
+  // An inner dir="ltr" span keeps the path itself in logical order; only
+  // the ellipsis position is still decided by the outer RTL.
+  toolbarPath.innerHTML = "";
+  const pathText = document.createElement("span");
+  pathText.dir = "ltr";
+  pathText.textContent = text;
+  toolbarPath.appendChild(pathText);
   toolbarPath.title = dir || "";
 }
 

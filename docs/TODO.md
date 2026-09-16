@@ -790,6 +790,36 @@ category fidelity deliberately does not extend to.
     redesign's remaining stages (format bar, dialogs, print) do not reach it
     either way. Do after 4.9 finishes, not mid-stream.
 
+*   **4.11** *(undecided)* The outline sidebar's width is one fixed
+    `--outline-width: 16rem` (`:root[data-outline="open"] .container` in
+    `app.css`), which was defensible when the editor filled the rest of the
+    window regardless — a wider sidebar just meant a narrower full-bleed
+    column. The redesign (TODO 4.9) changes that: `#editor` caps itself at
+    `max-width: 68ch` now, so on anything wider than a laptop there is real
+    unused width beside the column with nowhere to go, and a heading long
+    enough to ellipsis in the sidebar (`.outline-item a`'s
+    `text-overflow: ellipsis`) stays truncated forever regardless of how much
+    of that space sits idle next to it.
+
+    Wants a drag handle on `.outline`'s own right edge — its `border-right`
+    is already exactly that line — that resizes `--outline-width` live and
+    persists the chosen value the same way the open/closed state already
+    does (`localStorage["mandy-outline"]`, read by the inline script in
+    `index.html`'s `<head>` before the stylesheet loads, so a returning
+    session does not flash the default width and then jump). Needs a min (so
+    a heading's text always has *some* room) and a max (so it cannot swallow
+    the editor column entirely) rather than an unbounded drag. Whether the
+    editor's own measured column should visually re-center as the sidebar
+    grows, or just have less space to center within, is the one real design
+    question — the CSS grid `.container` already uses
+    (`grid-template-columns: var(--outline-width) minmax(0, 1fr)`) does the
+    latter for free and may simply be the answer.
+
+    [docs/ROADMAP.md](ROADMAP.md)'s "A settings pane" section records the
+    related but separate question of a *document* margin/width preference —
+    this item is about the sidebar's own width, which is a per-session UI
+    habit rather than something a document's author would set.
+
 ## 6. Product
 
 *   **6.1** Rewrite the README to better fit the project's state

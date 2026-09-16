@@ -188,7 +188,12 @@
         align-self: start;
         position: sticky;
         top: calc(var(--toolbar-height) + var(--tab-bar-height));
-        max-height: calc(
+        /* height, not max-height: a short document's outline used to end
+           where its last entry did, so border-right stopped short of the
+           sidebar's own bottom instead of running its full length. height
+           always fills the reserved column; overflow-y still scrolls a
+           heading list too long to fit. */
+        height: calc(
           100vh - var(--toolbar-height) - var(--tab-bar-height) - 2rem
         );
         overflow-y: auto;

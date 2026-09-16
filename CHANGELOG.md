@@ -3096,3 +3096,44 @@ that has been true. Watched in a real browser: the File menu open in both
 themes, and the format bar in selection, caret, active and mixed states,
 confirming the mixed state's outline ring reads distinctly from the active
 fill rather than just in the spec's prose.
+
+## 2026-09-16 — Two redesign bugs fixed, three more recorded
+
+**The outline sidebar's `border-right` used to stop where its last entry
+did, not at the sidebar's own bottom.** `:root[data-outline="open"] .outline`
+sized itself with `max-height`, which shrinks to fit short content instead of
+filling the column it was given. Changed to `height`, so the border always
+runs the full reserved height; `overflow-y: auto` still handles a heading
+list too tall to fit. Confirmed against a 2-heading document: the border now
+reaches the bottom of a 750px viewport instead of stopping at ~275px.
+
+**The chrome's directory display was rendering `~/dev/Saar/docs` as
+`dev/Saar/docs/~`.** `renderToolbarPath()` set `direction: rtl` on the
+element holding the text itself (to clip from the left), which lets the
+browser's bidi algorithm reorder neutral characters — `~`, `/` — by its own
+rules once the container is RTL, not just move where the ellipsis falls. The
+file dialog's own path bar solved this already: an inner `dir="ltr"` span
+around the text keeps it in logical order while only the ellipsis position
+answers to the outer `direction: rtl`. `renderToolbarPath()` now builds the
+same inner span instead of setting `textContent` directly. Confirmed:
+`currentFilePath` set to a deep path renders `~/dev/Saar/docs`, not reversed.
+
+`npm test` (994 checks) passes; both fixes watched in a real browser.
+
+**Three related items recorded rather than built:**
+
+- **TODO 4.11** — the outline sidebar's `16rem` width is fixed, but the
+  redesign's `max-width: 68ch` `#editor` column leaves real unused width
+  beside it on anything wider than a laptop, with nowhere for it to go and
+  no way to widen the sidebar to use it even when a heading is ellipsised.
+  Wants a drag handle on the sidebar's own `border-right`, persisted the way
+  the open/closed state already is.
+- **ROADMAP.md, "A settings pane"** — a document's margins/column-width as a
+  fourth preference candidate, for the same reason 4.11 exists: the
+  redesign is what makes "how much of the window the prose gets" a question
+  worth asking at all.
+- **ROADMAP.md, "Split screen"** — two open tabs visible side by side, which
+  `tabs.js`'s existing park/adopt-a-whole-document-as-one-bundle model is
+  already shaped for; what is missing is presentational (a second mount
+  point, a split ratio) and deciding what "the active document" means to
+  the format bar and the outline once there can be two on screen at once.
