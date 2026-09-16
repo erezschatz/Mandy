@@ -393,6 +393,13 @@ category fidelity deliberately does not extend to.
     is said. It reaches nothing in the core, so it neither waits on 3.1 nor is
     discarded by it.
 
+    **4.9 takes the edge off this one without closing it.** The redesign's
+    `.toolbar-path` element shows the *active* tab's directory in the chrome,
+    which is enough to tell two same-named tabs apart without a hover once one
+    of them is selected — but says nothing about the bar itself, so a glance
+    at two identical closed-book tab labels still can't tell them apart. This
+    item is still the fix for that.
+
 *   **4.4** *(survives 3.1)* Right-to-left documents. **View → Right to left**
     puts `dir="rtl"` on `#editor` and the document flips; the toolbar, the
     outline's side and the dialogs do not. Mirroring the *application* is a
@@ -563,6 +570,69 @@ category fidelity deliberately does not extend to.
     HTML5 drag-and-drop or manual pointer tracking, a drop-position indicator,
     and deciding whether it needs a keyboard equivalent for parity with the
     arrow-key menu navigation the rest of the toolbar has.
+
+*   **4.9** Visual restyle of the chrome and the document surface — approved,
+    staged, not started. The design is
+    [docs/redesign/design_handoff_mandy_chrome/README.md](redesign/design_handoff_mandy_chrome/README.md),
+    a high-fidelity handoff doc rather than a mockup to eyeball: exact colors,
+    sizes and tokens for every screen, and a "Structural changes" section
+    naming precisely which `front/` files move which markup. No feature
+    changes — every control stays where it is in the information architecture,
+    driven by the same code. What changes is `front/app.css` plus the handful
+    of DOM details the doc calls out.
+
+    Checked against current `main` before this was approved: the doc's claims
+    about today's code all held (`toolbar.js`'s two-row structure,
+    `tabs.js`'s indifference to where `#tabBar` lives, `format-bar.js`'s live
+    toolbar-height measurement, `theme-manager.js` never touching the toggle's
+    inner markup), and the doc's own dead-variable list is real —
+    `--accent-blue` alone has 16 call sites in `app.css`, all of which move to
+    the new tokens rather than being deleted for free. Two amendments came out
+    of that review and are recorded in the doc itself rather than only here:
+
+    - **A real layout bug**, caught before any code landed: moving the tab
+      strip out of `.toolbar` to a sibling inside `.container` collides with
+      the outline sidebar's CSS grid, which spans `.toolbar` across both
+      columns but would leave the tab strip unspanned — the outline and the
+      editor each land one grid cell out of place for as long as the sidebar
+      is open. Stage 3 below is where the fix goes.
+    - **Fonts are a remote dependency, not self-hosted**, reversing the doc's
+      own recommendation. Source Serif 4 loads from a Google Fonts `<link>`
+      rather than `front/fonts/` woff2 files, so trying a different typeface
+      later is a one-line change instead of a repo carrying font files to
+      replace. Accepted rather than solved: offline PWA boot and the editable
+      export both lose the serif face with no network reachable, falling back
+      to the `Georgia, "Times New Roman", serif` stack `app.css` already
+      names. Revisit self-hosting if that fallback turns out to matter.
+
+    **The open-file directory the doc adds to the chrome (`.toolbar-path`) is
+    a priority, not a decoration** — it was not asked for, and it is most of
+    the fix for the case 4.3 describes, where two open tabs share a filename
+    and only a hover tells them apart. Losing it in a pass that trims the menu
+    row for space would be losing a feature, not simplifying one.
+
+    Orthogonal to 3.1: this touches presentation only, not the editing core,
+    which 3.1 leaves "nearly untouched" at the level this doc works. Lands on
+    `main` in stages rather than on a branch, each its own commit and
+    CHANGELOG entry, following the doc's own suggested order with the grid fix
+    folded into stage 3:
+
+    0. This TODO entry, plus the font and grid-bug amendments — *done*.
+    1. Token blocks + `@font-face`; delete dead variables, repoint every call
+       site.
+    2. `#editor` typography and the measured column.
+    3. Menu row to a single 40px row; move the tab strip out (**with the
+       `grid-column` fix**); rewrite `tests/toolbar.test.mjs` and
+       `tests/tabs.test.mjs`, both of which assert on the DOM shape this stage
+       removes.
+    4. Tab shapes, dot, close button.
+    5. Format bar, menu panel.
+    6. Dialogs — open/save (including the `.file-dialog-path` rewrite the
+       doc's §04 describes but its own "Structural changes" list omits) and
+       `notify.js`'s toasts/confirm/prompt.
+    7. Print block; full `npm test`; a manual pass in a real browser — light
+       and dark, outline open, narrow width — per this repo's own rule that a
+       UI change is not done until it has been used, not just tested.
 
 ## 6. Product
 

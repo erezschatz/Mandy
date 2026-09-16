@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas" />
+<style>
+  body { margin: 0; background: #e9e9e6; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  a { color: #3498db; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</helmet>
+
+<section style="padding:48px;display:flex;flex-direction:column;gap:56px">
+
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <div style="font:600 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.12em;text-transform:uppercase;color:#0c4c4a">Baseline</div>
+    <div style="font-size:26px;font-weight:600;color:#1d2321">Mandy today — recreated from <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:20px">front/</span></div>
+    <div style="font-size:14px;color:#5b615f;max-width:70ch">Every value below is lifted from app.css, toolbar.js, tabs.js, format-bar.js, notify.js and index.html. Nothing here is a redesign yet.</div>
+  </div>
+
+  <!-- ══ App shell, light ══ -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.1em;color:#6b716f">01 · APP SHELL — LIGHT, OUTLINE CLOSED</div>
+    <div style="width:1200px;height:760px;overflow:hidden;background:#f5f5f5;box-shadow:0 1px 3px rgba(0,0,0,0.18);position:relative">
+      <div style="background:#ffffff;min-height:760px;box-shadow:0 0 20px rgba(0,0,0,0.1)">
+
+        <div style="background:#0c4c4a;color:#ffffff;padding:8px 32px;display:flex;flex-direction:column;align-items:stretch;gap:2.4px;box-shadow:0 2px 5px rgba(0,0,0,0.1)">
+          <nav style="display:flex;flex-wrap:wrap;align-items:center;gap:2.4px;min-width:0">
+            <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer;white-space:nowrap">File</button>
+            <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer;white-space:nowrap">Edit</button>
+            <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer;white-space:nowrap">Insert</button>
+            <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer;white-space:nowrap">Format</button>
+            <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer;white-space:nowrap">View</button>
+            <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer;white-space:nowrap">Export</button>
+          </nav>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:21.8px">
+            <div style="display:flex;align-items:center;gap:4px;overflow-x:auto;min-width:0">
+              <div style="display:flex;align-items:center;gap:5.6px;padding:3.2px 8px;border-radius:4px;color:#ffffff;background:rgba(255,255,255,0.16);opacity:1;font-size:13.6px;cursor:pointer;white-space:nowrap">
+                <span style="width:7px;height:7px;flex:none;border-radius:50%;background:#c0392b"></span>
+                <span style="max-width:24ch;overflow:hidden;text-overflow:ellipsis">welcome.md</span>
+                <button style="background:none;border:none;border-radius:3px;color:inherit;cursor:pointer;font-family:inherit;font-size:16px;line-height:1;padding:0 2.4px;opacity:0.6">×</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:5.6px;padding:3.2px 8px;border-radius:4px;color:#ffffff;opacity:0.65;font-size:13.6px;cursor:pointer;white-space:nowrap">
+                <span style="width:7px;height:7px;flex:none;border-radius:50%;background:transparent"></span>
+                <span style="max-width:24ch;overflow:hidden;text-overflow:ellipsis">ROADMAP.md</span>
+                <button style="background:none;border:none;border-radius:3px;color:inherit;cursor:pointer;font-family:inherit;font-size:16px;line-height:1;padding:0 2.4px;opacity:0.6">×</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:5.6px;padding:3.2px 8px;border-radius:4px;color:#ffffff;opacity:0.65;font-size:13.6px;cursor:pointer;white-space:nowrap">
+                <span style="width:7px;height:7px;flex:none;border-radius:50%;background:#ffffff"></span>
+                <span style="max-width:24ch;overflow:hidden;text-overflow:ellipsis">notes.md</span>
+                <button style="background:none;border:none;border-radius:3px;color:inherit;cursor:pointer;font-family:inherit;font-size:16px;line-height:1;padding:0 2.4px;opacity:0.6">×</button>
+              </div>
+            </div>
+            <div style="position:relative;width:40px;height:20px;background:#e0e0e0;border:1px solid #d0d0d0;border-radius:10px;cursor:pointer;flex:none">
+              <div style="position:absolute;top:2px;left:2px;width:14px;height:14px;background:#ffffff;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.2)"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:32px;margin:16px;background:#ffffff;color:#333333;border:1px solid #e0e0e0;border-radius:4px;line-height:1.6;font-size:16px">
+          <img src="assets/welcome-banner.png" alt="Mandy" style="max-width:100%;height:auto;display:block;margin:0 0 16px" />
+          <h1 style="font-size:32px;margin:0 0 16px;color:#2c3e50;border-bottom:2px solid #eeeeee;padding-bottom:8px;font-weight:700">Welcome to Mandy</h1>
+          <p style="margin:16px 0">A simple markdown editor that edits the files on your own machine. Start typing and see your formatted text in real-time!</p>
+          <h2 style="font-size:24px;margin:24px 0 16px;color:#34495e;font-weight:700">Quick Start</h2>
+          <p style="margin:16px 0"><strong>Select text</strong> to see formatting options appear above it. Put the cursor at the start of a line and a shorter bar appears with the formats that act on the whole line — headings, lists and a code block.</p>
+          <ul style="margin:16px 0;padding-left:32px">
+            <li style="margin:8px 0"><strong>File</strong> — <strong>Open…</strong> a markdown file from your machine, <strong>Save</strong> straight back to it, or <strong>Save As…</strong> somewhere new.</li>
+            <li style="margin:8px 0"><strong>Edit</strong> — <strong>Undo</strong> and <strong>Redo</strong>, and <strong>Clear document</strong>, which empties the text but keeps the file you have open.</li>
+          </ul>
+          <blockquote style="border-left:4px solid #3498db;padding-left:16px;margin:16px 0;color:#666666;font-style:italic">Your markdown data never leaves your device.</blockquote>
+          <pre style="background:#f4f4f4;padding:16px;border-radius:4px;overflow-x:auto;margin:16px 0"><code style="font-family:'Courier New',monospace;font-size:14.4px;color:#333333;background:none;padding:0">npm run serve</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Menu open + format bar ══ -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.1em;color:#6b716f">02 · FILE MENU OPEN · FORMAT BAR OVER A SELECTION</div>
+    <div style="width:1200px;height:560px;overflow:hidden;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.18);position:relative">
+
+      <div style="background:#0c4c4a;color:#ffffff;padding:8px 32px;display:flex;flex-direction:column;gap:2.4px;position:relative;z-index:2">
+        <nav style="display:flex;align-items:center;gap:2.4px">
+          <div style="position:relative">
+            <button style="padding:6.4px 12px;background:rgba(255,255,255,0.18);border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">File</button>
+            <div style="position:absolute;top:calc(100% + 5.6px);left:0;z-index:200;min-width:240px;padding:4.8px;border:1px solid #e0e0e0;border-radius:6px;background:#ffffff;box-shadow:0 8px 24px rgba(0,0,0,0.15)">
+              <button style="display:flex;align-items:center;gap:8px;width:100%;padding:6.4px 9.6px;border:none;border-radius:4px;background:none;color:#333333;cursor:pointer;font-family:inherit;font-size:14.4px;text-align:left;white-space:nowrap"><span style="display:flex;flex:0 0 auto;width:14px;visibility:hidden"></span><span style="flex:1 1 auto">New document</span><span style="flex:0 0 auto;padding-left:24px;color:#666666;font-size:12.8px"></span></button>
+              <div style="height:1px;margin:4.8px 6.4px;background:#e0e0e0"></div>
+              <button style="display:flex;align-items:center;gap:8px;width:100%;padding:6.4px 9.6px;border:none;border-radius:4px;background:#f5f5f5;color:#333333;cursor:pointer;font-family:inherit;font-size:14.4px;text-align:left;white-space:nowrap"><span style="display:flex;flex:0 0 auto;width:14px;visibility:hidden"></span><span style="flex:1 1 auto">Open…</span><span style="flex:0 0 auto;padding-left:24px;color:#666666;font-size:12.8px;font-variant-numeric:tabular-nums">Ctrl+O</span></button>
+              <button style="display:flex;align-items:center;gap:8px;width:100%;padding:6.4px 9.6px;border:none;border-radius:4px;background:none;color:#333333;cursor:pointer;font-family:inherit;font-size:14.4px;text-align:left;white-space:nowrap"><span style="display:flex;flex:0 0 auto;width:14px;visibility:hidden"></span><span style="flex:1 1 auto">Reload from disk</span><span style="flex:0 0 auto;padding-left:24px;color:#666666;font-size:12.8px"></span></button>
+              <div style="height:1px;margin:4.8px 6.4px;background:#e0e0e0"></div>
+              <button style="display:flex;align-items:center;gap:8px;width:100%;padding:6.4px 9.6px;border:none;border-radius:4px;background:none;color:#333333;cursor:pointer;font-family:inherit;font-size:14.4px;text-align:left;white-space:nowrap"><span style="display:flex;flex:0 0 auto;width:14px;visibility:hidden"></span><span style="flex:1 1 auto">Save</span><span style="flex:0 0 auto;padding-left:24px;color:#666666;font-size:12.8px;font-variant-numeric:tabular-nums">Ctrl+S</span></button>
+              <button style="display:flex;align-items:center;gap:8px;width:100%;padding:6.4px 9.6px;border:none;border-radius:4px;background:none;color:#333333;cursor:pointer;font-family:inherit;font-size:14.4px;text-align:left;white-space:nowrap"><span style="display:flex;flex:0 0 auto;width:14px;visibility:hidden"></span><span style="flex:1 1 auto">Save As…</span><span style="flex:0 0 auto;padding-left:24px;color:#666666;font-size:12.8px;font-variant-numeric:tabular-nums">Ctrl+Shift+S</span></button>
+            </div>
+          </div>
+          <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">Edit</button>
+          <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">Insert</button>
+          <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">Format</button>
+          <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">View</button>
+          <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#ffffff;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">Export</button>
+        </nav>
+        <div style="display:flex;align-items:center;justify-content:space-between;min-height:21.8px">
+          <div style="display:flex;align-items:center;gap:5.6px;padding:3.2px 8px;border-radius:4px;background:rgba(255,255,255,0.16);font-size:13.6px;white-space:nowrap">
+            <span style="width:7px;height:7px;border-radius:50%;background:#c0392b"></span>
+            <span>welcome.md</span>
+            <button style="background:none;border:none;color:inherit;font-size:16px;line-height:1;padding:0 2.4px;opacity:0.6;cursor:pointer">×</button>
+          </div>
+          <div style="position:relative;width:40px;height:20px;background:#e0e0e0;border:1px solid #d0d0d0;border-radius:10px">
+            <div style="position:absolute;top:2px;left:2px;width:14px;height:14px;background:#ffffff;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.2)"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:32px;margin:16px;border:1px solid #e0e0e0;border-radius:4px;color:#333333;line-height:1.6;position:relative;min-height:380px">
+        <h2 style="font-size:24px;margin:0 0 16px;color:#34495e">Two Kinds of HTML Export</h2>
+        <p style="margin:16px 0">Mandy can write two very different HTML files, and the difference matters: an <strong>HTML page</strong> is the document alone, while an <span style="background:#b4d5fe">editable copy carries the editor with it</span>, so whoever opens it can change the text and send it back.</p>
+
+        <div style="position:absolute;left:290px;top:150px;background:#ffffff;border:1px solid #dddddd;border-radius:6px;padding:8px;display:flex;gap:4px;box-shadow:0 4px 12px rgba(0,0,0,0.15);align-items:center;z-index:5">
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;padding:6.4px 9.6px;border-radius:4px;cursor:pointer;font-size:13.6px;font-weight:600;font-family:inherit;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center">P</button>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;padding:6.4px 9.6px;border-radius:4px;cursor:pointer;font-size:13.6px;font-weight:600;font-family:inherit;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center">H1</button>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;padding:6.4px 9.6px;border-radius:4px;cursor:pointer;font-size:13.6px;font-weight:600;font-family:inherit;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center">H2</button>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;padding:6.4px 9.6px;border-radius:4px;cursor:pointer;font-size:13.6px;font-weight:600;font-family:inherit;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center">H3</button>
+          <div style="width:1px;height:24px;background:#dddddd;margin:0 4px"></div>
+          <button style="background:#3498db;color:#ffffff;border:1px solid #3498db;border-radius:4px;cursor:pointer;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path></svg>
+          </button>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;border-radius:4px;cursor:pointer;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="4" x2="10" y2="4"></line><line x1="14" y1="20" x2="5" y2="20"></line><line x1="15" y1="4" x2="9" y2="20"></line></svg>
+          </button>
+          <button style="background:#ffffff;color:#3498db;border:1px solid #3498db;border-radius:4px;cursor:pointer;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4H9a3 3 0 0 0-2.83 4"></path><path d="M14 12a4 4 0 0 1 0 8H6"></path><line x1="4" y1="12" x2="20" y2="12"></line></svg>
+          </button>
+          <div style="width:1px;height:24px;background:#dddddd;margin:0 4px"></div>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;border-radius:4px;cursor:pointer;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="3" cy="6" r="1" fill="currentColor"></circle><circle cx="3" cy="12" r="1" fill="currentColor"></circle><circle cx="3" cy="18" r="1" fill="currentColor"></circle></svg>
+          </button>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;border-radius:4px;cursor:pointer;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><text x="3" y="8" font-size="8" fill="currentColor">1.</text><text x="3" y="14" font-size="8" fill="currentColor">2.</text><text x="3" y="20" font-size="8" fill="currentColor">3.</text></svg>
+          </button>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;border-radius:4px;cursor:pointer;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          </button>
+        </div>
+
+        <p style="margin:60px 0 16px;color:#666666;font-size:13.6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">caret mode — same bar, inline formats hidden</p>
+        <div style="background:#ffffff;border:1px solid #dddddd;border-radius:6px;padding:8px;display:inline-flex;gap:4px;box-shadow:0 4px 12px rgba(0,0,0,0.15);align-items:center">
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;padding:6.4px 9.6px;border-radius:4px;font-size:13.6px;font-weight:600;font-family:inherit;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer">P</button>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;padding:6.4px 9.6px;border-radius:4px;font-size:13.6px;font-weight:600;font-family:inherit;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer">H1</button>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;padding:6.4px 9.6px;border-radius:4px;font-size:13.6px;font-weight:600;font-family:inherit;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer">H2</button>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;padding:6.4px 9.6px;border-radius:4px;font-size:13.6px;font-weight:600;font-family:inherit;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer">H3</button>
+          <div style="width:1px;height:24px;background:#dddddd;margin:0 4px"></div>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;border-radius:4px;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="3" cy="6" r="1" fill="currentColor"></circle><circle cx="3" cy="12" r="1" fill="currentColor"></circle><circle cx="3" cy="18" r="1" fill="currentColor"></circle></svg>
+          </button>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;border-radius:4px;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><text x="3" y="8" font-size="8" fill="currentColor">1.</text><text x="3" y="14" font-size="8" fill="currentColor">2.</text><text x="3" y="20" font-size="8" fill="currentColor">3.</text></svg>
+          </button>
+          <button style="background:#ffffff;color:#333333;border:1px solid #dddddd;border-radius:4px;min-width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Dark + outline ══ -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.1em;color:#6b716f">03 · DARK THEME, OUTLINE SIDEBAR OPEN</div>
+    <div style="width:1200px;height:560px;overflow:hidden;background:#1a1a1a;box-shadow:0 1px 3px rgba(0,0,0,0.3)">
+      <div style="display:grid;grid-template-columns:256px minmax(0,1fr);background:#1a1a1a;min-height:560px">
+        <div style="grid-column:1 / -1;background:#0f1419;color:#e0e0e0;padding:8px 32px;display:flex;flex-direction:column;gap:2.4px;box-shadow:0 2px 5px rgba(0,0,0,0.3)">
+          <nav style="display:flex;align-items:center;gap:2.4px">
+            <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#e0e0e0;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">File</button>
+            <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#e0e0e0;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">Edit</button>
+            <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#e0e0e0;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">Insert</button>
+            <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#e0e0e0;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">Format</button>
+            <button style="padding:6.4px 12px;background:rgba(255,255,255,0.18);border:none;border-radius:4px;color:#e0e0e0;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">View</button>
+            <button style="padding:6.4px 12px;background:none;border:none;border-radius:4px;color:#e0e0e0;font-family:inherit;font-size:14.4px;font-weight:500;line-height:1.6;cursor:pointer">Export</button>
+          </nav>
+          <div style="display:flex;align-items:center;justify-content:space-between;min-height:21.8px">
+            <div style="display:flex;align-items:center;gap:5.6px;padding:3.2px 8px;border-radius:4px;background:rgba(255,255,255,0.16);color:#e0e0e0;font-size:13.6px">
+              <span style="width:7px;height:7px;border-radius:50%;background:transparent"></span>
+              <span>REWRITE.md</span>
+              <button style="background:none;border:none;color:inherit;font-size:16px;line-height:1;padding:0 2.4px;opacity:0.6;cursor:pointer">×</button>
+            </div>
+            <div style="position:relative;width:40px;height:20px;background:#66b3ff;border:1px solid #4a4a4a;border-radius:10px">
+              <div style="position:absolute;top:2px;left:2px;width:14px;height:14px;background:#ffffff;border-radius:50%;transform:translateX(20px);box-shadow:0 2px 4px rgba(0,0,0,0.2)"></div>
+            </div>
+          </div>
+        </div>
+
+        <nav style="align-self:start;padding:16px 8px 16px 16px;margin:16px 0 16px 16px;border-right:1px solid #404040">
+          <ul style="list-style:none;display:flex;flex-direction:column;gap:2.4px;margin:0;padding:0">
+            <li style="font-size:15.2px;font-weight:600"><a href="#" style="display:block;padding:3.2px 6.4px;border-radius:3px;color:#e0e0e0;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">The rewrite</a></li>
+            <li style="font-size:14.4px;font-weight:500"><a href="#" style="display:block;padding:3.2px 6.4px 3.2px 20px;border-radius:3px;background:#2d2d2d;color:#66b3ff;text-decoration:none">Why not a fork</a></li>
+            <li style="font-size:14.4px;font-weight:500"><a href="#" style="display:block;padding:3.2px 6.4px 3.2px 20px;border-radius:3px;color:#e0e0e0;text-decoration:none">Save fidelity</a></li>
+            <li style="font-size:13.6px"><a href="#" style="display:block;padding:3.2px 6.4px 3.2px 33.6px;border-radius:3px;color:#e0e0e0;text-decoration:none">Horizontal rules</a></li>
+            <li style="font-size:13.6px"><a href="#" style="display:block;padding:3.2px 6.4px 3.2px 33.6px;border-radius:3px;color:#e0e0e0;text-decoration:none">Trailing newline</a></li>
+            <li style="font-size:14.4px;font-weight:500"><a href="#" style="display:block;padding:3.2px 6.4px 3.2px 20px;border-radius:3px;color:#e0e0e0;text-decoration:none">The tab list</a></li>
+          </ul>
+        </nav>
+
+        <div style="padding:32px;margin:16px;background:#1a1a1a;color:#e0e0e0;border:1px solid #404040;border-radius:4px;line-height:1.6">
+          <h1 style="font-size:32px;margin:0 0 16px;color:#f0f0f0;border-bottom:2px solid #333333;padding-bottom:8px">The rewrite</h1>
+          <p style="margin:16px 0">Marky was where this started. Mandy is where it learned to give your files back exactly as it found them.</p>
+          <h2 style="font-size:24px;margin:24px 0 16px;color:#e8e8e8">Why not a fork</h2>
+          <p style="margin:16px 0">The conversion engine stayed. Everything that touches <code style="background:#2a2a2a;padding:3.2px 6.4px;border-radius:3px;font-family:'Courier New',monospace;font-size:0.9em;color:#e0e0e0">contenteditable</code> did not.</p>
+          <table style="border-collapse:collapse;width:100%;margin:16px 0">
+            <thead><tr><th style="border:1px solid #505050;padding:12px;text-align:left;background:#2a2a2a;font-weight:600">Suite</th><th style="border:1px solid #505050;padding:12px;text-align:left;background:#2a2a2a;font-weight:600">Holds</th></tr></thead>
+            <tbody>
+              <tr style="background:#222222"><td style="border:1px solid #505050;padding:12px">save-fidelity</td><td style="border:1px solid #505050;padding:12px">Rules stay <code style="background:#2a2a2a;padding:3.2px 6.4px;border-radius:3px;font-family:'Courier New',monospace;font-size:0.9em">---</code></td></tr>
+              <tr><td style="border:1px solid #505050;padding:12px">tabs</td><td style="border:1px solid #505050;padding:12px">Switching loses nothing</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Dialogs ══ -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.1em;color:#6b716f">04 · OPEN / SAVE DIALOG</div>
+    <div style="width:1200px;height:520px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.18)">
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);pointer-events:none"></div>
+      <div style="position:relative;background:#ffffff;color:#333333;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,0.15);width:560px;max-height:420px;display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:#0c4c4a;color:#ffffff">
+          <h2 style="font-size:17.6px;font-weight:600;margin:0">Save file as</h2>
+          <button style="background:none;border:none;color:#ffffff;font-size:24px;line-height:1;cursor:pointer;padding:0 4px">×</button>
+        </div>
+        <div style="padding:9.6px 20px;background:#f5f5f5;border-bottom:1px solid #e0e0e0;font-family:'Courier New',Courier,monospace;font-size:13.6px;color:#666666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">/Users/erez/projects/mandy/docs</div>
+        <div style="flex:1;overflow-y:auto;min-height:180px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 20px;cursor:pointer;border-bottom:1px solid #eeeeee;font-weight:600;color:#3498db">..</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 20px;cursor:pointer;border-bottom:1px solid #eeeeee"><span style="font-weight:600;color:#3498db;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">archive</span><span style="font-size:12.8px;color:#666666;flex-shrink:0">12 Mar 2026</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 20px;cursor:pointer;border-bottom:1px solid #eeeeee;background:#f5f5f5"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">DECISIONS.md</span><span style="font-size:12.8px;color:#666666;flex-shrink:0">02 Sep 2026</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 20px;cursor:pointer;border-bottom:1px solid #eeeeee"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">MARKDOWN.md</span><span style="font-size:12.8px;color:#666666;flex-shrink:0">28 Aug 2026</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 20px;cursor:pointer;border-bottom:1px solid #eeeeee"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ROADMAP.md</span><span style="font-size:12.8px;color:#666666;flex-shrink:0">14 Sep 2026</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 20px;cursor:pointer;border-bottom:1px solid #eeeeee"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">TODO.md</span><span style="font-size:12.8px;color:#666666;flex-shrink:0">14 Sep 2026</span></div>
+        </div>
+        <div style="display:flex;gap:8px;padding:13.6px 20px;border-top:1px solid #e0e0e0;background:#f5f5f5">
+          <input type="text" value="notes.md" style="flex:1;padding:8px 12px;border:1px solid #d0d0d0;border-radius:4px;background:#ffffff;color:#333333;font-size:15.2px;font-family:inherit" />
+          <button style="background:#3498db;color:#ffffff;border:1px solid transparent;border-radius:4px;padding:8px 16px;font-size:15.2px;font-family:inherit;cursor:pointer">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.1em;color:#6b716f">05 · CONFIRM · TEXT PROMPT · TOASTS</div>
+    <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+
+      <div style="width:568px;height:280px;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.18)">
+        <div style="width:480px;padding:17.6px 20px 16px;border-radius:8px;background:#ffffff;color:#333333;box-shadow:0 8px 30px rgba(0,0,0,0.15)">
+          <div style="display:flex;align-items:center;gap:8.8px">
+            <span style="display:flex;flex-shrink:0;color:#b9770e"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></span>
+            <h2 style="flex:1;font-size:16.8px;font-weight:600;color:#2c3e50;margin:0">Unsaved changes</h2>
+            <button style="background:none;border:none;color:#666666;cursor:pointer;font-size:20px;line-height:1;padding:0 2.4px">×</button>
+          </div>
+          <p style="margin:9.6px 0 0;color:#333333">welcome.md has changes you have not saved. Close it anyway?</p>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:17.6px">
+            <button style="border:1px solid #d0d0d0;border-radius:4px;background:#f5f5f5;color:#333333;cursor:pointer;font-size:14.4px;font-weight:600;padding:7.2px 14.4px;font-family:inherit">Cancel</button>
+            <button style="border:1px solid transparent;border-radius:4px;background:#3498db;color:#ffffff;cursor:pointer;font-size:14.4px;font-weight:600;padding:7.2px 14.4px;font-family:inherit">Save</button>
+            <button style="border:1px solid transparent;border-radius:4px;background:#c0392b;color:#ffffff;cursor:pointer;font-size:14.4px;font-weight:600;padding:7.2px 14.4px;font-family:inherit">Discard</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:568px;height:280px;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.18)">
+        <div style="width:480px;padding:17.6px 20px 16px;border-radius:8px;background:#ffffff;color:#333333;box-shadow:0 8px 30px rgba(0,0,0,0.15)">
+          <div style="display:flex;align-items:center;gap:8.8px">
+            <span style="display:flex;flex-shrink:0;color:#3498db"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg></span>
+            <h2 style="flex:1;font-size:16.8px;font-weight:600;color:#2c3e50;margin:0">Insert link</h2>
+            <button style="background:none;border:none;color:#666666;cursor:pointer;font-size:20px;line-height:1;padding:0 2.4px">×</button>
+          </div>
+          <label style="display:block;margin:9.6px 0 0;color:#333333">Link address
+            <input type="text" value="https://" style="display:block;width:100%;margin-top:8px;padding:8px 12px;border:1px solid #d0d0d0;border-radius:4px;background:#ffffff;color:#333333;font-size:15.2px;font-family:inherit" />
+          </label>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:17.6px">
+            <button style="border:1px solid #d0d0d0;border-radius:4px;background:#f5f5f5;color:#333333;cursor:pointer;font-size:14.4px;font-weight:600;padding:7.2px 14.4px;font-family:inherit">Cancel</button>
+            <button style="border:1px solid transparent;border-radius:4px;background:#3498db;color:#ffffff;cursor:pointer;font-size:14.4px;font-weight:600;padding:7.2px 14.4px;font-family:inherit">OK</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:480px;padding:24px;background:#f5f5f5;display:flex;flex-direction:column;gap:9.6px;box-shadow:0 1px 3px rgba(0,0,0,0.18)">
+        <div style="display:flex;align-items:flex-start;gap:10.4px;padding:12px 13.6px;border-radius:8px;border:1px solid #e0e0e0;border-left:3px solid #c0392b;background:#ffffff;color:#333333;box-shadow:0 6px 24px rgba(0,0,0,0.15);font-size:14.4px;line-height:1.45">
+          <span style="display:flex;flex-shrink:0;padding-top:1.6px;color:#c0392b"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></span>
+          <div style="flex:1;min-width:0">
+            <p style="margin:0;overflow-wrap:anywhere">Could not save /Users/erez/projects/mandy/docs/ROADMAP.md — permission denied.</p>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button style="background:none;border:1px solid #d0d0d0;border-radius:4px;color:#3498db;cursor:pointer;font-size:13.6px;font-weight:600;padding:3.2px 9.6px;font-family:inherit">Retry</button>
+              <button style="background:none;border:1px solid #d0d0d0;border-radius:4px;color:#3498db;cursor:pointer;font-size:13.6px;font-weight:600;padding:3.2px 9.6px;font-family:inherit">Save As…</button>
+            </div>
+          </div>
+          <button style="background:none;border:none;color:#666666;cursor:pointer;flex-shrink:0;font-size:20px;line-height:1;padding:0 2.4px">×</button>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10.4px;padding:12px 13.6px;border-radius:8px;border:1px solid #e0e0e0;border-left:3px solid #1e8449;background:#ffffff;color:#333333;box-shadow:0 6px 24px rgba(0,0,0,0.15);font-size:14.4px;line-height:1.45">
+          <span style="display:flex;flex-shrink:0;padding-top:1.6px;color:#1e8449"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
+          <div style="flex:1;min-width:0"><p style="margin:0">Markdown copied to the clipboard.</p></div>
+          <button style="background:none;border:none;color:#666666;cursor:pointer;flex-shrink:0;font-size:20px;line-height:1;padding:0 2.4px">×</button>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10.4px;padding:12px 13.6px;border-radius:8px;border:1px solid #e0e0e0;border-left:3px solid #b9770e;background:#ffffff;color:#333333;box-shadow:0 6px 24px rgba(0,0,0,0.15);font-size:14.4px;line-height:1.45">
+          <span style="display:flex;flex-shrink:0;padding-top:1.6px;color:#b9770e"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></span>
+          <div style="flex:1;min-width:0"><p style="margin:0">ROADMAP.md changed on disk since you opened it.</p></div>
+          <button style="background:none;border:none;color:#666666;cursor:pointer;flex-shrink:0;font-size:20px;line-height:1;padding:0 2.4px">×</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+</x-dc>
+</body>
+</html>

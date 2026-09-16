@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet" />
+<style>
+  body { margin: 0; background: #e4e9e8; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  a { color: #0c4c4a; text-decoration: none; }
+  a:hover { color: #0a3e3c; text-decoration: underline; }
+</style>
+</helmet>
+
+<section style="padding:48px;display:flex;flex-direction:column;gap:60px">
+
+  <div style="display:flex;flex-direction:column;gap:8px;max-width:78ch">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.14em;color:#0c4c4a">DIRECTION · 1a</div>
+    <div style="font-size:28px;font-weight:600;color:#1b2422;letter-spacing:-0.01em">Quieter chrome, a document that looks like a document</div>
+    <div style="font-size:14.5px;line-height:1.6;color:#5d6b68;text-wrap:pretty">The teal stays and does less: one thin menu row, tabs docked on the page below it, the editor as a sheet with a measured column of Source Serif 4. Accents are teal only — no blue anywhere. Every control is the same one it is today; nothing was added or removed.</div>
+  </div>
+
+  <!-- ══ 01 · light shell ══ -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.1em;color:#6b716f">01 · APP SHELL — LIGHT</div>
+    <div style="width:1200px;height:800px;overflow:hidden;background:#eef1f0;box-shadow:0 1px 3px rgba(20,40,38,0.2)">
+
+      <div style="height:40px;background:#0c4c4a;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 12px">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <img src="assets/favicon.svg" alt="Mandy" style="width:17px;height:17px;display:block;opacity:0.95;filter:brightness(0) invert(1)" />
+          <nav style="display:flex;align-items:center;gap:1px">
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:rgba(255,255,255,0.92);font-family:inherit;font-size:13px;font-weight:500;letter-spacing:0.005em;line-height:1.4;cursor:pointer;white-space:nowrap" style-hover="background:rgba(255,255,255,0.11);color:#ffffff">File</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:rgba(255,255,255,0.92);font-family:inherit;font-size:13px;font-weight:500;line-height:1.4;cursor:pointer" style-hover="background:rgba(255,255,255,0.11);color:#ffffff">Edit</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:rgba(255,255,255,0.92);font-family:inherit;font-size:13px;font-weight:500;line-height:1.4;cursor:pointer" style-hover="background:rgba(255,255,255,0.11);color:#ffffff">Insert</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:rgba(255,255,255,0.92);font-family:inherit;font-size:13px;font-weight:500;line-height:1.4;cursor:pointer" style-hover="background:rgba(255,255,255,0.11);color:#ffffff">Format</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:rgba(255,255,255,0.92);font-family:inherit;font-size:13px;font-weight:500;line-height:1.4;cursor:pointer" style-hover="background:rgba(255,255,255,0.11);color:#ffffff">View</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:rgba(255,255,255,0.92);font-family:inherit;font-size:13px;font-weight:500;line-height:1.4;cursor:pointer" style-hover="background:rgba(255,255,255,0.11);color:#ffffff">Export</button>
+          </nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font:500 11.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.04em;color:rgba(255,255,255,0.55)">~/projects/mandy/front</span>
+          <div style="display:flex;align-items:center;gap:0;padding:2px;background:rgba(0,0,0,0.22);border-radius:999px;height:22px;box-sizing:border-box">
+            <span style="display:flex;align-items:center;justify-content:center;width:26px;height:18px;border-radius:999px;background:rgba(255,255,255,0.92);color:#0c4c4a">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="2.5" x2="12" y2="5"></line><line x1="12" y1="19" x2="12" y2="21.5"></line><line x1="2.5" y1="12" x2="5" y2="12"></line><line x1="19" y1="12" x2="21.5" y2="12"></line></svg>
+            </span>
+            <span style="display:flex;align-items:center;justify-content:center;width:26px;height:18px;border-radius:999px;color:rgba(255,255,255,0.6)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a7 7 0 1 0 10.5 10.5z"></path></svg>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:8px 20px 0;display:flex;align-items:flex-end;gap:2px;background:#eef1f0">
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 11px 8px;border-radius:7px 7px 0 0;background:#ffffff;color:#1b2422;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;box-shadow:0 -1px 0 rgba(20,40,38,0.06) inset">
+          <span style="width:5px;height:5px;flex:none;border-radius:50%;background:#b3382b"></span>
+          <span style="max-width:24ch;overflow:hidden;text-overflow:ellipsis">welcome.md</span>
+          <button style="background:none;border:none;border-radius:4px;color:#8b9794;cursor:pointer;font-family:inherit;font-size:14px;line-height:1;padding:1px 3px" style-hover="background:#eef1f0;color:#1b2422">×</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 11px 8px;border-radius:7px 7px 0 0;color:#5d6b68;font-size:13px;cursor:pointer;white-space:nowrap" style-hover="background:rgba(255,255,255,0.55);color:#1b2422">
+          <span style="width:5px;height:5px;flex:none;border-radius:50%;background:transparent"></span>
+          <span style="max-width:24ch;overflow:hidden;text-overflow:ellipsis">ROADMAP.md</span>
+          <button style="background:none;border:none;border-radius:4px;color:#9aa6a3;cursor:pointer;font-family:inherit;font-size:14px;line-height:1;padding:1px 3px" style-hover="background:#e4e9e8;color:#1b2422">×</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 11px 8px;border-radius:7px 7px 0 0;color:#5d6b68;font-size:13px;cursor:pointer;white-space:nowrap" style-hover="background:rgba(255,255,255,0.55);color:#1b2422">
+          <span style="width:5px;height:5px;flex:none;border-radius:50%;background:#8b9794"></span>
+          <span style="max-width:24ch;overflow:hidden;text-overflow:ellipsis">notes.md</span>
+          <button style="background:none;border:none;border-radius:4px;color:#9aa6a3;cursor:pointer;font-family:inherit;font-size:14px;line-height:1;padding:1px 3px" style-hover="background:#e4e9e8;color:#1b2422">×</button>
+        </div>
+      </div>
+
+      <div style="background:#ffffff;min-height:700px;box-shadow:0 1px 2px rgba(20,40,38,0.06),0 8px 24px rgba(20,40,38,0.04)">
+        <div style="max-width:68ch;margin:0 auto;padding:56px 32px 80px;font-family:'Source Serif 4',Georgia,serif;font-size:18px;line-height:1.7;color:#1b2422">
+          <img src="assets/welcome-banner.png" alt="Mandy" style="max-width:100%;height:auto;display:block;margin:0 0 36px" />
+          <h1 style="font-size:35px;line-height:1.2;font-weight:600;letter-spacing:-0.012em;margin:0 0 20px;color:#111917">Welcome to Mandy</h1>
+          <p style="margin:0 0 20px">A simple markdown editor that edits the files on your own machine. Start typing and see your formatted text in real-time.</p>
+          <h2 style="font-size:25px;line-height:1.3;font-weight:600;letter-spacing:-0.008em;margin:40px 0 14px;color:#111917">Quick Start</h2>
+          <p style="margin:0 0 20px"><strong style="font-weight:600">Select text</strong> to see formatting options appear above it. Put the cursor at the start of a line and a shorter bar appears with the formats that act on the whole line — headings, lists and a code block.</p>
+          <ul style="margin:0 0 20px;padding-left:24px">
+            <li style="margin:0 0 8px"><strong style="font-weight:600">File</strong> — <strong style="font-weight:600">Open…</strong> a markdown file from your machine, <strong style="font-weight:600">Save</strong> straight back to it, or <strong style="font-weight:600">Save As…</strong> somewhere new.</li>
+            <li style="margin:0 0 8px"><strong style="font-weight:600">Edit</strong> — <strong style="font-weight:600">Undo</strong> and <strong style="font-weight:600">Redo</strong>, and <strong style="font-weight:600">Clear document</strong>, which empties the text but keeps the file you have open.</li>
+          </ul>
+          <blockquote style="margin:28px 0;padding:2px 0 2px 20px;border-left:2px solid #b8cdca;color:#41514e">Your markdown data never leaves your device. <a href="#1a">Read why</a>.</blockquote>
+          <h3 style="font-size:20px;line-height:1.35;font-weight:600;margin:36px 0 12px;color:#111917">Running locally</h3>
+          <p style="margin:0 0 20px">The server serves the editor <em>and</em> gives it read/write access to your <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;background:#f1f4f3;border-radius:4px;padding:2px 5px">.md</code> files.</p>
+          <pre style="margin:0 0 24px;padding:16px 18px;background:#f5f7f6;border-radius:8px;overflow-x:auto"><code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14.5px;line-height:1.6;color:#1b2422;background:none;padding:0">npm run serve</code></pre>
+          <table style="border-collapse:collapse;width:100%;margin:0 0 24px;font-size:16px">
+            <thead><tr>
+              <th style="text-align:left;padding:0 12px 8px 0;border-bottom:1px solid #c9d2cf;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:#5d6b68">Suite</th>
+              <th style="text-align:left;padding:0 0 8px 0;border-bottom:1px solid #c9d2cf;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:#5d6b68">Holds</th>
+            </tr></thead>
+            <tbody>
+              <tr><td style="padding:10px 12px 10px 0;border-bottom:1px solid #eaefed">save-fidelity</td><td style="padding:10px 0;border-bottom:1px solid #eaefed">Rules stay <code style="font-family:ui-monospace,Menlo,monospace;font-size:14.5px;background:#f1f4f3;border-radius:4px;padding:2px 5px">---</code></td></tr>
+              <tr><td style="padding:10px 12px 10px 0;border-bottom:1px solid #eaefed">tabs</td><td style="padding:10px 0;border-bottom:1px solid #eaefed">Switching loses nothing</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 02 · menu + format bar ══ -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.1em;color:#6b716f">02 · MENU DROPDOWN · FORMAT BAR (SELECTION + CARET MODES)</div>
+    <div style="width:1200px;height:600px;overflow:hidden;background:#eef1f0;box-shadow:0 1px 3px rgba(20,40,38,0.2);position:relative">
+
+      <div style="height:40px;background:#0c4c4a;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 12px;position:relative;z-index:3">
+        <div style="display:flex;align-items:center;gap:10px">
+          <img src="assets/favicon.svg" alt="" style="width:17px;height:17px;display:block;filter:brightness(0) invert(1);opacity:0.95" />
+          <nav style="display:flex;align-items:center;gap:1px">
+            <div style="position:relative">
+              <button style="padding:5px 10px;background:rgba(255,255,255,0.16);border:none;border-radius:5px;color:#ffffff;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer">File</button>
+              <div style="position:absolute;top:calc(100% + 7px);left:-4px;z-index:200;min-width:244px;padding:6px;border:1px solid #dfe5e3;border-radius:10px;background:#ffffff;box-shadow:0 14px 36px rgba(20,40,38,0.14),0 1px 2px rgba(20,40,38,0.08)">
+                <button style="display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:none;border-radius:6px;background:none;color:#1b2422;cursor:pointer;font-family:inherit;font-size:13.5px;text-align:left;white-space:nowrap" style-hover="background:#eaf1f0"><span style="flex:0 0 auto;width:13px"></span><span style="flex:1 1 auto">New document</span><span style="flex:0 0 auto;padding-left:28px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;letter-spacing:0.04em;color:#8b9794"></span></button>
+                <div style="height:1px;margin:5px 10px;background:#eaefed"></div>
+                <button style="display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:none;border-radius:6px;background:#eaf1f0;color:#1b2422;cursor:pointer;font-family:inherit;font-size:13.5px;text-align:left;white-space:nowrap"><span style="flex:0 0 auto;width:13px"></span><span style="flex:1 1 auto">Open…</span><span style="flex:0 0 auto;padding-left:28px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;letter-spacing:0.04em;color:#5d6b68">⌘O</span></button>
+                <button style="display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:none;border-radius:6px;background:none;color:#1b2422;cursor:pointer;font-family:inherit;font-size:13.5px;text-align:left;white-space:nowrap" style-hover="background:#eaf1f0"><span style="flex:0 0 auto;width:13px"></span><span style="flex:1 1 auto">Reload from disk</span><span style="flex:0 0 auto;padding-left:28px"></span></button>
+                <div style="height:1px;margin:5px 10px;background:#eaefed"></div>
+                <button style="display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:none;border-radius:6px;background:none;color:#1b2422;cursor:pointer;font-family:inherit;font-size:13.5px;text-align:left;white-space:nowrap" style-hover="background:#eaf1f0"><span style="flex:0 0 auto;width:13px"></span><span style="flex:1 1 auto">Save</span><span style="flex:0 0 auto;padding-left:28px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;letter-spacing:0.04em;color:#8b9794">⌘S</span></button>
+                <button style="display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:none;border-radius:6px;background:none;color:#1b2422;cursor:pointer;font-family:inherit;font-size:13.5px;text-align:left;white-space:nowrap" style-hover="background:#eaf1f0"><span style="flex:0 0 auto;width:13px"></span><span style="flex:1 1 auto">Save As…</span><span style="flex:0 0 auto;padding-left:28px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;letter-spacing:0.04em;color:#8b9794">⇧⌘S</span></button>
+                <div style="height:1px;margin:5px 10px;background:#eaefed"></div>
+                <button style="display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:none;border-radius:6px;background:none;color:#1b2422;cursor:pointer;font-family:inherit;font-size:13.5px;text-align:left;white-space:nowrap" style-hover="background:#eaf1f0">
+                  <span style="flex:0 0 auto;width:13px;display:flex;color:#0c4c4a"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+                  <span style="flex:1 1 auto">Outline sidebar</span><span style="flex:0 0 auto;padding-left:28px"></span>
+                </button>
+              </div>
+            </div>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:rgba(255,255,255,0.92);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer">Edit</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:rgba(255,255,255,0.92);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer">Insert</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:rgba(255,255,255,0.92);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer">Format</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:rgba(255,255,255,0.92);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer">View</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:rgba(255,255,255,0.92);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer">Export</button>
+          </nav>
+        </div>
+      </div>
+
+      <div style="padding:8px 20px 0;display:flex;align-items:flex-end;gap:2px">
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 11px 8px;border-radius:7px 7px 0 0;background:#ffffff;color:#1b2422;font-size:13px;font-weight:500">
+          <span style="width:5px;height:5px;border-radius:50%;background:#b3382b"></span><span>welcome.md</span>
+          <button style="background:none;border:none;color:#8b9794;font-size:14px;line-height:1;padding:1px 3px;cursor:pointer">×</button>
+        </div>
+      </div>
+
+      <div style="background:#ffffff;min-height:520px;position:relative">
+        <div style="max-width:68ch;margin:0 auto;padding:96px 32px 64px;font-family:'Source Serif 4',Georgia,serif;font-size:18px;line-height:1.7;color:#1b2422">
+          <p style="margin:0 0 20px"><span style="background:#cfe3e0;border-radius:2px">An editable copy carries the editor with it</span>, so whoever opens it can change the text and send it back — an HTML page is the document alone.</p>
+          <p style="margin:0 0 80px;color:#5d6b68;font-family:ui-monospace,Menlo,monospace;font-size:12px;letter-spacing:0.05em;text-transform:uppercase">↓ and at a bare caret, inline formats withheld</p>
+          <p style="margin:0">Mandy can write two very different HTML files, and the difference matters.</p>
+        </div>
+
+        <div style="position:absolute;left:294px;top:46px;display:flex;align-items:center;gap:2px;padding:5px;background:#ffffff;border:1px solid #dfe5e3;border-radius:9px;box-shadow:0 12px 30px rgba(12,32,30,0.14),0 1px 2px rgba(12,32,30,0.07);z-index:5">
+          <button style="min-width:30px;height:30px;padding:0 8px;background:none;border:none;border-radius:6px;color:#41514e;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f1f4f3;color:#111917">P</button>
+          <button style="min-width:30px;height:30px;padding:0 8px;background:none;border:none;border-radius:6px;color:#41514e;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f1f4f3">H1</button>
+          <button style="min-width:30px;height:30px;padding:0 8px;background:none;border:none;border-radius:6px;color:#41514e;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f1f4f3">H2</button>
+          <button style="min-width:30px;height:30px;padding:0 8px;background:none;border:none;border-radius:6px;color:#41514e;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f1f4f3">H3</button>
+          <div style="width:1px;height:18px;background:#e4e9e8;margin:0 4px"></div>
+          <button style="width:30px;height:30px;background:#0c4c4a;border:none;border-radius:6px;color:#ffffff;cursor:pointer;display:flex;align-items:center;justify-content:center">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"></path></svg>
+          </button>
+          <button style="width:30px;height:30px;background:none;border:none;border-radius:6px;color:#41514e;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f1f4f3">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="4" x2="10" y2="4"></line><line x1="14" y1="20" x2="5" y2="20"></line><line x1="15" y1="4" x2="9" y2="20"></line></svg>
+          </button>
+          <button style="width:30px;height:30px;background:none;border:1px solid #0c4c4a;border-radius:6px;color:#0c4c4a;cursor:pointer;display:flex;align-items:center;justify-content:center;box-sizing:border-box">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4H9a3 3 0 0 0-2.83 4"></path><path d="M14 12a4 4 0 0 1 0 8H6"></path><line x1="4" y1="12" x2="20" y2="12"></line></svg>
+          </button>
+          <div style="width:1px;height:18px;background:#e4e9e8;margin:0 4px"></div>
+          <button style="width:30px;height:30px;background:none;border:none;border-radius:6px;color:#41514e;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f1f4f3">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="3" cy="6" r="1" fill="currentColor"></circle><circle cx="3" cy="12" r="1" fill="currentColor"></circle><circle cx="3" cy="18" r="1" fill="currentColor"></circle></svg>
+          </button>
+          <button style="width:30px;height:30px;background:none;border:none;border-radius:6px;color:#41514e;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f1f4f3">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><text x="2" y="8" font-size="7.5" fill="currentColor" stroke="none">1.</text><text x="2" y="14" font-size="7.5" fill="currentColor" stroke="none">2.</text><text x="2" y="20" font-size="7.5" fill="currentColor" stroke="none">3.</text></svg>
+          </button>
+          <button style="width:30px;height:30px;background:none;border:none;border-radius:6px;color:#41514e;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f1f4f3">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          </button>
+        </div>
+
+        <div style="position:absolute;left:294px;top:225px;display:flex;align-items:center;gap:2px;padding:5px;background:#ffffff;border:1px solid #dfe5e3;border-radius:9px;box-shadow:0 12px 30px rgba(12,32,30,0.14),0 1px 2px rgba(12,32,30,0.07)">
+          <button style="min-width:30px;height:30px;padding:0 8px;background:none;border:none;border-radius:6px;color:#41514e;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center">P</button>
+          <button style="min-width:30px;height:30px;padding:0 8px;background:none;border:none;border-radius:6px;color:#41514e;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center">H1</button>
+          <button style="min-width:30px;height:30px;padding:0 8px;background:none;border:none;border-radius:6px;color:#41514e;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center">H2</button>
+          <button style="min-width:30px;height:30px;padding:0 8px;background:none;border:none;border-radius:6px;color:#41514e;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center">H3</button>
+          <div style="width:1px;height:18px;background:#e4e9e8;margin:0 4px"></div>
+          <button style="width:30px;height:30px;background:none;border:none;border-radius:6px;color:#41514e;cursor:pointer;display:flex;align-items:center;justify-content:center">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="3" cy="6" r="1" fill="currentColor"></circle><circle cx="3" cy="12" r="1" fill="currentColor"></circle><circle cx="3" cy="18" r="1" fill="currentColor"></circle></svg>
+          </button>
+          <button style="width:30px;height:30px;background:none;border:none;border-radius:6px;color:#41514e;cursor:pointer;display:flex;align-items:center;justify-content:center">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><text x="2" y="8" font-size="7.5" fill="currentColor" stroke="none">1.</text><text x="2" y="14" font-size="7.5" fill="currentColor" stroke="none">2.</text><text x="2" y="20" font-size="7.5" fill="currentColor" stroke="none">3.</text></svg>
+          </button>
+          <button style="width:30px;height:30px;background:none;border:none;border-radius:6px;color:#41514e;cursor:pointer;display:flex;align-items:center;justify-content:center">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 03 · dark + outline ══ -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.1em;color:#6b716f">03 · DARK THEME, OUTLINE SIDEBAR OPEN</div>
+    <div style="width:1200px;height:640px;overflow:hidden;background:#101517;box-shadow:0 1px 3px rgba(0,0,0,0.35)">
+
+      <div style="height:40px;background:#0b1214;border-bottom:1px solid #1e2729;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 12px;box-sizing:border-box">
+        <div style="display:flex;align-items:center;gap:10px">
+          <img src="assets/favicon.svg" alt="" style="width:17px;height:17px;display:block;filter:brightness(0) invert(1);opacity:0.8" />
+          <nav style="display:flex;align-items:center;gap:1px">
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:#c6d2cf;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer" style-hover="background:rgba(255,255,255,0.08)">File</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:#c6d2cf;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer" style-hover="background:rgba(255,255,255,0.08)">Edit</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:#c6d2cf;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer" style-hover="background:rgba(255,255,255,0.08)">Insert</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:#c6d2cf;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer" style-hover="background:rgba(255,255,255,0.08)">Format</button>
+            <button style="padding:5px 10px;background:rgba(255,255,255,0.1);border:none;border-radius:5px;color:#eaf1ef;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer">View</button>
+            <button style="padding:5px 10px;background:none;border:none;border-radius:5px;color:#c6d2cf;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer" style-hover="background:rgba(255,255,255,0.08)">Export</button>
+          </nav>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font:500 11.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.04em;color:#7d8a87">~/projects/mandy/docs</span>
+          <div style="display:flex;align-items:center;padding:2px;background:rgba(255,255,255,0.07);border-radius:999px;height:22px;box-sizing:border-box">
+            <span style="display:flex;align-items:center;justify-content:center;width:26px;height:18px;border-radius:999px;color:#7d8a87">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="2.5" x2="12" y2="5"></line><line x1="12" y1="19" x2="12" y2="21.5"></line><line x1="2.5" y1="12" x2="5" y2="12"></line><line x1="19" y1="12" x2="21.5" y2="12"></line></svg>
+            </span>
+            <span style="display:flex;align-items:center;justify-content:center;width:26px;height:18px;border-radius:999px;background:#2f7f76;color:#eafcf8">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a7 7 0 1 0 10.5 10.5z"></path></svg>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:8px 20px 0;display:flex;align-items:flex-end;gap:2px;background:#101517">
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 11px 8px;border-radius:7px 7px 0 0;background:#181f21;color:#e6ecea;font-size:13px;font-weight:500">
+          <span style="width:5px;height:5px;border-radius:50%;background:transparent"></span><span>REWRITE.md</span>
+          <button style="background:none;border:none;color:#8b9794;font-size:14px;line-height:1;padding:1px 3px;cursor:pointer">×</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 11px 8px;border-radius:7px 7px 0 0;color:#98a5a2;font-size:13px">
+          <span style="width:5px;height:5px;border-radius:50%;background:#ff7a6d"></span><span>DECISIONS.md</span>
+          <button style="background:none;border:none;color:#7d8a87;font-size:14px;line-height:1;padding:1px 3px;cursor:pointer">×</button>
+        </div>
+      </div>
+
+      <div style="background:#181f21;min-height:540px;display:grid;grid-template-columns:248px minmax(0,1fr)">
+        <nav style="align-self:start;padding:28px 14px 28px 24px;border-right:1px solid #222b2d">
+          <div style="font:600 11px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:#7d8a87;padding:0 8px 12px">Outline</div>
+          <ul style="list-style:none;display:flex;flex-direction:column;gap:1px;margin:0;padding:0">
+            <li><a href="#1a" style="display:block;padding:5px 8px;border-radius:5px;color:#e6ecea;font-size:13.5px;font-weight:600;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" style-hover="background:#1f2729">The rewrite</a></li>
+            <li><a href="#1a" style="display:block;padding:5px 8px 5px 22px;border-radius:5px;background:#1f2729;color:#7fd3c6;font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap">Why not a fork</a></li>
+            <li><a href="#1a" style="display:block;padding:5px 8px 5px 22px;border-radius:5px;color:#c6d2cf;font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap" style-hover="background:#1f2729">Save fidelity</a></li>
+            <li><a href="#1a" style="display:block;padding:5px 8px 5px 36px;border-radius:5px;color:#98a5a2;font-size:12.5px;text-decoration:none;white-space:nowrap" style-hover="background:#1f2729">Horizontal rules</a></li>
+            <li><a href="#1a" style="display:block;padding:5px 8px 5px 36px;border-radius:5px;color:#98a5a2;font-size:12.5px;text-decoration:none;white-space:nowrap" style-hover="background:#1f2729">Trailing newline</a></li>
+            <li><a href="#1a" style="display:block;padding:5px 8px 5px 22px;border-radius:5px;color:#c6d2cf;font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap" style-hover="background:#1f2729">The tab list</a></li>
+          </ul>
+        </nav>
+
+        <div style="max-width:68ch;margin:0 auto;padding:48px 32px;font-family:'Source Serif 4',Georgia,serif;font-size:18px;line-height:1.7;color:#dfe6e4">
+          <h1 style="font-size:35px;line-height:1.2;font-weight:600;letter-spacing:-0.012em;margin:0 0 20px;color:#f2f7f5">The rewrite</h1>
+          <p style="margin:0 0 20px">Marky was where this started. Mandy is where it learned to give your files back exactly as it found them.</p>
+          <h2 style="font-size:25px;font-weight:600;margin:40px 0 14px;letter-spacing:-0.008em;color:#f2f7f5">Why not a fork</h2>
+          <p style="margin:0 0 20px">The conversion engine stayed. Everything that touches <code style="font-family:ui-monospace,Menlo,monospace;font-size:15px;background:#212a2c;border-radius:4px;padding:2px 5px">contenteditable</code> did not.</p>
+          <blockquote style="margin:28px 0;padding:2px 0 2px 20px;border-left:2px solid #2f7f76;color:#a9b6b3">A promise, not a coat of paint.</blockquote>
+          <table style="border-collapse:collapse;width:100%;margin:0;font-size:16px">
+            <thead><tr>
+              <th style="text-align:left;padding:0 12px 8px 0;border-bottom:1px solid #2d3739;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:#98a5a2">Suite</th>
+              <th style="text-align:left;padding:0 0 8px;border-bottom:1px solid #2d3739;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:#98a5a2">Holds</th>
+            </tr></thead>
+            <tbody>
+              <tr><td style="padding:10px 12px 10px 0;border-bottom:1px solid #232c2e">save-fidelity</td><td style="padding:10px 0;border-bottom:1px solid #232c2e">Rules stay <code style="font-family:ui-monospace,Menlo,monospace;font-size:14.5px;background:#212a2c;border-radius:4px;padding:2px 5px">---</code></td></tr>
+              <tr><td style="padding:10px 12px 10px 0;border-bottom:1px solid #232c2e">tabs</td><td style="padding:10px 0;border-bottom:1px solid #232c2e">Switching loses nothing</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 04 · file dialog ══ -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.1em;color:#6b716f">04 · OPEN / SAVE DIALOG</div>
+    <div style="width:1200px;height:560px;background:#d9e0de;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(20,40,38,0.2)">
+      <div style="width:580px;max-height:460px;display:flex;flex-direction:column;overflow:hidden;background:#ffffff;border-radius:12px;box-shadow:0 24px 60px rgba(12,32,30,0.22),0 2px 6px rgba(12,32,30,0.1)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px 12px">
+          <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+            <h2 style="margin:0;font-size:15px;font-weight:600;letter-spacing:-0.004em;color:#111917">Save file as</h2>
+            <div style="font:500 11.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.02em;color:#5d6b68;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">~/projects/mandy/docs</div>
+          </div>
+          <button style="background:none;border:none;border-radius:6px;color:#8b9794;font-size:16px;line-height:1;cursor:pointer;padding:4px 6px;flex:none" style-hover="background:#f1f4f3;color:#1b2422">×</button>
+        </div>
+        <div style="height:1px;background:#eaefed"></div>
+        <div style="flex:1;overflow-y:auto;min-height:230px;padding:6px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:7px 12px;border-radius:7px;cursor:pointer;font-size:13.5px;color:#0c4c4a;font-weight:500" style-hover="background:#f1f4f3"><span>↑ parent directory</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:7px 12px;border-radius:7px;cursor:pointer;font-size:13.5px" style-hover="background:#f1f4f3"><span style="color:#0c4c4a;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">archive/</span><span style="font:400 11.5px/1 ui-monospace,Menlo,monospace;color:#8b9794;flex:none">12 Mar 2026</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:7px 12px;border-radius:7px;cursor:pointer;font-size:13.5px;background:#eaf1f0;color:#1b2422"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">DECISIONS.md</span><span style="font:400 11.5px/1 ui-monospace,Menlo,monospace;color:#5d6b68;flex:none">02 Sep 2026</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:7px 12px;border-radius:7px;cursor:pointer;font-size:13.5px;color:#1b2422" style-hover="background:#f1f4f3"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">MARKDOWN.md</span><span style="font:400 11.5px/1 ui-monospace,Menlo,monospace;color:#8b9794;flex:none">28 Aug 2026</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:7px 12px;border-radius:7px;cursor:pointer;font-size:13.5px;color:#1b2422" style-hover="background:#f1f4f3"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ROADMAP.md</span><span style="font:400 11.5px/1 ui-monospace,Menlo,monospace;color:#8b9794;flex:none">14 Sep 2026</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:7px 12px;border-radius:7px;cursor:pointer;font-size:13.5px;color:#1b2422" style-hover="background:#f1f4f3"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">TODO.md</span><span style="font:400 11.5px/1 ui-monospace,Menlo,monospace;color:#8b9794;flex:none">14 Sep 2026</span></div>
+        </div>
+        <div style="display:flex;gap:8px;padding:12px 14px;border-top:1px solid #eaefed;background:#fafbfb">
+          <input type="text" value="notes.md" style="flex:1;padding:8px 11px;border:1px solid #d6dedc;border-radius:7px;background:#ffffff;color:#1b2422;font-size:13.5px;font-family:inherit;outline:none" style-focus="border-color:#0c4c4a;box-shadow:0 0 0 3px rgba(12,76,74,0.12)" />
+          <button style="background:#ffffff;color:#1b2422;border:1px solid #d6dedc;border-radius:7px;padding:8px 14px;font-size:13.5px;font-weight:500;font-family:inherit;cursor:pointer" style-hover="background:#f1f4f3">Cancel</button>
+          <button style="background:#0c4c4a;color:#ffffff;border:1px solid #0c4c4a;border-radius:7px;padding:8px 16px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer" style-hover="background:#0a3e3c">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 05 · dialogs + toasts ══ -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.1em;color:#6b716f">05 · CONFIRM · TEXT PROMPT · TOASTS</div>
+    <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+
+      <div style="width:568px;height:300px;background:#d9e0de;display:flex;align-items:center;justify-content:center;padding:16px;box-shadow:0 1px 3px rgba(20,40,38,0.2);box-sizing:border-box">
+        <div style="width:456px;padding:20px;border-radius:12px;background:#ffffff;box-shadow:0 24px 60px rgba(12,32,30,0.22)">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <span style="display:flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border-radius:50%;background:#fbeedd;color:#8a5a12">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            </span>
+            <div style="flex:1;min-width:0">
+              <h2 style="margin:4px 0 0;font-size:15px;font-weight:600;color:#111917">Unsaved changes</h2>
+              <p style="margin:6px 0 0;font-size:13.5px;line-height:1.55;color:#41514e;overflow-wrap:anywhere">welcome.md has changes you have not saved. Close it anyway?</p>
+            </div>
+            <button style="background:none;border:none;border-radius:6px;color:#8b9794;cursor:pointer;font-size:16px;line-height:1;padding:4px 6px;flex:none" style-hover="background:#f1f4f3">×</button>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px">
+            <button style="border:1px solid #d6dedc;border-radius:7px;background:#ffffff;color:#1b2422;cursor:pointer;font-size:13.5px;font-weight:500;padding:8px 14px;font-family:inherit" style-hover="background:#f1f4f3">Cancel</button>
+            <button style="border:1px solid #d6dedc;border-radius:7px;background:#ffffff;color:#b3382b;cursor:pointer;font-size:13.5px;font-weight:600;padding:8px 14px;font-family:inherit" style-hover="background:#fdf2f0;border-color:#e6b5ae">Discard</button>
+            <button style="border:1px solid #0c4c4a;border-radius:7px;background:#0c4c4a;color:#ffffff;cursor:pointer;font-size:13.5px;font-weight:600;padding:8px 16px;font-family:inherit" style-hover="background:#0a3e3c">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:568px;height:300px;background:#d9e0de;display:flex;align-items:center;justify-content:center;padding:16px;box-shadow:0 1px 3px rgba(20,40,38,0.2);box-sizing:border-box">
+        <div style="width:456px;padding:20px;border-radius:12px;background:#ffffff;box-shadow:0 24px 60px rgba(12,32,30,0.22)">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <span style="display:flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border-radius:50%;background:#e4efed;color:#0c4c4a">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            </span>
+            <div style="flex:1;min-width:0">
+              <h2 style="margin:4px 0 0;font-size:15px;font-weight:600;color:#111917">Insert link</h2>
+              <label style="display:block;margin:6px 0 0;font-size:13.5px;color:#41514e">Link address
+                <input type="text" value="https://" style="display:block;width:100%;margin-top:8px;padding:8px 11px;border:1px solid #d6dedc;border-radius:7px;background:#ffffff;color:#1b2422;font-size:13.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;box-sizing:border-box;outline:none" style-focus="border-color:#0c4c4a;box-shadow:0 0 0 3px rgba(12,76,74,0.12)" />
+              </label>
+            </div>
+            <button style="background:none;border:none;border-radius:6px;color:#8b9794;cursor:pointer;font-size:16px;line-height:1;padding:4px 6px;flex:none" style-hover="background:#f1f4f3">×</button>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px">
+            <button style="border:1px solid #d6dedc;border-radius:7px;background:#ffffff;color:#1b2422;cursor:pointer;font-size:13.5px;font-weight:500;padding:8px 14px;font-family:inherit" style-hover="background:#f1f4f3">Cancel</button>
+            <button style="border:1px solid #0c4c4a;border-radius:7px;background:#0c4c4a;color:#ffffff;cursor:pointer;font-size:13.5px;font-weight:600;padding:8px 16px;font-family:inherit" style-hover="background:#0a3e3c">Insert</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="width:460px;padding:24px;background:#eef1f0;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 3px rgba(20,40,38,0.2);box-sizing:border-box">
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid #e4e9e8;background:#ffffff;box-shadow:0 8px 24px rgba(12,32,30,0.1);font-size:13.5px;line-height:1.5;color:#1b2422">
+          <span style="display:flex;flex:none;margin-top:1px;color:#b3382b"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></span>
+          <div style="flex:1;min-width:0">
+            <p style="margin:0;overflow-wrap:anywhere">Could not save <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">docs/ROADMAP.md</span> — permission denied.</p>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button style="background:#ffffff;border:1px solid #d6dedc;border-radius:6px;color:#0c4c4a;cursor:pointer;font-size:12.5px;font-weight:600;padding:5px 11px;font-family:inherit" style-hover="background:#f1f4f3">Retry</button>
+              <button style="background:#ffffff;border:1px solid #d6dedc;border-radius:6px;color:#0c4c4a;cursor:pointer;font-size:12.5px;font-weight:600;padding:5px 11px;font-family:inherit" style-hover="background:#f1f4f3">Save As…</button>
+            </div>
+          </div>
+          <button style="background:none;border:none;border-radius:5px;color:#8b9794;cursor:pointer;flex:none;font-size:15px;line-height:1;padding:3px 5px" style-hover="background:#f1f4f3;color:#1b2422">×</button>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid #e4e9e8;background:#ffffff;box-shadow:0 8px 24px rgba(12,32,30,0.1);font-size:13.5px;line-height:1.5;color:#1b2422">
+          <span style="display:flex;flex:none;margin-top:1px;color:#15705f"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
+          <div style="flex:1;min-width:0"><p style="margin:0">Markdown copied to the clipboard.</p></div>
+          <button style="background:none;border:none;border-radius:5px;color:#8b9794;cursor:pointer;flex:none;font-size:15px;line-height:1;padding:3px 5px" style-hover="background:#f1f4f3">×</button>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:12px 13px;border-radius:10px;border:1px solid #e4e9e8;background:#ffffff;box-shadow:0 8px 24px rgba(12,32,30,0.1);font-size:13.5px;line-height:1.5;color:#1b2422">
+          <span style="display:flex;flex:none;margin-top:1px;color:#8a5a12"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></span>
+          <div style="flex:1;min-width:0"><p style="margin:0">ROADMAP.md changed on disk since you opened it.</p></div>
+          <button style="background:none;border:none;border-radius:5px;color:#8b9794;cursor:pointer;flex:none;font-size:15px;line-height:1;padding:3px 5px" style-hover="background:#f1f4f3">×</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 06 · tokens ══ -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:0.1em;color:#6b716f">06 · WHAT CHANGED IN app.css</div>
+    <div style="width:1200px;background:#ffffff;padding:28px 32px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px 32px;box-shadow:0 1px 3px rgba(20,40,38,0.12);box-sizing:border-box">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:600 11px/1 -apple-system,sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:#5d6b68">Ink &amp; paper — light</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <div style="width:52px"><div style="height:34px;border-radius:6px;background:#ffffff;border:1px solid #e4e9e8"></div><div style="font:400 10px/1.5 ui-monospace,Menlo,monospace;color:#5d6b68;padding-top:4px">#fff</div></div>
+          <div style="width:52px"><div style="height:34px;border-radius:6px;background:#eef1f0"></div><div style="font:400 10px/1.5 ui-monospace,Menlo,monospace;color:#5d6b68;padding-top:4px">#eef1f0</div></div>
+          <div style="width:52px"><div style="height:34px;border-radius:6px;background:#f1f4f3"></div><div style="font:400 10px/1.5 ui-monospace,Menlo,monospace;color:#5d6b68;padding-top:4px">#f1f4f3</div></div>
+          <div style="width:52px"><div style="height:34px;border-radius:6px;background:#5d6b68"></div><div style="font:400 10px/1.5 ui-monospace,Menlo,monospace;color:#5d6b68;padding-top:4px">#5d6b68</div></div>
+          <div style="width:52px"><div style="height:34px;border-radius:6px;background:#1b2422"></div><div style="font:400 10px/1.5 ui-monospace,Menlo,monospace;color:#5d6b68;padding-top:4px">#1b2422</div></div>
+        </div>
+        <div style="font:600 11px/1 -apple-system,sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:#5d6b68;padding-top:8px">Teal — the only accent</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <div style="width:52px"><div style="height:34px;border-radius:6px;background:#0c4c4a"></div><div style="font:400 10px/1.5 ui-monospace,Menlo,monospace;color:#5d6b68;padding-top:4px">#0c4c4a</div></div>
+          <div style="width:52px"><div style="height:34px;border-radius:6px;background:#0a3e3c"></div><div style="font:400 10px/1.5 ui-monospace,Menlo,monospace;color:#5d6b68;padding-top:4px">#0a3e3c</div></div>
+          <div style="width:52px"><div style="height:34px;border-radius:6px;background:#eaf1f0"></div><div style="font:400 10px/1.5 ui-monospace,Menlo,monospace;color:#5d6b68;padding-top:4px">#eaf1f0</div></div>
+          <div style="width:52px"><div style="height:34px;border-radius:6px;background:#2f7f76"></div><div style="font:400 10px/1.5 ui-monospace,Menlo,monospace;color:#5d6b68;padding-top:4px">#2f7f76</div></div>
+          <div style="width:52px"><div style="height:34px;border-radius:6px;background:#7fd3c6"></div><div style="font:400 10px/1.5 ui-monospace,Menlo,monospace;color:#5d6b68;padding-top:4px">#7fd3c6</div></div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:600 11px/1 -apple-system,sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:#5d6b68">Document — Source Serif 4</div>
+        <div style="font-family:'Source Serif 4',Georgia,serif;color:#1b2422">
+          <div style="font-size:35px;font-weight:600;letter-spacing:-0.012em;line-height:1.2">Heading one 35/1.2</div>
+          <div style="font-size:25px;font-weight:600;letter-spacing:-0.008em;padding-top:6px">Heading two 25/1.3</div>
+          <div style="font-size:20px;font-weight:600;padding-top:6px">Heading three 20/1.35</div>
+          <div style="font-size:18px;line-height:1.7;padding-top:8px">Body 18/1.7, measured to 68ch — the one line of type the app exists to show, and the only place a serif belongs.</div>
+          <div style="font-size:18px;line-height:1.7;font-style:italic;color:#41514e">Italic, for emphasis in prose.</div>
+        </div>
+        <div style="font:600 11px/1 -apple-system,sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:#5d6b68;padding-top:6px">Chrome — system sans</div>
+        <div style="color:#1b2422">
+          <div style="font-size:13px;font-weight:500">Menu &amp; tab label 13/500</div>
+          <div style="font-size:13.5px">Menu item 13.5/400 · <span style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;letter-spacing:0.04em;color:#8b9794">⇧⌘S</span></div>
+          <div style="font:500 11.5px/1.5 ui-monospace,Menlo,monospace;letter-spacing:0.04em;color:#5d6b68">Paths &amp; shortcuts 11.5 mono</div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:600 11px/1 -apple-system,sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:#5d6b68">The five moves</div>
+        <ol style="margin:0;padding-left:20px;font-size:13.5px;line-height:1.65;color:#41514e;display:flex;flex-direction:column;gap:8px">
+          <li><strong style="color:#1b2422;font-weight:600">The blue is gone.</strong> <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">--accent-blue</span> becomes teal; links, active formats, checkmarks and focus rings all read as one family.</li>
+          <li><strong style="color:#1b2422;font-weight:600">Header thinned to 40px.</strong> One row of 13px type; the open file's directory moves into it, and the theme toggle becomes a two-state sun/moon switch instead of an unlabelled pill.</li>
+          <li><strong style="color:#1b2422;font-weight:600">Tabs sit on the page.</strong> Real tab shapes on the page colour, the active one paper-white and flush with the sheet below — so a tab visibly holds the document under it.</li>
+          <li><strong style="color:#1b2422;font-weight:600">The editor is a sheet.</strong> No border, no focus-tint flash; a 68ch column of Source Serif 4 centred on white. Headings lose the H1 underline and gain space instead.</li>
+          <li><strong style="color:#1b2422;font-weight:600">Popovers stop being boxes of boxes.</strong> The format bar loses its grid of bordered boxes for borderless buttons on paper — teal fill for an active format, a teal ring for a mixed one; menus, dialogs and toasts share 10–12px radii, hairlines and a single shadow scale.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}"></script>
+</body>
+</html>

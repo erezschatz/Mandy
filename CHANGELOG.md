@@ -2845,3 +2845,33 @@ reordering tabs by drag, though `openTabs` already drives `renderTabBar()`
 from a single array, so the redraw side is free.
 
 No code changed, so nothing was run — `tests/` reads none of these files.
+
+## 2026-09-16 — Visual redesign approved; TODO 4.9 and stage 0 of its plan
+
+**The chrome/document restyle in
+[docs/redesign/design_handoff_mandy_chrome/README.md](docs/redesign/design_handoff_mandy_chrome/README.md)
+is approved for staged implementation.** TODO 4.9 in
+[docs/TODO.md](docs/TODO.md) records the seven-stage plan and stage 0 —
+this entry — is checking the doc against `main` before any of it lands.
+
+The doc's claims about today's code held throughout: `toolbar.js`'s two-row
+structure, `tabs.js`'s indifference to where `#tabBar` lives,
+`format-bar.js`'s live toolbar-height measurement, and the 16 call sites
+`--accent-blue` alone has in `app.css`. Two amendments came out of the review
+and are recorded in the design doc as well as the TODO entry:
+
+- **A layout bug, caught before it shipped.** Moving the tab strip out of
+  `.toolbar` to a sibling inside `.container`, as the doc's structural-changes
+  section calls for, collides with the outline sidebar's CSS grid — `.toolbar`
+  spans both columns there, the tab-strip sibling would not, and the outline
+  and editor would each land one grid cell out of place for as long as the
+  sidebar is open. The fix (`grid-column: 1 / -1` on the tab strip too) is
+  folded into stage 3 rather than discovered mid-implementation.
+- **Fonts stay a remote Google Fonts dependency rather than being
+  self-hosted**, reversing the doc's own recommendation, so a future typeface
+  change is a one-line edit rather than a repo full of font files to replace.
+  Accepted rather than solved: offline boot and the editable export both lose
+  the serif face with no network reachable, falling back to the `Georgia`
+  stack `app.css` already names.
+
+No code changed, so nothing was run — `tests/` reads none of these files.
