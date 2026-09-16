@@ -4228,7 +4228,7 @@ blockquote chain "slice 3's open question" after slice 2 settled it.
 `npm test`: **1185 checks, no failures** — the same 187 in `model`, on the
 fixtures.
 
-## 2026-09-16 — Slice 3 step 1: the blockquote chain, recorded per line
+## 2026-09-16 — `31ce38b` — Slice 3 step 1: the blockquote chain, recorded per line
 
 `modelQuotePrefix` and a `quotePrefixes` field: one string per line of a
 block's source, filled at parse where the bytes are, alongside the list-item
