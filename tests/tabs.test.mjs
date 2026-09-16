@@ -59,8 +59,15 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   // Every question put to the user, in order.
   const asked = [];
 
+  // .container, not .toolbar, is what getElementById walks below: the tab
+  // bar toolbar.js builds is a sibling of .toolbar since stage 3 of the
+  // redesign (TODO 4.9), not a descendant, so a stub that only ever walked
+  // .toolbar would never find it.
+  const container = makeEl();
+  container.className = "container";
   const toolbar = makeEl();
   toolbar.className = "toolbar";
+  container.appendChild(toolbar);
   const extra = new Map([["editor", makeEl()]]);
   extra.get("editor").id = "editor";
   for (const id of DIALOG_IDS) extra.set(id, makeEl());
@@ -68,9 +75,10 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   const document = {
     createElement: (t) => makeEl(t),
     getElementById: (id) =>
-      extra.get(id) ?? walk(toolbar).find((n) => n.id === id) ?? null,
+      extra.get(id) ?? walk(container).find((n) => n.id === id) ?? null,
     querySelector: (sel) => {
       if (sel === ".toolbar") return toolbar;
+      if (sel === ".container") return container;
       const m = sel.match(/\[data-(action|menu)="([a-z-]+)"\]/);
       return m
         ? walk(toolbar).find((n) => n.attrs[`data-${m[1]}`] === m[2]) ?? null

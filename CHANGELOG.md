@@ -2954,3 +2954,71 @@ the browser's default blue. `#editor ::selection { background:
 var(--selection) }` closes it, scoped to `#editor` since the chrome has
 nothing worth selecting. Screenshotted a selected paragraph in both themes —
 teal tint in light, the darker teal in dark, no blue left anywhere.
+
+## 2026-09-16 — Redesign stage 3: one-row toolbar, tab strip moved out
+
+**The menu row is one fixed 40px row now, in both the app and an exported
+document, and the tab strip is a sibling of `.toolbar` rather than a second
+row inside it** — TODO 4.9's stage 3, with stage 4 (tab shapes, dot, close
+button) folded in rather than left for later: shipping "moved out" separately
+from "restyled" would have landed `.tab`'s color still assuming the teal
+background it no longer sits on.
+
+`toolbar.js`'s `buildToolbar()` now builds `.toolbar-left` (the app mark,
+white via `filter: brightness(0) invert(1)`, and the menus) and, app variant
+only, `.toolbar-right` (a new `.toolbar-path` span plus the theme toggle,
+rebuilt as a two-segment sun/moon switch replacing the sliding pill) as
+`.toolbar`'s two direct children, then appends the tab bar right after
+`.toolbar` as a true sibling. `file-api.js` gained `renderToolbarPath()`,
+tilde-collapsing the open file's directory against a `homeDir` now cached
+from the `/api/home` probe, wired into the existing `renderCurrentFile()`
+hook alongside the tab bar's own redraw. The whole `--toolbar-height`
+arithmetic block — padding and font-size custom properties summed across two
+rows — is gone in favor of a flat `40px` shared by both variants, since
+neither carries the tab strip inside `.toolbar` any more and the
+`:root[data-variant="export"]` override that used to shorten it had nothing
+left to say.
+
+**Three gaps found building this, on top of the grid-column bug stage 0
+already caught reviewing the doc** — all three recorded in the design doc's
+amendments and TODO 4.9, and fixed rather than shipped:
+
+- The tab strip, now a sibling, renders empty before `tabs.js` populates it —
+  the same jump `.toolbar`'s own reserved height was built to prevent, just
+  moved to a second element that used to be covered by the first. `.tab-bar`
+  now carries its own `min-height`, measured against the real rendered row in
+  a browser (44px) rather than derived from a formula the way `.toolbar`'s
+  used to be.
+- The one-row bar does not fit six menu triggers at 375px once they share
+  the row with the toggle — CLAUDE.md's documented "fits one line at 375px"
+  was true of the old two-row bar, which never had to make room for anything
+  else on the menu row. `.menu-trigger` keeps a real narrow-width override
+  below 768px (`padding: 5px 4px; font-size: 12px`), measured rather than
+  guessed. `justify-content: center` on `.menubar`, kept from the old
+  override on the assumption it was now harmless, turned out to make the
+  overflow worse — clipping "File" and "Export" symmetrically instead of
+  just the last item — and is gone.
+- `CLAUDE.md`'s own "Menu bar" section described the mechanism this stage
+  retired (two rows, `.toolbar-content`, the per-variant height override, the
+  sliding-pill toggle) as current architecture. The three paragraphs making
+  now-false claims are corrected; the rest of the file's redesign-adjacent
+  prose (colors, exact styling elsewhere) is deliberately left for a single
+  sync pass once the whole redesign lands, rather than touched stage by
+  stage.
+
+`tests/toolbar.test.mjs` and `tests/tabs.test.mjs` both needed their DOM
+stubs updated: the fake `.toolbar` now sits inside a fake `.container`, since
+`document.getElementById` has to be able to find a sibling of `.toolbar`, not
+just a descendant, to find the tab bar at all — plus the structural
+assertions themselves, rewritten for the new shape. `npm test` (994 checks,
+all suites) passes.
+
+**Watched in a real browser**, including a real click on the theme toggle
+rather than a stamped attribute — the first attempt at a dark-mode screenshot
+stamped `data-theme` on `<html>` directly and silently tested nothing, since
+the toggle reads its own separate attribute that only `theme-manager.js`
+sets. Screenshotted: light and dark, the outline sidebar open in both
+(confirming the grid-column fix), two tabs (active vs. inactive), and 375px
+width before and after the narrow-width fix, with the tab-bar reservation and
+the menu-row overflow measured directly (`getBoundingClientRect`,
+`scrollWidth` vs `clientWidth`) rather than eyeballed.

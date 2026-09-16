@@ -655,11 +655,48 @@ category fidelity deliberately does not extend to.
        default blue. `#editor ::selection { background: var(--selection) }`
        closes it — scoped to `#editor` since nothing in the chrome is worth
        selecting.
-    3. Menu row to a single 40px row; move the tab strip out (**with the
-       `grid-column` fix**); rewrite `tests/toolbar.test.mjs` and
-       `tests/tabs.test.mjs`, both of which assert on the DOM shape this stage
-       removes.
-    4. Tab shapes, dot, close button.
+    3. Menu row to a single 40px row; move the tab strip out; tab shapes,
+       dot, close button — *done*, and stage 4 folded in rather than left for
+       later: splitting "move the tab strip out" from "restyle it" would have
+       shipped an intermediate commit with white-on-white tab text, since
+       `.tab`'s color assumed the teal background it no longer has once it is
+       a sibling on the page. `buildToolbar()` in `toolbar.js` now builds two
+       groups (`.toolbar-left`: mark + menus, `.toolbar-right`, app variant
+       only: the new `.toolbar-path` + a segmented sun/moon toggle replacing
+       the sliding pill) and appends the tab bar after `.toolbar` as a true
+       sibling; `file-api.js` gained `renderToolbarPath()` (tilde-collapsed
+       from a newly cached `/api/home` response) wired into the existing
+       `renderCurrentFile()` hook. The `--toolbar-height` arithmetic block is
+       gone — both variants now reserve the same flat `40px`, since neither
+       carries the tab strip inside `.toolbar` any more, and the
+       `:root[data-variant="export"]` override that used to shorten it had
+       nothing left to say.
+
+       **Two more gaps found by building it, on top of the grid-column bug
+       stage 0 already caught** — both recorded in the design doc's
+       amendments and fixed rather than shipped:
+       - The tab strip, now a sibling, renders empty before `tabs.js`
+         populates it, the same problem `.toolbar`'s own reservation trick
+         solves — un-reserved, `#editor` would have jumped down ~44px once
+         tabs.js ran. `.tab-bar` now carries its own `min-height`, measured
+         against the real rendered row in a browser rather than derived.
+       - The one-row bar does not fit six menu triggers at 375px once they
+         share the row with the toggle — CLAUDE.md's "fits one line at
+         375px" was true of the old two-row layout, which never had to make
+         that room. `.menu-trigger` keeps a real narrow-width override below
+         768px; `justify-content: center`, kept from the old override on the
+         assumption it was harmless, turned out to make the overflow worse
+         (clipping both ends instead of one) and is gone.
+
+       `npm test` (994 checks) passes — `tests/toolbar.test.mjs` and
+       `tests/tabs.test.mjs` both needed their DOM stubs updated (the fake
+       `.toolbar` now sits inside a fake `.container`, since `getElementById`
+       has to be able to find a sibling, not just a descendant) alongside the
+       assertions themselves. Watched in a real browser: light, dark
+       (including a real click on the toggle, not a stamped attribute — the
+       first attempt at that screenshot silently tested nothing), the outline
+       open in both themes, two tabs, and 375px width, with the layout-jump
+       and overflow claims above measured directly rather than eyeballed.
     5. Format bar, menu panel.
     6. Dialogs — open/save (including the `.file-dialog-path` rewrite the
        doc's §04 describes but its own "Structural changes" list omits) and

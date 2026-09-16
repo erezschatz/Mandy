@@ -14,8 +14,9 @@ given this tool a lot of thought."
 
 ## Amendments (2026-09-16)
 
-Three notes against the spec below, from an implementation review done before any
-code landed. Nothing else in this document changed.
+Four notes against the spec below. The first three are from an implementation
+review done before any code landed; the fourth was found while building stage 3
+itself. Nothing else in this document changed.
 
 - **Fonts stay a remote dependency, not self-hosted.** "Document typography"
   says to add `front/fonts/` and self-host Source Serif 4 as `@font-face` woff2
@@ -42,6 +43,21 @@ code landed. Nothing else in this document changed.
   is a priority, not a decoration.** It was not asked for, but it is the fix
   for the case in TODO 4.3 where two open tabs share a filename — the active
   tab's full-enough location is now visible without hovering for the tooltip.
+- **§01's one-row menu bar does not fit six triggers at 375px next to the
+  toggle, measured while building stage 3.** The app's old two-row bar never
+  had to: the menus had the whole row to themselves, and CLAUDE.md's claim
+  that six words "fit one line at 375px" was true of that layout, not this
+  one. Sharing a row with the toggle costs the menu row about 80px it did not
+  use to have to give up, and the base `.menu-trigger` padding this doc gives
+  (`5px 10px`, 13px font) overflows the six triggers by roughly 50px once
+  that space is gone — with `justify-content: center` on `.menubar` (kept
+  from the old narrow-width override on the assumption it was now vestigial)
+  making it worse, not better: it clipped "File" and "Export" symmetrically
+  rather than just the last item. `.menu-trigger` keeps a real narrow-width
+  override below 768px (`padding: 5px 4px; font-size: 12px`), measured
+  against the real six labels rather than guessed, and `justify-content:
+  center` is gone from `.menubar` — there is nothing left to center once the
+  row fits.
   Do not let it fall out in a pass that trims the menu row for space; TODO 4.3
   is cross-referenced so it is not lost twice.
 

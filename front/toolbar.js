@@ -353,6 +353,10 @@ function focusItem(step, from) {
 //
 // `role="tablist"` is a promise about the keyboard as well as a label for the
 // strip, and tabs.js keeps it: Left and Right move along the bar.
+//
+// A sibling of `.toolbar` now, not a child of it — appended after it in
+// buildToolbar() below, so it sits on the page rather than on the sticky
+// teal row and scrolls away with the document instead of staying pinned.
 function buildTabBar() {
   const bar = document.createElement("div");
   bar.id = "tabBar";
@@ -362,10 +366,25 @@ function buildTabBar() {
   return bar;
 }
 
-// The theme toggle is the whole of the document row's right-hand side now. It
-// used to sit beside a GitHub link, which pointed away from the app from a bar
-// that should be about the document — that link is gone, and the wrapper that
-// existed to hold the pair went with it.
+const SUN_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+  '<circle cx="12" cy="12" r="4.5"></circle>' +
+  '<line x1="12" y1="1" x2="12" y2="3.5"></line>' +
+  '<line x1="12" y1="20.5" x2="12" y2="23"></line>' +
+  '<line x1="1" y1="12" x2="3.5" y2="12"></line>' +
+  '<line x1="20.5" y1="12" x2="23" y2="12"></line>' +
+  "</svg>";
+
+const MOON_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>' +
+  "</svg>";
+
+// A two-state segmented switch rather than the sliding pill it replaces —
+// theme-manager.js reads and writes data-theme/aria-checked/title on this
+// element exactly as it always has, unaware the markup inside changed; CSS
+// alone decides which segment lights up.
 //
 // Exported documents get no toggle on purpose: they follow the reader's OS
 // preference rather than inheriting the author's stored one.
@@ -377,28 +396,34 @@ function buildThemeToggle() {
   toggle.setAttribute("aria-checked", "false");
   // theme-manager.js keeps all three of these in step with the current theme;
   // these are the values before it has run. The title is the one a sighted user
-  // gets — a bare sliding pill with no label says nothing about what it does.
+  // gets — a bare switch with no label says nothing about what it does.
   toggle.setAttribute("aria-label", "Switch to dark mode");
   toggle.title = "Switch to dark mode";
   toggle.setAttribute("tabindex", "0");
   toggle.setAttribute("data-testid", "theme-toggle");
-  toggle.innerHTML = '<div class="theme-toggle-slider"></div>';
+  toggle.innerHTML =
+    `<span class="theme-toggle-segment theme-toggle-sun">${SUN_ICON}</span>` +
+    `<span class="theme-toggle-segment theme-toggle-moon">${MOON_ICON}</span>`;
   return toggle;
 }
 
-// The toolbar's second row: which documents are open, and the control that is
-// not about a document at all. Returns nothing for an exported document, which
-// holds exactly one document, has no file on disk and no theme toggle — the row
-// would be an empty band, and `:root[data-variant]` takes the reserved height
-// down to match.
-function buildToolbarContent(variant) {
-  if (variant !== "app") return null;
+// The open file's directory, rendered by file-api.js's renderCurrentFile()
+// — this is only the empty element for it to fill. Missing entirely from an
+// exported document, which has no file on disk to name.
+function buildToolbarPath() {
+  const path = document.createElement("span");
+  path.id = "toolbarPath";
+  path.className = "toolbar-path";
+  return path;
+}
 
-  const content = document.createElement("div");
-  content.className = "toolbar-content";
-  content.appendChild(buildTabBar());
-  content.appendChild(buildThemeToggle());
-  return content;
+function buildAppMark() {
+  const mark = document.createElement("img");
+  mark.src = "/favicon.svg";
+  mark.alt = "";
+  mark.setAttribute("aria-hidden", "true");
+  mark.className = "app-mark";
+  return mark;
 }
 
 function buildToolbar(variant) {
@@ -416,12 +441,26 @@ function buildToolbar(variant) {
     if (menu) menubar.appendChild(menu);
   }
 
-  // Two rows in the app, and the menus get the first hard left to themselves,
-  // the way a menu bar goes. The second is the document row: the tab bar, with
-  // the theme toggle pinned to its right by the row's own space-between.
-  toolbar.appendChild(menubar);
-  const content = buildToolbarContent(variant);
-  if (content) toolbar.appendChild(content);
+  // One row: the mark and the menus on the left, the open file's directory
+  // and the theme toggle on the right — both groups direct children of
+  // .toolbar so its own space-between keeps them apart. An exported document
+  // gets no right group at all: no file on disk, no toggle to show.
+  const left = document.createElement("div");
+  left.className = "toolbar-left";
+  left.appendChild(buildAppMark());
+  left.appendChild(menubar);
+  toolbar.appendChild(left);
+
+  if (variant === "app") {
+    const right = document.createElement("div");
+    right.className = "toolbar-right";
+    right.appendChild(buildToolbarPath());
+    right.appendChild(buildThemeToggle());
+    toolbar.appendChild(right);
+
+    // Outside the sticky toolbar on purpose — see buildTabBar()'s comment.
+    toolbar.insertAdjacentElement("afterend", buildTabBar());
+  }
 
   // Formatting acts on the editor's selection, and clicking a button would
   // otherwise blur the editor and take the selection with it. Preventing the

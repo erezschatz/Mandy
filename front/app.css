@@ -167,6 +167,16 @@
         grid-column: 1 / -1;
       }
 
+      /* The tab strip needs the same span, and for the same reason: without
+         it, an unspanned sibling after a spanned .toolbar lands in the
+         outline's own grid cell — the outline and #editor each pushed one
+         cell out of place for as long as the sidebar is open. Caught in
+         review before this stage shipped; see the design doc's amendments
+         and TODO 4.9. */
+      :root[data-outline="open"] .tab-bar {
+        grid-column: 1 / -1;
+      }
+
       .outline {
         display: none;
       }
@@ -233,85 +243,81 @@
       }
 
       /* On :root rather than on .toolbar, because .outline is a sibling and
-         needs the same arithmetic for its sticky offset — a custom property
-         declared on .toolbar reaches only the toolbar's own descendants. The
-         values are unchanged, and every rule below that reads them with a
-         fallback was already falling back to exactly these. */
+         needs the same value for its sticky offset — a custom property
+         declared on .toolbar reaches only the toolbar's own descendants.
+         Fixed rather than derived now: the row holds only the mark, the
+         menus and (in the app) the path and the toggle, none of which can
+         make it taller than this, so there is nothing left to compute it
+         from. `:root[data-variant="export"]` used to redefine this to a
+         shorter value — the app's second row, the tab strip, has moved
+         outside .toolbar entirely, so both variants reserve the same one
+         row now and the override had nothing left to say. */
       :root {
-        --toolbar-pad-y: 0.5rem;
-        --toolbar-row-gap: 0.15rem;
-        --menu-pad-y: 0.4rem;
-        --menu-font-size: 0.9rem;
-        --file-font-size: 0.85rem;
-        /* The document row's parts. Declared here rather than left as literals
-           in the rules below, because the toolbar's reserved height is computed
-           from them. There used to be a GitHub mark here too, and it was the
-           tallest thing in the bar — the row is the filename and the toggle
-           now, both shorter than the menu row above them. */
-        --toggle-height: 20px;
-        /* A tab is taller than the italic filename it replaced — it holds a
-           dot, a name and a close — so the row's height comes from it now and
-           the reservation below follows it rather than the font size. */
-        --tab-pad-y: 0.2rem;
-        --tab-height: calc(2 * var(--tab-pad-y) + var(--file-font-size) * 1.6);
-        /* The height the toolbar occupies once toolbar.js has filled it, which
-           .toolbar reserves as a min-height and .outline uses as its sticky
-           offset. The toolbar ships empty and the two render-blocking CDN
-           scripts sit above toolbar.js, so there is a real window in which the
-           page paints with nothing in it — get this wrong and everything below
-           jumps once the script runs.
-
-           Two rows now, so it is a sum rather than the max() it was when
-           everything shared one: the menu row, the gap, and the document row —
-           whose own height is the taller of the tab strip and the toggle. */
-        --menu-line: calc(2 * var(--menu-pad-y) + var(--menu-font-size) * 1.6);
-        --content-height: max(var(--toggle-height), var(--tab-height));
-        --toolbar-height: calc(
-          2 * var(--toolbar-pad-y) + var(--menu-line) + var(--toolbar-row-gap) +
-            var(--content-height)
-        );
+        --toolbar-height: 40px;
       }
 
-      /* An exported document has no theme toggle and no file on disk, so
-         toolbar.js builds no second row and the bar is the menus alone. The
-         variant is stamped on <html> by the inline script in the export's head,
-         before this stylesheet is read — a rule keyed on the row's absence
-         could not work, because the row is absent in the app too until
-         toolbar.js has run, which is the exact window this reserves for. */
-      :root[data-variant="export"] {
-        --toolbar-height: calc(2 * var(--toolbar-pad-y) + var(--menu-line));
-      }
-
+      /* One row, fixed rather than padding-derived — toolbar.js fills this in,
+         so the height is reserved before the script runs and the page below
+         does not jump once it does. Two direct children, .toolbar-left and
+         (app only) .toolbar-right, kept apart by the row's own
+         space-between; the tab strip used to be a third thing in here and is
+         now a sibling appended after .toolbar instead — see buildTabBar()'s
+         comment in toolbar.js. */
       .toolbar {
         position: sticky;
         top: 0;
-        /* toolbar.js fills this in, so reserve the height it will occupy and
-           the page below does not jump once the script runs. Derived from the
-           padding/font-size custom properties above, which the button rule
-           also consumes, so it can't go silently stale if either changes. */
-        min-height: var(--toolbar-height);
+        height: var(--toolbar-height);
         background: var(--bg-toolbar);
         color: var(--text-toolbar);
-        padding: var(--toolbar-pad-y) 2rem;
-        /* Two rows: the menus, then the document row. */
+        padding: 0 14px 0 12px;
         display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        gap: var(--toolbar-row-gap);
+        align-items: center;
+        justify-content: space-between;
         box-shadow: 0 2px 5px var(--shadow-light);
         z-index: 100;
       }
 
-      /* Wraps rather than overflowing: the full button row needs ~900px, so
-         between the 768px breakpoint and a wide window it used to spill out of
-         the toolbar and sit on top of the title. */
-.menubar {
+      .toolbar-left {
         display: flex;
-        flex-wrap: wrap;
         align-items: center;
-        gap: 0.15rem;
-        /* Its own row, so nothing on it competes for width and the triggers
-           keep their natural size. Left-aligned by the flex default. */
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .app-mark {
+        width: 17px;
+        height: 17px;
+        flex: none;
+        filter: brightness(0) invert(1);
+        opacity: 0.95;
+      }
+
+      .toolbar-path {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        /* Clips from the left (direction: rtl) so the filename end of a deep
+           path stays visible — same trick the file dialog's own path bar
+           uses, and for the same reason. */
+        direction: rtl;
+        text-align: left;
+        font: 500 11.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.04em;
+        color: rgba(255, 255, 255, 0.55);
+      }
+
+      .menubar {
+        display: flex;
+        align-items: center;
+        gap: 1px;
         min-width: 0;
       }
 
@@ -322,28 +328,30 @@
       .menu-trigger {
         background: none;
         border: none;
-        border-radius: 4px;
-        color: var(--text-toolbar);
+        border-radius: 5px;
+        color: rgba(255, 255, 255, 0.92);
         cursor: pointer;
         font-family: inherit;
-        font-size: var(--menu-font-size);
+        font-size: 13px;
         font-weight: 500;
-        line-height: 1.6;
-        padding: var(--menu-pad-y) 0.75rem;
+        line-height: 1.4;
+        padding: 5px 10px;
         white-space: nowrap;
       }
 
       .menu-trigger:hover {
-        background: rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.11);
+        color: #fff;
       }
 
       .menu-trigger:focus-visible {
-        outline: 2px solid var(--accent);
+        outline: 2px solid rgba(255, 255, 255, 0.7);
         outline-offset: 1px;
       }
 
       .menu[data-open] > .menu-trigger {
-        background: rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
       }
 
       /* display:none rather than opacity: a panel that is merely transparent
@@ -433,40 +441,47 @@
         background: var(--rule-faint);
       }
 
+      /* A two-state segmented switch rather than a sliding pill: two fixed
+         segments, and CSS alone decides which one is lit from data-theme —
+         theme-manager.js sets nothing else. */
       .theme-toggle {
         position: relative;
-        width: 40px;
-        /* box-sizing: border-box up top, so this includes the border. */
-        height: var(--toggle-height);
-        background: var(--rule);
-        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        flex: none;
+        height: 22px;
+        padding: 2px;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.22);
         cursor: pointer;
-        transition: background-color 0.25s ease;
-        border: 1px solid var(--field-border);
       }
 
-      .theme-toggle:hover {
-        background: var(--field-border);
+      .theme-toggle-segment {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 18px;
+        border-radius: 999px;
+        color: rgba(255, 255, 255, 0.6);
+        transition: background-color var(--transition-speed) ease,
+          color var(--transition-speed) ease;
       }
 
-      .theme-toggle-slider {
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 14px;
-        height: 14px;
-        background: white;
-        border-radius: 50%;
-        transition: transform 0.25s ease;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      .theme-toggle-segment svg {
+        width: 12px;
+        height: 12px;
+        stroke-width: 2;
       }
 
-      .theme-toggle[data-theme="dark"] {
-        background: var(--accent);
-      }
-
-      .theme-toggle[data-theme="dark"] .theme-toggle-slider {
-        transform: translateX(20px);
+      /* :not([data-theme="dark"]) also matches before theme-manager.js has
+         run at all (the attribute is simply absent then), which is the right
+         default: the app boots light unless a saved or system preference
+         says otherwise. */
+      .theme-toggle:not([data-theme="dark"]) .theme-toggle-sun,
+      .theme-toggle[data-theme="dark"] .theme-toggle-moon {
+        background: rgba(255, 255, 255, 0.92);
+        color: #0c4c4a;
       }
 
       /* The measured column: #editor is the sheet and the column both —
@@ -807,22 +822,24 @@
           display: none;
         }
 
-        /* The two rows are structural now, so nothing here has to reorder a
-           wrapping single row into them — only tighten the padding. */
-        .toolbar {
-          padding: var(--toolbar-pad-y) 1rem;
+        /* Sharing the row with the toggle is new — the app's old two-row
+           bar never had to fit six labelled triggers next to anything else,
+           which is the whole reason it could claim one line at 375px with
+           the base padding alone. This row cannot: measured, the six
+           triggers plus mark and toggle overflow it by ~50px at 375px
+           without this. justify-content: center made that overflow worse,
+           not better — clipping "File" and "Export" symmetrically instead
+           of just the last item — so it is gone rather than kept. position:
+           relative stays: it is what .menu-panel anchors to below. */
+        .menu-trigger {
+          padding: 5px 4px;
+          font-size: 12px;
         }
 
         .menubar {
-          justify-content: center;
           gap: 0.1rem;
           /* The panels anchor to this rather than to a trigger, below. */
           position: relative;
-        }
-
-        .menu-trigger {
-          padding: var(--menu-pad-y) 0.45rem;
-          font-size: 0.85rem;
         }
 
         /* Anchored to the whole bar, not to the trigger that opened it. Hung
@@ -946,25 +963,28 @@
       /* ========================================
          The Tab Bar
          ======================================== */
-      /* The toolbar's second row: which documents are open, and the control
-         that is not about a document at all. It was a row of its own while it
-         held nothing but the filename precisely so that this could arrive
-         without moving anything else. */
-      .toolbar-content {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
-        min-height: var(--content-height);
-      }
+      /* A sibling of .toolbar now — appended right after it by
+         buildToolbar() in toolbar.js — rather than a second row inside the
+         sticky teal bar. On the page, not on the teal, so it scrolls away
+         with the document instead of staying pinned.
 
+         min-height reserves the row before tabs.js has populated it, the
+         same trick .toolbar's own fixed height plays and for the same
+         reason: toolbar.js builds this element empty, and CDN scripts above
+         it in load order delay when it actually fills — get this wrong and
+         #editor jumps once tabs.js finally runs. Measured against the real
+         rendered row rather than derived, since nothing here reserves a
+         second thing that has to agree with it the way .toolbar's height
+         once had to agree with the tab row inside it. */
       .tab-bar {
+        background: var(--bg-page);
+        padding: 8px 20px 0;
         display: flex;
-        align-items: center;
-        gap: 0.25rem;
+        align-items: flex-end;
+        gap: 2px;
+        min-height: 44px;
         /* Scrolls rather than wrapping: a second line here would change the
-           toolbar's height, and everything below it is positioned from a
-           height reserved before this row exists. */
+           bar's height, and #editor is positioned right below it. */
         overflow-x: auto;
         scrollbar-width: none;
         min-width: 0;
@@ -977,25 +997,35 @@
       .tab {
         display: flex;
         align-items: center;
-        gap: 0.35rem;
+        gap: 7px;
         flex: 0 1 auto;
         min-width: 0;
-        padding: var(--tab-pad-y) 0.5rem;
-        border-radius: 4px;
-        color: var(--text-toolbar);
-        opacity: 0.65;
-        font-size: var(--file-font-size);
+        padding: 7px 11px 8px;
+        border-radius: 7px 7px 0 0;
+        color: var(--ink-muted);
+        background: transparent;
+        font-size: 13px;
         cursor: pointer;
         white-space: nowrap;
       }
 
       .tab:hover {
-        background: rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.55);
+        color: var(--ink);
       }
 
+      [data-theme="dark"] .tab:hover {
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      /* Same specificity as .tab:hover (one class + one pseudo-class /
+         attribute selector each), so this has to come after it in the
+         stylesheet: a selected-and-hovered tab must still read as the
+         active one, not flash the inactive hover tint. */
       .tab[aria-selected="true"] {
-        background: rgba(255, 255, 255, 0.16);
-        opacity: 1;
+        background: var(--paper);
+        color: var(--ink);
+        font-weight: 500;
       }
 
       .tab:focus-visible {
@@ -1004,7 +1034,7 @@
       }
 
       .tab-name {
-        /* Capped so a deep name cannot push the toggle off the edge. */
+        /* Capped so a deep name cannot push the close button off the edge. */
         max-width: 24ch;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1012,13 +1042,14 @@
 
       /* The dot replaced the `(edited, disk changed)` text the single-document
          label spelled out. Red for edited whether or not the disk also moved —
-         edited is the more urgent of the two and wins outright — and the
-         toolbar's own text colour for disk-changed-only. Colour is never the
-         only channel: the whole sentence is on the tab's title and aria-label,
-         which is the same discipline the theme toggle follows. */
+         edited is the more urgent of the two and wins outright — and
+         --ink-faint for disk-changed-only, which happens to be the exact color
+         a stale tab's own (unselected) text already reads at. Colour is never
+         the only channel: the whole sentence is on the tab's title and
+         aria-label, which is the same discipline the theme toggle follows. */
       .tab-dot {
-        width: 7px;
-        height: 7px;
+        width: 5px;
+        height: 5px;
         flex: none;
         border-radius: 50%;
         /* No mark, no dot — but the space stays, so a name does not shift left
@@ -1031,25 +1062,24 @@
       }
 
       .tab-dot[data-state="stale"] {
-        background: var(--text-toolbar);
+        background: var(--ink-faint);
       }
 
       .tab-close {
         background: none;
         border: none;
-        border-radius: 3px;
-        color: inherit;
+        border-radius: 4px;
+        color: var(--ink-faint);
         cursor: pointer;
         font-family: inherit;
-        font-size: 1rem;
+        font-size: 14px;
         line-height: 1;
-        padding: 0 0.15rem;
-        opacity: 0.6;
+        padding: 1px 3px;
       }
 
       .tab-close:hover {
-        background: rgba(255, 255, 255, 0.2);
-        opacity: 1;
+        background: var(--tint);
+        color: var(--ink);
       }
 
       /* ========================================

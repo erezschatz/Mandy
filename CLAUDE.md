@@ -877,14 +877,17 @@ reimplementing the sanitise-and-insert path. Reading the clipboard is a
 permission the app may not have, so both report failure by pointing at the
 keyboard, which never needed it.
 
-**The bar is two rows in the app, one in an exported document.** The menus have
-the first to themselves. The second is `.toolbar-content`, the document row: the
-tab bar on the left, the theme toggle on the right. It was a row of its own
-while it still held nothing but a filename, precisely so the tab bar could
-arrive without moving anything else. `toolbar.js` ships `#tabBar` empty and
-`tabs.js` fills it — the same arrangement `.toolbar` itself has, and for the
-same reason. An exported document holds one document, has no file on disk and
-no theme toggle, so it gets no second row at all rather than an empty band.
+**`.toolbar` is one row now, in both the app and an exported document** — it
+was two rows in the app until the redesign's stage 3 (TODO 4.9,
+`docs/redesign/`) moved the tab strip out to a sibling appended right after
+`.toolbar`, on the page rather than on the sticky teal row, so it scrolls
+away with the document instead of staying pinned. `.toolbar` itself holds two
+groups kept apart by its own `space-between`: `.toolbar-left` (the app mark
+and the menus) always, and `.toolbar-right` (the open file's directory, then
+the theme toggle) in the app only — an exported document has no file on disk
+and no theme toggle, so it gets no right group at all rather than an empty
+one. `toolbar.js` ships `#tabBar` empty and `tabs.js` fills it — the same
+arrangement `.toolbar` itself has, and for the same reason.
 
 There is no GitHub link. It pointed away from the app from a bar that should be
 about the document, and it was the tallest thing in that bar.
@@ -929,31 +932,29 @@ Six things that are decisions rather than details:
   clicked, and a menu closes on the click — so they are `notify` toasts now, and
   `flashButton` is gone. Anything new that wants to report on a click has the
   same problem and the same answer.
-- **`--toolbar-height` is the sum of the rows**, not a `max()` of what is in
-  them: the menu row, the gap, and the document row, whose own height is the
-  taller of the two things on it. The toolbar ships empty and the two
-  render-blocking CDN scripts sit above `toolbar.js`, so there is a real window
-  in which the page paints with nothing in it — the reserved height is what
-  stops everything below jumping when the script runs. It measures exactly at
-  every width, which it never did while the bar was one row that wrapped, and
-  everything the arithmetic reads is a custom property so changing a size makes
-  the reservation follow.
-- **The export's shorter bar is stamped, not detected.** `:root[data-variant]`
-  redefines `--toolbar-height` to the menu row alone, and the variant is written
-  by the same inline script in the export's `<head>` that sets the theme —
-  before the stylesheet is read. It cannot be a rule keyed on `.toolbar-content`
-  being absent, however tempting `:has()` looks: the row is equally absent in
-  the app until `toolbar.js` runs, which is the exact window the reservation
-  exists for, so such a rule would reserve the short bar for everyone and then
-  jump. That makes `THEME_SCRIPT` in `html-export.js` and the
-  `:root[data-variant="export"]` block in `app.css` two halves of one thing with
-  no import between them; the toolbar suite checks both.
-- **The theme toggle carries a `title`, and `theme-manager.js` moves it.** It is
-  a sliding pill with no label, so without one nothing on screen says what it
-  does — and it is the only control left in the bar that is not a word. The
-  title and the `aria-label` say the same sentence and are updated together in
-  `updateToggleButton`; stamp one and not the other and the tooltip ends up
-  claiming the opposite of what the switch will do.
+- **`--toolbar-height` is a plain fixed value, not a formula**, since the
+  redesign's stage 3 (TODO 4.9, `docs/redesign/`) moved the tab strip out of
+  `.toolbar` to a sibling appended right after it — the row is the mark and
+  the menus, and in the app the open file's directory and the theme toggle,
+  none of which can make it taller than the `40px` both variants now share.
+  It used to be a sum of two rows' worth of padding and font-size custom
+  properties, and before that a per-variant `:root[data-variant="export"]`
+  override shortened it for the export's one-row bar — neither is left to
+  repoint now that both variants only ever had one row to begin with. The
+  toolbar still ships empty and the two render-blocking CDN scripts still sit
+  above `toolbar.js`, so the reservation is still what stops everything below
+  jumping once the script runs; it is a literal now rather than a chain of
+  variables, which is safer, not more fragile — there is nothing left for it
+  to go stale against. The tab strip, being a sibling rather than part of
+  `.toolbar`, reserves its own height separately: see `.tab-bar`'s
+  `min-height` in `app.css`.
+- **The theme toggle carries a `title`, and `theme-manager.js` moves it.** It
+  is a two-segment sun/moon switch with no label of its own — CSS alone
+  decides which segment is lit, off the same `data-theme` attribute
+  `theme-manager.js` always wrote — and it is the only control left in the bar
+  that is not a word. The title and the `aria-label` say the same sentence and
+  are updated together in `updateToggleButton`; stamp one and not the other
+  and the tooltip ends up claiming the opposite of what the switch will do.
 - **`tocBtn` is the only stateful item.** `outline.js` writes `aria-pressed` on
   it by action, exactly as it did to the old toggle button, and `app.css` draws
   the checkmark from that attribute. Every item reserves the checkmark's gutter

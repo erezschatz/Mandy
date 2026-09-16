@@ -9,8 +9,15 @@ import { makeEl, readFront, walk } from "./dom.mjs";
 const TOOLBAR_SRC = readFront("toolbar.js");
 
 function render(variant, probe = "") {
+  // .toolbar needs a real parent for buildToolbar()'s
+  // insertAdjacentElement("afterend", tabBar) to attach anything — without
+  // one it silently no-ops, the same as it would off a detached node in a
+  // real DOM.
+  const container = makeEl();
+  container.className = "container";
   const toolbar = makeEl();
   toolbar.className = "toolbar";
+  container.appendChild(toolbar);
   const editorEl = makeEl();
   if (variant === "export") editorEl.setAttribute("data-exported", "true");
 
@@ -36,7 +43,8 @@ function render(variant, probe = "") {
       };
       return el;
     },
-    querySelector: (s) => (s === ".toolbar" ? toolbar : null),
+    querySelector: (s) =>
+      s === ".toolbar" ? toolbar : s === ".container" ? container : null,
     querySelectorAll: (s) =>
       s === ".toolbar .menu-trigger" ? triggers : [],
     getElementById: (id) => (id === "editor" ? editorEl : null),
@@ -50,7 +58,7 @@ function render(variant, probe = "") {
   for (const node of walk(toolbar)) {
     if (node.className === "menu-trigger") triggers.push(node);
   }
-  return { toolbar, hits, listeners, triggers, doc: document };
+  return { toolbar, container, hits, listeners, triggers, doc: document };
 }
 
 // Drains the microtask queue: dispatch awaits each handler, so nothing after a
@@ -92,7 +100,7 @@ function handlersIn(files) {
 
 export default async function run(check) {
   for (const [variant, bundle] of [["app", appBundle], ["export", exportBundle]]) {
-    const { toolbar } = render(variant);
+    const { toolbar, container } = render(variant);
     const menus = menusIn(toolbar);
     const items = menus.flatMap(itemsIn);
     const triggers = menus.map((m) => partsOf(m).trigger);
@@ -146,37 +154,42 @@ export default async function run(check) {
     check(`${variant}: no GitHub mark`,
       !walk(toolbar).some((n) => n.id === "githubBtn") &&
         !readFront("toolbar.js").includes("github"));
-    // The app gets two rows: the menus, then the document row. That second row
-    // is the tab bar, which is why it was a row of its own while it
-    // still held nothing but a filename.
-    //
-    // An exported document has neither a file on disk nor a theme toggle, so
-    // there is nothing to put on a second row and it does not get one. The
-    // shorter bar it needs is reserved by the variant its own inline script
-    // stamps, which is checked separately below — nothing here can see it,
-    // because at this point in the app's own load the row is equally absent.
-    const rows = variant === "app" ? 2 : 1;
-    check(`${variant}: ${rows} row${rows > 1 ? "s" : ""}`,
-      toolbar.children.length === rows);
-    check(`${variant}: the menu bar is the first`,
-      toolbar.children[0].className === "menubar");
+    // One row now: the app mark and menus on the left, the open file's
+    // directory and the theme toggle on the right, kept apart by .toolbar's
+    // own space-between. An exported document has neither a file on disk nor
+    // a theme toggle, so it gets no right group at all — just the left one.
+    const groups = variant === "app" ? 2 : 1;
+    check(`${variant}: ${groups} group${groups > 1 ? "s" : ""}`,
+      toolbar.children.length === groups);
+    check(`${variant}: the left group is first, holding the mark and the menus`,
+      toolbar.children[0].className === "toolbar-left" &&
+      toolbar.children[0].children[0].className === "app-mark" &&
+      toolbar.children[0].children[1].className === "menubar");
 
     if (variant === "app") {
-      const content = toolbar.children[1];
-      check(`${variant}: the document row is the second`,
-        content.className === "toolbar-content");
-      check(`${variant}: holding the tab bar`,
-        content.children[0].id === "tabBar");
-      // The bar ships empty and tabs.js fills it, the same arrangement
-      // `.toolbar` itself has — so what this file is responsible for is the
-      // container and the role, not a single tab.
-      check(`${variant}: which announces itself as a tab strip`,
-        content.children[0].getAttribute("role") === "tablist" &&
-        content.children[0].getAttribute("aria-label") === "Open documents");
-      check(`${variant}: and is empty until tabs.js fills it`,
-        content.children[0].children.length === 0);
+      const right = toolbar.children[1];
+      check(`${variant}: the right group is second`,
+        right.className === "toolbar-right");
+      check(`${variant}: holding the open file's directory`,
+        right.children[0].id === "toolbarPath");
       check(`${variant}: with the theme toggle last on it`,
-        content.children.at(-1).id === "themeToggle");
+        right.children.at(-1).id === "themeToggle");
+
+      // The tab bar moved out of .toolbar in this same stage (TODO 4.9,
+      // caught as a real grid-layout bug before it shipped — see the design
+      // doc's amendments) — it is a sibling now, appended right after
+      // .toolbar, not a child of it.
+      const tabBar = container.children[1];
+      check(`${variant}: the tab bar sits right after .toolbar, not inside it`,
+        !!tabBar && tabBar.id === "tabBar" && tabBar.parentNode === container);
+      check(`${variant}: which announces itself as a tab strip`,
+        tabBar.getAttribute("role") === "tablist" &&
+        tabBar.getAttribute("aria-label") === "Open documents");
+      check(`${variant}: and is empty until tabs.js fills it`,
+        tabBar.children.length === 0);
+    } else {
+      check(`${variant}: no tab bar sibling either`,
+        container.children.length === 1);
     }
     // The app name used to be an <h1> in here. It cost a third of the width and
     // took the page's only h1 with it, which belongs to the document.
@@ -266,32 +279,32 @@ export default async function run(check) {
   check("a menu filtered away entirely renders nothing",
     collapse([appOnly("a"), SEP, appOnly("b")]) === "");
 
-  // --- the exported document's shorter bar ------------------------------------
+  // --- the toolbar's fixed height ---------------------------------------------
   //
-  // Two files have to agree and neither imports the other: html-export.js
-  // stamps the variant in the same inline script as the theme, and app.css
-  // reserves a one-row bar for it. Break either half and an exported document
-  // reserves 30px it never fills, or paints one shape and settles into another.
+  // html-export.js still stamps the variant in the same inline script as the
+  // theme, though app.css no longer reads it for the toolbar's height: since
+  // stage 3 of the redesign (TODO 4.9) moved the tab strip out of .toolbar
+  // for both variants, there is nothing left that could make an exported
+  // document's bar a different height from the app's, so the per-variant
+  // override is gone rather than kept as a no-op.
   const themeScript = readFront("html-export.js")
     .match(/const THEME_SCRIPT =([\s\S]*?);\n/)[1];
   check("the export stamps its variant before the stylesheet",
     /data-variant'?,\s*'export'/.test(themeScript));
   check("in the same inline script as the theme, which runs in <head>",
     themeScript.includes("data-theme"));
-  check("and app.css reserves the shorter bar for it",
-    /:root\[data-variant="export"\] \{[\s\S]*?--toolbar-height:/.test(readFront("app.css")));
 
-  // The reserved height is the whole reason nothing below the toolbar jumps
-  // when toolbar.js runs, and it is only right while it is computed from the
-  // things actually in the bar. The document row is the tab strip now, so a
-  // height still derived from the filename's font size would reserve a band
-  // the wrong size and nothing on screen would say which.
   const css = readFront("app.css");
-  check("the document row's height comes from the tab strip",
-    /--content-height:\s*max\(\s*var\(--toggle-height\),\s*var\(--tab-height\)\s*\)/
-      .test(css));
-  check("and the tab's own height is derived rather than guessed",
-    /--tab-height:\s*calc\([^;]*var\(--tab-pad-y\)[^;]*var\(--file-font-size\)/.test(css));
+  check("the toolbar's height is a plain fixed value now, not a formula",
+    /--toolbar-height:\s*40px;/.test(css));
+  check("and is no longer overridden per variant",
+    !/data-variant="export"\][\s\S]{0,80}--toolbar-height/.test(css));
+
+  // The tab strip is a sibling of .toolbar now, so it needs its own
+  // reservation before tabs.js populates it — .toolbar's own fixed height
+  // no longer covers it the way it once summed both rows together.
+  check("the tab bar reserves its own height before tabs.js fills it",
+    /\.tab-bar\s*\{[^}]*min-height:/.test(css));
 
   // --- the theme toggle explains itself --------------------------------------
 
@@ -324,9 +337,9 @@ export default async function run(check) {
     for (const fn of app.listeners.click || []) fn({ target });
   };
   // Bound to the menu bar rather than the whole toolbar: hovering the filename
-  // or the theme toggle is not a menu gesture. Found by class rather than by
-  // index — the bar has moved within the toolbar once already.
-  const menubar = app.toolbar.children.find((c) => c.className === "menubar");
+  // or the theme toggle is not a menu gesture. Found by walking rather than by
+  // position — it is nested inside .toolbar-left now, not a direct child.
+  const menubar = walk(app.toolbar).find((c) => c.className === "menubar");
   const hover = (target) => {
     for (const fn of menubar.listeners.mouseover || []) fn({ target });
   };
@@ -383,7 +396,7 @@ export default async function run(check) {
   const nav = render("app");
   const navMenus = menusIn(nav.toolbar);
   const navTriggers = navMenus.map((m) => partsOf(m).trigger);
-  const navBar = nav.toolbar.children.find((c) => c.className === "menubar");
+  const navBar = walk(nav.toolbar).find((c) => c.className === "menubar");
   const keydown = (init) => {
     for (const fn of navBar.listeners.keydown || []) fn(init);
   };

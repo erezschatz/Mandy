@@ -9,6 +9,10 @@ const dialogEntries = document.getElementById("dialogEntries");
 const dialogSaveRow = document.getElementById("dialogSaveRow");
 const dialogFilename = document.getElementById("dialogFilename");
 const dialogSaveConfirm = document.getElementById("dialogSaveConfirm");
+// Built by toolbar.js's buildToolbarPath(), app variant only — undefined in
+// every test stub that does not load toolbar.js for real, which is why every
+// use of it below is guarded.
+const toolbarPath = document.getElementById("toolbarPath");
 
 let currentFilePath = null;
 // Edited since the last open or save. Autosave is unaware of the file on disk,
@@ -31,6 +35,11 @@ let dialogMode = "open";
 // by having to do it.
 let dialogDir = localStorage.getItem(documentKey("dir"));
 let saveResolver = null;
+// Cached from the one successful /api/home probe in checkServerAvailable, so
+// the toolbar's directory display can collapse it to "~" the way a shell
+// prompt does. null until the first check lands; renderToolbarPath() just
+// shows the path in full until then.
+let homeDir = null;
 
 // What the bar draws the active tab from. Only this module knows any of it, and
 // a background tab's copy is the same three fields sitting in its parked bundle
@@ -38,6 +47,24 @@ let saveResolver = null;
 // one for the document on screen and another for the rest.
 function fileDescriptor() {
   return { path: currentFilePath, isDirty, diskChanged };
+}
+
+function tildeCollapse(path) {
+  if (homeDir && (path === homeDir || path.startsWith(homeDir + "/"))) {
+    return "~" + path.slice(homeDir.length);
+  }
+  return path;
+}
+
+// The chrome's second render target for the open file's path, alongside the
+// tab bar's own filename — the directory rather than the name, so two tabs
+// that share a filename are still told apart without a hover. Reads the
+// *active* document only, the same as every other renderCurrentFile consumer.
+function renderToolbarPath() {
+  if (!toolbarPath) return;
+  const dir = currentFilePath ? parentDir(currentFilePath) : null;
+  toolbarPath.textContent = dir ? tildeCollapse(dir) : "";
+  toolbarPath.title = dir || "";
 }
 
 // The single "the active document's identity changed" hook: every setDirty,
@@ -50,6 +77,7 @@ function fileDescriptor() {
 // Nothing to draw into without tabs.js, which is a configuration only the test
 // suites produce: an exported document ships no file-api.js at all.
 function renderCurrentFile() {
+  renderToolbarPath();
   if (typeof renderTabBar === "function") renderTabBar();
 }
 
@@ -745,6 +773,8 @@ async function checkServerAvailable() {
     // so only a well-formed JSON reply counts as "the server is there".
     const data = await res.json();
     if (typeof data.home !== "string") throw new Error("Not the Mandy server");
+    homeDir = data.home;
+    renderToolbarPath();
     setServerAvailable(true);
   } catch {
     setServerAvailable(false);
