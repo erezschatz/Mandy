@@ -242,7 +242,7 @@ Built with vanilla JavaScript and modern web standards. Check out the [GitHub re
 - Contribute code improvements
 - Fork and customize for your needs
 
-## 📄 License
+## License
 
 Free and open source under the MIT License.
 
