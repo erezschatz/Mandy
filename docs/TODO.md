@@ -629,7 +629,24 @@ category fidelity deliberately does not extend to.
        both pass; not yet watched in a real browser — no headless-Chromium
        driver was available in this session, only static checks (brace
        balance, no undefined custom property, no leftover old token name).
-    2. `#editor` typography and the measured column.
+    2. `#editor` typography and the measured column — *done*. `#editor`
+       itself is the measured column (no inner wrapper): `max-width: 68ch;
+       margin: 0 auto`, no border, no margin box, no `:focus` flash (already
+       gone since stage 1). Every size in the doc's typography table applied,
+       including the two new differentiations it named — inline code now
+       reads `--tint` where `pre` keeps `--code-bg`, and table headers switch
+       to the chrome's sans stack in small caps rather than the document
+       serif. The old rem-based responsive font shrinking at 768px/480px is
+       gone rather than carried forward: the doc gives one flat pixel scale
+       and one padding value below 768px, and a `max-width: 480px` query
+       already falls inside `max-width: 768px`, so removing the narrower
+       override just lets the wider one cascade down. `npm test` (992
+       checks) passes, and this stage **was** watched in a real browser —
+       Playwright's Chromium installed cleanly in this session (`npx
+       playwright install chromium`, no `--with-deps`, since there's no
+       sudo) where the previous stage found none — light, dark, phone width,
+       and a table/blockquote/code sample all screenshotted and match the
+       doc. No console errors.
     3. Menu row to a single 40px row; move the tab strip out (**with the
        `grid-column` fix**); rewrite `tests/toolbar.test.mjs` and
        `tests/tabs.test.mjs`, both of which assert on the DOM shape this stage

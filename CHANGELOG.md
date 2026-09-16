@@ -2916,3 +2916,33 @@ available in this session; verified instead by static checks (brace count,
 every `var()` resolves to a declared custom property except the
 intentionally-external `--link-hint`, no old token name left in the file) and
 a smoke-served copy of `app.css` and `index.html` over `npm run serve`.
+
+## 2026-09-16 — Redesign stage 2: document typography
+
+**`#editor` is now the measured column the doc describes** — TODO 4.9's
+stage 2. No inner wrapper: `#editor` itself gets `max-width: 68ch; margin: 0
+auto`, loses its border, its 1rem margin box and (already gone since stage 1)
+its `:focus` background flash, and every size in the "Document typography"
+table lands — 35/25/20px headings with the border-bottom off h1, a flat 18px
+body at 1.7 line-height in `--font-serif`, and the two differentiations that
+table calls for that stage 1 deliberately left as a single interim token:
+inline code moves off `--code-bg` onto `--tint` (`pre` keeps `--code-bg`),
+and table headers switch to the chrome's sans stack in small caps rather than
+the document serif, with cell borders dropped to hairline bottom rules and
+the zebra stripe (already gone since stage 1) staying gone.
+
+The old rem-based responsive font shrinking at the 768px and 480px
+breakpoints is retired rather than carried forward — the doc specifies one
+flat pixel scale for every heading and only one narrower padding value below
+768px, and since a 480px query is already inside a 768px one, dropping the
+narrower override just lets the 768px padding cascade the rest of the way
+down.
+
+**Watched in a real browser this time.** No headless-Chromium driver was
+available for stage 1; this round, `npx playwright install chromium`
+(without `--with-deps`, since the sandbox has no sudo) pulled one down
+cleanly. Screenshotted light, dark, phone width, and a table/blockquote/code
+sample against a live `npm run serve` — headings, the hairline table, the
+non-italic blockquote, and inline code all match the doc, the Google Fonts
+serif loads and renders, and the console raised nothing. `npm test` (992
+checks, all suites) still passes.
