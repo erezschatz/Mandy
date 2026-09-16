@@ -1408,9 +1408,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
         **Six steps, in this order:**
 
-        1.  **The quote chain, recorded per line — not started.** The decision
-            travels from slice 2 already made — record at parse, never strip and
-            re-apply at emit — and what the measurement adds is the **unit**.
+        1.  **The quote chain, recorded per line — done and tested,
+            2026-09-16.** `modelQuotePrefix` and the `quotePrefixes` field, one
+            string per line of a block's source. The decision
+            travelled from slice 2 already made — record at parse, never strip
+            and re-apply at emit — and what the measurement added is the
+            **unit**.
             It is a line, not a block: one paragraph in `torture.md` has the
             chain `["> ", ""]`, a lazy continuation carrying no `>` at all, and
             another starts at `"  > "`, two columns in. A single per-block
@@ -1420,11 +1423,32 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             **each of its own lines carried**, and a line an edit added takes
             the last recorded one.
 
-            It is recorded on containers as well as leaves, and that is what
-            makes the two items `torture.md` has behind a `> ` ordinary:
-            `modelItemPrefix` returns null for both today because the marker it
-            scans for sits behind the chain, and with the chain claimed the scan
-            runs on what the author actually wrote after it.
+            **Depth is the number of quote containers a block sits inside**,
+            so a block records the chain of the quotes it is *in* and never its
+            own: a quote is a container and re-emits from its children, each of
+            which carries the chain including that quote's level. A line that
+            runs out of chain before the depth is a lazy continuation and keeps
+            what it had, which is how `["> ", ""]` falls out rather than being
+            special-cased.
+
+            It made the two items `torture.md` has behind a `> ` ordinary, which
+            is what it was for: `modelItemPrefix` returned null for both,
+            because the marker it scans for sat behind the chain, and the check
+            that pinned that through 1b now asserts the opposite — they carry
+            the marker the author wrote, and it is the parser's own `markup`.
+
+            **What can go wrong here is not byte-exactness**, and that shaped
+            the checks. Whatever this claims as prefix, the rest of the line is
+            the remainder, so a block always reassembles; what can be wrong is
+            the split landing somewhere markdown-it did not put it, and only
+            `inline.content` can say. So the oracle check strips the recorded
+            chain off a quoted paragraph's lines and asserts what is left is
+            exactly the content — and **a paragraph is the only leaf that
+            isolates the chain**, which the check found by failing when it was
+            written wider: `> ### A heading inside a quote` has the content
+            `A heading inside a quote`, because a heading's own `### ` comes off
+            as well. That is not a chain recorded wrongly, it is the next marker
+            down, and step 2 is what records it.
 
         2.  **The heading's shape — not started.** The ten exceptions above, and
             the only place in the model where an affix is a suffix. Three

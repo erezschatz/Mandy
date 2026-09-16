@@ -648,6 +648,90 @@ export default function run(check) {
   );
   check("nothing that is not an item has one", marked.blocks[0].marker === null && marked.blocks[0].children[0].children[0].marker === null);
 
+  // ---- Slice 3, step 1: the blockquote chain, recorded per line ----------
+  //
+  // The hand-written cases first, because each is a shape the fixture has and
+  // the oracle sweep below would only report in aggregate.
+  {
+    const quotes = parse("> one\n> two\n\n>>> deep\n\n  > indented\n\n> lazy\ncontinuation\n");
+    const leafOf = (block) => (block.children ? leafOf(block.children[0]) : block);
+
+    check(
+      "a quoted paragraph records the chain on each of its own lines",
+      JSON.stringify(leafOf(quotes.blocks[0]).quotePrefixes) === JSON.stringify(["> ", "> "]),
+    );
+    check(
+      "and nests, so a leaf three quotes down records all three levels",
+      leafOf(quotes.blocks[1]).quotePrefixes.join("|") === ">>> ",
+    );
+    check(
+      "an indented chain is recorded as written rather than normalised",
+      leafOf(quotes.blocks[2]).quotePrefixes[0] === "  > ",
+    );
+    // The case that decided the unit. A lazy continuation carries no `>` at
+    // all, so one prefix for the whole block would put one there.
+    check(
+      "a lazy continuation records the empty chain it actually has",
+      JSON.stringify(leafOf(quotes.blocks[3]).quotePrefixes) === JSON.stringify(["> ", ""]),
+    );
+    check(
+      "a block outside a quote records nothing rather than an array of empties",
+      parse("plain\n").blocks[0].quotePrefixes === null,
+    );
+    // A quote is a container and re-emits from its children, so it needs no
+    // chain of its own — what it records is its *parents'*, which at the top
+    // is nothing. The child is what carries the level.
+    check(
+      "a top-level quote records no chain itself; its child carries the level",
+      quotes.blocks[0].quotePrefixes === null && quotes.blocks[0].children[0].quotePrefixes !== null,
+    );
+  }
+
+  // Then the oracle, where the property is the one that says the split is the
+  // parser's and not this file's: **strip the recorded chain off a quoted
+  // block's source lines and what is left is exactly what markdown-it recorded
+  // as its content.** Whatever bytes this claims as prefix, the rest of the
+  // line is the remainder, so byte-exactness cannot fail here — what can is the
+  // split landing in the wrong place, and only `inline.content` can say.
+  {
+    const quotedLeaves = [];
+    const walk = (block, inQuote) => {
+      if (block.children) return block.children.forEach((c) => walk(c, inQuote || block.kind === "quote"));
+      if (inQuote) quotedLeaves.push(block);
+    };
+    for (const path of ORACLE_FILES) parse(repoFile(path)).blocks.forEach((b) => walk(b, false));
+
+    check(
+      `every line of a quoted block starts with the chain recorded for it (${quotedLeaves.length} leaves)`,
+      quotedLeaves.length > 0 &&
+        quotedLeaves.every((b) =>
+          b.source.split("\n").every((line, i) => line.startsWith(b.quotePrefixes[i]))),
+    );
+    check(
+      "and a recorded chain is only ever indent and `>`",
+      quotedLeaves.every((b) => b.quotePrefixes.every((p) => /^(?: {0,3}>[ \t]?)*$/.test(p))),
+    );
+    // Restricted to a *paragraph* sitting directly in the quote, and both halves
+    // of that are load-bearing. With an item in between, markdown-it has taken
+    // the item's marker off the content as well, which is 1b's step 5; and a
+    // heading carries its own `### `, which comes off too — the fixture's
+    // `> ### A heading inside a quote` has the content `A heading inside a
+    // quote`, and it failed this check when it was written wider. That is not a
+    // chain that was recorded wrongly, it is the next marker down, and step 2
+    // is what records it. A paragraph is the one leaf with nothing of its own
+    // in front of the text, so it is the one that isolates the chain.
+    const direct = quotedLeaves.filter((b) => b.kind === "paragraph" && b.parent && b.parent.kind === "quote");
+    check(
+      `stripping it gives back exactly what markdown-it called the content (${direct.length} paragraphs)`,
+      direct.length > 0 &&
+        direct.every((b) =>
+          b.source
+            .split("\n")
+            .map((line, i) => line.slice(b.quotePrefixes[i].length))
+            .join("\n") === b.inline.content),
+    );
+  }
+
   // Every item in the five files, cross-checked against the parser rather than
   // against itself: markdown-it reports the marker character on the token
   // (`markup`, plus `info` for an ordered item's number), so a regex that had
@@ -660,24 +744,23 @@ export default function run(check) {
   for (const path of ORACLE_FILES) {
     parse(repoFile(path)).blocks.forEach(collectItems);
   }
-  // A threshold and not the exact count, deliberately: the oracle here is five
-  // live files, and an exact number turns every edit to the documentation into a
-  // failing test about list items. (It did, in this slice, on the REWRITE.md
-  // entry describing this very check.)
+  // Thresholds and not exact counts, deliberately: a count here turns an edit to
+  // an oracle file into a failing test about list items, which it did once, on
+  // the REWRITE.md entry describing this very check. Since 2026-09-16 the oracle
+  // is a fixture and the counts live in the labels — both halves of the same fix.
+  //
   // An item inside a blockquote has `> ` in front of its own marker, because a
-  // child's source is its lines whole — so `modelItemPrefix`, which reads a
-  // marker off the *start* of the first line, does not find one. It returns
-  // null rather than inventing a marker, which is the safe direction, and the
-  // split below is what says so out loud.
+  // child's source is its lines whole, so `modelItemPrefix` read the start of a
+  // line that began with the chain and found nothing. It returned null rather
+  // than inventing a marker, and that was **pinned rather than fixed** through
+  // 1b, the way step 3's hazard was pinned for step 4: it was the case for
+  // recording the quote prefix at parse rather than stripping it at emit time,
+  // since emit cannot reach a marker parse never found.
   //
-  // This is the blockquote-prefix question REWRITE.md's slice 1b step 5 left
-  // open, showing up as a measurement instead of an argument. **It is pinned
-  // here rather than fixed**, the way step 3's hazard was pinned for step 4:
-  // record the quote prefix at parse and these two stop being exceptions, which
-  // is the case for doing it that way rather than stripping at emit time.
-  //
-  // None of the five hand-maintained files can see this. They contain no
-  // blockquote at all — it took the fixture.
+  // Slice 3's step 1 is that recording, and this is where it shows: the split
+  // below is gone, and an item behind a `> ` is an ordinary item. None of the
+  // five hand-maintained files can see any of this — they contain no blockquote
+  // at all, and it took the fixture.
   const quoted = (b) => (b.parent ? b.parent.kind === "quote" || quoted(b.parent) : false);
   const plainItems = itemsSeen.filter((b) => !quoted(b));
   const quotedItems = itemsSeen.filter(quoted);
@@ -686,8 +769,16 @@ export default function run(check) {
     plainItems.length > 200 && plainItems.every((b) => typeof b.marker === "string"),
   );
   check(
-    `and every item inside one has none, which is what slice 3 records the quote chain to fix (${quotedItems.length} of them)`,
-    quotedItems.length > 0 && quotedItems.every((b) => b.marker === null),
+    `and since step 1 claimed the chain, so does every item inside one (${quotedItems.length} of them)`,
+    quotedItems.length > 0 && quotedItems.every((b) => typeof b.marker === "string"),
+  );
+  check(
+    "an item behind a `> ` records the marker the author wrote, not the chain in front of it",
+    quotedItems.every((b) => {
+      const open = b.tokens[0];
+      const written = open.info ? open.info + open.markup : open.markup;
+      return b.marker.trim() === written && !b.marker.includes(">");
+    }),
   );
   check(
     "and the marker matches what markdown-it says the item's markup was",

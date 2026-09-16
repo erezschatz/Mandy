@@ -593,8 +593,16 @@ Eight things that are decisions rather than details:
   same edit cost the whole enclosing list before the slice, and every block the
   suite drives rewrites exactly itself when edited one at a time. The figures
   are in the labels. A blockquote's `> `
-  chain is the same problem as the marker, and is **settled the same way**: it is
-  recorded at parse. 1b's step 5 left it open between that and re-applying the
+  chain is the same problem as the marker, and is **recorded the same way**,
+  which is slice 3's step 1 and landed 2026-09-16: `modelQuotePrefix` fills
+  `quotePrefixes`, one string per line of a block's source. **Per line rather
+  than per block**, because a lazy continuation carries no `>` at all and a
+  quote can start indented, so one prefix for the whole block would write bytes
+  the author never used. Depth is the number of quote containers a block is
+  inside, so a block records the chain of the quotes it is *in* and never its
+  own — a quote is a container and re-emits from its children. It is also what
+  makes an item behind a `> ` an ordinary item: `modelItemPrefix` now scans the
+  line with the chain already claimed, where before it found no marker at all. 1b's step 5 left it open between that and re-applying the
   chain at emit time, for want of anything to measure — this repo has no
   blockquote in any of its nine markdown files. `tests/fixtures/torture.md` is
   the measurement, and it decides it: `modelItemPrefix` returns null for every

@@ -4227,3 +4227,56 @@ blockquote chain "slice 3's open question" after slice 2 settled it.
 
 `npm test`: **1185 checks, no failures** — the same 187 in `model`, on the
 fixtures.
+
+## 2026-09-16 — Slice 3 step 1: the blockquote chain, recorded per line
+
+`modelQuotePrefix` and a `quotePrefixes` field: one string per line of a
+block's source, filled at parse where the bytes are, alongside the list-item
+marker 1b's step 5 already records there. The decision arrived already made —
+slice 2 settled recording over strip-and-re-apply, because `inline.content` has
+the chain stripped exactly as it has a list marker stripped, so the two are one
+problem. What was left to build was the shape.
+
+**Per line, not per block**, which the measurement decided rather than the plan.
+`torture.md` has a quoted paragraph whose chain is `["> ", ""]` — its second
+line is a lazy continuation with no `>` on it at all — and another that starts
+at `"  > "`, two columns in. One prefix for the whole block would rewrite both
+into something of the same width and different bytes, which is precisely the
+mistake 1b's step 5 made for a day with the marker `"-\t"`.
+
+**Depth is the number of quote containers a block sits inside**, threaded
+through `modelTileRange` the way the token level already was. So a block records
+the chain of the quotes it is *in* and never its own: a quote is a container and
+re-emits from its children, each of which carries the chain including that
+quote's level. A line that runs out of chain before the depth keeps what it had,
+so a lazy continuation falls out rather than being special-cased.
+
+It did the job it was for. The two items `torture.md` has behind a `> ` are
+ordinary items now — `modelItemPrefix` scans the line with the chain already
+claimed, where before the marker sat behind it and the function returned null.
+The check that pinned that absence through the whole of 1b now asserts the
+opposite, and cross-checks the recovered marker against the parser's own
+`markup` rather than against itself.
+
+**What can go wrong here is not byte-exactness, and that shaped the checks.**
+Whatever the function claims as prefix, the rest of the line is the remainder,
+so a block always reassembles; what can be wrong is the split landing somewhere
+markdown-it did not put it, and only `inline.content` can say. So the oracle
+check strips the recorded chain off a quoted paragraph's lines and asserts what
+is left is exactly the content.
+
+**A paragraph is the only leaf that isolates the chain**, and the check found
+that by failing when it was written wider: `> ### A heading inside a quote` has
+the content `A heading inside a quote`, because a heading's own `### ` comes off
+as well. Not a chain recorded wrongly — the next marker down, and step 2 is what
+records it. The check is narrowed to paragraphs and says why, since that is the
+step boundary showing up as a measurement.
+
+Nine checks: the four shapes by hand (two lines of chain, three levels of
+nesting, an indented chain, the lazy continuation), a block outside a quote
+recording `null` rather than an array of empty strings, a quote recording no
+chain of its own while its child carries the level, then the oracle — every line
+starts with the chain recorded for it, a recorded chain is only ever indent and
+`>`, and the content check above.
+
+`npm test`: **1195 checks, no failures**, 197 of them in `model`.

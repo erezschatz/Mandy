@@ -167,6 +167,7 @@ function modelBlockFromSpan(span, md) {
     parent: null,        // set by the tiler; what makes modelTouch able to walk up
     marker: null,        // an item only: see modelItemPrefix
     contentIndent: null,
+    quotePrefixes: null,  // inside a quote only: see modelQuotePrefix
   };
   // Eagerly rather than on first edit: the fold is a walk over tokens the
   // parser has already produced — 980 blocks and ~11,000 tokens across the
@@ -192,6 +193,7 @@ function modelGapBlock() {
     parent: null,
     marker: null,
     contentIndent: null,
+    quotePrefixes: null,  // inside a quote only: see modelQuotePrefix
   };
 }
 
@@ -943,6 +945,55 @@ function modelInlineAt(nodes, offset) {
 // What a list item writes before its content: the indent it sits at, its marker,
 // and the pad after it — `"- "`, `"*   "`, `"  - "`, `"1.  "` — exactly as the
 // author wrote it.
+// One level of a blockquote's chain: up to three spaces of indent, the `>`,
+// and the one optional space or tab after it that CommonMark does not count as
+// content. A chain is this applied once per level of nesting.
+const MODEL_QUOTE_MARKER = /^ {0,3}>[ \t]?/;
+
+/**
+ * The blockquote chain each line of a block carries, recorded at parse.
+ *
+ * Slice 3's step 1, and the same rule as `modelItemPrefix` below it: the
+ * parser strips the chain off `inline.content`, the bytes still have it, so
+ * the model records what was written rather than reconstructing it at emit
+ * time. 1b's step 5 left the choice open between recording and
+ * strip-and-re-apply for want of anything to measure — this repo held no
+ * blockquote at all — and `tests/fixtures/torture.md` settled it for recording,
+ * twice over: `inline.content` has the chain stripped exactly as it has a list
+ * marker stripped, so the two are one problem; and an item behind a `> ` gets
+ * no marker at all until something claims the chain first, which is a thing
+ * parse can do and emit cannot.
+ *
+ * **The unit is a line, not a block**, which is the part the measurement
+ * decided rather than the plan. A quoted paragraph in the fixture carries
+ * `["> ", ""]` — its second line is a lazy continuation with no `>` on it at
+ * all — and another starts at `"  > "`, two columns in. One prefix for the
+ * whole block would rewrite both into something the same width and different
+ * bytes, which is exactly the mistake 1b's step 5 made for a day with a tab.
+ *
+ * `depth` is the number of quote containers a block sits inside, so a block
+ * records the chain of the quotes it is *in* and never its own: a quote block
+ * is a container and re-emits from its children, which each carry the chain
+ * including that quote's level. A line that runs out of chain before `depth`
+ * levels is a lazy continuation and keeps what it had.
+ *
+ * Only the literal bytes matter here — whatever this claims as prefix, the rest
+ * of the line is the remainder, and prefix plus remainder is the line — so the
+ * split is answerable to one thing: that the remainder is what markdown-it
+ * called content. The suite checks exactly that, against `inline.content`.
+ */
+function modelQuotePrefix(line, depth) {
+  let prefix = "";
+  let rest = line;
+  for (let level = 0; level < depth; level += 1) {
+    const match = MODEL_QUOTE_MARKER.exec(rest);
+    if (!match) break;
+    prefix += match[0];
+    rest = rest.slice(match[0].length);
+  }
+  return prefix;
+}
+
 const MODEL_ITEM_MARKER = /^([ \t]*)([-*+]|\d{1,9}[.)])([ \t]+|$)/;
 
 /**
@@ -1014,7 +1065,7 @@ function modelItemPrefix(firstLine, continuationLine) {
  * string the file arrived in, so a container is the same problem with a
  * narrower range and no coordinate translation anywhere.
  */
-function modelTileRange(ctx, spans, from, to) {
+function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
   const { markdown, lines, startOf, endOf, md } = ctx;
   const pieces = [];
   let line = from;
@@ -1063,17 +1114,33 @@ function modelTileRange(ctx, spans, from, to) {
     // start with a marker this recognises, which would be a bug in the pattern
     // — so the fields stay null and slice 3 has nothing to emit from, rather
     // than the model inventing a marker the file never had.
+    // The chain each of this block's own lines carries (slice 3's step 1),
+    // per line rather than per block because a lazy continuation carries none
+    // and a quote can start indented. `quoteDepth` is how many quotes this
+    // block is inside, so a quote container records its parents' chain and its
+    // children record it including this quote's own level.
+    const unquote = (line) => line.slice(modelQuotePrefix(line, quoteDepth).length);
+    if (quoteDepth > 0) {
+      piece.block.quotePrefixes = [];
+      for (let line = piece.start; line < piece.end; line += 1) {
+        piece.block.quotePrefixes.push(modelQuotePrefix(lines[line], quoteDepth));
+      }
+    }
+
     if (piece.block.kind === "item") {
       // The item's own first non-blank continuation line, which is what states
       // the indent rather than leaving it to be reconstructed from the marker.
       let continuation;
       for (let line = piece.start + 1; line < piece.end; line += 1) {
         if (!modelIsBlankLine(lines[line])) {
-          continuation = lines[line];
+          continuation = unquote(lines[line]);
           break;
         }
       }
-      const prefix = modelItemPrefix(lines[piece.start], continuation);
+      // Past the chain, which is what makes an item inside a quote an ordinary
+      // item: its marker sits behind a `> `, so the scan found nothing and both
+      // fields stayed null until step 1 claimed the chain first.
+      const prefix = modelItemPrefix(unquote(lines[piece.start]), continuation);
       if (prefix) {
         piece.block.marker = prefix.marker;
         piece.block.contentIndent = prefix.contentIndent;
@@ -1089,7 +1156,13 @@ function modelTileRange(ctx, spans, from, to) {
     if (piece.span) {
       const inner = modelSpansAtLevel(piece.span.tokens, piece.span.open.level + 1);
       if (inner.length) {
-        const tiled = modelTileRange(ctx, inner, piece.start, piece.end);
+        const tiled = modelTileRange(
+          ctx,
+          inner,
+          piece.start,
+          piece.end,
+          quoteDepth + (piece.block.kind === "quote" ? 1 : 0),
+        );
         piece.block.leading = tiled.leading;
         piece.block.children = tiled.blocks;
         // Upwards as well as downwards, which is what `modelTouch` walks. It
