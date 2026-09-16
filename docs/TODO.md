@@ -618,8 +618,17 @@ category fidelity deliberately does not extend to.
     folded into stage 3:
 
     0. This TODO entry, plus the font and grid-bug amendments — *done*.
-    1. Token blocks + `@font-face`; delete dead variables, repoint every call
-       site.
+    1. Token blocks; delete dead variables, repoint every call site; load the
+       remote font — *done*. Colors only: every `var()` in `app.css` now
+       resolves against the new token names, but no component's shape, size
+       or markup changed, so the app looks half-restyled until stage 2 picks
+       up typography — exactly what the doc's suggested order predicts. Four
+       tokens (`--accent-ring`, `--accent-bright`, `--selection`,
+       `--font-serif`) are declared but not yet consumed anywhere; later
+       stages wire them up. `npm test` (992 checks) and `deno task check`
+       both pass; not yet watched in a real browser — no headless-Chromium
+       driver was available in this session, only static checks (brace
+       balance, no undefined custom property, no leftover old token name).
     2. `#editor` typography and the measured column.
     3. Menu row to a single 40px row; move the tab strip out (**with the
        `grid-column` fix**); rewrite `tests/toolbar.test.mjs` and

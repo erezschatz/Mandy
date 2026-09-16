@@ -2875,3 +2875,44 @@ and are recorded in the design doc as well as the TODO entry:
   stack `app.css` already names.
 
 No code changed, so nothing was run — `tests/` reads none of these files.
+
+## 2026-09-16 — Redesign stage 1: tokens
+
+**`front/app.css`'s two `:root` / `[data-theme="dark"]` blocks are replaced**
+with the token set from
+[docs/redesign/design_handoff_mandy_chrome/README.md](docs/redesign/design_handoff_mandy_chrome/README.md),
+and every `var()` in the file that pointed at the old names now points at the
+new ones — TODO 4.9's stage 1. Colors only: no rule's shape, size or markup
+changed, so the app looks half-restyled until stage 2 lands, exactly as the
+doc's suggested order expects.
+
+The five dead variables it calls out (`--accent-blue`/`-hover`,
+`--bg-editor-focus`, `--bg-format-bar`, `--bg-tooltip`/`--text-tooltip`, and
+`--notify-info`'s use as a blue) are gone rather than renamed, and their
+handful of consumers were fixed in place: `#editor:focus`'s background flash
+and the `#editor tr:nth-child(even)` zebra stripe are deleted outright (both
+named for removal elsewhere in the doc), and the rest — the format bar's
+background, the Ctrl+Click hint, the default notify-icon color — took the
+value the doc gives their final state, since a placeholder would just be
+extra churn for a one-line fix. Every other old token got the nearest
+same-shaped new token (`--bg-secondary` split by role into `--bg-page`,
+`--tint`, `--tint-accent` or `--paper-sunken` depending on which of its
+eleven call sites it was) rather than the doc's exact final value where that
+would have meant restructuring a rule — that is later stages' work, not
+this one's.
+
+Fonts load from a Google Fonts `<link>` — the remote-dependency amendment —
+added to `index.html`, `html-export.js`'s hand-written export shell, and
+`static-export.js`'s document-only export, all three sharing the same
+Source Serif 4 weights. `--font-serif` is defined in the token block but not
+yet consumed; stage 2 wires it into `#editor`.
+
+`--accent-ring`, `--accent-bright` and `--selection` are the other three
+tokens declared and not yet used, all consumed starting stage 3 or 6.
+
+`npm test` (992 checks, all suites) and `deno task check` both pass. Not
+watched in a real browser this round — no headless-Chromium driver was
+available in this session; verified instead by static checks (brace count,
+every `var()` resolves to a declared custom property except the
+intentionally-external `--link-hint`, no old token name left in the file) and
+a smoke-served copy of `app.css` and `index.html` over `npm run serve`.
