@@ -1,0 +1,772 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mandy rewrite spike — the block model and beforeinput</title>
+
+<!--
+  Stage 0 of TODO 3.1, and it is a gate rather than a first step:
+  docs/REWRITE.md's "The spike is the decision" says what passing and failing
+  mean, and "Where each stage stands" says where this got to.
+
+  The question is only about the input layer, because that is the only part of
+  the rewrite with no counterpart in the repo. Everything else in the design —
+  the block model, the serialiser, per-block render — is data-structure work
+  this codebase has done before. So this page builds the smallest thing that
+  can answer it: a block array, markdown-it rendering one block to one DOM
+  subtree, `beforeinput` intercepted and turned into model edits, and the two
+  selection mappings. No toolbar, no file, no undo, no lists.
+
+  Throwaway code. It is not the first draft of front/ and nothing here is
+  meant to be moved there — it exists to be typed into in three engines and
+  then thrown away. What survives is the answer.
+
+  What it refuses, deliberately: every block kind but paragraph and heading is
+  kept whole as its source and rendered read-only, because a schema is stage 1
+  and the input layer can be measured without one. Every `beforeinput` type
+  the handler does not implement is cancelled and logged rather than let
+  through, so the DOM can only ever change through render — which is what
+  makes the divergence check below meaningful.
+
+  Needs no server and no app: open the file itself, the way paste-check.html
+  is run. It does need the network, for markdown-it off the same CDN the app
+  uses.
+
+  Pass criterion, per engine: typing feels native, no dropped characters, no
+  caret jumps, a paragraph splits and merges cleanly, Ctrl/Cmd+B bolds a
+  selected word, and an accented character can be typed through the macOS
+  accent popup — all with the divergence line staying quiet.
+
+  Measured 2026-09-09 in Blink (Chrome 152, macOS), in part: typing, typing
+  over a selection, a word selection surviving a re-render, the bold toggle and
+  a refusal inside a read-only block, all through real input and all with the
+  DOM matching the model. Enter and Backspace were driven through synthesised
+  beforeinput rather than keys, so the split, the merge and the composition
+  read-back are known to be right in the model and unmeasured in any engine.
+  Nothing is measured in Gecko or WebKit. The gate needs all three, by hand.
+-->
+
+<script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
+
+<style>
+  body { font: 14px/1.6 system-ui, sans-serif; margin: 1.5rem; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1rem; margin: 1.2rem 0 .3rem; }
+  .cols { display: grid; grid-template-columns: minmax(20rem, 1fr) minmax(22rem, 1fr); gap: 1.5rem; align-items: start; }
+  #editor { border: 2px solid #888; border-radius: 6px; padding: .5rem 1rem; min-height: 12rem; }
+  #editor:focus { outline: 2px solid #36c; }
+  /* Only the blocks this spike edits get pre-wrap: their DOM text has to equal
+     their model text character for character, which is also why no U+00A0 is
+     ever needed to hold a trailing space open. A raw block holds markdown-it's
+     own rendered HTML, whose newlines are not content. */
+  #editor > [data-editable] { white-space: pre-wrap; }
+  #editor > [data-editable]:empty::after { content: ""; }
+  #editor > div[data-raw] { opacity: .55; border-left: 3px solid #ccc; padding-left: .6rem; }
+  pre { background: #f4f4f4; padding: .5rem; overflow-x: auto; font-size: 12px; line-height: 1.45; white-space: pre-wrap; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { border: 1px solid #bbb; padding: .2rem .4rem; text-align: left; vertical-align: top; }
+  code { background: #eee; padding: 0 .2rem; }
+  button { font: inherit; padding: .1rem .5rem; }
+  .problem { color: #b00; font-weight: bold; }
+  .clear { color: #070; }
+  .hint { color: #555; }
+  .protocol { border: 1px solid #ccc; border-left: 4px solid #36c; border-radius: 4px; padding: .1rem 1rem 1rem; margin-bottom: 1.2rem; max-width: 52rem; }
+  .protocol h2 { margin-top: 1rem; }
+  .protocol li { margin: .3rem 0; }
+  textarea { width: 100%; height: 10rem; font: 12px/1.5 ui-monospace, monospace; }
+</style>
+
+<h1>Block model + <code>beforeinput</code> — does this engine let us own the document?</h1>
+
+<p class="hint">
+  Everything the engine tries to do in the box is cancelled and re-done through
+  the model, so a dropped character or a jumping caret is the finding rather
+  than a glitch. Run the six below in <b>Chrome, Firefox and Safari</b>, one
+  browser at a time. Five minutes each.
+</p>
+
+<div class="protocol">
+  <h2>What to do</h2>
+  <ol>
+    <li><label><input type="checkbox"> <b>Type</b> a sentence into the middle of
+      a paragraph — the characters land at the caret, in order.</label></li>
+    <li><label><input type="checkbox"> <b>Enter</b> in the middle of a paragraph
+      — it splits in two.</label></li>
+    <li><label><input type="checkbox"> <b>Backspace</b> at the very start of that
+      second half — it merges back, caret at the join.</label></li>
+    <li><label><input type="checkbox"> <b>Double-click a word, Ctrl/Cmd+B</b> —
+      it bolds, and stays selected. Measured 2026-09-10: Blink bolds; Gecko on
+      macOS opens the bookmarks sidebar instead; WebKit does nothing. The page
+      now binds the key itself, so what to read here is the Events table — a
+      <code>keydown</code> row means the key reached us, no row at all means the
+      browser kept it, and whether the sidebar <em>still</em> opens is the half
+      no script can see.</label></li>
+    <li><label><input type="checkbox"> <b>The accent popup</b> — hold a vowel and
+      pick an accented character. One character lands. (macOS; elsewhere, any
+      IME.)</label></li>
+    <li><label><input type="checkbox"> <b>Type inside the greyed-out list</b> —
+      nothing happens. That is correct: this spike edits paragraphs and headings
+      only.</label></li>
+  </ol>
+
+  <h2>What decides it</h2>
+  <p>
+    <b>Pass</b> — all six behave in all three engines, the Checks line never turns
+    red, and typing feels like typing. <b>Fail</b> — anything dropped, any caret
+    jump, a red Checks line, or an action that produces <em>no Events row at
+    all</em>, which means the engine never sent the <code>beforeinput</code> this
+    whole design reads.
+  </p>
+  <p>
+    Either way three days were spent and the answer is known. A pass starts
+    stage 1; a fail is decided against the two moves in
+    <code>docs/REWRITE.md</code> — ProseMirror as the input and selection layer
+    only, or the rewrite back to the roadmap.
+  </p>
+  <p>
+    <b>Number 4 does not gate it</b>, which is worth saying since it is the one
+    that failed. Whether an engine lets a page have Cmd+B is a keyboard-routing
+    question that today's Mandy already loses in the same browser — it binds
+    Ctrl+S, Ctrl+O and Ctrl+K and never binds Cmd+B at all — and the command
+    behind it is reachable from a menu regardless. What gates the design is
+    1, 2, 3, 5 and 6: whether the engine tells us what it is about to do, and
+    lets us do it instead.
+  </p>
+</div>
+
+<div class="cols">
+  <div>
+    <div id="editor" contenteditable="true" spellcheck="true"></div>
+    <p>
+      <button id="bold">Bold</button>
+      <button id="italic">Italic</button>
+      <button id="strike">Strike</button>
+      <span class="hint">— the same commands the shortcuts route to, for an
+      engine that sends no <code>format*</code> event.</span>
+    </p>
+    <details>
+      <summary>Fixture</summary>
+      <textarea id="fixture"># The block model spike
+
+This paragraph has **bold**, *italic* and `code` in it. Split it with Enter,
+put it back with Backspace, select a word and press Ctrl/Cmd+B.
+
+A second paragraph, so there is something to merge into.
+
+- A list is not editable in the spike. It is held whole as its own source
+- and rendered read-only, because stage 0 is about the input layer.
+
+## A heading, to split at the end of
+
+Hold a vowel here and pick from the accent popup.</textarea>
+      <p><button id="load">Load this into the editor</button></p>
+    </details>
+  </div>
+
+  <div>
+    <h2>Checks</h2>
+    <p id="checks"></p>
+
+    <h2>Model</h2>
+    <pre id="model"></pre>
+
+    <h2>Serialised back</h2>
+    <pre id="serial"></pre>
+
+    <h2>Events</h2>
+    <table id="log">
+      <thead><tr><th>inputType</th><th>cancelable</th><th>what we did</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const md = window.markdownit();
+  const editor = document.getElementById("editor");
+
+  // ---------------------------------------------------------------- the model
+  //
+  // A block is one of:
+  //   { type: "paragraph"|"heading", level, runs: [{text, marks}], source }
+  //   { type: "raw",                        runs: [],             source }
+  //
+  // `source` is the bytes the block arrived with, or null once it is edited —
+  // the D1 property, visible in the Model pane. `runs` is a flattened stand-in
+  // for the inline token tree the real model will hold; flat is enough to
+  // measure the input layer, and nothing below depends on it staying flat.
+
+  const doc = { blocks: [] };
+
+  const MARK_ORDER = ["strong", "em", "s", "code"];   // outermost first
+  const MARK_TAGS = { strong: "strong", em: "em", s: "del", code: "code" };
+
+  function parseDocument(src) {
+    const lines = src.split("\n");
+    const tokens = md.parse(src, {});
+    const blocks = [];
+    // A container's map runs to the blank line after it, so the trailing blank
+    // is trimmed and the separator lives in the join. The real model carries the
+    // separator per block, for the tight-versus-loose reason markdownSegments
+    // already does; the spike does not need that to measure the input layer.
+    const sourceOf = (map) => (map ? lines.slice(map[0], map[1]).join("\n").replace(/\n+$/, "") : "");
+
+    let i = 0;
+    while (i < tokens.length) {
+      const t = tokens[i];
+      const top = t.level === 0;
+      if (top && t.nesting === 1 && (t.type === "paragraph_open" || t.type === "heading_open")) {
+        const heading = t.type === "heading_open";
+        blocks.push({
+          type: heading ? "heading" : "paragraph",
+          level: heading ? Number(t.tag.slice(1)) : 0,
+          runs: runsFromInline(tokens[i + 1]),
+          source: sourceOf(t.map)
+        });
+        i += 3;                                  // open, inline, close
+        continue;
+      }
+      if (top && t.nesting === 1) {              // a container we do not edit
+        let j = i + 1;
+        while (j < tokens.length && !(tokens[j].level === 0 && tokens[j].nesting === -1)) j++;
+        blocks.push({ type: "raw", level: 0, runs: [], source: sourceOf(t.map) });
+        i = j + 1;
+        continue;
+      }
+      if (top && t.nesting === 0 && t.map) {     // fence, rule, html block
+        blocks.push({ type: "raw", level: 0, runs: [], source: sourceOf(t.map) });
+        i += 1;
+        continue;
+      }
+      i += 1;
+    }
+    if (!blocks.length) blocks.push({ type: "paragraph", level: 0, runs: [], source: null });
+    return blocks;
+  }
+
+  // markdown-it's inline children, flattened to runs. Anything this spike does
+  // not model — links, images, raw HTML — keeps its text and loses its kind,
+  // which is a stage-1 problem and not one the input layer can answer.
+  function runsFromInline(tok) {
+    const runs = [];
+    const marks = [];
+    const push = (text, extra) => {
+      if (text) runs.push({ text, marks: extra ? marks.concat(extra) : marks.slice() });
+    };
+    for (const c of (tok && tok.children) || []) {
+      switch (c.type) {
+        case "text": push(c.content); break;
+        case "softbreak": case "hardbreak": push(" "); break;
+        case "code_inline": push(c.content, "code"); break;
+        case "strong_open": marks.push("strong"); break;
+        case "em_open": marks.push("em"); break;
+        case "s_open": marks.push("s"); break;
+        case "strong_close": case "em_close": case "s_close": marks.pop(); break;
+        default: push(c.content); break;
+      }
+    }
+    return normaliseRuns(runs);
+  }
+
+  function normaliseRuns(runs) {
+    const out = [];
+    for (const r of runs) {
+      if (!r.text) continue;
+      const marks = MARK_ORDER.filter((m) => r.marks.includes(m));
+      const last = out[out.length - 1];
+      if (last && last.marks.join(",") === marks.join(",")) last.text += r.text;
+      else out.push({ text: r.text, marks });
+    }
+    return out;
+  }
+
+  const blockText = (b) => b.runs.map((r) => r.text).join("");
+  const cloneRun = (r) => ({ text: r.text, marks: r.marks.slice() });
+
+  function splitRunsAt(runs, offset) {
+    const before = [], after = [];
+    let acc = 0;
+    for (const r of runs) {
+      const start = acc, end = acc + r.text.length;
+      if (end <= offset) before.push(cloneRun(r));
+      else if (start >= offset) after.push(cloneRun(r));
+      else {
+        before.push({ text: r.text.slice(0, offset - start), marks: r.marks.slice() });
+        after.push({ text: r.text.slice(offset - start), marks: r.marks.slice() });
+      }
+      acc = end;
+    }
+    return [before, after];
+  }
+
+  // Typing inherits the formatting to its left, which is the convention every
+  // editor uses and the reason a bold word can be extended by typing at its end.
+  function marksAt(b, offset) {
+    let acc = 0, prev = null;
+    for (const r of b.runs) {
+      const end = acc + r.text.length;
+      if (offset === 0) return r.marks.slice();
+      if (offset > acc && offset <= end) return r.marks.slice();
+      acc = end;
+      prev = r;
+    }
+    return prev ? prev.marks.slice() : [];
+  }
+
+  // ------------------------------------------------------------ model commands
+  //
+  // Each returns what the renderer needs: which blocks changed, what to splice
+  // into the DOM child list, and where the caret goes — in model coordinates,
+  // never a Range. Null means refused, and the caller logs it.
+
+  function replaceRange(range, text) {
+    const bi = range.start.block, bj = range.end.block;
+    for (let k = bi; k <= bj; k++) if (doc.blocks[k].type === "raw") return null;
+
+    const first = doc.blocks[bi], last = doc.blocks[bj];
+    const left = splitRunsAt(first.runs, range.start.offset)[0];
+    const right = splitRunsAt(last.runs, range.end.offset)[1];
+    const mid = text ? [{ text, marks: marksAt(first, range.start.offset) }] : [];
+
+    first.runs = normaliseRuns(left.concat(mid, right));
+    first.source = null;
+    const caret = { block: bi, offset: range.start.offset + text.length };
+
+    if (bj > bi) {                                // a deletion across a boundary is a merge
+      doc.blocks.splice(bi + 1, bj - bi);
+      return { caret, splice: { at: bi + 1, remove: bj - bi, insert: 0 }, blocks: [bi] };
+    }
+    return { caret, splice: null, blocks: [bi] };
+  }
+
+  function splitBlock(range) {
+    let at = range.start;
+    if (!collapsed(range)) {
+      const cleared = replaceRange(range, "");
+      if (!cleared) return null;
+      at = cleared.caret;
+    }
+    const i = at.block, b = doc.blocks[i];
+    if (b.type === "raw") return null;
+
+    const [left, right] = splitRunsAt(b.runs, at.offset);
+    // Enter at the end of a heading opens a paragraph; splitting one in the
+    // middle leaves two headings, which is what every editor does.
+    const tailIsParagraph = b.type === "heading" && at.offset >= blockText(b).length;
+    b.runs = normaliseRuns(left);
+    b.source = null;
+    doc.blocks.splice(i + 1, 0, {
+      type: tailIsParagraph ? "paragraph" : b.type,
+      level: tailIsParagraph ? 0 : b.level,
+      runs: normaliseRuns(right),
+      source: null
+    });
+    return { caret: { block: i + 1, offset: 0 }, splice: { at: i + 1, remove: 0, insert: 1 }, blocks: [i] };
+  }
+
+  function toggleMark(range, mark) {
+    const blocks = [];
+    for (let i = range.start.block; i <= range.end.block; i++) {
+      const b = doc.blocks[i];
+      if (b.type === "raw") continue;
+      const from = i === range.start.block ? range.start.offset : 0;
+      const to = i === range.end.block ? range.end.offset : blockText(b).length;
+      if (to <= from) continue;
+
+      const [head, rest] = splitRunsAt(b.runs, from);
+      const [mid, tail] = splitRunsAt(rest, to - from);
+      const all = mid.every((r) => r.marks.includes(mark));
+      const next = mid.map((r) => ({
+        text: r.text,
+        marks: all ? r.marks.filter((m) => m !== mark) : r.marks.concat(r.marks.includes(mark) ? [] : [mark])
+      }));
+      b.runs = normaliseRuns(head.concat(next, tail));
+      b.source = null;
+      blocks.push(i);
+    }
+    if (!blocks.length) return null;
+    return { caret: null, keepSelection: range, splice: null, blocks };
+  }
+
+  // ------------------------------------------------------------------- render
+
+  const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  function runHtml(r) {
+    let html = escapeHtml(r.text);
+    for (let i = MARK_ORDER.length - 1; i >= 0; i--) {
+      const m = MARK_ORDER[i];
+      if (r.marks.includes(m)) html = "<" + MARK_TAGS[m] + ">" + html + "</" + MARK_TAGS[m] + ">";
+    }
+    return html;
+  }
+
+  const blockTag = (b) => (b.type === "raw" ? "div" : b.type === "heading" ? "h" + b.level : "p");
+  const blockHtml = (b) => (b.type === "raw" ? md.render(b.source) : b.runs.map(runHtml).join("") || "<br>");
+
+  function makeBlockEl(i) {
+    const b = doc.blocks[i];
+    const el = document.createElement(blockTag(b));
+    if (b.type === "raw") el.setAttribute("data-raw", "1");
+    else el.setAttribute("data-editable", "1");
+    el.setAttribute("data-block", String(i));
+    el.innerHTML = blockHtml(b);
+    return el;
+  }
+
+  let rendering = false;
+
+  function renderAll() {
+    rendering = true;
+    editor.innerHTML = "";
+    doc.blocks.forEach((_, i) => editor.appendChild(makeBlockEl(i)));
+    rendering = false;
+  }
+
+  function renderBlock(i) {
+    const el = editor.children[i];
+    if (!el) return;
+    rendering = true;
+    if (el.tagName.toLowerCase() !== blockTag(doc.blocks[i])) el.replaceWith(makeBlockEl(i));
+    else el.innerHTML = blockHtml(doc.blocks[i]);
+    rendering = false;
+  }
+
+  function spliceDom(at, remove, insert) {
+    rendering = true;
+    for (let k = 0; k < remove; k++) editor.children[at].remove();
+    const ref = editor.children[at] || null;
+    for (let k = 0; k < insert; k++) editor.insertBefore(makeBlockEl(at + k), ref);
+    rendering = false;
+  }
+
+  const reindex = () => {
+    for (let i = 0; i < editor.children.length; i++) editor.children[i].setAttribute("data-block", String(i));
+  };
+
+  // --------------------------------------------------------------- selection
+  //
+  // (block, offset) counted in characters of the block's rendered text, both
+  // directions, over one block's text nodes. undoTextOffset / undoLocateOffset
+  // in front/undo.js are the same walk over the whole editor.
+
+  function domFromModel(pos) {
+    const el = editor.children[pos.block];
+    if (!el) return null;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let acc = 0, last = null, n;
+    while ((n = walker.nextNode())) {
+      if (pos.offset <= acc + n.data.length) return { node: n, offset: pos.offset - acc };
+      acc += n.data.length;
+      last = n;
+    }
+    return last ? { node: last, offset: last.data.length } : { node: el, offset: 0 };
+  }
+
+  function modelFromDom(node, offset) {
+    if (node === editor) {                       // a click below the last block
+      const i = Math.min(Math.max(offset, 0), editor.children.length - 1);
+      const past = offset >= editor.children.length;
+      return { block: i, offset: past ? blockText(doc.blocks[i] || { runs: [] }).length : 0 };
+    }
+    let el = node.nodeType === Node.TEXT_NODE ? node.parentNode : node;
+    while (el && el.parentNode !== editor) el = el.parentNode;
+    if (!el) return null;
+    const block = Array.prototype.indexOf.call(editor.children, el);
+    if (block < 0) return null;
+
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let acc = 0, n;
+    if (node.nodeType === Node.TEXT_NODE) {
+      while ((n = walker.nextNode())) {
+        if (n === node) return { block, offset: acc + offset };
+        acc += n.data.length;
+      }
+      return { block, offset: acc };
+    }
+    const upto = node.childNodes[offset] || null;   // an element boundary
+    while ((n = walker.nextNode())) {
+      if (upto && (n === upto || upto.contains(n))) break;
+      acc += n.data.length;
+    }
+    return { block, offset: acc };
+  }
+
+  const before = (a, b) => a.block < b.block || (a.block === b.block && a.offset < b.offset);
+  const collapsed = (r) => r.start.block === r.end.block && r.start.offset === r.end.offset;
+  const ordered = (a, b) => (before(b, a) ? { start: b, end: a } : { start: a, end: b });
+
+  function getModelSelection() {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return null;
+    const a = modelFromDom(sel.anchorNode, sel.anchorOffset);
+    const f = modelFromDom(sel.focusNode, sel.focusOffset);
+    return a && f ? ordered(a, f) : null;
+  }
+
+  function setModelSelection(start, end) {
+    const a = domFromModel(start), b = domFromModel(end || start);
+    if (!a || !b) return;
+    const range = document.createRange();
+    range.setStart(a.node, Math.min(a.offset, a.node.length === undefined ? a.offset : a.node.length));
+    range.setEnd(b.node, Math.min(b.offset, b.node.length === undefined ? b.offset : b.node.length));
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function apply(result) {
+    if (!result) return false;
+    if (result.splice) spliceDom(result.splice.at, result.splice.remove, result.splice.insert);
+    for (const i of result.blocks) renderBlock(i);
+    reindex();
+    if (result.caret) setModelSelection(result.caret, result.caret);
+    else if (result.keepSelection) setModelSelection(result.keepSelection.start, result.keepSelection.end);
+    verify();
+    refreshPanels();
+    return true;
+  }
+
+  // ---------------------------------------------------------- the input layer
+
+  const DELETIONS = [
+    "deleteContentBackward", "deleteContentForward",
+    "deleteWordBackward", "deleteWordForward",
+    "deleteSoftLineBackward", "deleteSoftLineForward",
+    "deleteByCut", "deleteContent"
+  ];
+
+  // The engine's own idea of what a deletion covers, which is what makes
+  // graphemes, word deletion and "Backspace at the start of a block is a merge"
+  // all fall out of one path instead of being reimplemented three times.
+  function deletionRange(e, sel) {
+    const ranges = typeof e.getTargetRanges === "function" ? e.getTargetRanges() : [];
+    if (ranges.length) {
+      const s = modelFromDom(ranges[0].startContainer, ranges[0].startOffset);
+      const f = modelFromDom(ranges[0].endContainer, ranges[0].endOffset);
+      if (s && f && !collapsed(ordered(s, f))) return { range: ordered(s, f), from: "getTargetRanges" };
+    }
+    if (!sel) return null;
+    if (!collapsed(sel)) return { range: sel, from: "selection" };
+
+    const backwards = /Backward|SoftLine/.test(e.inputType) || e.inputType === "deleteByCut";
+    const b = doc.blocks[sel.start.block];
+    if (backwards) {
+      if (sel.start.offset > 0) {
+        const text = blockText(b).slice(0, sel.start.offset);
+        const step = Array.from(text).pop().length;      // one code point, not one unit
+        return { range: { start: { block: sel.start.block, offset: sel.start.offset - step }, end: sel.start }, from: "fallback" };
+      }
+      if (sel.start.block === 0) return null;
+      const prev = sel.start.block - 1;
+      return { range: { start: { block: prev, offset: blockText(doc.blocks[prev]).length }, end: sel.start }, from: "fallback merge" };
+    }
+    const text = blockText(b);
+    if (sel.start.offset < text.length) {
+      const step = Array.from(text.slice(sel.start.offset))[0].length;
+      return { range: { start: sel.start, end: { block: sel.start.block, offset: sel.start.offset + step } }, from: "fallback" };
+    }
+    if (sel.start.block + 1 >= doc.blocks.length) return null;
+    return { range: { start: sel.start, end: { block: sel.start.block + 1, offset: 0 } }, from: "fallback merge" };
+  }
+
+  const FORMAT_MARKS = { formatBold: "strong", formatItalic: "em", formatStrikeThrough: "s" };
+
+  editor.addEventListener("beforeinput", (e) => {
+    // Composition is the one thing that cannot be cancelled: the engine needs
+    // to write into the DOM while an IME or the accent popup is open, and the
+    // model reads the block back at compositionend.
+    if (composing) { log(e.inputType, e.cancelable, "left alone — composing"); return; }
+
+    const sel = getModelSelection();
+    let note = null;
+
+    if (e.inputType === "insertText" && sel && e.data != null) {
+      note = apply(replaceRange(sel, e.data)) ? "insertText " + JSON.stringify(e.data) : "refused (raw block)";
+    } else if (e.inputType === "insertParagraph" && sel) {
+      note = apply(splitBlock(sel)) ? "split" : "refused (raw block)";
+    } else if (DELETIONS.includes(e.inputType) && sel) {
+      const target = deletionRange(e, sel);
+      if (!target) note = "nothing to delete";
+      else {
+        const merge = target.range.start.block !== target.range.end.block;
+        note = apply(replaceRange(target.range, ""))
+          ? (merge ? "merge" : "delete") + " via " + target.from
+          : "refused (raw block)";
+      }
+    } else if (FORMAT_MARKS[e.inputType]) {
+      const mark = FORMAT_MARKS[e.inputType];
+      if (shortcutJustHandled) note = "arrived as well — ignored, the keydown already did it";
+      else if (!sel) note = "no model selection — cancelled";
+      else note = apply(toggleMark(sel, mark)) ? "toggle " + mark : "refused";
+    } else {
+      note = sel ? "not in the spike — cancelled" : "no model selection — cancelled";
+    }
+
+    if (e.cancelable) e.preventDefault();
+    log(e.inputType, e.cancelable, note);
+  });
+
+  // The format shortcuts are the one part of the design an engine can defeat
+  // upstream of `beforeinput`: Gecko on macOS hands Cmd+B to the bookmarks
+  // sidebar, so no formatBold is ever sent, and WebKit sent nothing measurable
+  // either. Binding the shortcut here reports both halves of the question TODO
+  // 4.2 asks of the tab strip — whether the keydown reaches the page at all
+  // (no row means it did not), and whether preventDefault suppresses what the
+  // browser wanted to do instead. No script can see that second half: if the
+  // sidebar still opens with a row in the table, that is the answer.
+  const SHORTCUT_MARKS = { b: "strong", i: "em" };
+
+  let shortcutJustHandled = false;
+
+  editor.addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const mark = SHORTCUT_MARKS[e.key.toLowerCase()];
+    if (!mark) return;
+
+    const name = "keydown " + (e.metaKey ? "Cmd" : "Ctrl") + "+" + e.key.toUpperCase();
+    e.preventDefault();
+    // If the engine sends the matching format* anyway, it must not toggle back.
+    shortcutJustHandled = true;
+    setTimeout(() => { shortcutJustHandled = false; }, 0);
+
+    const sel = getModelSelection();
+    if (!sel || collapsed(sel)) { log(name, e.cancelable, "reached the page — nothing selected"); return; }
+    log(name, e.cancelable, apply(toggleMark(sel, mark)) ? "reached the page — toggled " + mark : "reached the page — refused");
+  });
+
+  // Nothing but composition should ever reach here: every other beforeinput is
+  // cancelled. One that does is the finding.
+  editor.addEventListener("input", (e) => {
+    if (rendering || composing) return;
+    log("input(" + e.inputType + ")", "—", "the DOM changed outside render");
+    verify();
+  });
+
+  let composing = false, compBlock = -1, compBefore = "";
+
+  editor.addEventListener("compositionstart", () => {
+    const sel = getModelSelection();
+    composing = true;
+    compBlock = sel ? sel.start.block : -1;
+    compBefore = compBlock >= 0 ? blockText(doc.blocks[compBlock]) : "";
+    log("compositionstart", "—", "block " + compBlock + " handed to the engine");
+  });
+
+  editor.addEventListener("compositionend", () => {
+    composing = false;
+    const el = editor.children[compBlock];
+    if (compBlock < 0 || !el || doc.blocks[compBlock].type === "raw") { log("compositionend", "—", "nowhere to put it"); return; }
+
+    // Read the block back as one edit: common prefix and suffix bound what the
+    // engine actually changed, which covers the accent popup replacing the
+    // character it was opened on as well as a plain insertion.
+    const after = el.textContent;
+    let p = 0;
+    while (p < after.length && p < compBefore.length && after[p] === compBefore[p]) p++;
+    let s = 0;
+    while (s < after.length - p && s < compBefore.length - p &&
+           after[after.length - 1 - s] === compBefore[compBefore.length - 1 - s]) s++;
+    const inserted = after.slice(p, after.length - s);
+
+    const range = { start: { block: compBlock, offset: p }, end: { block: compBlock, offset: compBefore.length - s } };
+    const ok = apply(replaceRange(range, inserted));
+    log("compositionend", "—", ok ? "read back " + JSON.stringify(inserted) + " over " + p + ".." + (compBefore.length - s) : "refused");
+  });
+
+  // ------------------------------------------------------------ serialisation
+  //
+  // Spike-grade, and only here so the Model pane's "source" / "edited" claim
+  // can be read as markdown. Stage 1 builds the real one, with separators,
+  // escaping and reflowMarkdown.
+
+  function wrapMarks(text, marks) {
+    let out = text;
+    if (marks.includes("code")) out = "`" + out + "`";
+    if (marks.includes("s")) out = "~~" + out + "~~";
+    if (marks.includes("em")) out = "*" + out + "*";
+    if (marks.includes("strong")) out = "**" + out + "**";
+    return out;
+  }
+
+  function serialiseBlock(b) {
+    if (b.source !== null) return b.source;
+    const body = b.runs.map((r) => wrapMarks(r.text, r.marks)).join("");
+    return b.type === "heading" ? "#".repeat(b.level) + " " + body : body;
+  }
+
+  const serialise = () => doc.blocks.map(serialiseBlock).join("\n\n");
+
+  // ------------------------------------------------------------------- panels
+
+  const rows = document.querySelector("#log tbody");
+  const checks = document.getElementById("checks");
+
+  function log(type, cancelable, note) {
+    const tr = document.createElement("tr");
+    for (const cell of [type, String(cancelable), note]) {
+      const td = document.createElement("td");
+      td.textContent = cell;
+      tr.appendChild(td);
+    }
+    rows.prepend(tr);
+    while (rows.children.length > 150) rows.lastElementChild.remove();
+  }
+
+  // The whole point of cancelling everything: the DOM is a render of the model
+  // and nothing else, so any disagreement is a bug in the design rather than a
+  // cosmetic one. Felt symptoms — a dropped character, a caret jump — show up
+  // here first.
+  function verify() {
+    const bad = [];
+    doc.blocks.forEach((b, i) => {
+      if (b.type === "raw") return;
+      const el = editor.children[i];
+      if (!el || el.textContent !== blockText(b)) bad.push(i);
+    });
+    if (editor.children.length !== doc.blocks.length) bad.push("count");
+    checks.className = bad.length ? "problem" : "clear";
+    checks.textContent = bad.length
+      ? "DOM and model disagree at: " + bad.join(", ")
+      : "DOM matches the model — " + doc.blocks.length + " blocks, "
+        + doc.blocks.filter((b) => b.source !== null).length + " still on their own source.";
+    return bad.length > 0;
+  }
+
+  function refreshPanels() {
+    document.getElementById("model").textContent = doc.blocks.map((b, i) => {
+      const head = i + "  " + (b.type === "heading" ? "h" + b.level : b.type).padEnd(9)
+        + (b.source === null ? "edited  " : "source  ");
+      const body = b.type === "raw"
+        ? JSON.stringify(b.source)
+        : b.runs.map((r) => (r.marks.length ? r.marks.join("+") + ":" : "") + JSON.stringify(r.text)).join(" ") || "(empty)";
+      return head + body;
+    }).join("\n");
+    document.getElementById("serial").textContent = serialise();
+  }
+
+  // -------------------------------------------------------------------- boot
+
+  function loadDocument(src) {
+    doc.blocks = parseDocument(src);
+    renderAll();
+    reindex();
+    verify();
+    refreshPanels();
+  }
+
+  for (const [id, mark] of [["bold", "strong"], ["italic", "em"], ["strike", "s"]]) {
+    const btn = document.getElementById(id);
+    btn.addEventListener("mousedown", (e) => e.preventDefault());   // keep the selection
+    btn.addEventListener("click", () => {
+      const sel = getModelSelection();
+      if (!sel || collapsed(sel)) { log("button " + id, "—", "no selection"); return; }
+      log("button " + id, "—", apply(toggleMark(sel, mark)) ? "toggle " + mark : "refused");
+    });
+  }
+
+  document.getElementById("load").addEventListener("click", () => {
+    loadDocument(document.getElementById("fixture").value);
+    log("load", "—", "fixture re-parsed");
+  });
+
+  loadDocument(document.getElementById("fixture").value);
+</script>

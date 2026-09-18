@@ -104,7 +104,7 @@ an edited one is where the work is. The argument is in [ROADMAP.md](ROADMAP.md).
 
 | Construct | Render | Author | Round-trip | After 3.1 |
 | --- | --- | --- | --- | --- |
-| **Abbreviation** `*[HTML]: Hyper Text Markup Language` (Markdown Extra; `markdown-it-abbr`, ~1 KB; widely supported) | ✗ not parsed — renders literally | ✗ | ✗ from markdown; an untouched block byte-exact via its source span | → **roadmap, not 1.0** (2026-09-10). Untouched file is fine — *once the model has the invisible-block type the reference-link definitions are already adding*, which is where the nodeless `*[…]:` line parks. Editing a block that carries an occurrence is the only real work: a one-line Turndown rule unwrapping `<abbr>` to its text, a `scanAbbreviationDefinitions` + re-emit-at-end pair mirroring the reference-link one, and a whole-document whole-word match walk that skips the four opaque subtrees (`pre`, `code`, `.mermaid-wrapper`, `mjx-container`) |
+| **Abbreviation** `*[HTML]: Hyper Text Markup Language` (Markdown Extra; `markdown-it-abbr`, ~1 KB; widely supported) | ✗ not parsed — renders literally | ✗ | ✗ from markdown; an untouched block byte-exact via its source span | → **roadmap, not 1.0** (2026-09-10). Untouched file is fine — the invisible-block type the reference-link definitions needed landed 2026-09-11 as kind `gap`, which is where a nodeless `*[…]:` line would park (today, unparsed, it is an ordinary paragraph and rounds-trips as one). Editing a block that carries an occurrence is the only real work: a one-line Turndown rule unwrapping `<abbr>` to its text, a `scanAbbreviationDefinitions` + re-emit-at-end pair mirroring the reference-link one, and a whole-document whole-word match walk that skips the four opaque subtrees (`pre`, `code`, `.mermaid-wrapper`, `mjx-container`) |
 | **Subtext** `-# smaller and greyed out` | ✗ not parsed (Discord's, not any guide's core) — renders literally | ✗ | ✗ | → **roadmap, not 1.0** — would need 3.1's block model to carry a presentational attribute; `-# ` joins the line-start markers `reflowMarkdown` must never strand and needs telling apart from `- #` (a list item holding an H1). Thinnest case here |
 
 ## Mandy's own two
@@ -192,7 +192,8 @@ want an answer first.
   has no markdown and its `_word_` form is the `_` emphasis delimiter, center is
   `<div align>`-family presentation S1 refuses. Abbreviation is the one with
   broad ecosystem support; its untouched-file round-trip is free once the model
-  grows the invisible-block type reference-link definitions already need, and
+  has the invisible-block type reference-link definitions needed — which landed
+  on 2026-09-11 as kind `gap`, so that dependency is already discharged — and
   the edited case is a small, bounded piece of work — not the scope question the
   batch above mostly is. Subtext is a distant maybe. [ROADMAP.md](ROADMAP.md)
   has the argument.

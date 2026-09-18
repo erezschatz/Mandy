@@ -151,6 +151,26 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     - **Touch devices have no modifier**, so there is no way to follow a link on
       one, and the hover tooltip never shows either. Wants its own affordance —
       a long-press, or the chip Google Docs shows.
+*   **1.3** *(fixed, unverified in WebKit)*
+    Paste without formatting is built; what is left is one measurement.
+
+    [tests/paste-check.html](../tests/paste-check.html) settled the question
+    this item opened with — whether the browser still puts a `text/html`
+    flavour in the event on Ctrl/Cmd+Shift+V, in which case app.js's preference
+    for HTML would override the user's request. **Measured 2026-08-30: Chrome
+    152 and Firefox 154 both offer `text/plain` alone**, so the plain branch
+    already fires and there was nothing to build for either. That is the
+    opposite of what this item predicted, which is the whole argument for the
+    check pages. Both engines also deliver the `keydown` for Shift+V to the
+    page, so if WebKit does keep the HTML flavour, the shape to reach for is a
+    flag set from a `keydown` on `#editor` and consumed by the next `paste`
+    event — now known to be workable rather than assumed.
+
+    **What is left: run the page in Safari.** Its binding is
+    Cmd+Shift+Option+V rather than Cmd+Shift+V, so press both and see which one
+    the page logs as a plain-text paste. If WebKit strips the flavour like the
+    other two, this item closes with no further code.
+
 *   **1.4** *(closed by 3.1)* Invisible whitespace: what the cleanup does not
     reach. Pasted HTML is sanitised on the way in and U+00A0 is normalised on
     the way out (see D3
@@ -307,8 +327,8 @@ category fidelity deliberately does not extend to.
     convention to text. It can be written before 3.1, and it is what the
     model's serialiser calls for an edited table block.
 
-*   **2.3** *(bug; the break half fixed on the old core, the emphasis half
-    closed by 3.1)* **An untouched block loses a minority spelling.** Layer 3 promises
+*   **2.3** *(bug, closed by 3.1; no fix on the old core unless it turns up in
+    use)* **An untouched block loses a minority spelling.** Layer 3 promises
     that a block the user never edited comes back byte-identical, and for two of
     layer 1's own sniffed options it does not.
 
@@ -341,38 +361,10 @@ category fidelity deliberately does not extend to.
     puts that back — so an untouched block is never re-emitted at all, and an
     edited one keeps its own spelling rather than inheriting a document-wide
     guess. Sniffing survives only for genuinely new content, per MARKDOWN.md's
-    **S3**.
-
-    **This used to say "no fix on the old core unless it shows up in daily
-    use", and that was the wrong test.** Whether the maintainer's own documents
-    happen to mix spellings is not evidence about the bug — it is exactly the
-    bias [tests/fixtures/torture.md](../tests/fixtures/torture.md) was created
-    to remove, and that fixture already carries both minority spellings: one
-    backslash break and one `_underscored_`. A condition that waits for one
-    person's files to hit it is the same reasoning the oracle stopped being
-    living documents to escape.
-
-    So the question is only ever *what does the fix cost*, and measured
-    2026-09-18 across all six oracle files the two halves answer differently.
-
-    **The break half is cheap, and is fixed.** `markdownBlockKey` drops a
-    trailing `\` before it collapses whitespace, so a block written with the
-    backslash keys the same as the two-space form the serialiser wrote — it
-    matches the index, layer 3 hands back its own bytes, and neither the
-    spelling nor the wrapping moves. Measured for the hazard that matters,
-    which is not whether it fixes the case but whether it makes two *different*
-    blocks key alike: **zero collisions across all six files.**
-
-    **The emphasis half stays for 3.1, and that is measured rather than
-    deferred.** The only normalisation available without parsing is to fold `_`
-    into `*`, and on the fixture that keys the horizontal rules `***` and `___`
-    identically — two different blocks, so the restore layer could hand back
-    the wrong bytes, which is worse than the bug. Doing it safely means knowing
-    which `_` and `*` are delimiters and which are inside a code span or a
-    `snake_case` identifier, and that is a second parser free to disagree with
-    the first — the thing this whole model exists to delete. The model already
-    has the answer recorded per node, so the wait is for something that exists
-    rather than for something to be invented.
+    **S3**. Fixing it on the old core means making the key style-insensitive,
+    which is one normalisation per sniffed option and a second place that can
+    disagree with the serialiser — worth it only if this shows up in daily use
+    before 3.1 lands.
 
     Found while verifying the empty-`<li>` check page, not by the 2.2 work, and
     `5d96619`'s CHANGELOG entry recorded the opposite: it saw the rewrite in an
@@ -497,13 +489,6 @@ category fidelity deliberately does not extend to.
     keep the full path regardless — the scheme decides what is drawn, not what
     is said. It reaches nothing in the core, so it neither waits on 3.1 nor is
     discarded by it.
-
-    **4.9 takes the edge off this one without closing it.** The redesign's
-    `.toolbar-path` element shows the *active* tab's directory in the chrome,
-    which is enough to tell two same-named tabs apart without a hover once one
-    of them is selected — but says nothing about the bar itself, so a glance
-    at two identical closed-book tab labels still can't tell them apart. This
-    item is still the fix for that.
 
 *   **4.4** *(survives 3.1)* Right-to-left documents. **View → Right to left**
     puts `dir="rtl"` on `#editor` and the document flips; the toolbar, the
@@ -634,164 +619,6 @@ category fidelity deliberately does not extend to.
     call and nothing else. Nothing here reloads or merges on its own either —
     the report is the whole feature, and what to do about it stays the user's.
 
-*   **4.6** *(bug, survives 3.1)* The outline is a second late. Switch tabs,
-    open a new one, open or reload a file, and the sidebar goes on showing the
-    previous document's headings for a second before it catches up — long
-    enough to read as a different document's outline, and long enough that a
-    tab switch feels like it has not finished.
-
-    **The whole delay is one constant.** Rebuilds hang off a `MutationObserver`
-    on `#editor`, debounced by `OUTLINE_DEBOUNCE` in
-    [outline.js](../front/outline.js) — one second, copied from the autosave so
-    that the sidebar does not flicker while someone is still typing a heading.
-    A document swap is one `innerHTML` assignment and so one observer batch,
-    which then waits the full second. Every swap pays it: `adoptActive` in
-    [tabs.js](../front/tabs.js), Open and Reload in `file-api.js`, New, and
-    the welcome fetch.
-
-    **It is a `main` bug, not a rewrite one.** [REWRITE.md](REWRITE.md) lists
-    `outline.js` among the modules 3.1 leaves alone because they read the
-    rendered DOM, and says in *Rendering* that the observer survives per-block
-    re-render. Nothing in the model, the renderer or the input layer changes
-    when the observer fires or how long it waits, so this does not wait on 3.1
-    and gains nothing from riding it.
-
-    *   **Measure** — *done 2026-09-18*. Instrumented the running app with a
-        second observer on `#editor` and one on `#outline`: a new tab and a
-        switch back each produced exactly one mutation record, target
-        `#editor`, type `childList`, at 6ms, and one outline render at 1007ms.
-        Nothing re-arms the timer inside the window; what feels like two
-        seconds is one, plus the redraw. So the fix is the constant's shape,
-        not a second cause.
-
-    *   **Fix** — *done and tested*. The debounce defends typing, and a swap is
-        not typing: a record whose target is `#editor` itself with
-        `childList` is a top-level structural change — a document swap, or an
-        Enter or Backspace at the top level — and renders at once; a record
-        inside the subtree, or a text change, keeps the second. The
-        distinction is read off the record the browser hands over rather than
-        off a flag the callers would each have to set, so Open, Reload, New
-        and the welcome fetch are covered without any of them learning about
-        the outline. The `outline` suite drives the observer's callback with
-        both record shapes and asserts which one arms the timer.
-
-    *   **Verify in a browser** — *done 2026-09-18, Chrome*. Same
-        instrumentation, after the change: the render lands in the same
-        animation frame as the swap, both directions.
-*   **4.7** *(undecided)* The Open dialog's starting directory
-    (`showOpenDialog()` / `loadDir()` in [file-api.js](../front/file-api.js))
-    is the last directory *that tab* browsed, stored under `documentKey("dir")`
-    — so it is not literally hardcoded to home, but a tab that has never
-    browsed has no value there, and `newTab()` seeds nothing, so every fresh
-    tab's first Open lands on home regardless of what the rest of the session
-    has been browsing. That is most of what reads as "always defaults to
-    home." The other half is that there is no list of recently opened files at
-    all — `grep -rn recent front/` finds nothing — so returning to a file
-    opened two tabs or two sessions ago means re-browsing to it by hand even
-    though Mandy already knows its path from `DOCUMENT_KEYS.path`. A recent-
-    files list is the bigger piece and the one worth deciding first: where it
-    lives (the open dialog itself, or a new menu item), how long an entry
-    survives a file being moved or deleted, and whether it is global or, like
-    the six document keys, per-tab.
-
-*   **4.8** *(undecided)* No way to reorder tabs. `renderTabBar()` in
-    [tabs.js](../front/tabs.js) redraws `#tabBar` from `openTabs` on every
-    change, and each tab is a plain `<div class="tab">` built by `buildTab()`
-    with no drag handlers anywhere — `grep -n drag front/tabs.js` is empty.
-    `openTabs` is the source of truth and already drives the redraw, so a
-    reorder is a splice on that array followed by the existing
-    `renderTabBar()`/`persistTabList()` pair; the work is the drag UI itself —
-    HTML5 drag-and-drop or manual pointer tracking, a drop-position indicator,
-    and deciding whether it needs a keyboard equivalent for parity with the
-    arrow-key menu navigation the rest of the toolbar has.
-
-*   **4.10** *(bug, after the redesign)* The browser's own scrollbar still
-    runs the full viewport height, behind the now-sticky `.toolbar` and
-    `.tab-bar` — its track starts at the very top of the window rather than
-    below the chrome, so it visibly cuts across the teal bar and the tab
-    strip instead of representing only the document beneath them. Reported
-    against a screenshot of the real app, not a mockup.
-
-    The native scrollbar always represents the extent of whatever element is
-    actually scrolling. Right now that is `body`/`html` — `.toolbar` and
-    `.tab-bar` are `position: sticky` *within* that scroll, which pins them
-    visually but does nothing to the scrollbar, since sticky elements do not
-    leave the scrolling box they are sticky inside of. No CSS property
-    shrinks where a native scrollbar's track starts within one scrolling
-    container; the only fix is the one apps with this exact look (Gmail,
-    Notion) use — stop the page itself from scrolling and give the content
-    below the chrome its own scroll container instead:
-
-    - `.toolbar` and `.tab-bar` move to plain normal flow, no longer
-      `position: sticky`, since they would no longer be inside the thing that
-      scrolls at all.
-    - A new wrapper around `#formatBar`, `.outline` and `#editor` gets
-      `overflow-y: auto` and a height derived from the viewport minus the
-      chrome — the same `--toolbar-height` / `--tab-bar-height` arithmetic
-      4.9 already built, reused rather than duplicated.
-    - **Two call sites read window-level scroll position today and would have
-      to read the new container's instead:** `format-bar.js`'s
-      `barRect()` (`window.pageYOffset || document.documentElement.scrollTop`,
-      used to clamp the floating bar above/below the selection against the
-      sticky toolbar) and `app.js`'s `scrollToAnchor` (`window.scrollY` /
-      `window.scrollTo`, for Ctrl/Cmd+click on a heading link). Both are
-      exercised by existing suites — `format-bar.test.mjs` alone has 79
-      checks — so this is a real, testable change, not a CSS-only one.
-    - `.outline`'s own sticky positioning inside the new container needs
-      re-checking once the outer page no longer scrolls at all — it may
-      simplify to a plain height-and-`overflow-y` sidebar inside the same
-      container rather than needing `position: sticky` of its own.
-
-    Deliberately not folded into the redesign
-    ([docs/redesign/](../docs/redesign/design_handoff_mandy_chrome/README.md),
-    closed out in CHANGELOG.md): it touches tested interaction code well past
-    the CSS that redesign confined itself to. Do on its own, not mid-stream.
-
-*   **4.11** *(undecided)* The outline sidebar's width is one fixed
-    `--outline-width: 248px` (`:root[data-outline="open"] .container` in
-    `app.css`), which was defensible when the editor filled the rest of the
-    window regardless — a wider sidebar just meant a narrower full-bleed
-    column. The chrome redesign changes that: `#editor` caps itself at
-    `max-width: 68ch` now, so on anything wider than a laptop there is real
-    unused width beside the column with nowhere to go, and a heading long
-    enough to ellipsis in the sidebar (`.outline-item a`'s
-    `text-overflow: ellipsis`) stays truncated forever regardless of how much
-    of that space sits idle next to it.
-
-    Wants a drag handle on `.outline`'s own right edge — its `border-right`
-    is already exactly that line — that resizes `--outline-width` live and
-    persists the chosen value the same way the open/closed state already
-    does (`localStorage["mandy-outline"]`, read by the inline script in
-    `index.html`'s `<head>` before the stylesheet loads, so a returning
-    session does not flash the default width and then jump). Needs a min (so
-    a heading's text always has *some* room) and a max (so it cannot swallow
-    the editor column entirely) rather than an unbounded drag. Whether the
-    editor's own measured column should visually re-center as the sidebar
-    grows, or just have less space to center within, is the one real design
-    question — the CSS grid `.container` already uses
-    (`grid-template-columns: var(--outline-width) minmax(0, 1fr)`) does the
-    latter for free and may simply be the answer.
-
-    [docs/ROADMAP.md](ROADMAP.md)'s "A settings pane" section records the
-    related but separate question of a *document* margin/width preference —
-    this item is about the sidebar's own width, which is a per-session UI
-    habit rather than something a document's author would set.
-*   **4.12** *(undecided)* `newTab()` in [tabs.js](../front/tabs.js) is the only
-    "new tab" there is, and it means one specific thing: park the active
-    document, push a bare `{ id }` onto `openTabs`, and let `adoptActive` find
-    no bundle and no storage for it — which blanks the editor the same way a
-    restored-but-never-shown tab does. That is the right behaviour for the
-    toolbar's **New**, which used to reset the document in place and now makes
-    a tab instead (see the "New and Clear are two different weights" section
-    above), but it is not the only thing a user reaches for a new tab to do.
-    Wants a second entry point — a tab that opens blank *and* immediately opens
-    the file browser into it, the way a browser's Ctrl+T-then-navigate does —
-    so opening a file into a fresh tab is one action instead of New followed by
-    Open. Needs a name for the menu that does not collide with plain New, and a
-    decision on what happens to the blank tab it made if the browse dialog is
-    cancelled: left as an empty tab, or closed back out.
-
-
 ## 6. Product
 
 *   **6.1** Rewrite the README to better fit the project's state
@@ -897,11 +724,7 @@ category fidelity deliberately does not extend to.
     paste, and the call site moves rather than the decision. What is lost on the
     way in is worth saying once — `<details>`, `<div align>` and `<img width>`
     flatten to their text, because that is what a markdown document can hold.
-    Import rescues prose and structure, not a page. The presentation half of
-    that page — what a document looks like, as opposed to what it says — has
-    its own answer, and it is a theme rather than a format: the "Document
-    themes" section of [ROADMAP.md](ROADMAP.md), which also records why an
-    editable HTML document is refused rather than deferred.
+    Import rescues prose and structure, not a page.
 *   **6.5** *(survives 3.1)* The service worker intercepts navigations, which
     breaks logging in to any host that puts an auth gate in front of Mandy.
     Found fitting Mandy behind Atrium as a chamber; it is not an Atrium quirk,
@@ -968,40 +791,3 @@ category fidelity deliberately does not extend to.
     is unchanged; if not, it shrinks to a deletion. Neither waits on the other,
     but doing 6.6 first risks building a gate for two routes about to be
     deleted.
-
-*   **6.7** *(undecided)* Register Mandy as a file handler for `.md` /
-    `.markdown` so an installed PWA shows up in the OS's own "Open with" for a
-    markdown file, and can be set as the default. [front/manifest.json](../front/manifest.json)
-    has no `file_handlers` member at all today — this is a new capability,
-    not a gap in an existing one.
-
-    **Not just a manifest edit.** Declaring `file_handlers` is what makes the
-    OS offer Mandy, but the launch itself arrives through the File Handling
-    API — `window.launchQueue.setConsumer(launchParams => ...)` — and nothing
-    in `front/` today calls it (`grep -rn launchQueue front/` is empty).
-    What it hands back is a `FileSystemFileHandle`, not a path string. That is
-    the real design question, not the JSON: every part of the app's document
-    model is path-shaped — `file-api.js`'s `currentFilePath`, the mtime/dirty
-    staleness checks the server's `/api/file` answers, `DOCUMENT_KEYS.path`,
-    and now `.toolbar-path`'s directory display (this session) — and a
-    `FileSystemFileHandle` has no path a page is ever allowed to read, by
-    design, for the same reason a `<input type="file">` upload never exposed
-    one.
-
-    Two shapes the resolution could take, genuinely undecided:
-    - **Read/write the handle directly** via the File System Access API
-      (`handle.getFile()`, `handle.createWritable()`), bypassing
-      `/api/browse` / `/api/file` entirely for a file opened this way. Works
-      in Chromium, needs no server round-trip, but the tab has no path to
-      show — `renderToolbarPath()` and the mtime-based disk-changed check
-      both go silent for it, same as they already do for a document with no
-      `currentFilePath` at all.
-    - **Ask the handle for a name only, and reopen through the server** by
-      prompting the user to confirm/browse to the same file so Mandy gets a
-      real path back — clunky (the OS already told the app which file), but
-      keeps every document on the one existing path-based model rather than
-      forking a second one for files opened this way.
-
-    Worth settling which, and whether Firefox/Safari's lack of File Handling
-    API support (Chromium-only as of this writing) makes the second shape the
-    only one worth building at all, before writing any code.

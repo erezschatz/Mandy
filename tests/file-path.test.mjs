@@ -93,7 +93,7 @@ function boot({
   };
 
   const api = loadSource(
-    ["toolbar.js", "markdown-style.js", "app.js", "file-api.js"],
+    ["toolbar.js", "markdown-parser.js", "markdown-style.js", "app.js", "file-api.js"],
     {
       document,
       // execcommand.js is not in this suite's bundle: Clear's own weight is

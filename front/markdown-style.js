@@ -287,13 +287,49 @@ function startsBlockMarker(word) {
   return /^(#{1,6}|[-*+]|\d+[.)]|={2,}|-{2,}|_{2,})$/.test(word);
 }
 
-function wrapMarkdownLine(line, width) {
+// What goes in front of a wrapped line: the prefix its first line keeps, and
+// the one every line the wrap produces after it has to carry instead.
+//
+// **Read back off the line, which is a guess, and the only one available on
+// this path.** reflowMarkdown is handed a whole document as text -- Turndown's
+// output -- so there is nothing to consult but the characters themselves. The
+// model has all three recorded at parse (a quote's chain per line, an item's
+// marker and its content indent), which is why wrapMarkdownLine now takes them
+// instead, and this stays as the fallback for the caller that has nothing to
+// pass. See TODO 3.1's slice 3 step 5 in docs/REWRITE.md.
+//
+// One consequence is worth naming, because it looks like a bug and is not
+// reachable as one: the continuation indent is spaces, so an item marked with a
+// tab would have its continuation rewritten to spaces of the same width --
+// different bytes at the same column. The model measured that disagreement at 1
+// item in 343 across its oracle. It cannot happen here, because a marker only
+// ever arrives on this path from Turndown's own listItem rule, whose pad comes
+// from a sniff that matches spaces alone (`/^(\s*)([-*+])( +)\S/`). It took
+// reading a file's own bytes to see it at all, which is the whole reason the
+// model records rather than derives.
+function wrapMarkdownPrefixes(line) {
   // A blockquote's `> ` chain has to be re-applied to every continuation line
   // or the tail of the quote falls out of it.
   const quoted = line.match(/^(\s*(?:>\s?)+)/);
   const quote = quoted ? quoted[1] : "";
   const rest = line.slice(quote.length);
+  const hardBreak = (rest.match(/ {2,}$/) || [""])[0];
+  const body = hardBreak ? rest.slice(0, -hardBreak.length) : rest;
 
+  // A list item's continuations have to align with its content, not its marker.
+  const item = body.match(/^(\s*)([-*+]|\d+[.)])(\s+)/);
+  return {
+    first: quote + (item ? item[0] : body.match(/^\s*/)[0]),
+    continuation: item
+      ? quote + " ".repeat(item[0].length)
+      : quote + body.match(/^\s*/)[0],
+  };
+}
+
+// `prefixes` is `{ first, continuation }`, and defaults to reading them back off
+// the line. A caller that knows them -- the model, which recorded them at parse
+// -- passes them in rather than letting this guess a second time.
+function wrapMarkdownLine(line, width, prefixes = wrapMarkdownPrefixes(line)) {
   // Two or more trailing spaces are a hard line break -- the whole meaning of
   // the line is in characters that look like nothing. The split below is on
   // whitespace, so they would be swallowed as ordinary spacing between words
@@ -303,17 +339,13 @@ function wrapMarkdownLine(line, width) {
   // produces. The backslash spelling needs none of this: it is a non-space
   // character, so it stays attached to the word in front of it and rides
   // through the split already.
-  const hardBreak = (rest.match(/ {2,}$/) || [""])[0];
-  const body = hardBreak ? rest.slice(0, -hardBreak.length) : rest;
+  const hardBreak = (line.match(/ {2,}$/) || [""])[0];
+  const body = hardBreak ? line.slice(0, -hardBreak.length) : line;
 
-  // A list item's continuations have to align with its content, not its marker.
-  const item = body.match(/^(\s*)([-*+]|\d+[.)])(\s+)/);
-  const firstPrefix = quote + (item ? item[0] : body.match(/^\s*/)[0]);
-  const contPrefix = item
-    ? quote + " ".repeat(item[0].length)
-    : quote + body.match(/^\s*/)[0];
+  const firstPrefix = prefixes.first;
+  const contPrefix = prefixes.continuation;
 
-  const words = body.slice(firstPrefix.length - quote.length).split(/\s+/).filter(Boolean);
+  const words = body.slice(firstPrefix.length).split(/\s+/).filter(Boolean);
   if (!words.length) return [line];
 
   const wrapped = [];
@@ -446,12 +478,38 @@ function normaliseTableRows(block) {
     .join("\n");
 }
 
+// The key has to ignore everything the serialiser rewrites, or a block that
+// changed in no other way stops matching itself and falls through to layer 2 --
+// rewritten and re-wrapped with no edit anywhere near it. Three things qualify.
+//
 // Turndown escapes punctuation that could reparse as markup ("1\." mid
-// sentence), so the key has to ignore that too or a block that changed in no
-// other way stops matching itself.
+// sentence). The table rule writes its own padding and its own dash run, which
+// is what normaliseTableRows is for.
+//
+// And the **hard break**, which is TODO 2.3's cheap half. A break has two
+// spellings -- a trailing backslash, or two trailing spaces -- and
+// sniffMarkdownStyle picks one for the whole document, so Turndown writes the
+// winner into every block before the restore layer runs. The two-space spelling
+// survives the whitespace collapse below and the backslash does not, so a block
+// written the minority way keyed differently from its own source and lost both
+// its spelling and its line breaks without being touched. Dropping the
+// backslash puts the two forms on the same key.
+//
+// **The emphasis delimiter is the other half of 2.3 and is deliberately not
+// here.** The only normalisation available without parsing is folding `_` into
+// `*`, and measured on tests/fixtures/torture.md that keys the rules `***` and
+// `___` identically -- two different blocks, so the restore layer could hand
+// back the wrong bytes, which is worse than the bug. Telling a delimiter from a
+// snake_case identifier or a code span needs a parser, and a second parser free
+// to disagree with the first is the thing TODO 3.1 exists to delete. The model
+// records each node's spelling as written, so that half waits for it.
 function markdownBlockKey(block) {
   return normaliseTableRows(block)
     .replace(/\\([^\w\s])/g, "$1")
+    // Before the whitespace collapse, and per line: a trailing backslash is
+    // only a break at the end of a line, and the trailing spaces that spell the
+    // same thing have to go with it or the two still differ.
+    .replace(/[ \t]*\\?$/gm, "")
     .replace(/\s+/g, " ")
     .trim();
 }

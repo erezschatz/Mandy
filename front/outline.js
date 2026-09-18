@@ -160,8 +160,26 @@ function renderOutline() {
   outlineNav.appendChild(list);
 }
 
-function scheduleOutline() {
+// The debounce defends typing, and a document swap is not typing. A record
+// whose target is the editor itself, of type childList, is a top-level
+// structural change: a whole document arriving through `editor.innerHTML` --
+// a tab switch, Open, Reload, New, the welcome fetch -- or an Enter or
+// Backspace at the top level, all of which are one-shot and want the sidebar
+// to follow at once. A record inside the subtree, or a text change, is someone
+// typing, and keeps the second. Read off the record rather than off a flag
+// the callers would set, so nothing that assigns `innerHTML` has to know the
+// outline exists. Measured 2026-09-18 (TODO 4.6): a swap is exactly one such
+// record, and used to wait the full second behind it.
+function scheduleOutline(records) {
+  const swap = (records || []).some(
+    (record) => record.target === editor && record.type === "childList",
+  );
   clearTimeout(outlineTimer);
+  if (swap) {
+    outlineTimer = null;
+    renderOutline();
+    return;
+  }
   outlineTimer = setTimeout(renderOutline, OUTLINE_DEBOUNCE);
 }
 

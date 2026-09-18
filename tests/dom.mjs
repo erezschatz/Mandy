@@ -223,20 +223,21 @@ export function loadSource(files, globals, tail = "") {
   );
 }
 
-// app.js configures the parser as well as rendering through it -- it registers
-// the maths rule that keeps markdown-it's escapes out of an equation -- so a
-// stub that is only a render function makes app.js throw on load. Shared rather
-// than written twice: two suites load app.js, and only one of them cares what
-// was registered.
+// app.js hands this instance to configureMarkdownParser (markdown-parser.js),
+// which registers the maths rule that keeps markdown-it's escapes out of an
+// equation -- so a stub that is only a render function makes the load throw.
+// Shared rather than written twice: two suites load app.js, and only one of them
+// cares what was registered.
 export function markdownitStub(inlineRules = [], renderRules = {}) {
   return () => ({
     render: (s) => s,
     inline: {
       ruler: {
         before: (anchor, name, rule) => inlineRules.push({ anchor, name, rule }),
-        // app.js swaps its own referenceAwareLink in over the built-in "link"
-        // rule at load time; render is a pass-through here regardless, so the
-        // swapped rule is never actually invoked by anything in this stub.
+        // markdown-parser.js swaps referenceAwareLink in over the built-in
+        // "link" rule when app.js configures this instance; render is a
+        // pass-through here regardless, so the swapped rule is never actually
+        // invoked by anything in this stub.
         at: (name, rule) => inlineRules.push({ anchor: name, name, rule }),
       },
     },
@@ -252,6 +253,9 @@ export function markdownitStub(inlineRules = [], renderRules = {}) {
 // app.js defines globals the later modules use — `slugifyTitle` for every
 // export filename, and the Turndown rules. Loading it for real rather than
 // stubbing those keeps a test honest when app.js changes underneath it.
+// markdown-parser.js comes first for the same reason index.html loads it first:
+// app.js calls configureMarkdownParser at its own top level, and `mathSpan`
+// stays reachable below because these share one scope the way <script> tags do.
 // TurndownService is a recorder here: no suite needs conversion, only the rules.
 export function loadApp() {
   const noop = () => {};
@@ -295,7 +299,7 @@ export function loadApp() {
   };
 
   return loadSource(
-    ["markdown-style.js", "app.js"],
+    ["markdown-parser.js", "markdown-style.js", "app.js"],
     {
       window: {
         markdownit: markdownitStub(inlineRules, renderRules),

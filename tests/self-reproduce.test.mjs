@@ -109,7 +109,16 @@ export default async function run(check) {
   const genOne = firstExport.output();
 
   // One per entry in ASSETS: the stylesheet plus every script in the bundle.
-  check("app export fetches its assets", firstExport.fetches() === 13);
+  // Read out of html-export.js rather than written here as a number, so adding
+  // a module to the bundle cannot fail this check for the wrong reason — the
+  // same rule the toolbar suite's two bundle lists already follow.
+  const assetCount = readFront("html-export.js")
+    .match(/const ASSETS = \[(.*?)\];/s)[1]
+    .match(/"\/[^"]+"/g).length;
+  check(
+    `app export fetches its assets (${assetCount})`,
+    firstExport.fetches() === assetCount,
+  );
   check("app export bundles notify.js", genOne.includes("/notify.js"));
   check("app export bundles undo.js", genOne.includes("/undo.js"));
   check("app export bundles static-export.js", genOne.includes("/static-export.js"));

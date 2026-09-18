@@ -511,30 +511,13 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     left when there was not", and it is a model-command decision rather than an
     input-layer one.
 
-*   **1. Model and serialiser — done and tested, 2026-09-18**, started
-    2026-09-11.
-    **→ MERGE TO `main` NOW** — D8 in
+*   **1. Model and serialiser — in progress, started 2026-09-11.**
+    **→ MERGE TO `main` WHEN THIS CLOSES** — D8 in
     [DECISIONS.md](DECISIONS.md). It changes nothing the editor does, since
     `model.js` is in none of the three registries; what it carries to `main` is
-    `markdown-parser.js`'s refactor of the live parser configuration, slice 3
-    step 5's change to `wrapMarkdownLine`, TODO 2.3's hard-break fix in
-    `markdown-style.js`, and an end to the two branches' documents drifting.
-
-    **The exit criterion is the estimate table's, and all three clauses are
-    met.** Checked against the **living** files rather than the frozen oracle
-    copies, once and by hand on 2026-09-18, because that is what the criterion
-    names: `CLAUDE.md`, `README.md`, `front/welcome.md` and `docs/TODO.md` all
-    round-trip byte-identical through the model with no browser involved, and
-    every inline-bearing leaf in each re-emits its own bytes: 279, 107, 34 and
-    121 of them. Editing one paragraph changing one paragraph is the
-    suite's sweep, now with a real emitter under it. The third clause, *the
-    `save-fidelity` suite's cases pass against the model*, is the one that
-    needed reading rather than running: that suite's cases are statements about
-    constructs the old core has to work to preserve, and about Turndown and the
-    DOM, which have no model equivalent. So the constructs are what is
-    asserted — twenty of them, each round-tripped and then re-emitted from its
-    own tree. That is an interpretation, and it is written down here so it can
-    be argued with rather than assumed.
+    `markdown-parser.js`'s refactor of the live parser configuration, and an end
+    to the two branches' documents drifting. Slice 3 and slice 4's remaining
+    per-slice coverage are what is left before it.
 
     Pure JS in `front/model.js`, no browser and no `dom.mjs`: this is the stage
     that proves D1 survives before anything is at risk. The exit criterion is
@@ -557,7 +540,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         `appendReferenceDefinitions` has to today. Reconstruction is then a
         concatenation, so byte-identical is structural rather than something
         the serialiser has to get right. `front/model.js` and
-        `tests/model.test.mjs`.
+        `tests/model.test.mjs`, 39 checks.
 
     *   **1b. Sub-blocks inside containers — done and tested, 2026-09-12, and it
         was not optional.** All six steps below are in. The mechanism is: a container's children tile
@@ -568,22 +551,22 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         and a bullet five blocks down costs one emitter call. Every item also
         carries its own marker and continuation indent, which is what slice 3
         emits from. The suite asserts the metric rather than leaving it measured
-        by hand: **editing the worst block in the oracle's copy of `docs/TODO.md`
-        rewrites a fraction of its lines where the same edit cost the whole
-        enclosing list before this slice**, and every block it drives rewrites
-        exactly itself when edited one at a time. The live figures are in the
-        check labels rather than here. What the slice was argued from, measured
-        2026-09-12 on the file as it then stood: `docs/TODO.md` was 708
+        by hand: **editing the worst block in `docs/TODO.md` rewrites 15 of its
+        794 lines, 1.9%, where the same edit cost 267 lines before this slice**,
+        and all 975 blocks across the six files it drives rewrite exactly
+        themselves when edited one at a time. Measured as soon as slice 1 could
+        count, again on 2026-09-12 after `main`'s items landed in it, and again
+        on 2026-09-16: `docs/TODO.md` is 794
         lines and **16 blocks**, because a whole section's bullet list is one
-        top-level token. The largest was 239 lines — a third of the file — so
+        top-level token. The largest is 267 lines — a third of the file — so
         editing one TODO item would re-serialise a third of the file, which is
         exactly the unmergeable diff D1 exists to prevent.
 
         The sharper number is not the largest block but the share of the file
         that is inside one: **93% of `docs/TODO.md`'s lines sit inside a list,
         a quote or a table**, and so inside a single block each. `REWRITE.md`
-        was 49% at the time, `CLAUDE.md` and `README.md` 37%, `welcome.md` 33%.
-        Top-level
+        is 81%, `CLAUDE.md` 40%, `README.md` 37%, `welcome.md` 33% and the
+        torture fixture 27%. Top-level
         granularity does not mostly work on this repo's documents and then fail
         at the edges; on the planning documents it barely works at all.
 
@@ -622,7 +605,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             there is no coordinate translation anywhere — which is what makes
             this a day rather than a second slice 1.
 
-            Measured rather than assumed, in checks driving the function
+            Measured rather than assumed, in twelve checks driving the function
             directly, since nothing in the model reaches a second level yet: a
             list tiles into items and those into a paragraph and a nested list,
             a quote into ordinary blocks, and a table into head and body and
@@ -674,8 +657,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             invariant holds at every depth on all of them — with two checks
             that the loop is not passing vacuously, since a model with no
             children anywhere tiles trivially and that is exactly the state
-            slice 1 was in: `corpus/todo.md` comes back as dozens of containers
-            nesting five deep. Four more things fell out rather than being built:
+            slice 1 was in: `docs/TODO.md` comes back as 58 containers nesting
+            five deep. Four more things fell out rather than being built:
             **a tight list stays tight and a loose one loose**, because the
             blank line between two items is the first item's separator, which
             is the same information `markdownSegments` carries today; a
@@ -703,7 +686,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `modelEmitBlock(block, emit)` takes `source` first, children
             second, `emit` last. The measurement: the first bullet in
             `docs/TODO.md` is a 10-line paragraph inside a 97-line item inside
-            the file's largest list, and editing it asks the emitter for that
+            the file's 267-line list, and editing it asks the emitter for that
             paragraph **once**, rewrites exactly its bytes, and hands back the
             other 698 lines untouched. The suite asserts both the bytes and the
             call count, since a serialiser that re-emitted a sibling correctly
@@ -829,21 +812,21 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             numbers are in their labels so a run reads as a report rather than as
             a row of ticks:
 
-            - Editing the worst block in `corpus/todo.md` rewrites a small
-              fraction of its lines, asserted under 5%.
-            - Its largest **top-level** block is still about a third of it,
+            - Editing the worst block in `docs/TODO.md` rewrites **15 of its 794
+              lines (1.9%)**, asserted under 5%.
+            - Its largest **top-level** block is still **267 lines (34%)**,
               asserted over 25% — the guard that the first number moved because
               of sub-blocks and not because the file got shorter or its lists
               got smaller. That block is still there; what changed is that
               nothing re-serialises it.
-            - No file's worst edit is a tenth of it. The label carries the
-              per-file percentages, which is the only place they are written
-              down: prose that repeated them went stale every time anything was
-              edited, and since 2026-09-16 the oracle is a fixture precisely so
-              that a number has one home.
-            - The exhaustive version of the single-bullet case: **every block
-              in the oracle, edited one at a time, rewrites exactly its own
-              bytes and nothing else.** It re-parses per block, since
+            - No file's worst edit is a tenth of it: CLAUDE.md 2.6%, README.md
+              2.8%, welcome.md 7.4%, TODO.md 1.9%, REWRITE.md 1.2%, the torture
+              fixture 2.7%. The labels
+              carry the live numbers, so the figures here are the day's reading
+              and the suite is the thing that keeps them honest.
+            - The exhaustive version of the single-bullet case: **all 975 blocks
+              across those six files, edited one at a time, rewrite exactly
+              their own bytes and nothing else.** It re-parses per block, since
               `modelTouch` clears ancestors and a second measurement on the same
               document would be measuring a document with an edit already in it —
               0.6s for the sweep, which is the most expensive thing in the suite
@@ -972,8 +955,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `**` are all distinguished in `markup` — so emphasis fidelity is
             per-node here rather than the per-document guess
             `sniffMarkdownStyle` has to make, which is strictly better and costs
-            nothing to keep; the oracle spells every mark both ways, in numbers the
-            check label reports, so that is measured rather than argued. Leaves are text, code span, image, `math`, and the two
+            nothing to keep; the oracle files spell every mark both ways (em
+            162/2, strong 563/2, code spans 1,661/6), so that is measured rather
+            than argued. Leaves are text, code span, image, `math`, and the two
             breaks. Recursion is on nesting, not on a list of mark kinds, for
             the same reason 1b's tiler recursed on *having children* — an
             unmapped construct still nests, and `MODEL_INLINE_KINDS` only names
@@ -992,19 +976,20 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             **And one omission, which the measurement found rather than the
             plan.** markdown-it's emphasis rule leaves a zero-length text token
             on each side of every mark it converts — `**a**` arrives as
-            `text("") strong text("")`, and a few hundred of the oracle's text
-            tokens are these. The fold drops them: they hold no bytes, so
+            `text("") strong text("")`, and 423 of the 6,835 text tokens in the
+            oracle files are these. The fold drops them: they hold no bytes, so
             nothing can be lost, and keeping them would put positions in step
             2's offset space that no caret could tell from their neighbours. It
             is checked *as* an omission, which is the part worth having — every
             token not in the tree is asserted to be an empty text token, so the
             rule cannot quietly grow a second exception.
 
-            The hand-written constructs one at a time, and then
-            the oracle, where across every inline-bearing block all the nodes
+            Eighteen checks: the hand-written constructs one at a time, and then
+            the oracle, where across 861 inline-bearing blocks all 12,060 nodes
             are the parser's own tokens, each in the tree exactly once and in
-            order. Every kind those files contain is named — the label lists
-            them with their counts — with none falling through
+            order. Every kind those files contain is named — text 6,412,
+            softbreak 3,100, code span 1,667, strong 565, em 164, link 140,
+            image 5, math 4, hardbreak 2, strike 1 — with none falling through
             to `"unknown"`, and the last four of those come from
             `tests/fixtures/torture.md` alone, which is the fixture earning its
             place again. The `math` token and the `data-ref-label` stamp in
@@ -1053,13 +1038,13 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             position carry*, the question stage 0 left for stage 2's typing
             rule.
 
-            Each rule on its own, both directions agreeing on
+            Seventeen checks: each rule on its own, both directions agreeing on
             every offset of a block holding a mark, an atom and a break, and the
             clamps. Then the oracle, where the property is the fixpoint —
-            **every leaf in it, at both edges and its middle, maps to
-            an offset that maps back to the same place**, across a quarter of a
-            million characters. And one check that is not the
-            model marking its own homework: in the blocks whose tree is a
+            **every one of 11,190 leaves, at both edges and its middle, maps to
+            an offset that maps back to the same place**, across 255,119
+            characters of which 9 are atoms. And one check that is not the
+            model marking its own homework: in the 204 blocks whose tree is a
             single text node there is no markup to render, so the model's text
             has to be exactly the content markdown-it recorded, and it is.
 
@@ -1139,13 +1124,13 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             was folded from, checked against the block's own `inline.content`
             rather than against the caller's whole input, since a reference
             link's definition line is a `gap` block of its own and the paragraph
-            using it does not own those bytes. The hand-written cases —
+            using it does not own those bytes. Fourteen hand-written cases —
             each of the four named spellings both ways, the fifth (a break's
             surrounding whitespace), a title in both quote styles, an autolink,
             all three reference-link forms, an image inline and by reference,
             nested marks, and the thrown entity failure — then the oracle: every
-            **inline-bearing block in the oracle reconstructs its own source
-            exactly**, which given its diet of these constructs
+            one of **861 inline-bearing blocks reconstructs its own source
+            exactly**, which given the repo's own diet of these constructs
             (1,538 code spans, 7 of them padded; 2 hard breaks, one of each
             spelling; 1 soft break with whitespace to strip; 4 escaped
             characters; 131 links, 1 with an angle-bracket destination; 5
@@ -1167,8 +1152,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             hold a character that *looks* markdown-active — narrow, and
             silent, which are the two properties that put a thing in this
             repo's suite. Measured precisely rather than by that proxy, the
-            number that matters is smaller still: of the oracle's thousands of
-            text nodes, a mere handful actually need a backslash to round-trip, which is
+            number that matters is smaller still: of the oracle's 6,412 text
+            nodes, only **2** actually need a backslash to round-trip, which is
             what "narrow" turns out to mean once the question is "does leaving
             this bare change what it parses as" rather than "does this
             character appear at all." The rule is **minimal escape**: a
@@ -1228,12 +1213,13 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `modelFirstConstruct` only ever has to run after that pass has
             already made its one guarantee true.
 
-            The hand-written cases — each named construct's opening
+            Twelve hand-written cases — each named construct's opening
             delimiter alone, two independent pairs in one run leaving
             everything between them untouched, characters with nowhere to
             pair staying bare, both silent triggers, and the nested case that
-            broke the first design — then the oracle: **every text node in it
-            escapes to something that decodes back to itself**, run through the real parser rather than trusted
+            broke the first design — then the oracle: **every one of 6,412
+            text nodes across the oracle escapes to something that decodes
+            back to itself**, run through the real parser rather than trusted
             on the function's own say-so.
 
         5.  **Links — done and tested, 2026-09-15.** The one construct whose
@@ -1275,7 +1261,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             block-level emitter eventually calls this, the same boundary
             `scanReferenceDefinitions` already draws on the running app.
 
-            The hand-written cases — a bare destination, a title, a title
+            Eight hand-written cases — a bare destination, a title, a title
             holding its own quote and its own backslash, a destination that
             normalises to something bare-safe, a reference link rebuilt from
             each of its three source spellings, an image, and a destination
@@ -1369,8 +1355,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         slice that fills it. The genuinely new machinery is the escaper and the
         link rebuilder; the rest is a tree fold and two offset functions.
 
-    *   **3. The block serialiser — done and tested, 2026-09-18.** All six
-        steps are in; 1 and 2 landed on the 16th, 3 to 6 on the 18th. An edited
+    *   **3. The block serialiser — planned 2026-09-16, not started.** An edited
         block emits markdown in the conventions **its own bytes recorded**,
         falling back to the ones `sniffMarkdownStyle` read off the file it came
         from, and `reflowMarkdown` re-wraps it — the same two layers as today,
@@ -1382,9 +1367,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         model — is this slice's to meet.
 
         **What a block emitter is actually asked for was measured before this
-        was planned** (2026-09-16, across all six oracle files, which became
-        fixtures the same day and so are the numbers a rerun gives), the same
-        way 1b's tiling table and slice 2's inline table were. The first three rows
+        was planned** (2026-09-16, across all six oracle files), the same way
+        1b's tiling table and slice 2's inline table were. The first three rows
         decide the shape of the slice:
 
         | Measurement | Reading |
@@ -1426,12 +1410,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
         **Six steps, in this order:**
 
-        1.  **The quote chain, recorded per line — done and tested,
-            2026-09-16.** `modelQuotePrefix` and the `quotePrefixes` field, one
-            string per line of a block's source. The decision
-            travelled from slice 2 already made — record at parse, never strip
-            and re-apply at emit — and what the measurement added is the
-            **unit**.
+        1.  **The quote chain, recorded per line — not started.** The decision
+            travels from slice 2 already made — record at parse, never strip and
+            re-apply at emit — and what the measurement adds is the **unit**.
             It is a line, not a block: one paragraph in `torture.md` has the
             chain `["> ", ""]`, a lazy continuation carrying no `>` at all, and
             another starts at `"  > "`, two columns in. A single per-block
@@ -1441,37 +1422,15 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             **each of its own lines carried**, and a line an edit added takes
             the last recorded one.
 
-            **Depth is the number of quote containers a block sits inside**,
-            so a block records the chain of the quotes it is *in* and never its
-            own: a quote is a container and re-emits from its children, each of
-            which carries the chain including that quote's level. A line that
-            runs out of chain before the depth is a lazy continuation and keeps
-            what it had, which is how `["> ", ""]` falls out rather than being
-            special-cased.
+            It is recorded on containers as well as leaves, and that is what
+            makes the two items `torture.md` has behind a `> ` ordinary:
+            `modelItemPrefix` returns null for both today because the marker it
+            scans for sits behind the chain, and with the chain claimed the scan
+            runs on what the author actually wrote after it.
 
-            It made the two items `torture.md` has behind a `> ` ordinary, which
-            is what it was for: `modelItemPrefix` returned null for both,
-            because the marker it scans for sat behind the chain, and the check
-            that pinned that through 1b now asserts the opposite — they carry
-            the marker the author wrote, and it is the parser's own `markup`.
-
-            **What can go wrong here is not byte-exactness**, and that shaped
-            the checks. Whatever this claims as prefix, the rest of the line is
-            the remainder, so a block always reassembles; what can be wrong is
-            the split landing somewhere markdown-it did not put it, and only
-            `inline.content` can say. So the oracle check strips the recorded
-            chain off a quoted paragraph's lines and asserts what is left is
-            exactly the content — and **a paragraph is the only leaf that
-            isolates the chain**, which the check found by failing when it was
-            written wider: `> ### A heading inside a quote` has the content
-            `A heading inside a quote`, because a heading's own `### ` comes off
-            as well. That is not a chain recorded wrongly, it is the next marker
-            down, and step 2 is what records it.
-
-        2.  **The heading's shape — done and tested, 2026-09-16.**
-            `modelHeadingShape` and the `headingShape` field: the ten exceptions
-            above, and the only place in the model where an affix is a suffix.
-            Three spellings: ATX with its own `#` run, ATX with a closing run
+        2.  **The heading's shape — not started.** The ten exceptions above, and
+            the only place in the model where an affix is a suffix. Three
+            spellings: ATX with its own `#` run, ATX with a closing run
             (`#### x ####`, 3 in `torture.md`), and setext with an underline
             character and a length (7 more). Recorded rather than derived, for
             the reason everything here is: `======` and `===` are the same
@@ -1479,35 +1438,18 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             block has carried since slice 1 — says nothing about which of the
             three wrote it.
 
-            **The branch is taken on the parser's own `markup`** — a hash run
-            for ATX, `-` or `=` for setext — rather than on a guess about line
-            counts, which is the same rule the rest of the model follows: read
-            what markdown-it recorded instead of re-deriving it. And the result
-            is **verified against `inline.content` rather than trusted**, so a
-            shape that does not line up comes back null and step 3 has nothing
-            to emit from, exactly the safe direction `modelItemPrefix` already
-            takes. Measured before it was written and again after: all 94
-            headings in the oracle resolve, with no unresolved case to leave a
-            null behind.
-
-            The check that matters is byte-level and is the one step 3 rests
-            on: **the recorded shape reassembles each heading's own source,
-            chain included.** An untouched heading re-emits from `source` and
-            cannot fail; what this asserts is that an edited one has everything
-            it needs, which is the only reason any of it is recorded.
-
-            One thing it makes survive that is worth naming rather than
+            One thing this makes survive that is worth naming rather than
             discovering later: `torture.md` opens with YAML front matter, and
             the app's parser has no front-matter rule, so `---` / `title: …` /
-            `---` arrives as a **setext h2** and re-emits as one. Recording the
-            shape makes that byte-correct while leaving it semantically wrong.
-            `MODEL_BLOCK_KINDS` already names a `front_matter` kind for whenever
-            that is worth fixing; it is not this slice's to fix, and saying so
-            is cheaper than meeting it again in slice 3's suite.
+            `---` arrives as a **setext h2** and would re-emit as one. Recording
+            the shape makes that byte-correct while leaving it semantically
+            wrong. `MODEL_BLOCK_KINDS` already names a `front_matter` kind for
+            whenever that is worth fixing; it is not this slice's to fix, and
+            saying so is cheaper than meeting it again in slice 3's suite.
 
-        3.  **`modelEmitLeaf` composes — done and tested, 2026-09-18.** Slice
-            2's `modelInlineSource` for the content, then the affixes back **in
-            the order markdown-it took them off**, which is measured rather than
+        3.  **`modelEmitLeaf` composes — not started.** Slice 2's
+            `modelInlineSource` for the content, then the affixes back **in the
+            order markdown-it took them off**, which is measured rather than
             assumed: the quote chain sits outside the item marker, because
             `> 1. A list inside a quote.` has content `A list inside a quote.`
             and both were stripped. An item's `marker` goes on the first line
@@ -1516,71 +1458,16 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
             `modelEmitBlock`'s three cases are unchanged; this is what its
             `emit` argument has been standing in for since slice 1b's step 3.
-            It stays an argument rather than becoming a call, because the
-            emitter needs the parser — `modelEscapeText` reparses — and a
-            serialiser that reached for its own would be the mistake the top of
-            `model.js` rules out.
 
-            **The affixes are absolute, and that is what the measurement
-            decided.** Only the **nearest** item ancestor contributes, because a
-            child's `source` is its lines whole (1b's step 2): the marker
-            recorded for `    *   **1.1.6**` already carries the four columns the
-            item outside it contributed. Stacking every item above a block
-            instead reproduces **707 of the oracle's 861** inline-bearing
-            leaves, and every one of the 154 it misses is a bullet inside a
-            bullet.
-
-            **Two suppressions, and both are the same failure in different
-            clothes: an affix recorded from its own column 0 has already claimed
-            the item's indent, so adding it again writes the same columns in
-            different bytes** — 1b's step 5's tab bug, one layer along.
-            `modelQuotePrefix` matches ` {0,3}>` from the raw line, so for a
-            quote **inside** a bullet it claims `"  > "`, indent included; the
-            reverse nesting is unaffected and must be, since in `> - item` the
-            item sits at the quote's own depth and `modelItemPrefix` read its
-            marker off the chain-stripped line. A heading's `open` was recorded
-            off the chain-stripped line the same way, which is exactly what step
-            2 pinned — the shape plus the chain reassembles the heading's source
-            — so a heading takes no item affix at all. Those two are the only
-            leaves in the whole oracle that a naive composition gets wrong, and
-            they are both in `torture.md`, which is the fixture earning its place
-            for the fourth time.
-
-            **Three refusals, each a spelling the model recorded as `null`
-            rather than guessing at.** A leaf with no inline tree — a fence, an
-            indented code block, a rule, a gap, a table row — has its content
-            *as* source and is edited as source, so a command sets `source`
-            rather than nulling it and this is never reached; that is five of
-            the seven leaf kinds answered, and it is a constraint on stage 2's
-            input layer rather than a hole here. A heading whose shape did not
-            line up against `inline.content` (step 2) and an item whose first
-            line carried no marker this model recognises (1b's step 5) throw the
-            same way `modelEmitBlock` already throws for a leaf with no
-            serialiser at all.
-
-            Fifteen checks, and **every one of the seven ways the composition
-            can be wrong was written as a deliberate break first and confirmed
-            to fail** — stacked affixes, either suppression dropped, the marker
-            on every line, every block treated as opening its item, the heading
-            suffix dropped, one quote prefix for a whole block. Two of them were
-            caught only by the oracle sweep on the first pass, which is how a
-            hand-written case reaching for the wrong leaf was found. The
-            property the step can state exactly is step 6's headline arriving
-            early, and it is in: **throw away every inline-bearing leaf's
-            `source` and emit it from its tree alone — all 861 come back
-            byte-identical**, the 114 without a tree refusing rather than
-            guessing.
-
-        4.  **The reference definition a rebuilt link needs — done and tested,
-            2026-09-18.**
+        4.  **The reference definition a rebuilt link needs — not started.**
             Slice 2's step 5 rebuilds `[text][label]` from the `data-ref-label`
             stamp and explicitly declines to ask whether that label still
             resolves, because a single node's token cannot answer a question
             about the whole document — it named "whichever block-level emitter
             eventually calls this" as the owner, and **this is that emitter**.
 
-            The model can answer it where `main` cannot. A definition is a block
-            in its own position (slice 1), so the document is a list that
+            The model can answer it where `main` cannot. A definition is a `gap`
+            block in its own position (slice 1), so the document is a list that
             can be searched and a definition that is still there stays where the
             author put it — where `appendReferenceDefinitions` has no position
             to reason about and collects every definition at the end of the
@@ -1589,59 +1476,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             slice, and it is worth it for being the step that retires a named
             accepted loss rather than carrying it across.
 
-            **The plan said `gap` block and the measurement said otherwise**,
-            which is the one thing here that was not known in advance.
-            `> [b]: u` parses to a **quote** whose only content is the
-            definition, so it has no child tokens at all and is a childless leaf
-            rather than a container holding a gap; `> > [h]: deep` is the same
-            one level down. Scanning the gaps misses both. The rule that holds is
-            **a leaf with no inline tree, and nowhere else** — which is exactly
-            the set step 3 refuses to emit, and not by coincidence: such a leaf's
-            content *is* source, and a definition is content no inline tree ever
-            held.
-
-            **`modelReferenceLabels` asks the parser rather than a regex.** Each
-            candidate leaf's bytes go back through `md.parse`, whose
-            `env.references` is markdown-it's own record of what it just defined
-            — the same reuse `modelFirstConstruct` and step 3's link-tail parsing
-            already argue for, and it is what makes the retired loss free:
-            `scanReferenceDefinitions`'s single-line regex cannot see a
-            definition **wrapped onto a second line** at all, and `torture.md`
-            carries one saying so in its own prose. The scan is lazy and runs at
-            most once per emitted block, never cached across blocks — the answer
-            is about the document as it now stands, and an edit to a definition
-            is exactly what a cache would go stale on.
-
-            Verified against the parser's answer for the whole file, on all six
-            oracle files — **five definitions, every one of them in
-            `torture.md`, and none in the other five**, which is the bias that
-            fixture exists for arriving a fifth time — and on ten hand-written
-            cases either side of the line: a definition in a list item, one in a
-            quote, one two quotes deep, two in one block, one wrapped, and the
-            four places a definition-shaped line is *not* one (inside a fence,
-            inside indented code, inside a table cell, lazily continuing a
-            paragraph). Then the emitter itself: a rebuilt reference whose
-            definition is still there keeps its label, one whose definition has
-            been deleted falls back to the inline form rather than writing a
-            reference that renders as literal text, and one emitted with **no
-            document handed over** keeps the stamp's spelling — step 5's
-            behaviour unchanged, because a caller that was not given the means to
-            answer should not materialise a possibly stale href on the strength
-            of a guess. Each of the five ways it can be wrong was broken on
-            purpose first and confirmed to fail.
-
-            **One limitation is pinned rather than fixed, and it was measured
-            here**: `referenceAwareLink` replaces markdown-it's inline `link`
-            rule and nothing else, so an **image** resolved through a reference
-            carries no `data-ref-label` at all. An untouched one still
-            round-trips on the tail step 3 recorded; a rebuilt one can only come
-            back inline. Fixing it means copying the `image` rule the way the
-            `link` rule was copied, which is a change to the parser
-            configuration rather than to this emitter, and belongs wherever
-            slice 2's step 0 would be revisited.
-
-        5.  **Re-wrap, and only where the content moved — done and tested,
-            2026-09-18.**
+        5.  **Re-wrap, and only where the content moved — not started.**
             `inline.content` preserves the author's own line breaks — 582 of 767
             paragraphs hold one — so an **unedited** block needs no width at all,
             and an edited one re-wraps only because its text changed.
@@ -1666,111 +1501,24 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             deletes a workaround rather than carrying one forward, which is the
             work rather than a detour from it.
 
-            **The derivation is now `wrapMarkdownPrefixes`, and it stays as the
-            default**: `reflowMarkdown` is handed a document as text and has
-            nothing else to consult, so the guess is right there and only there.
-            What the measurement adds is *why it was never seen*: a marker only
-            ever reaches that path from Turndown's own `listItem` rule, whose pad
-            comes from a sniff matching spaces alone
-            (`/^(\s*)([-*+])( +)\S/`), so the tab case is unreachable through
-            the app. It took reading a file's own bytes to find it at all, which
-            is the whole argument for recording rather than deriving. The check
-            in `save-fidelity` therefore pins the difference rather than
-            reporting a live fault.
-
-            **What is not re-wrapped is most of the value.** A heading never is,
-            in either spelling — a wrap turns its tail into a paragraph, and
-            `reflowMarkdown` refuses one by looking for a `#`, which misses
-            setext entirely where the model simply knows what kind of block it
-            holds. A line carrying maths never is, which is the one guard
-            structure cannot replace since an equation is inline and can sit
-            anywhere. And a line already inside the width is left exactly where
-            it was, because `inline.content` keeps the author's own breaks: only
-            a line the edit made too long is touched. `reflowMarkdown`'s own
-            comment has said it never joins, only breaks, since it was written;
-            that is what makes this minimal rather than a re-flow.
-
-            **The metric, on the six oracle files: all 861 inline-bearing leaves
-            compose exactly, and re-wrapping each at its own file's width leaves
-            783 of them byte-identical.** The 78 that move are blocks holding a
-            line the author let run past the width — which is a *guaranteed*
-            population rather than a fault, since `sniffWrapWidth` takes the
-            95th percentile and so about one prose line in twenty is longer than
-            it by construction. Against `main`, where an edited paragraph is one
-            Turndown line re-flowed whole, every one of the 861 would move.
-
-            **It found a defect in step 3, which is the honest account rather
-            than a footnote.** A paragraph indented one to three spaces is still
-            a paragraph, and markdown-it strips that indent off
-            `inline.content` exactly as it strips a list marker — so an edited
-            one came back flush left, silently. None of the recorded affixes
-            carried it, and 861 of 861 passed with it missing because not one
-            paragraph in the oracle is indented. `leadingAffix` is the fix:
-            **everything markdown-it took off the first line, recorded whole**,
-            with the emitter subtracting the item prefix it is putting back and
-            keeping the remainder. Whole rather than named because the pieces
-            that need naming are named already — a command has to be able to
-            change a marker — and one subtraction in the emitter beats a second
-            derivation at parse. Verified against `inline.content` the way
-            `modelHeadingShape` is, and a shape that does not line up leaves a
-            null the emitter refuses on.
-
-            **`model.js` now calls into `markdown-style.js`**, for
-            `wrapMarkdownLine` and `hasMathSpan`, rather than carrying a second
-            copy of either. That is a real load-order dependency the three
-            registries have to honour when the model joins them at stage 4 — it
-            follows `markdown-style.js` the way `undo.js` follows `app.js` — and
-            the `model` suite loads the two together for the same reason.
-
-            Six checks in `model` and three in `save-fidelity`, with each of the
-            six ways the composition can be wrong broken on purpose first and
-            confirmed to fail. And because this is the first step to change a
-            file the app loads on the **save path**, `npm test` is not the
-            verification: the real one is
-            [tests/fixtures/break-test.md](../tests/fixtures/break-test.md),
-            run by hand in the browser on 2026-09-18 and reported in the
-            CHANGELOG — the refactored wrapper writes **byte-identical output**
-            to the committed one for the same document, editing DELTA re-wraps
-            DELTA and nothing else, ALPHA's and BRAVO's hard breaks survive, and
-            ECHO comes back byte-identical. CHARLIE still diverges, and still
-            for TODO 2.3's reason rather than this step's: the committed
-            wrapper produces exactly the same divergence.
-
-        6.  **The suite grows again — done and tested, 2026-09-18.** The
-            property this slice can
-            state exactly, and it is the sharpest one available — **throw away
+        6.  **The suite grows again — not started.** The property this slice can
+            state exactly, and it is the sharpest one available: **throw away
             every inline-bearing leaf's `source` and emit it from its tree —
-            every one of them comes back byte-identical** — **landed with step 3
-            rather than waiting for this one**, the way slice 2 folded its own
-            step 6 into each step as it went. The hand-written cases landed the
-            same way, one per decision as each step went in.
+            all 861 come back byte-identical.** That is slice 2's step 3 claim
+            with the affixes now included, and it is what makes the emitter
+            testable without a browser at all.
 
-            So this line is the two claims one level up, which are the
-            existing checks with a real emitter under them instead of a
-            throw — and the difference is that they go through
-            `modelSerialise`, so the emitter sits under the whole recursion (a
-            leaf's bytes, its item, its list, the separators between them, the
-            document's prefix) rather than being called directly. **Every
-            inline-bearing leaf in a file edited at once, and the file still
-            serialises byte-identical; and each one edited alone rebuilds the
-            file around itself exactly, for exactly one emitter call.** That
-            second is 1b's step 6 sweep with a real emitter under it, where
-            until now it had only ever measured containers handing back bytes
-            that already existed.
-
-            **Both count the emitter's calls, because that is the only way they
-            can pass by doing nothing.** A `modelTouch` that failed to clear
-            leaves an untouched document, which serialises from its own bytes
-            and comes back identical with the emitter never running — so the
-            counts are asserted (861 leaves, 861 calls; and one call per
-            single-leaf edit, which is 1b's no-sibling-is-re-serialised result
-            stated at document scale). Confirmed against a `modelTouch` stubbed
-            to a no-op, where both read **0 emitter calls** and fail.
-
-            A third check turns the width on, and the per-file counts match
-            step 5's own measurement exactly from the other direction — which
-            is worth more than either alone, since the two are computed by
-            different code.
+            Then the two claims one level up, which are the existing checks with
+            a real emitter under them instead of a throw: `modelSerialise` over
+            all six files is still byte-identical, and each of those 861 blocks
+            edited alone still rewrites exactly itself — 1b's step 6 sweep,
+            which until now has only ever measured containers re-emitting bytes
+            that already existed. The hand-written cases are one per decision
+            above: each heading spelling both ways, a quote at all three depths,
+            the lazy continuation, an item behind a `> `, a tab-indented item's
+            continuation, a rebuilt reference whose definition is still in the
+            document and one whose definition is gone, and an edited paragraph
+            in a file that sniffs to width 0.
 
         **It closes TODO 2.3 by construction, and that is worth stating because
         the wording above understates it.** "The conventions `sniffMarkdownStyle`
@@ -1807,16 +1555,16 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         reference question, which is small and is the only place the emitter
         needs to know about anything outside its own block.
 
-    *   **4. The suite — done, 2026-09-18, having grown with each slice rather
-        than landing once.** `tests/model.test.mjs` drives this repo's
+    *   **4. The suite — scaffolded 2026-09-11, and it grows with each slice
+        rather than landing once.** `tests/model.test.mjs` drives this repo's
         own files as the oracle; the scaffold, the file oracle and the 39 checks
-        covering slice 1 are already in, and every step since has added its own.
-        How many there are is what a run prints; it is not written down here,
-        for the same reason no count is since 2026-09-16. It imports `npm:markdown-it@13.0.1` the
+        covering slice 1 are already in, and 1b's six steps added twelve,
+        twenty-three, seven, six, fifteen and four more; the torture fixture and
+        the tab-indent fix took it to 114. It imports `npm:markdown-it@13.0.1` the
         way `server/deno.json` already imports `npm:hono` — flagged per
         CLAUDE.md and decided 2026-09-11: the app keeps its CDN tags, the two
         pins have to be kept in step, and `npm test` wants the network once.
-        Per-slice coverage was what was left, so this line closed when 3 did.
+        What is left is per-slice coverage, so this line closes when 3 does.
 
     What this stage deliberately does not do: edit inside a table cell, or
     reach the inline structure of anything beyond slice 2's tree. Before 1b it

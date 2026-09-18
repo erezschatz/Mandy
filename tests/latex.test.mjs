@@ -11,7 +11,7 @@
 //                 which TeX produced it;
 //   app.js        turns that attribute back into `$…$` / `$$…$$`.
 
-import { loadApp, loadSource, makeEl } from "./dom.mjs";
+import { loadApp, loadSource, makeEl, readFront } from "./dom.mjs";
 
 // Stands in for a typeset <mjx-container>. Attribute-backed, because that is
 // what has to survive being written into an exported file and parsed back.
@@ -143,15 +143,46 @@ export default async function run(check) {
     !rule.replacement("ab", blockNode).includes("ab"),
   );
 
-  // ── app.js: the markdown-it rule on the way in ────────────────────────────
+  // ── markdown-parser.js: the markdown-it rule on the way in ────────────────
   // The other end of the same loss. markdown-it applies its inline rules inside
   // an equation unless something claims the span first, so `\{` arrives as `{`,
   // renders without the brace and is saved that way -- damage done before
   // MathJax, and before any of the round trip above can help.
+  //
+  // The rule moved out of app.js into markdown-parser.js on 2026-09-14, so the
+  // model suite parses with the app's own configuration rather than a bare
+  // parser. Registration is still app.js's call, on the instance it builds, so
+  // this reads it back off the stub exactly as it did before.
   const { inlineRules, renderRules, mathSpan } = loadApp();
   const registered = inlineRules.find((r) => r.name === "math");
 
-  check("app.js registers a math rule", !!registered);
+  check("the math rule is registered", !!registered);
+
+  // Load order, the same invariant undo.js's suite checks for itself: app.js
+  // calls configureMarkdownParser at its own top level, so a bundle that ships
+  // the parser after it throws on load and takes the whole editor with it —
+  // which is the one way this file's move could break something no other check
+  // would see.
+  const appBundle = [...readFront("index.html").matchAll(/src="\/([a-z-]+\.js)"/g)]
+    .map((m) => m[1]);
+  check(
+    "markdown-parser.js loads before app.js",
+    appBundle.indexOf("markdown-parser.js") >= 0 &&
+      appBundle.indexOf("markdown-parser.js") < appBundle.indexOf("app.js"),
+  );
+  const exportBundle = [
+    ...readFront("html-export.js").match(/const ASSETS = \[(.*?)\];/s)[1]
+      .matchAll(/"\/([^"]+\.js)"/g),
+  ].map((m) => m[1]);
+  check(
+    "and before app.js in the editable export too",
+    exportBundle.indexOf("markdown-parser.js") >= 0 &&
+      exportBundle.indexOf("markdown-parser.js") < exportBundle.indexOf("app.js"),
+  );
+  check(
+    "and is cached as part of the shell",
+    readFront("sw.js").includes('"/markdown-parser.js"'),
+  );
   check(
     "the math rule runs before markdown's escapes",
     registered && registered.anchor === "escape",

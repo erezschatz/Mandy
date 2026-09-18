@@ -230,11 +230,12 @@ function referenceLinkChecks(check) {
 // markdown-style.js is all pure string work, so unlike the options above these
 // drive the real functions rather than asserting what app.js asked for.
 function styleChecks(check) {
-  const { sniff, reflow, index, restore } = loadSource(
+  const { sniff, reflow, index, restore, wrapLine, wrapPrefixes } = loadSource(
     "markdown-style.js",
     {},
     "; return { sniff: sniffMarkdownStyle, reflow: reflowMarkdown," +
-      " index: indexMarkdownBlocks, restore: restoreSourceWrapping };",
+      " index: indexMarkdownBlocks, restore: restoreSourceWrapping," +
+      " wrapLine: wrapMarkdownLine, wrapPrefixes: wrapMarkdownPrefixes };",
   );
 
   check("dash bullets are sniffed", sniff("- a\n- b\n").bulletListMarker === "-");
@@ -297,6 +298,32 @@ function styleChecks(check) {
   check(
     "a wrapped blockquote keeps its prefix on every line",
     quoted.trimEnd().split("\n").every((line) => line.startsWith(">")),
+  );
+
+  // The prefixes a wrap puts back are now a parameter, so a caller that knows
+  // them does not have to let the wrapper guess a second time — TODO 3.1's
+  // slice 3 step 5, where the model hands over what it recorded at parse. The
+  // derivation stays as the default for reflowMarkdown, which is handed a
+  // document as text and has nothing else to consult.
+  check(
+    "the derived prefixes are the quote chain, the marker and a content-aligned indent",
+    JSON.stringify(wrapPrefixes("> -   text")) === JSON.stringify({ first: "> -   ", continuation: ">     " }) &&
+      JSON.stringify(wrapPrefixes("plain text")) === JSON.stringify({ first: "", continuation: "" }),
+  );
+  check(
+    "and a caller that passes its own gets them back verbatim, tab and all",
+    wrapLine("-\talpha beta gamma delta epsilon zeta eta theta", 20, { first: "-\t", continuation: "\t" })
+      .slice(1)
+      .every((line) => line.startsWith("\t")),
+  );
+  // Which is the bug: derived, that same item continues under two spaces — the
+  // same column and different bytes. Unreachable through reflowMarkdown, since
+  // a marker only arrives there from Turndown's listItem rule and the sniff
+  // behind it matches spaces alone, so this is here to pin the difference the
+  // model measured rather than to report a live fault.
+  check(
+    "where the derivation would have written spaces of the same width instead",
+    wrapPrefixes("-\talpha").continuation === "  ",
   );
 
   const item = reflow("-   alpha beta gamma delta epsilon zeta eta theta\n", 30);
@@ -479,6 +506,46 @@ function styleChecks(check) {
   check(
     "a pipe in prose does not make a table of the paragraph",
     restore("use a | b here\n", index("use  a | b  here\n")) === "use  a | b  here\n",
+  );
+
+  // TODO 2.3's cheap half. A hard break has two spellings and the sniff picks
+  // one document-wide, so Turndown writes the winner into every block before
+  // the restore runs. The two-space form survives the key's whitespace collapse
+  // and the backslash does not, so a block written the minority way keyed
+  // differently from its own source, missed, and came back rewritten *and*
+  // re-wrapped with no edit near it. This is the case break-test.md's CHARLIE
+  // paragraph exists to find.
+  const charlie = "CHARLIE ends in a backslash\\\nand continues on a second line.\n";
+  const asTwoSpaces = "CHARLIE ends in a backslash  \nand continues on a second line.\n";
+  check(
+    "a block whose hard break is spelt the minority way still matches its own source",
+    restore(asTwoSpaces, index(charlie)) === charlie,
+  );
+  check(
+    "and the same in the other direction, since which spelling is the minority is per document",
+    restore(charlie, index(asTwoSpaces)) === asTwoSpaces,
+  );
+  // The guard on that: it must not make two *different* blocks key alike, or
+  // the restore hands back somebody else's bytes -- worse than the bug.
+  check(
+    "but a block that only differs after the break still misses",
+    restore("CHARLIE ends in a backslash  \nand continues differently.\n", index(charlie)) ===
+      "CHARLIE ends in a backslash  \nand continues differently.\n",
+  );
+  check(
+    "and a backslash mid-line is left alone, so it still tells two blocks apart",
+    restore("a b\n", index("a \\ b\n")) === "a b\n",
+  );
+
+  // The emphasis half of 2.3 is deliberately *not* fixed here, and this says so
+  // out loud rather than leaving a reader to wonder. Folding `_` into `*` is the
+  // only normalisation available without a parser, and on torture.md it keys the
+  // rules `***` and `___` the same -- so the half that would need one waits for
+  // the model, which records each node's spelling as written.
+  check(
+    "the emphasis delimiter is still document-wide, and an untouched block still loses it",
+    restore("An *underscored* word.\n", index("An _underscored_ word.\n")) ===
+      "An *underscored* word.\n",
   );
 }
 

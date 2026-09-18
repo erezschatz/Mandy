@@ -28,6 +28,10 @@ existing `math` and `referenceAwareLink` rules; the decision to hand-roll or
 depend is made per-construct when it is picked up, against the project's
 standing aversion to extra dependencies.
 
+`==mark==` is the author's highlight, in the file. The reader's — a marker
+run over someone else's document, kept beside it rather than in it — is a
+different feature, and has its own section below.
+
 Footnotes and heading IDs were the two with a real case; heading IDs went into
 1.0 with the link editor (TODO 1.1.10), footnotes did not. Syntax highlighting
 is also out of scope for 1.0 and sits with "More export options" below as a
@@ -62,10 +66,14 @@ The earlier note called it a fidelity problem; that was overstated. The
 **untouched file is free** — the same 3.1 source-span round-trip everything
 else gets — with one dependency: the `*[…]:` line renders to no token and so
 has no DOM node, so it needs somewhere to live in the model. That somewhere is
-the **invisible-block type the reference-link definitions are already forcing
-3.1 to add** ([REWRITE.md](REWRITE.md): "definitions get a real home as an
-invisible block with `source` in place"). Abbreviation rides on that; it does
-not pay for it alone.
+the **invisible-block type the reference-link definitions were already forcing
+3.1 to add — and it has since landed**: stage 1 slice 1 gives every source line
+no top-level token covers a block of kind `gap`, in its own position, carrying
+its own bytes. Abbreviation rides on that; it does not pay for it alone, and
+the dependency this paragraph was written against is discharged. What it would
+still add to the model is nothing: a `*[…]:` line is an ordinary paragraph
+today, because nothing parses it, and only becomes a `gap` if `markdown-it-abbr`
+is ever the parser that consumes it — which is the case `gap` already handles.
 
 The **edited** case is the only real work, and it is bounded:
 
@@ -305,7 +313,7 @@ business for years, just not the cool kids' business, and maybe it runs out.
 The question put was *can Mandy have both, and what would it take*. The answer
 is that "both" means two different things, one of which the rewrite makes
 nearly free and the other of which is a second product wearing Mandy's skin.
-The refusals are D7 in [DECISIONS.md](DECISIONS.md), which is where they stop
+The refusals are D9 in [DECISIONS.md](DECISIONS.md), which is where they stop
 being relitigated; this section keeps the tiers with their costs, and then the
 one feature that came out of it.
 
@@ -331,7 +339,7 @@ Four tiers were on the table. Weeks are [REWRITE.md](REWRITE.md)'s weeks.
   About a week on the new core, plus reopening `html: false` (S1 in
   [MARKDOWN.md](MARKDOWN.md)), plus a sanitiser, which with no dependencies is
   a hand-rolled allowlist and the part that was actually risky. **Refused,
-  D7**: an opaque block is a block whose only editing surface is its source,
+  D9**: an opaque block is a block whose only editing surface is its source,
   which is the source pane D0 refuses, through the back door.
 - **A document that carries its own design.** Tokens, not markup: the feature
   below. This is the version of "both" that is not two products.
@@ -344,7 +352,7 @@ Four tiers were on the table. Weeks are [REWRITE.md](REWRITE.md)'s weeks.
   second undo shape. And a conversion to markdown that is lossy by definition.
   Months, not weeks, and it is precisely the tree-shaped, normalising model
   REWRITE.md's first constraint rejected, so it would want an engine.
-  **Refused, D7**: a second product, not a feature.
+  **Refused, D9**: a second product, not a feature.
 
 So the honest engineering answer is that the third tier is "both" and the
 fourth is two products, and the rewrite's block-model choice is what draws the
@@ -412,7 +420,7 @@ D0, D1 and `html: false` untouched.
   longer pure content. There is a D0 irony in it being YAML, and the irony is
   survivable — D0's objection is to a *human* writing it — but it is a
   decision to reopen with the trade in front of you, not to inherit.
-- **In the file, as attributes on elements — refused, D7.** `{.callout}` on a
+- **In the file, as attributes on elements — refused, D9.** `{.callout}` on a
   paragraph, a colour on a span. One-off formatting is how documents rot, it
   is markup in the file, and it is the ceiling named below.
 
@@ -489,6 +497,99 @@ rendered DOM and `app.css`, which the rewrite leaves alone.
    decision, not a stage, until someone asks for it.
 7. **Sniff from HTML**, after 6.4 lands. Same status.
 
+## Annotations beside the file, not in it
+
+The idea, raised 2026-09-18: highlight a document the way a marker does —
+select a run of text, mark it, and have the mark still be there next week —
+without writing anything into the `.md`. Together with the per-document
+preferences that already want a home (right-to-left is TODO 4.4, and a theme
+per document is D9's own shape — this section was written on the `rewrite`
+branch before that decision landed on `main`), that is a **sidecar file**: a
+`.mandy` beside the document, holding Mandy's opinion *about* it. TODO 4.4 already
+draws the line this sits on: "direction is Mandy's opinion about the file
+rather than the file's content", and a flipped document saves byte-identical
+to its unflipped self. The sidecar generalises that from a localStorage key
+to disk, so it travels with the file and outlives the browser.
+
+**It is not a third document.** Today the DOM is the document and markdown is
+a boundary format; after 3.1 the model is the document and the DOM is a
+rendering of it. Either way there is one document with two representations,
+and the sidecar is neither: it holds no content, only references into it.
+Getting that framing right is what keeps this small.
+
+**Preferences are the easy half. Highlights are different in one way, and that
+way is the whole feature.** A direction or a theme is a scalar about the whole
+document. A highlight is a *range*, so the sidecar has to point into the
+document, and the document changes under it from both ends — Mandy edits it,
+and so does everything else on disk, which is the reason the mtime machinery
+in `file-api.js` exists at all. So the question is not where highlights live
+but what a highlight points at. Three answers, one of which survives:
+
+- **A DOM `Range`** dies on every render and cannot be written down.
+- **A character offset into the file** rots the moment anything edits a line
+  above it, including an editor that is not Mandy.
+- **A block anchor plus the quoted text.** The model's own position is
+  `(block, offset)`, and `modelInlineAt` already maps an offset to a node.
+  Record the block's source bytes (or a hash of them), the offset range within
+  that block, and the exact text the highlight covers. On load, try block and
+  offset; if the block's bytes moved, search for the quote inside that block,
+  then document-wide; otherwise the highlight is **orphaned**, and orphaned is
+  reported rather than silently dropped. That is the W3C Web Annotation shape
+  — a position selector with a quote selector as the fallback — and it is
+  also `indexMarkdownBlocks`'s content-key trick, which the rewrite is retiring:
+  the anchoring problem gives it a second life.
+
+**It waits on 3.1, and 3.1 is what makes it cheap.** The running core cannot
+render something that is not in the document, because the DOM *is* the
+document: a highlight would have to be a `<mark>` in `#editor`, and everything
+fights it — Turndown either writes `<mark>` into the file, contradicting
+`html: false` (D0), or drops it, and `normaliseEditorMarkup` strips inline
+wrappers on principle. After the rewrite, render is per block from the model
+([REWRITE.md](REWRITE.md), *Rendering*), so a decoration pass can wrap text
+nodes in `<mark>` from a second source and the model never hears of it; and
+serialisation reads the model, not the DOM, so a highlight *cannot* reach the
+file. That is the same by-construction argument REWRITE.md already makes for
+U+00A0 and for Mermaid's stash. D4's amendment applies: nothing of this is
+built against contenteditable. It slots after build-order step 2 at the
+earliest, and realistically alongside step 5, when `file-api.js` and `tabs.js`
+reintegrate — because it touches both.
+
+**The file itself is the easy part, with five decisions, all open.**
+
+- **Where it goes.** A sibling — `name.md.mandy`, so the pairing is one glob
+  and unambiguous — travels with the file when the file is moved and is what
+  the idea asked for; it also litters, and ends up committed unless
+  `.gitignore`d. A central store (`~/.mandy/…`, keyed on the path) litters
+  nothing and is never committed, and loses the annotations the moment the
+  file is moved. Sibling is the lean, since travelling with the file is the
+  point; JSON either way, not a bespoke format.
+- **The server.** `MARKDOWN_EXTENSIONS` gates the file API on three
+  extensions, and adding `.mandy` to that list would also put sidecars in the
+  Open dialog. A route that *derives* the sidecar path from the `.md` path is
+  smaller, and cannot be pointed at an arbitrary file.
+- **A document with no path** has nowhere to put a sidecar. The tab-scoped key
+  mechanism is the natural fallback — a document key for annotations in
+  localStorage, moved to the sidecar on first save — which also makes
+  annotations a fourth bundle in `tabs.js`'s park and adopt swap, beside
+  `undo`, `file` and `md`.
+- **Drift.** Stamp the sidecar with the file's mtime and a content hash. On
+  open, a mismatch means re-anchor rather than trust offsets; re-anchor and
+  rewrite as part of every save of the `.md`, when block bytes are final.
+- **Write policy, and undo.** Mandy never writes to disk without Save. A
+  highlight is not the user's authored content and has no diff-noise stake, so
+  autosaving the sidecar on a highlight change is defensible — but it is a new
+  behaviour, and it goes in DECISIONS.md rather than happening by accident.
+  Same for undo: a highlight must neither dirty the `.md` nor share its stack,
+  and whether it is undoable at all, on a stack of its own, is undecided.
+
+**Two things to keep apart.** `==mark==` (above, under the held constructs) is
+a markdown construct: the *author's* emphasis, in the file, travelling with
+it. A sidecar highlight is the *reader's* marker, beside the file. Both can
+exist and they must not be one button. And exported documents have no
+server: the editable export would inline the annotations the way it inlines
+everything else, and whether the static export renders them at all is the
+reader's-copy question the settings pane above already owns.
+
 ## Save fidelity past the point of diminishing returns
 
 Both of these refine a system that already works. D1 holds today — an untouched
@@ -547,3 +648,52 @@ because the editor rewrite (TODO 3.1, [REWRITE.md](REWRITE.md)) will settle it
 either way: a rewrite that holds the document as a model has a module boundary
 problem to solve regardless, and solving it twice would be the waste. If 3.1
 lands without settling it, this stays here.
+
+## No automated test opens, edits and saves a document
+
+**Nothing in `tests/` takes a file, changes a word, saves it, and compares the
+result to what it started as** — not through the code that actually runs when a
+user presses Save. The pieces are tested: `markdown-style.js`'s sniffers and
+re-wrapper directly, the Turndown options `app.js` asks for, the block index,
+the ghost-element predicate. The chain they form is not, so a bug can sit in the
+seam between two steps that each pass their own test. TODO 2.2 is exactly that
+bug — `reflowMarkdown` eats a hard break that Turndown had just written
+correctly — and it was found by calling one step by hand, not by a suite.
+
+Two things stop it, and neither is an oversight. [tests/dom.mjs](../tests/dom.mjs)
+is a hand-built stand-in for the page with **no HTML parser**, so there is no way
+to turn markdown into a document to feed in; and the Turndown in it is a
+recorder that hands back whatever it was given, so nothing is converted. Fixing
+either means a real DOM implementation as a dependency, which this project does
+not have and has not agreed to.
+
+**The model suite is the counter-example, and it is the interesting half.** It
+does take a file, edit one block, serialise it back and compare — 728 blocks
+across six files, one at a time, byte for byte. It can do that *because the
+model goes markdown to markdown with no browser in the middle*. The running
+editor has to go markdown → HTML → an editing engine → HTML → markdown, and
+there is no honest way to test that chain without a real one of those. So this
+item is partly answered by TODO 3.1 rather than by anything here: the more the
+model owns, the more of the round trip is testable with no browser at all.
+
+**What is within reach is a check page, and that is a genre this repo already
+has.** `browser-check`, `list-indent-check`, `list-empty-item-check`,
+`paste-check`, `tab-shortcut-check` and `spike/block-model.html` are all the same
+answer to the same problem: a real engine is the only thing that can say what
+happens, so the page carries its own protocol, a person drives it, and it reports
+what it found rather than leaving it to be felt. **The save path has no such
+page.** One would load the running app in an `<iframe src="/">` the way two of
+them already do, open a document, edit one block, save, and diff the result
+against the source — and `tests/fixtures/torture.md` is the document to do it
+with, since it is the only file here carrying constructs like a hard break at
+all.
+
+That page is the realistic version of this item. A full frontend test harness is
+not being planned: user-facing behaviour in someone else's application needs a
+person or a real engine to observe it and report back, and that is accepted
+rather than treated as a gap waiting on tooling.
+
+**The standing consequence, which matters more than the item**: when a change's
+real verification is open-edit-save in a browser and no suite can reach it,
+**that has to be said out loud**, with the manual recipe, rather than reported as
+though `npm test` covered it. CLAUDE.md's Tests section carries that rule.

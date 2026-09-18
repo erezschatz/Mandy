@@ -73,19 +73,6 @@ by importing it directly; `tests/run.mjs` runs them all.
 One suite is the exception to both halves of that: `model` needs no stub and
 does need a dependency. See its entry below.
 
-**No suite reads a living project file as test data, and no metafile quotes a
-number a suite computes.** Both rules were broken by the same arrangement and
-were fixed together on 2026-09-16 (D8's sibling problem, written up in the
-`model` entry below). Test data belongs in [tests/fixtures/](tests/fixtures/),
-where it can be edited to cover a construct — a living document cannot be, since
-nobody is going to put a quote inside a list in `README.md` for a test, so
-coverage ends up hostage to what the prose happens to need to say. And a count
-belongs in the check label that computes it and nowhere else: while `CLAUDE.md`
-and `docs/REWRITE.md` both described the suite *and* were read by it, editing
-either moved the numbers quoted in both, and refreshing those moved them again.
-A figure written in prose is one that will be wrong later; the labels are the
-report.
-
 They cover the invariants that fail *silently* rather than loudly:
 
 - **toolbar** — every item a variant renders has a handler in a script that
@@ -148,42 +135,25 @@ They cover the invariants that fail *silently* rather than loudly:
   handed it over would pass everything else and change nothing.
 - **model** — `front/model.js`, TODO 3.1's stage 1, and the only suite with no
   DOM in it: the model is pure string and token work, so it borrows dom.mjs's
-  file helpers and nothing else. It loads `markdown-style.js` ahead of
-  `model.js`, and that order is load-bearing rather than tidy: since slice 3's
-  step 5 the model calls `wrapMarkdownLine` and `hasMathSpan` rather than
-  carrying a second copy of either. Its oracle is `ORACLE_FILES`, and every file in
-  it is a **fixture** — `tests/fixtures/corpus/`, five frozen copies taken on
-  2026-09-16 of documents this project maintains by hand, plus
-  [tests/fixtures/torture.md](tests/fixtures/torture.md).
-
-  **It drove the living files until then, and that was the wrong shape.** Real
-  prose is what makes the oracle worth having — a human wrote it to be read, so
-  it carries the conventions prose carries rather than the ones a parser test
-  would think to invent — but a *living* file cannot be written for the test.
-  Nobody is going to put a quote inside a list in `README.md` to cover a
-  construct, so coverage was hostage to what the documents happened to need to
-  say. And these documents describe the suite, so every count quoted in one
-  moved the moment the other was edited: a documentation change became a failing
-  test about list items, and refreshing the figures moved them again. Copies fix
-  both at once — they can be edited to cover a construct, and editing the
-  originals cannot move a number here. **Anything in `corpus/` is oracle**;
-  there is no README in there and nothing that is not in the list, so a new file
-  is a deliberate addition. Refreshing one is deliberate too: copy the living
-  file over it and expect the counts in the labels to move.
-
-  `torture.md` is a different answer to a different half. The five are a
-  **biased** sample and the bias runs one way: all written in one voice, so
+  file helpers and nothing else. Its oracle is `ORACLE_FILES`, and it is
+  deliberately two kinds of file: five documents this project maintains by hand,
+  which are what a regression would actually damage, plus
+  [tests/fixtures/torture.md](tests/fixtures/torture.md) — one deliberately
+  messy document carrying at least one of everything in
+  [docs/MARKDOWN.md](docs/MARKDOWN.md). The fixture exists because the five are
+  a **biased** sample and the bias runs one way: all written in one voice, so
   uniformly well-formed, and between them holding no blockquote, no hard break,
   no strikethrough and no reference definition at all. It found two things on
   its first run that no repo file could: a tab-marked item derived a
   continuation indent the file does not use, **fixed the same day**, and a list
-  item inside a blockquote gets no marker, which stays pinned as a check — the
-  thing slice 3 records the quote chain to fix. It is also the only suite with
-  a dependency — a real markdown-it, since the point is to parse real markdown
-  with no browser anywhere. Since 2026-09-14 it configures that instance
+  item inside a blockquote gets no marker, which stays pinned as a check because
+  it is slice 3's open question rather than a bug. It is also the only suite with
+  a dependency — a real markdown-it, since the point is to parse this repo's own
+  files with no browser anywhere. Since 2026-09-14 it configures that instance
   with `configureMarkdownParser`, the same call `app.js` makes, so the suite and
   the app parse with one configuration rather than the suite seeing a bare
-  parser with no `math` token and no `data-ref-label` stamp in it. What it asserts is D1: every file in the oracle comes back byte-identical,
+  parser with no `math` token and no `data-ref-label` stamp in it. What it asserts is D1: `CLAUDE.md`, `README.md`,
+  `welcome.md`, `docs/TODO.md` and `docs/REWRITE.md` come back byte-identical,
   and editing one paragraph rewrites exactly that paragraph. Since slice 1b it
   also asserts the same invariant one level down — a container's children tile
   its own bytes, at every depth, on those same files — plus the spans the tiler
@@ -194,31 +164,19 @@ They cover the invariants that fail *silently* rather than loudly:
   exactly the state slice 1 left it in. It also carries **the metric**, because
   the number slice 1b exists to move should not be something a human measured
   once and quoted: the worst edit in each of those files as a share of it, the
-  guard that `corpus/todo.md`'s largest top-level block is still a third of the
-  file so the share moved for the right reason, and every block in the oracle
-  edited alone to prove it rewrites exactly itself. **The counts live in the
-  check labels and nowhere else**, so a run reads as a report and no prose
-  anywhere has to be kept in step with them. Since slice 2's step 1 it also drives the
+  guard that `docs/TODO.md`'s largest top-level block is still a third of the
+  file so the share moved for the right reason, and every one of their ~970
+  blocks edited alone to prove it rewrites exactly itself. The numbers are in the check
+  labels, so a run reads as a report. Since slice 2's step 1 it also drives the
   inline tree, where the invariant is the same shape one level down again:
-  across every inline-bearing block in the oracle, all of the nodes are the
+  across those files' 861 inline-bearing blocks, all 12,060 nodes are the
   parser's own tokens, each in the tree exactly once and in order, and every
-  token left out is one of the empty text tokens the fold drops on purpose.
+  token left out is one of the 423 empty text tokens the fold drops on purpose.
   Step 2 adds the offset space over that tree, where the property is a fixpoint:
-  every leaf in those files, at both edges and the middle, maps to an
+  all 11,190 leaves in those files, at both edges and the middle, map to an
   offset that maps back to the same place — plus the one check the model cannot
-  mark its own homework on, that in a block holding no markup at all the
-  text it renders is the content markdown-it recorded. Slice 3's step 3 is the
-  same shape once more and the sharpest of the three: throw away every
-  inline-bearing leaf's `source` and emit it from its tree alone, and every one
-  comes back byte-identical. Its hand-written cases are one per affix rule, and
-  each rule was broken on purpose first to confirm the check fails — two of them
-  were caught only by the oracle sweep on the first pass, which is how a case
-  reaching for the wrong leaf was found. Step 4 adds the reference-definition
-  search, checked against the parser's own answer for the whole file rather than
-  against itself: on the six oracle files, where all five definitions are in
-  `torture.md`, and on ten hand-written cases either side of the line — in a
-  list item, in a quote, two quotes deep, two in one block, wrapped, and the
-  four places a definition-shaped line is not one.
+  mark its own homework on, that in the 204 blocks holding no markup at all the
+  text it renders is the content markdown-it recorded.
 - **tabs** — the per-tab state boundaries and the swap between documents: that
   park and adopt are lossless and adopting nothing is a blank document rather
   than a half-cleared one; the migration off the flat keys and both ways a
@@ -335,34 +293,13 @@ that half again needs a real keyboard rather than this page.
 
 [tests/paste-check.html](tests/paste-check.html) is the last, and the only one
 that cannot be run by a machine at all: it measures what a browser puts in a
-paste event for the paste-as-plain-text binding, which needs a real clipboard
-and a real keystroke. **It answered the question in all three engines, and the
-answer was no every time** — Chrome 152 and Firefox 154 on 2026-08-30, Safari
-26.6.2 on 2026-09-18: each offers `text/plain` alone on its own plain-text
-binding, so the plain branch in `app.js` already fires and there was never
-anything to build. That is the opposite of what the item behind it predicted for
-all three, which is the whole argument for the check pages, and it is what
-closed that item with no code — see CHANGELOG.md, since the item has left
-docs/TODO.md and its number is free for something else. All three deliver the
-`keydown` to the page as well, so the flag-from-keydown shape stays available if
-a browser ever changes its mind.
-
-**So the page is now a regression check rather than an open question, and that
-is why it stays**: the answer is per browser and per version, and the way it
-comes back is a browser release rather than a change here.
-
-Safari was the last of the three and cost a bug first: until 2026-09-18 the page
-could not have measured it. Its binding is Cmd+Shift+Option+V, the keydown
-matcher tested `e.key === "v"`, and on macOS Option composes characters — Option
-and V make `√` — so the match never fired. **It did not fail loudly**: the
-keydown was dropped and the paste was attributed to whichever keystroke came
-before it, reading as `Ctrl/Cmd+V` if the tester was quick and `menu or unknown`
-if they were not. It now matches `e.code`, names the binding from the modifiers
-actually pressed, logs every keydown it sees, and consumes a keystroke once a
-paste has used it. A check page that drops evidence quietly is worse than none,
-since the whole point is to report what the browser did rather than what we
-expected. Unlike the two before it, it needs no server and no app — open the
-file itself, which is why it is not in `CHECK_PAGES`.
+paste event for Ctrl+Shift+V, which needs a real clipboard and a real
+keystroke. It answered the question TODO 1.3 opened with: Chrome 152 and Firefox
+154 both offer `text/plain` alone on that binding, so the plain branch in
+`app.js` already fires and there was nothing to build for either — the opposite
+of what the item predicted. Safari is still unmeasured; its binding is
+Cmd+Shift+Option+V. Unlike the two before it, it needs no server and no app —
+open the file itself, which is why it is not in `CHECK_PAGES`.
 
 [spike/block-model.html](spike/block-model.html) is a sixth page of the same
 family and the only one outside `tests/`, because it watches a core that does
@@ -545,9 +482,7 @@ has split the paragraph in two before any inline rule runs.
 ### The model
 
 [model.js](front/model.js) is the start of what replaces the section above, and
-the branch note at the top says why nothing loads it. **Stage 1 closed on
-2026-09-18**; where each stage stands is in
-[docs/REWRITE.md](docs/REWRITE.md). It is pure string and
+the branch note at the top says why nothing loads it. It is pure string and
 token work, which is what lets the `model` suite drive it with no DOM anywhere.
 
 `modelParse(markdown, md)` returns `{ prefix, blocks }`, and the invariant that
@@ -559,7 +494,7 @@ back. That is the inversion the whole rewrite is for. Two identical paragraphs
 cannot be confused for one another by a source span, and `indexMarkdownBlocks`
 keys on content precisely because it has no span to use instead.
 
-Twelve things that are decisions rather than details:
+Eight things that are decisions rather than details:
 
 - **The parser is injected, never reached for.** `modelParse` takes the
   markdown-it instance as an argument. Both callers now configure it the same
@@ -599,9 +534,8 @@ Twelve things that are decisions rather than details:
   today, is only a taller one.
 - **A container holds children that tile its own bytes, and the serialiser does
   not read them yet.** A list was one block, which was a known regression rather
-  than the design: `docs/TODO.md` was 708 lines and sixteen top-level blocks when
-  this was measured on 2026-09-12, the largest 239 of them, so editing one item
-  would rewrite a third of the file —
+  than the design: `docs/TODO.md` is 794 lines and sixteen top-level blocks, the
+  largest 267 of them, so editing one item would rewrite a third of the file —
   the unmergeable diff D1 exists to prevent, and *worse* than the three-layer
   restore this replaces, since `markdownSegments` splits on list markers for
   exactly this reason. Slice 1b is the fix, and its first two steps are in: a
@@ -616,7 +550,7 @@ Twelve things that are decisions rather than details:
   clears the touched block's ancestors so that recursion reaches it (step 4 —
   see the bullet below). Editing the first bullet in `docs/TODO.md` therefore
   asks the emitter for a 10-line paragraph where the same edit used to
-  re-serialise the whole list around it, and a bullet five blocks down costs
+  re-serialise the 267-line list around it, and a bullet five blocks down costs
   one emitter call. Every item also carries its own marker and continuation
   indent (step 5), recorded at parse by `modelItemPrefix` because slice 3's
   emitter has to write both back and re-reading them at emit time would be a
@@ -626,32 +560,11 @@ Twelve things that are decisions rather than details:
   the file continues under a bare `"\t"` — the same column, different bytes, and
   an edited item written back under an indent its author never used. **The
   metric is the suite's, not a human's** (step 6): editing the worst block in
-  the oracle's copy of `docs/TODO.md` rewrites a handful of its lines where the
-  same edit cost the whole enclosing list before the slice, and every block the
-  suite drives rewrites exactly itself when edited one at a time. The figures
-  are in the labels. A blockquote's `> `
-  chain is the same problem as the marker, and is **recorded the same way**,
-  which is slice 3's step 1 and landed 2026-09-16: `modelQuotePrefix` fills
-  `quotePrefixes`, one string per line of a block's source. **Per line rather
-  than per block**, because a lazy continuation carries no `>` at all and a
-  quote can start indented, so one prefix for the whole block would write bytes
-  the author never used. Depth is the number of quote containers a block is
-  inside, so a block records the chain of the quotes it is *in* and never its
-  own — a quote is a container and re-emits from its children. It is also what
-  makes an item behind a `> ` an ordinary item: `modelItemPrefix` now scans the
-  line with the chain already claimed, where before it found no marker at all.
-- **A heading's spelling is recorded too, and it is the model's one suffix.**
-  Slice 3's step 2, same day. `level` has been on the block since slice 1 and
-  says nothing about how the heading was written — `# T`, `# T #` and `T` over
-  `=====` are all level 1, and `======` and `===` are the same heading in
-  different bytes — so `modelHeadingShape` records `{ open, close, underline }`.
-  Everything else markdown-it strips sits in *front* of the content; a closing
-  hash run and a setext underline sit behind it, which is why the only blocks in
-  the oracle whose source is not a per-line prefix plus their inline source are
-  headings. The branch is taken on the parser's own `markup` rather than on a
-  line count, and the result is checked against `inline.content` rather than
-  trusted: a shape that does not line up is null, so the emitter has nothing to
-  work from instead of the model inventing a spelling. 1b's step 5 left it open between that and re-applying the
+  `docs/TODO.md` rewrites 15 of its 794 lines where the same edit cost 267
+  before the slice, and all 975 blocks across the six files the suite drives
+  rewrite exactly themselves when edited one at a time. A blockquote's `> `
+  chain is the same problem as the marker, and is **settled the same way**: it is
+  recorded at parse. 1b's step 5 left it open between that and re-applying the
   chain at emit time, for want of anything to measure — this repo has no
   blockquote in any of its nine markdown files. `tests/fixtures/torture.md` is
   the measurement, and it decides it: `modelItemPrefix` returns null for every
@@ -674,8 +587,8 @@ Twelve things that are decisions rather than details:
   them from the source would be a second parser free to disagree with the first.
   **An image is one node rather than its alt text**, which is step 2's offset
   rule arriving early. The one thing the fold drops is a zero-length text token,
-  of which markdown-it leaves one either side of every mark it converts, of which
-  the oracle holds several hundred: they hold no bytes, and a position inside one cannot be told
+  of which markdown-it leaves one either side of every mark it converts — 423 in
+  the oracle files: they hold no bytes, and a position inside one cannot be told
   from a position beside it. The suite checks that omission as an omission —
   every token not in the tree is an empty text token, and everything else is
   there exactly once, in order.
@@ -694,75 +607,15 @@ Twelve things that are decisions rather than details:
   0 — so stage 2 ports the caret behaviour instead of re-deciding it.
   `modelInlineAt` hands back the mark chain as `path`, which is how the tree
   answers what marks a position carries.
-- **An edited leaf is put back together out of the affixes, not written from a
-  house style.** `modelEmitLeaf` is slice 3's step 3 and is what
-  `modelEmitBlock`'s `emit` argument stood in for: `modelInlineSource` for the
-  content — which slice 2 already reconstructs byte for byte — and then, per
-  line, the quote chain, the item marker or continuation indent, and for a
-  heading its `open` and its closing run or setext underline. **The affixes are
-  absolute**, so only the *nearest* item ancestor contributes: a child's source
-  is its lines whole, so a nested item's marker already carries every outer
-  indent, and stacking them reproduces 707 of the oracle's 861 inline-bearing
-  leaves instead of all of them. Two suppressions follow from the same fact, and
-  both are 1b's tab bug one layer along — an affix recorded from its own column
-  0 has already claimed the item's indent, so a quote *inside* a bullet and a
-  heading inside one each take no item affix. It refuses rather than guesses
-  three times over, and each refusal is a `null` something recorded on purpose:
-  a leaf with no inline tree (a fence, indented code, a rule, a gap, a table
-  row — their content *is* source and is edited as source), a heading whose
-  shape did not line up, an item whose marker was never found.
-- **The emitter is handed the document, and that is what a reference link costs.**
-  Slice 3's step 4, and the slice's one piece of new plumbing.
-  `modelRebuildTail` writes `[text][label]` off the `data-ref-label` stamp for a
-  link a command built or changed, and whether that label still resolves is a
-  question about the whole document — so `modelReferenceLabels(doc, md)`
-  searches it and a label nobody defines any more falls back to the inline form
-  instead of a reference that renders as literal text. It searches **every leaf
-  with no inline tree**, not the `gap` blocks: `> [b]: u` is a quote whose only
-  content is the definition, so it has no children and is a childless leaf, and
-  a scan of the gaps misses it. And it asks **`md.parse`**, whose
-  `env.references` is markdown-it's own record — which is what makes a
-  definition **wrapped onto a second line** work here where
-  `scanReferenceDefinitions`'s single-line regex cannot see one at all. The scan
-  is lazy, at most once per emitted block and never cached across blocks, since
-  an edit to a definition is exactly what a cache would go stale on. Handed no
-  document it keeps the stamp's spelling, which is slice 2's behaviour: a caller
-  not given the means to answer should not materialise a possibly stale href on
-  a guess. **A reference *image* is the one thing this cannot reach** —
-  `referenceAwareLink` replaces markdown-it's `link` rule and nothing else, so
-  an image carries no stamp; an untouched one round-trips on its recorded tail
-  and a rebuilt one comes back inline.
-- **Re-wrapping is the second layer, and it is applied to one block.** Slice 3's
-  step 5. `modelEmitLeaf` takes a width and hands each over-long composed line to
-  `wrapMarkdownLine` — **with the prefixes it recorded at parse rather than
-  letting the wrapper read them back off the line**, which is that function's
-  new third argument and the reason `wrapMarkdownPrefixes` now exists as its
-  default. The difference is the tab: derived, the marker `"-\t"` continues
-  under two spaces, the same column in different bytes, on 1 item in 343 across
-  the oracle. Most of the value is in what is *not* wrapped — never a heading
-  (a wrap turns its tail into a paragraph, and a `#` scan cannot see a setext
-  one), never a line carrying maths, and never a line already inside the width,
-  because `inline.content` keeps the author's own breaks so only a line the edit
-  made too long is touched. A width of 0 is a real answer meaning *this file is
-  not hard-wrapped*, and `README.md` is one. This is why `model.js` must load
-  **after** `markdown-style.js`: it calls `wrapMarkdownLine` and `hasMathSpan`
-  rather than carrying a second copy of either.
-- **`leadingAffix` is everything markdown-it took off the first line, recorded
-  whole.** A paragraph indented one to three spaces is still a paragraph and has
-  that indent stripped off `inline.content` exactly as a list marker is — so
-  until 2026-09-18 an edited one came back flush left, silently, and every check
-  passed because no paragraph in the oracle is indented. Whole rather than named
-  because the pieces worth naming already are: the emitter subtracts the item
-  prefix it is putting back and keeps the remainder, which is one subtraction in
-  one place instead of a second derivation at parse. Verified against
-  `inline.content`, and a null is a shape the emitter refuses on.
 
-**Stage 1 is closed** — 2026-09-18, all four slices. The model parses a
-document, holds it as blocks that tile the file and children that tile their
-containers, records every spelling markdown-it discards, and emits an edited
-block back in the conventions its own bytes recorded. What it does *not* do is
-render, take input, or run a format command: those are stages 2 and 3, and
-nothing in `front/` loads this file until stage 4.
+What it does not do yet: put back the spellings markdown-it discards when it
+re-emits — a code span's
+padding, an escape, an angle-bracket destination, a hard break's two spellings
+(step 3) — turn an edited *leaf* into markdown at all (`modelSerialise` throws
+rather than guess — an edited container is only a concatenation of bytes that
+already exist, so it needs no emitter), or hand that emitter anything about a
+blockquote's `> ` chain, which is the marker question settled but not yet
+written. Those are the rest of stage 1 and stages 2 and 3.
 
 ### Links and heading anchors
 
@@ -1019,10 +872,9 @@ not cover):
     ordered-list delimiter and whether it was numbered all-`1.`, autolinks, the
     hard-break spelling (two trailing spaces or a backslash, document-wide like
     the emphasis delimiters, so a file mixing both has its minority one
-    rewritten in every block Turndown serialises — which since 2026-09-18 is
-    only an **edited** block, because layer 3's key stopped reading the break
-    spelling; the emphasis delimiter is still rewritten everywhere, and both
-    halves are TODO 2.3), and the wrap width. `adoptMarkdownStyle` in `app.js`
+    rewritten — in **every** block holding it and not only an edited one, which
+    is TODO 2.3 and is not what this sentence claimed until 2026-09-13), and the
+    wrap width. `adoptMarkdownStyle` in `app.js`
     pushes the Turndown-option subset onto the live options object; the rest is
     read by the `listItem` and `autolink` rules. Every default is Turndown's
     own, so a document that sniffs to nothing behaves exactly as it did before
@@ -1078,33 +930,20 @@ and `| --- | --- |` are the same table and would never be the same key.
 runs before the key is taken — but only in a block that holds a delimiter row, so
 a `---` rule and a paragraph containing a pipe both stay literal.
 
-**The key has to ignore everything the serialiser rewrites**, or a block that
-changed in no other way stops matching itself, misses the index, and is handed
-to layer 2 — rewritten and re-wrapped despite the user never touching it. That
-is why `normaliseTableRows` and the punctuation-unescape are in
-`markdownBlockKey` at all, and **layer 1's own sniffed options were the case
-nobody covered**, which is TODO 2.3. Turndown writes the sniffed hard break and
-emphasis delimiter into every block before layer 3 runs, so a block spelling
-either the minority way keyed differently from its own source. It loses no
-content — the break is still a break — but "an untouched block comes back
-byte-identical" is layer 3's whole promise, and that is where it was not true.
-
-**The hard break is fixed; the emphasis delimiter is not, and the split is
-measured rather than chosen.** `markdownBlockKey` drops a trailing backslash
-before it collapses whitespace, so the two spellings of a break land on one key:
-measured across all six oracle files, that makes **no two different blocks key
-alike**. The emphasis delimiter has no such normalisation available without a
-parser — folding `_` into `*` keys the rules `***` and `___` identically on
-`tests/fixtures/torture.md`, so the restore layer could hand back the wrong
-bytes, which is worse than the bug — and telling a delimiter from a
-`snake_case` identifier or a code span is a second parser free to disagree with
-the first. The model records each node's spelling as written, so that half waits
-for TODO 3.1 rather than for something to be invented.
-
-**It is fixed for an untouched block only, which is exactly what layer 3
-promises.** Edit a paragraph whose break is spelt the minority way and it still
-comes back in the document's spelling, because Turndown has one setting for the
-whole file. That residue is 3.1's, where the spelling is per node.
+**That normalisation is one case of a rule the key does not follow generally,
+and the gap is TODO 2.3.** The key has to ignore everything the serialiser
+rewrites, or a block that changed in no other way stops matching itself — which
+is the reason `normaliseTableRows` and the punctuation-unescape are in
+`markdownBlockKey` at all. Layer 1's own options are the case nobody covered:
+Turndown writes the *sniffed* hard break and emphasis delimiter into every block
+before layer 3 runs, so a block spelling either of them the minority way keys
+differently from its own source, misses the index, and is handed to layer 2 —
+rewritten and re-wrapped despite the user never touching it. The restore layer
+therefore protects a block whose serialisation is stable and silently fails on
+exactly the blocks where the sniffed style disagrees with the author's local
+spelling. It only bites a document that mixes spellings, and it loses no
+content — but "an untouched block comes back byte-identical" is layer 3's whole
+promise, and this is where it is not true.
 
 CLAUDE.md, README.md and welcome.md all round-trip byte-identical. Editing one
 word in CLAUDE.md changes exactly the paragraph it was in.
@@ -1206,8 +1045,8 @@ would otherwise destroy, read it back at serialise time.
   fold it onto a continuation line at an indent CommonMark never promised
   meant anything.
 
-Three things this does not reach, all consequences of the same root cause —
-markdown-it giving a definition no DOM node — and all accepted rather than
+Two things this does not reach, both consequences of the same root cause —
+markdown-it giving a definition no DOM node — and both accepted rather than
 solved. **A definition spanning more than one line** is invisible to the
 scan, so a reference resolved through one saves as a plain inline link
 instead. **An edited or freshly-typed reference link** — one whose usage
@@ -1215,22 +1054,9 @@ syntax does not byte-match what the source wrote, which includes every
 `[text][]` or bare `[text]` shortcut form, since the rule always writes the
 explicit `[text][label]` — falls out of the segment-matching restore the same
 way any edited paragraph does, and saves in the explicit form rather than the
-collapsed one the author chose. Neither of those loses the link or the
-definition; both just cost the byte-perfection an untouched, already-explicit
-reference gets for free.
-
-**A reference *image* is the third, and it is the one that does lose
-something.** Measured 2026-09-18 while building slice 3's step 4:
-`referenceAwareLink` replaces markdown-it's inline `link` rule and nothing
-else, so `![alt][label]` gets no `data-ref-label` at all — and the
-`referenceLink` rule filters on `nodeName !== "A"` besides. So an image
-resolved through a reference always serialises inline, and if it was the only
-use of that label the definition is dropped with it. Reaching it means copying
-markdown-it's `image` rule the way its `link` rule was copied, which is worth
-doing under 3.1's parser configuration rather than bolted onto this one; the
-model retires the first of these three by construction (a definition is an
-ordinary block, so a wrapped one is only a taller one) and the rewrite is where
-the other two belong too.
+collapsed one the author chose. Neither loses the link or the definition; both
+just cost the byte-perfection an untouched, already-explicit reference gets
+for free.
 
 ### Lazy loading
 
@@ -1383,20 +1209,14 @@ reimplementing the sanitise-and-insert path. Reading the clipboard is a
 permission the app may not have, so both report failure by pointing at the
 keyboard, which never needed it.
 
-**`.toolbar` is one row now, in both the app and an exported document** — it
-was two rows in the app until the chrome redesign (`docs/redesign/`, closed
-out in CHANGELOG.md) moved the tab strip out to a sibling appended right
-after `.toolbar`, on the page rather than inside the teal row. It is sticky
-in its own right, pinned just below `.toolbar`: it briefly scrolled away
-with the document instead, which read as the strip vanishing on any
-downward scroll rather than as the feature the design doc called it.
-`.toolbar` itself holds two
-groups kept apart by its own `space-between`: `.toolbar-left` (the app mark
-and the menus) always, and `.toolbar-right` (the open file's directory, then
-the theme toggle) in the app only — an exported document has no file on disk
-and no theme toggle, so it gets no right group at all rather than an empty
-one. `toolbar.js` ships `#tabBar` empty and `tabs.js` fills it — the same
-arrangement `.toolbar` itself has, and for the same reason.
+**The bar is two rows in the app, one in an exported document.** The menus have
+the first to themselves. The second is `.toolbar-content`, the document row: the
+tab bar on the left, the theme toggle on the right. It was a row of its own
+while it still held nothing but a filename, precisely so the tab bar could
+arrive without moving anything else. `toolbar.js` ships `#tabBar` empty and
+`tabs.js` fills it — the same arrangement `.toolbar` itself has, and for the
+same reason. An exported document holds one document, has no file on disk and
+no theme toggle, so it gets no second row at all rather than an empty band.
 
 There is no GitHub link. It pointed away from the app from a bar that should be
 about the document, and it was the tallest thing in that bar.
@@ -1441,35 +1261,31 @@ Six things that are decisions rather than details:
   clicked, and a menu closes on the click — so they are `notify` toasts now, and
   `flashButton` is gone. Anything new that wants to report on a click has the
   same problem and the same answer.
-- **`--toolbar-height` is a plain fixed value, not a formula**, since the
-  chrome redesign (`docs/redesign/`, closed out in CHANGELOG.md) moved the
-  tab strip out of `.toolbar` to a sibling appended right after it — the row
-  is the mark and the menus, and in the app the open file's directory and
-  the theme toggle, none of which can make it taller than the `40px` both
-  variants now share. It used to be a sum of two rows' worth of padding and
-  font-size custom properties, and before that a per-variant
-  `:root[data-variant="export"]` override shortened it for the export's
-  one-row bar — neither is left to repoint now that both variants only ever
-  had one row to begin with. The toolbar still ships empty and the two
-  render-blocking CDN scripts still sit above `toolbar.js`, so the
-  reservation is still what stops everything below jumping once the script
-  runs; it is a literal now rather than a chain of variables, which is
-  safer, not more fragile — there is nothing left for it to go stale
-  against. The tab strip, being a sibling rather than part of `.toolbar`,
-  reserves its own height separately through `--tab-bar-height`
-  (`.tab-bar`'s `min-height`) — and is sticky in its own right rather than
-  scrolling away, so `.outline`'s sticky offset reads both variables
-  together (`calc(var(--toolbar-height) + var(--tab-bar-height))`). That
-  brought the per-variant override back, just for a different value: an
-  exported document has no tab bar at all, so `[data-variant="export"]`
-  redefines `--tab-bar-height` to `0px` rather than the app's `36px`.
-- **The theme toggle carries a `title`, and `theme-manager.js` moves it.** It
-  is a two-segment sun/moon switch with no label of its own — CSS alone
-  decides which segment is lit, off the same `data-theme` attribute
-  `theme-manager.js` always wrote — and it is the only control left in the bar
-  that is not a word. The title and the `aria-label` say the same sentence and
-  are updated together in `updateToggleButton`; stamp one and not the other
-  and the tooltip ends up claiming the opposite of what the switch will do.
+- **`--toolbar-height` is the sum of the rows**, not a `max()` of what is in
+  them: the menu row, the gap, and the document row, whose own height is the
+  taller of the two things on it. The toolbar ships empty and the two
+  render-blocking CDN scripts sit above `toolbar.js`, so there is a real window
+  in which the page paints with nothing in it — the reserved height is what
+  stops everything below jumping when the script runs. It measures exactly at
+  every width, which it never did while the bar was one row that wrapped, and
+  everything the arithmetic reads is a custom property so changing a size makes
+  the reservation follow.
+- **The export's shorter bar is stamped, not detected.** `:root[data-variant]`
+  redefines `--toolbar-height` to the menu row alone, and the variant is written
+  by the same inline script in the export's `<head>` that sets the theme —
+  before the stylesheet is read. It cannot be a rule keyed on `.toolbar-content`
+  being absent, however tempting `:has()` looks: the row is equally absent in
+  the app until `toolbar.js` runs, which is the exact window the reservation
+  exists for, so such a rule would reserve the short bar for everyone and then
+  jump. That makes `THEME_SCRIPT` in `html-export.js` and the
+  `:root[data-variant="export"]` block in `app.css` two halves of one thing with
+  no import between them; the toolbar suite checks both.
+- **The theme toggle carries a `title`, and `theme-manager.js` moves it.** It is
+  a sliding pill with no label, so without one nothing on screen says what it
+  does — and it is the only control left in the bar that is not a word. The
+  title and the `aria-label` say the same sentence and are updated together in
+  `updateToggleButton`; stamp one and not the other and the tooltip ends up
+  claiming the opposite of what the switch will do.
 - **`tocBtn` is the only stateful item.** `outline.js` writes `aria-pressed` on
   it by action, exactly as it did to the old toggle button, and `app.css` draws
   the checkmark from that attribute. Every item reserves the checkmark's gutter
@@ -1714,17 +1530,11 @@ Three more things worth knowing:
   sized from `--outline-width` rather than from the nav's content. Both exist so
   the editor does not render full-width and then shift once `outline.js` runs —
   the same problem `.toolbar`'s `min-height` solves.
-- **Rebuilds hang off a `MutationObserver` on `#editor`**, not an `input`
-  listener, because the document also changes from Open, Reload, New, paste
-  and the welcome fetch. It is debounced by a second for typing and **not for
-  a document swap**: a record whose target is the editor itself with
-  `childList` — which is what one `innerHTML` assignment produces, measured
-  2026-09-18 — renders at once, so a tab switch does not show the previous
-  document's headings for a second (TODO 4.6). The shape is read off the record
-  rather than off a flag, so the assignment sites need not know. The click
-  handler captures the heading *element* rather than looking it up by slug,
-  since a slug goes stale the moment its heading is edited and the rebuild can
-  be a second behind.
+- **Rebuilds hang off a debounced `MutationObserver` on `#editor`**, not an
+  `input` listener, because the document also changes from Open, Reload, New,
+  paste and the welcome fetch. The click handler captures the heading *element*
+  rather than looking it up by slug, since a slug goes stale the moment its
+  heading is edited and the rebuild is a second behind.
 
 The static export's TOC is gated on `outlineIsOpen()`. That is a placeholder for
 a Settings pane, not a design — the sidebar is chrome for the author and the

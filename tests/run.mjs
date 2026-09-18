@@ -16,6 +16,7 @@ const SUITES = [
   ["notify", "./notify.test.mjs"],
   ["undo", "./undo.test.mjs"],
   ["execcommand", "./execcommand.test.mjs"],
+  ["model", "./model.test.mjs"],
 ];
 
 let passed = 0;

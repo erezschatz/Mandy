@@ -1,0 +1,17 @@
+{
+  // The repo root's Deno config, and it exists for the test suite alone —
+  // server/ has its own, and `npm run serve` runs in there.
+  //
+  // Two lines, both needed for the same reason. `tests/model.test.mjs` needs a
+  // real markdown-it outside a browser (TODO 3.1 stage 1 proves the model
+  // round-trips this repo's own files with no DOM in the way), and the version
+  // is pinned here rather than inline so there is one place to change it —
+  // though **front/index.html's CDN tag is the other half of that pin and has
+  // to move with it**. `nodeModulesDir: none` keeps Deno resolving that out of
+  // its own cache: package.json's presence otherwise sends it looking for a
+  // node_modules this project does not have and does not want.
+  "nodeModulesDir": "none",
+  "imports": {
+    "markdown-it": "npm:markdown-it@13.0.1"
+  }
+}
