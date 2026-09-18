@@ -151,39 +151,6 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     - **Touch devices have no modifier**, so there is no way to follow a link on
       one, and the hover tooltip never shows either. Wants its own affordance —
       a long-press, or the chip Google Docs shows.
-*   **1.3** *(fixed, unverified in WebKit)*
-    Paste without formatting is built; what is left is one measurement.
-
-    [tests/paste-check.html](../tests/paste-check.html) settled the question
-    this item opened with — whether the browser still puts a `text/html`
-    flavour in the event on Ctrl/Cmd+Shift+V, in which case app.js's preference
-    for HTML would override the user's request. **Measured 2026-08-30: Chrome
-    152 and Firefox 154 both offer `text/plain` alone**, so the plain branch
-    already fires and there was nothing to build for either. That is the
-    opposite of what this item predicted, which is the whole argument for the
-    check pages. Both engines also deliver the `keydown` for Shift+V to the
-    page, so if WebKit does keep the HTML flavour, the shape to reach for is a
-    flag set from a `keydown` on `#editor` and consumed by the next `paste`
-    event — now known to be workable rather than assumed.
-
-    **What is left: run the page in Safari.** Its binding is
-    Cmd+Shift+Option+V rather than Cmd+Shift+V, so press both and see which one
-    the page logs as a plain-text paste. If WebKit strips the flavour like the
-    other two, this item closes with no further code.
-
-    **The page could not have measured Safari until 2026-09-18**, which is why
-    this is still open rather than merely unrun. Its keydown matcher tested
-    `e.key === "v"`, and on macOS the Option key composes characters — Option
-    and V make `√` — so with Option held the match never fired. The keydown was
-    dropped, and the paste was attributed to whatever keystroke came before it:
-    "Ctrl/Cmd+V" if the tester was quick, "menu or unknown" if they were not.
-    Fixed by matching `e.code` (the physical key, immune to layout and
-    modifiers), naming the binding from the modifiers actually pressed,
-    treating *any* extra modifier as the plain-text binding rather than Shift
-    alone, logging every keydown that reaches the page, and consuming a
-    keystroke once a paste has used it. **A wrong measurement is worse than a
-    missing one**, and this page produced one.
-
 *   **1.4** *(closed by 3.1)* Invisible whitespace: what the cleanup does not
     reach. Pasted HTML is sanitised on the way in and U+00A0 is normalised on
     the way out (see D3

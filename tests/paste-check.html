@@ -3,9 +3,9 @@
 <title>Mandy paste-without-formatting check</title>
 
 <!--
-  The question TODO 1.3 opens with, which only a person with a real clipboard
-  can answer: when you press Ctrl/Cmd+Shift+V, does the browser still put a
-  text/html flavour in the paste event?
+  The question this page exists for, which only a person with a real clipboard
+  can answer: when you press the browser's own paste-as-plain-text binding, does
+  it still put a text/html flavour in the paste event?
 
   It matters because the handler in front/app.js prefers text/html whenever the
   clipboard offers one — so if the flavour is still there on that binding, the
@@ -13,7 +13,7 @@
   If the browser strips it, the plain branch already fires and there is nothing
   to build for that browser.
 
-  It also measures the second half of 1.3's proposed fix — "a flag set from a
+  It also measures the shape any fix would have to take — "a flag set from a
   keydown on #editor and consumed by the next paste event" — by reporting
   whether the keydown for that binding reaches the page at all. If a browser
   swallows it, the flag has nothing to hang off and the shape has to change.
@@ -21,12 +21,20 @@
   Unlike browser-check.html and list-indent-check.html, this one needs no
   server and no app: open the file directly in each browser you care about.
 
-  Measured 2026-08-30 — Chrome 152 and Firefox 154 both offer text/plain alone
-  on Shift+V, and both deliver the keydown to the page. So the plain branch
-  already fires in Blink and Gecko and there is nothing to build for either.
+  **Answered in all three engines, and the answer was no every time.** Chrome
+  152 and Firefox 154 on 2026-08-30, Safari on 2026-09-18: every one of them
+  offers text/plain alone on its own plain-text binding, so app.js's plain
+  branch already fires and there was never anything to build. All three deliver
+  the keydown to the page as well, so the flag shape stays available if a
+  browser ever changes its mind.
 
-  Safari is still unmeasured, and until 2026-09-18 this page could not have
-  measured it: WebKit's binding is Cmd+Shift+Option+V, and the keydown matcher
+  **So this page is now a regression check rather than an open question**, and
+  that is why it stays: the answer is per browser and per version, and the way
+  it would come back is a browser release, not a change here. Re-run it when a
+  browser does something surprising around paste.
+
+  Safari was the last of the three, and until 2026-09-18 this page could not
+  have measured it: WebKit's binding is Cmd+Shift+Option+V, and the keydown matcher
   tested `e.key === "v"`. On macOS the Option key *composes characters* — Option
   and V together produce "√" — so `e.key` is never "v" while Option is held,
   the handler returned early, and the paste was logged as "menu or unknown".
@@ -173,8 +181,8 @@
     if (pressed && pressed.plainText) {
       meaning = takesHtml
         ? "<span class='verdict problem'>Formatting survives.</span> The browser still offers " +
-          "text/html on this binding, so app.js takes it and overrides the request. TODO 1.3's " +
-          "work is needed in this browser."
+          "text/html on this binding, so app.js takes it and overrides the request. This browser " +
+          "needs the app to notice the binding itself — which no browser has needed so far."
         : "<span class='verdict clear'>Nothing to build here.</span> No text/html on this " +
           "binding, so the plain branch already fires and the paste arrives bare.";
       seen.plainText = { takesHtml, types, label: pressed.label };
@@ -217,7 +225,7 @@
     if (seen.plainText) {
       parts.push(sawPlainTextKeydown
         ? `The <code>keydown</code> for ${binding} <b>does</b> reach the page, so a flag set there and read by the next paste event is a workable shape.`
-        : `<span class='problem'>The <code>keydown</code> for ${binding} never reached the page</span> — a flag set from keydown has nothing to hang off in this browser, so 1.3's proposed shape would not work here.`);
+        : `<span class='problem'>The <code>keydown</code> for ${binding} never reached the page</span> — a flag set from keydown has nothing to hang off in this browser, so a flag set from keydown would not work here.`);
     }
     parts.push(`<br><small>${navigator.userAgent}</small>`);
     summary.innerHTML = parts.join("<br>");

@@ -4637,3 +4637,46 @@ The instructions now name both bindings and say to try the other if nothing
 happens. Nothing in `front/` changed and no suite loads this page, so `npm test`
 proves nothing about it and was not run for it; the verification is the harness
 above plus a real Safari, which is still TODO 1.3's remaining measurement.
+
+## 2026-09-18 — Safari answers it too, and TODO 1.3 closes
+
+Run in Safari on macOS with a real clipboard and a real keyboard, which is the
+only way this question can be asked:
+
+| Paste | Flavours offered | Mandy would take |
+| --- | --- | --- |
+| Cmd+V | `text/html` `text/plain` | the text/html branch |
+| Cmd+Shift+Option+V | `text/plain` | the plain text branch |
+
+**WebKit strips `text/html` on its plain-text binding, exactly as Blink and
+Gecko do.** So `app.js`'s plain branch already fires in every engine, the
+paste arrives bare, and there is nothing to build — in any of the three. The
+item predicted the opposite for all three, and was wrong three times, which is
+the whole argument for the check pages: it opened as a task and turned out to be
+a measurement.
+
+The second half came back too. **The `keydown` for Cmd+Shift+Option+V does reach
+the page**, so the shape 1.3 proposed — a flag set from a `keydown` on `#editor`
+and consumed by the next `paste` — is workable in WebKit as well, and stays
+available if a browser ever changes its mind. Nothing needs it today.
+
+**TODO 1.3 therefore leaves [docs/TODO.md](docs/TODO.md)** rather than staying in
+it struck through, per that file's own rule, and the number is free for reuse. So
+every live reference was chased in this commit: `CLAUDE.md`'s paste-check
+paragraph, and four in [tests/paste-check.html](tests/paste-check.html) itself.
+Historical CHANGELOG entries keep the number — they record what the item was
+called when they were written, and this file is a record rather than an index.
+`tests/fixtures/corpus/claude.md` keeps it too, deliberately: it is a frozen
+oracle copy, and refreshing one is its own act that moves the `model` suite's
+counts.
+
+**The page stays, and its framing changes with the answer.** It is a regression
+check now rather than an open question — the answer is per browser and per
+version, and the way it comes back is a browser release rather than a change
+here. Its report strings no longer name a dead item: a browser that *did* keep
+the flavour is now told it "needs the app to notice the binding itself — which
+no browser has needed so far", which is the same instruction without the dangling
+reference.
+
+No code in `front/` changed, so `npm test` proves nothing about this and was not
+run for it. The verification is the Safari run above.
