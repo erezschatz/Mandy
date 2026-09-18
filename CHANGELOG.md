@@ -4452,7 +4452,7 @@ slice 3 header and step 6's line say where this leaves the slice; CLAUDE.md's
 model section gains the emitter and loses the paragraph claiming an edited leaf
 cannot be serialised at all.
 
-## 2026-09-18 — The definition a rebuilt reference needs, slice 3's step 4
+## 2026-09-18 — `dc7ec93` — The definition a rebuilt reference needs, slice 3's step 4
 
 `modelReferenceLabels` in [front/model.js](front/model.js), and a third
 argument on `modelEmitLeaf`: the document. Slice 2's step 5 rebuilds
