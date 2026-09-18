@@ -5513,7 +5513,7 @@ called now.
 Nothing but a comment changed in `front/`, and the `outline` suite — the one
 that names that file — is green.
 
-## 2026-09-18 — Every entry in this file now carries its commit
+## 2026-09-18 — `d4f5b0f` — Every entry in this file now carries its commit
 
 Twenty-one entries had no hash in the header, spread from 2026-08-30 to
 2026-09-16 — the convention lapsed twice, once for a handful of entries in
