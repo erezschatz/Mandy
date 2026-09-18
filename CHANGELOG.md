@@ -4391,7 +4391,7 @@ shapes — its stub's `setTimeout` fires at once, so what it asserts is whether
 the timer was armed at all, and that the nav has been redrawn by the time a
 swap-shaped call returns. CLAUDE.md's outline section says the same.
 
-## 2026-09-18 — Compose an edited leaf from its affixes, slice 3's step 3
+## 2026-09-18 — `5e59026` — Compose an edited leaf from its affixes, slice 3's step 3
 
 `modelEmitLeaf` in [front/model.js](front/model.js), and with it the thing
 `modelEmitBlock`'s `emit` argument has been standing in for since slice 1b's
