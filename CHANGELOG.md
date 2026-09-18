@@ -4638,7 +4638,7 @@ happens. Nothing in `front/` changed and no suite loads this page, so `npm test`
 proves nothing about it and was not run for it; the verification is the harness
 above plus a real Safari, which is still TODO 1.3's remaining measurement.
 
-## 2026-09-18 — Safari answers it too, and TODO 1.3 closes
+## 2026-09-18 — `1361fd6` — Safari answers it too, and TODO 1.3 closes
 
 Run in Safari on macOS with a real clipboard and a real keyboard, which is the
 only way this question can be asked:
