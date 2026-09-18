@@ -4335,7 +4335,7 @@ Byte-correct, semantically wrong. `MODEL_BLOCK_KINDS` already names a
 
 `npm test`: **1206 checks, no failures**, 208 of them in `model`.
 
-## 2026-09-18 — Record the sidecar idea in the roadmap
+## 2026-09-18 — `0684ef3` — Record the sidecar idea in the roadmap
 
 A new section in [docs/ROADMAP.md](docs/ROADMAP.md), *Annotations beside the
 file, not in it*: highlights and per-document preferences kept in a `.mandy`
@@ -4362,7 +4362,7 @@ the reader's marker beside it.
 
 No code changed, so no suite ran.
 
-## 2026-09-18 — The outline follows a tab switch at once, TODO 4.6
+## 2026-09-18 — `4a45f48` — The outline follows a tab switch at once, TODO 4.6
 
 The sidebar used to keep the previous document's headings for a second after a
 tab switch, a new tab, Open, Reload or New. The whole delay was
