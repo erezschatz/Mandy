@@ -1015,9 +1015,10 @@ not cover):
     ordered-list delimiter and whether it was numbered all-`1.`, autolinks, the
     hard-break spelling (two trailing spaces or a backslash, document-wide like
     the emphasis delimiters, so a file mixing both has its minority one
-    rewritten — in **every** block holding it and not only an edited one, which
-    is TODO 2.3 and is not what this sentence claimed until 2026-09-13), and the
-    wrap width. `adoptMarkdownStyle` in `app.js`
+    rewritten in every block Turndown serialises — which since 2026-09-18 is
+    only an **edited** block, because layer 3's key stopped reading the break
+    spelling; the emphasis delimiter is still rewritten everywhere, and both
+    halves are TODO 2.3), and the wrap width. `adoptMarkdownStyle` in `app.js`
     pushes the Turndown-option subset onto the live options object; the rest is
     read by the `listItem` and `autolink` rules. Every default is Turndown's
     own, so a document that sniffs to nothing behaves exactly as it did before
@@ -1073,20 +1074,33 @@ and `| --- | --- |` are the same table and would never be the same key.
 runs before the key is taken — but only in a block that holds a delimiter row, so
 a `---` rule and a paragraph containing a pipe both stay literal.
 
-**That normalisation is one case of a rule the key does not follow generally,
-and the gap is TODO 2.3.** The key has to ignore everything the serialiser
-rewrites, or a block that changed in no other way stops matching itself — which
-is the reason `normaliseTableRows` and the punctuation-unescape are in
-`markdownBlockKey` at all. Layer 1's own options are the case nobody covered:
-Turndown writes the *sniffed* hard break and emphasis delimiter into every block
-before layer 3 runs, so a block spelling either of them the minority way keys
-differently from its own source, misses the index, and is handed to layer 2 —
-rewritten and re-wrapped despite the user never touching it. The restore layer
-therefore protects a block whose serialisation is stable and silently fails on
-exactly the blocks where the sniffed style disagrees with the author's local
-spelling. It only bites a document that mixes spellings, and it loses no
-content — but "an untouched block comes back byte-identical" is layer 3's whole
-promise, and this is where it is not true.
+**The key has to ignore everything the serialiser rewrites**, or a block that
+changed in no other way stops matching itself, misses the index, and is handed
+to layer 2 — rewritten and re-wrapped despite the user never touching it. That
+is why `normaliseTableRows` and the punctuation-unescape are in
+`markdownBlockKey` at all, and **layer 1's own sniffed options were the case
+nobody covered**, which is TODO 2.3. Turndown writes the sniffed hard break and
+emphasis delimiter into every block before layer 3 runs, so a block spelling
+either the minority way keyed differently from its own source. It loses no
+content — the break is still a break — but "an untouched block comes back
+byte-identical" is layer 3's whole promise, and that is where it was not true.
+
+**The hard break is fixed; the emphasis delimiter is not, and the split is
+measured rather than chosen.** `markdownBlockKey` drops a trailing backslash
+before it collapses whitespace, so the two spellings of a break land on one key:
+measured across all six oracle files, that makes **no two different blocks key
+alike**. The emphasis delimiter has no such normalisation available without a
+parser — folding `_` into `*` keys the rules `***` and `___` identically on
+`tests/fixtures/torture.md`, so the restore layer could hand back the wrong
+bytes, which is worse than the bug — and telling a delimiter from a
+`snake_case` identifier or a code span is a second parser free to disagree with
+the first. The model records each node's spelling as written, so that half waits
+for TODO 3.1 rather than for something to be invented.
+
+**It is fixed for an untouched block only, which is exactly what layer 3
+promises.** Edit a paragraph whose break is spelt the minority way and it still
+comes back in the document's spelling, because Turndown has one setting for the
+whole file. That residue is 3.1's, where the spelling is per node.
 
 CLAUDE.md, README.md and welcome.md all round-trip byte-identical. Editing one
 word in CLAUDE.md changes exactly the paragraph it was in.

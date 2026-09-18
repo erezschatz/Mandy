@@ -4680,3 +4680,62 @@ reference.
 
 No code in `front/` changed, so `npm test` proves nothing about this and was not
 run for it. The verification is the Safari run above.
+
+## 2026-09-18 — Fix the hard-break half of TODO 2.3
+
+**The condition on that item was the wrong test, and removing it is most of
+this change.** 2.3 read *no fix on the old core unless it turns up in daily
+use*, which makes the bug's existence depend on whether the maintainer's own
+documents happen to mix spellings. That is exactly the bias
+[tests/fixtures/torture.md](tests/fixtures/torture.md) was created to remove,
+and the same reasoning the model's oracle stopped being living documents to
+escape. The fixture already carries both minority spellings — one backslash
+break, one `_underscored_` — so the construct was covered and nothing tested it.
+
+So the only real question is what the fix costs, and measured across all six
+oracle files the two halves answer differently.
+
+**The break half is cheap and is now fixed.** `markdownBlockKey` drops a
+trailing backslash before it collapses whitespace, so the two spellings of a
+hard break land on one key. A block written the minority way now matches its own
+source, the restore layer hands back its bytes, and neither the spelling nor the
+wrapping moves. The hazard that matters is not whether it fixes the case but
+whether it makes two *different* blocks key alike, and that was measured
+directly: **no collisions in any of the six files.**
+
+**The emphasis half stays for 3.1, and that is measured rather than deferred.**
+The only normalisation available without parsing is folding `_` into `*`, and on
+`torture.md` that keys the horizontal rules `***` and `___` identically — two
+different blocks, so the restore could hand back the wrong bytes, which is worse
+than the bug it fixes. Doing it safely means knowing which `_` and `*` are
+delimiters and which are inside a code span or a `snake_case` identifier, and
+that is a second parser free to disagree with the first. The model already
+records each node's spelling as written, so the wait is for something that
+exists.
+
+Five checks in `save-fidelity`, 1246 to 1251: both directions of the break (which
+spelling is the minority is per document), that a block differing after the break
+still misses, that a backslash mid-line is still left alone — and one that pins
+the emphasis half as *not* fixed, so a reader does not have to wonder. Each was
+confirmed to fail with the change reverted; the mid-line check was rewritten
+after the first version passed against a deliberately broken key, which is the
+whole reason for breaking it on purpose.
+
+**`npm test` is not the verification — this lands on the save path.** Run by
+hand against [tests/fixtures/break-test.md](tests/fixtures/break-test.md),
+opened and saved through the real file API to a scratch path outside the repo:
+
+- **The whole fixture now round-trips byte-identical, CHARLIE included.** That
+  paragraph has diverged on every previous run of this recipe; it is the case
+  the fixture exists to find.
+- Editing DELTA still moves DELTA and nothing else, so the restore layer has
+  not been blunted.
+- Editing CHARLIE *itself* still converts its backslash to two spaces. That is
+  the residue and it is 3.1's: Turndown has one setting for the whole document,
+  and only a per-node spelling fixes an edited block. The break survives; just
+  its spelling does not.
+
+One correction to a reading taken during that run: editing CHARLIE first
+appeared to delete the break outright, which was the test method rather than the
+app — assigning `textContent` replaces a paragraph's children and takes the
+`<br>` with it. Editing only the first text node leaves the break in place.

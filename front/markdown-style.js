@@ -478,12 +478,38 @@ function normaliseTableRows(block) {
     .join("\n");
 }
 
+// The key has to ignore everything the serialiser rewrites, or a block that
+// changed in no other way stops matching itself and falls through to layer 2 --
+// rewritten and re-wrapped with no edit anywhere near it. Three things qualify.
+//
 // Turndown escapes punctuation that could reparse as markup ("1\." mid
-// sentence), so the key has to ignore that too or a block that changed in no
-// other way stops matching itself.
+// sentence). The table rule writes its own padding and its own dash run, which
+// is what normaliseTableRows is for.
+//
+// And the **hard break**, which is TODO 2.3's cheap half. A break has two
+// spellings -- a trailing backslash, or two trailing spaces -- and
+// sniffMarkdownStyle picks one for the whole document, so Turndown writes the
+// winner into every block before the restore layer runs. The two-space spelling
+// survives the whitespace collapse below and the backslash does not, so a block
+// written the minority way keyed differently from its own source and lost both
+// its spelling and its line breaks without being touched. Dropping the
+// backslash puts the two forms on the same key.
+//
+// **The emphasis delimiter is the other half of 2.3 and is deliberately not
+// here.** The only normalisation available without parsing is folding `_` into
+// `*`, and measured on tests/fixtures/torture.md that keys the rules `***` and
+// `___` identically -- two different blocks, so the restore layer could hand
+// back the wrong bytes, which is worse than the bug. Telling a delimiter from a
+// snake_case identifier or a code span needs a parser, and a second parser free
+// to disagree with the first is the thing TODO 3.1 exists to delete. The model
+// records each node's spelling as written, so that half waits for it.
 function markdownBlockKey(block) {
   return normaliseTableRows(block)
     .replace(/\\([^\w\s])/g, "$1")
+    // Before the whitespace collapse, and per line: a trailing backslash is
+    // only a break at the end of a line, and the trailing spaces that spell the
+    // same thing have to go with it or the two still differ.
+    .replace(/[ \t]*\\?$/gm, "")
     .replace(/\s+/g, " ")
     .trim();
 }

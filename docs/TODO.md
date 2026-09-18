@@ -307,8 +307,8 @@ category fidelity deliberately does not extend to.
     convention to text. It can be written before 3.1, and it is what the
     model's serialiser calls for an edited table block.
 
-*   **2.3** *(bug, closed by 3.1; no fix on the old core unless it turns up in
-    use)* **An untouched block loses a minority spelling.** Layer 3 promises
+*   **2.3** *(bug; the break half fixed on the old core, the emphasis half
+    closed by 3.1)* **An untouched block loses a minority spelling.** Layer 3 promises
     that a block the user never edited comes back byte-identical, and for two of
     layer 1's own sniffed options it does not.
 
@@ -341,10 +341,38 @@ category fidelity deliberately does not extend to.
     puts that back — so an untouched block is never re-emitted at all, and an
     edited one keeps its own spelling rather than inheriting a document-wide
     guess. Sniffing survives only for genuinely new content, per MARKDOWN.md's
-    **S3**. Fixing it on the old core means making the key style-insensitive,
-    which is one normalisation per sniffed option and a second place that can
-    disagree with the serialiser — worth it only if this shows up in daily use
-    before 3.1 lands.
+    **S3**.
+
+    **This used to say "no fix on the old core unless it shows up in daily
+    use", and that was the wrong test.** Whether the maintainer's own documents
+    happen to mix spellings is not evidence about the bug — it is exactly the
+    bias [tests/fixtures/torture.md](../tests/fixtures/torture.md) was created
+    to remove, and that fixture already carries both minority spellings: one
+    backslash break and one `_underscored_`. A condition that waits for one
+    person's files to hit it is the same reasoning the oracle stopped being
+    living documents to escape.
+
+    So the question is only ever *what does the fix cost*, and measured
+    2026-09-18 across all six oracle files the two halves answer differently.
+
+    **The break half is cheap, and is fixed.** `markdownBlockKey` drops a
+    trailing `\` before it collapses whitespace, so a block written with the
+    backslash keys the same as the two-space form the serialiser wrote — it
+    matches the index, layer 3 hands back its own bytes, and neither the
+    spelling nor the wrapping moves. Measured for the hazard that matters,
+    which is not whether it fixes the case but whether it makes two *different*
+    blocks key alike: **zero collisions across all six files.**
+
+    **The emphasis half stays for 3.1, and that is measured rather than
+    deferred.** The only normalisation available without parsing is to fold `_`
+    into `*`, and on the fixture that keys the horizontal rules `***` and `___`
+    identically — two different blocks, so the restore layer could hand back
+    the wrong bytes, which is worse than the bug. Doing it safely means knowing
+    which `_` and `*` are delimiters and which are inside a code span or a
+    `snake_case` identifier, and that is a second parser free to disagree with
+    the first — the thing this whole model exists to delete. The model already
+    has the answer recorded per node, so the wait is for something that exists
+    rather than for something to be invented.
 
     Found while verifying the empty-`<li>` check page, not by the 2.2 work, and
     `5d96619`'s CHANGELOG entry recorded the opposite: it saw the rewrite in an

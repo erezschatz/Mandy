@@ -507,6 +507,46 @@ function styleChecks(check) {
     "a pipe in prose does not make a table of the paragraph",
     restore("use a | b here\n", index("use  a | b  here\n")) === "use  a | b  here\n",
   );
+
+  // TODO 2.3's cheap half. A hard break has two spellings and the sniff picks
+  // one document-wide, so Turndown writes the winner into every block before
+  // the restore runs. The two-space form survives the key's whitespace collapse
+  // and the backslash does not, so a block written the minority way keyed
+  // differently from its own source, missed, and came back rewritten *and*
+  // re-wrapped with no edit near it. This is the case break-test.md's CHARLIE
+  // paragraph exists to find.
+  const charlie = "CHARLIE ends in a backslash\\\nand continues on a second line.\n";
+  const asTwoSpaces = "CHARLIE ends in a backslash  \nand continues on a second line.\n";
+  check(
+    "a block whose hard break is spelt the minority way still matches its own source",
+    restore(asTwoSpaces, index(charlie)) === charlie,
+  );
+  check(
+    "and the same in the other direction, since which spelling is the minority is per document",
+    restore(charlie, index(asTwoSpaces)) === asTwoSpaces,
+  );
+  // The guard on that: it must not make two *different* blocks key alike, or
+  // the restore hands back somebody else's bytes -- worse than the bug.
+  check(
+    "but a block that only differs after the break still misses",
+    restore("CHARLIE ends in a backslash  \nand continues differently.\n", index(charlie)) ===
+      "CHARLIE ends in a backslash  \nand continues differently.\n",
+  );
+  check(
+    "and a backslash mid-line is left alone, so it still tells two blocks apart",
+    restore("a b\n", index("a \\ b\n")) === "a b\n",
+  );
+
+  // The emphasis half of 2.3 is deliberately *not* fixed here, and this says so
+  // out loud rather than leaving a reader to wonder. Folding `_` into `*` is the
+  // only normalisation available without a parser, and on torture.md it keys the
+  // rules `***` and `___` the same -- so the half that would need one waits for
+  // the model, which records each node's spelling as written.
+  check(
+    "the emphasis delimiter is still document-wide, and an untouched block still loses it",
+    restore("An *underscored* word.\n", index("An _underscored_ word.\n")) ===
+      "An *underscored* word.\n",
+  );
 }
 
 // The other half of the invisible-junk problem, and the one that reaches the
