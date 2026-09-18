@@ -204,7 +204,13 @@ They cover the invariants that fail *silently* rather than loudly:
   every leaf in those files, at both edges and the middle, maps to an
   offset that maps back to the same place — plus the one check the model cannot
   mark its own homework on, that in a block holding no markup at all the
-  text it renders is the content markdown-it recorded.
+  text it renders is the content markdown-it recorded. Slice 3's step 3 is the
+  same shape once more and the sharpest of the three: throw away every
+  inline-bearing leaf's `source` and emit it from its tree alone, and every one
+  comes back byte-identical. Its hand-written cases are one per affix rule, and
+  each rule was broken on purpose first to confirm the check fails — two of them
+  were caught only by the oracle sweep on the first pass, which is how a case
+  reaching for the wrong leaf was found.
 - **tabs** — the per-tab state boundaries and the swap between documents: that
   park and adopt are lossless and adopting nothing is a blank document rather
   than a half-cleared one; the migration off the flat keys and both ways a
@@ -522,7 +528,7 @@ back. That is the inversion the whole rewrite is for. Two identical paragraphs
 cannot be confused for one another by a source span, and `indexMarkdownBlocks`
 keys on content precisely because it has no span to use instead.
 
-Eight things that are decisions rather than details:
+Ten things that are decisions rather than details:
 
 - **The parser is injected, never reached for.** `modelParse` takes the
   markdown-it instance as an argument. Both callers now configure it the same
@@ -657,15 +663,31 @@ Eight things that are decisions rather than details:
   0 — so stage 2 ports the caret behaviour instead of re-deciding it.
   `modelInlineAt` hands back the mark chain as `path`, which is how the tree
   answers what marks a position carries.
+- **An edited leaf is put back together out of the affixes, not written from a
+  house style.** `modelEmitLeaf` is slice 3's step 3 and is what
+  `modelEmitBlock`'s `emit` argument stood in for: `modelInlineSource` for the
+  content — which slice 2 already reconstructs byte for byte — and then, per
+  line, the quote chain, the item marker or continuation indent, and for a
+  heading its `open` and its closing run or setext underline. **The affixes are
+  absolute**, so only the *nearest* item ancestor contributes: a child's source
+  is its lines whole, so a nested item's marker already carries every outer
+  indent, and stacking them reproduces 707 of the oracle's 861 inline-bearing
+  leaves instead of all of them. Two suppressions follow from the same fact, and
+  both are 1b's tab bug one layer along — an affix recorded from its own column
+  0 has already claimed the item's indent, so a quote *inside* a bullet and a
+  heading inside one each take no item affix. It refuses rather than guesses
+  three times over, and each refusal is a `null` something recorded on purpose:
+  a leaf with no inline tree (a fence, indented code, a rule, a gap, a table
+  row — their content *is* source and is edited as source), a heading whose
+  shape did not line up, an item whose marker was never found.
 
-What it does not do yet: put back the spellings markdown-it discards when it
-re-emits — a code span's
-padding, an escape, an angle-bracket destination, a hard break's two spellings
-(step 3) — turn an edited *leaf* into markdown at all (`modelSerialise` throws
-rather than guess — an edited container is only a concatenation of bytes that
-already exist, so it needs no emitter), or hand that emitter anything about a
-blockquote's `> ` chain, which is the marker question settled but not yet
-written. Those are the rest of stage 1 and stages 2 and 3.
+What it does not do yet: check that a rebuilt reference link's label still
+resolves to a definition still in the document — a question about the whole
+document, which the emitter is handed the block and not the document to answer
+(slice 3's step 4) — or re-wrap an edited block to the width the file was
+written at, which is `reflowMarkdown`'s job and needs the prefixes passed in
+rather than re-derived off the line (step 5). Those are the rest of stage 1;
+rendering, input and the format commands are stages 2 and 3.
 
 ### Links and heading anchors
 

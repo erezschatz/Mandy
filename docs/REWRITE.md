@@ -1352,7 +1352,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         slice that fills it. The genuinely new machinery is the escaper and the
         link rebuilder; the rest is a tree fold and two offset functions.
 
-    *   **3. The block serialiser — planned 2026-09-16, not started.** An edited
+    *   **3. The block serialiser — in progress, started 2026-09-16.** Steps 1,
+        2 and 3 are in; 4, 5 and 6 are not. An edited
         block emits markdown in the conventions **its own bytes recorded**,
         falling back to the ones `sniffMarkdownStyle` read off the file it came
         from, and `reflowMarkdown` re-wraps it — the same two layers as today,
@@ -1487,9 +1488,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             that is worth fixing; it is not this slice's to fix, and saying so
             is cheaper than meeting it again in slice 3's suite.
 
-        3.  **`modelEmitLeaf` composes — not started.** Slice 2's
-            `modelInlineSource` for the content, then the affixes back **in the
-            order markdown-it took them off**, which is measured rather than
+        3.  **`modelEmitLeaf` composes — done and tested, 2026-09-18.** Slice
+            2's `modelInlineSource` for the content, then the affixes back **in
+            the order markdown-it took them off**, which is measured rather than
             assumed: the quote chain sits outside the item marker, because
             `> 1. A list inside a quote.` has content `A list inside a quote.`
             and both were stripped. An item's `marker` goes on the first line
@@ -1498,6 +1499,60 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
             `modelEmitBlock`'s three cases are unchanged; this is what its
             `emit` argument has been standing in for since slice 1b's step 3.
+            It stays an argument rather than becoming a call, because the
+            emitter needs the parser — `modelEscapeText` reparses — and a
+            serialiser that reached for its own would be the mistake the top of
+            `model.js` rules out.
+
+            **The affixes are absolute, and that is what the measurement
+            decided.** Only the **nearest** item ancestor contributes, because a
+            child's `source` is its lines whole (1b's step 2): the marker
+            recorded for `    *   **1.1.6**` already carries the four columns the
+            item outside it contributed. Stacking every item above a block
+            instead reproduces **707 of the oracle's 861** inline-bearing
+            leaves, and every one of the 154 it misses is a bullet inside a
+            bullet.
+
+            **Two suppressions, and both are the same failure in different
+            clothes: an affix recorded from its own column 0 has already claimed
+            the item's indent, so adding it again writes the same columns in
+            different bytes** — 1b's step 5's tab bug, one layer along.
+            `modelQuotePrefix` matches ` {0,3}>` from the raw line, so for a
+            quote **inside** a bullet it claims `"  > "`, indent included; the
+            reverse nesting is unaffected and must be, since in `> - item` the
+            item sits at the quote's own depth and `modelItemPrefix` read its
+            marker off the chain-stripped line. A heading's `open` was recorded
+            off the chain-stripped line the same way, which is exactly what step
+            2 pinned — the shape plus the chain reassembles the heading's source
+            — so a heading takes no item affix at all. Those two are the only
+            leaves in the whole oracle that a naive composition gets wrong, and
+            they are both in `torture.md`, which is the fixture earning its place
+            for the fourth time.
+
+            **Three refusals, each a spelling the model recorded as `null`
+            rather than guessing at.** A leaf with no inline tree — a fence, an
+            indented code block, a rule, a gap, a table row — has its content
+            *as* source and is edited as source, so a command sets `source`
+            rather than nulling it and this is never reached; that is five of
+            the seven leaf kinds answered, and it is a constraint on stage 2's
+            input layer rather than a hole here. A heading whose shape did not
+            line up against `inline.content` (step 2) and an item whose first
+            line carried no marker this model recognises (1b's step 5) throw the
+            same way `modelEmitBlock` already throws for a leaf with no
+            serialiser at all.
+
+            Fifteen checks, and **every one of the seven ways the composition
+            can be wrong was written as a deliberate break first and confirmed
+            to fail** — stacked affixes, either suppression dropped, the marker
+            on every line, every block treated as opening its item, the heading
+            suffix dropped, one quote prefix for a whole block. Two of them were
+            caught only by the oracle sweep on the first pass, which is how a
+            hand-written case reaching for the wrong leaf was found. The
+            property the step can state exactly is step 6's headline arriving
+            early, and it is in: **throw away every inline-bearing leaf's
+            `source` and emit it from its tree alone — all 861 come back
+            byte-identical**, the 114 without a tree refusing rather than
+            guessing.
 
         4.  **The reference definition a rebuilt link needs — not started.**
             Slice 2's step 5 rebuilds `[text][label]` from the `data-ref-label`
@@ -1541,15 +1596,18 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             deletes a workaround rather than carrying one forward, which is the
             work rather than a detour from it.
 
-        6.  **The suite grows again — not started.** The property this slice can
-            state exactly, and it is the sharpest one available: **throw away
+        6.  **The suite grows again — in progress.** The property this slice can
+            state exactly, and it is the sharpest one available — **throw away
             every inline-bearing leaf's `source` and emit it from its tree —
-            every one of them comes back byte-identical.** That is slice 2's step 3 claim
+            every one of them comes back byte-identical** — **landed with step 3
+            rather than waiting for this one**, the way slice 2 folded its own
+            step 6 into each step as it went. That is slice 2's step 3 claim
             with the affixes now included, and it is what makes the emitter
             testable without a browser at all.
 
-            Then the two claims one level up, which are the existing checks with
-            a real emitter under them instead of a throw: `modelSerialise` over
+            What is left for this line is the two claims one level up, which are
+            the existing checks with a real emitter under them instead of a
+            throw: `modelSerialise` over
             all six files is still byte-identical, and each of those blocks
             edited alone still rewrites exactly itself — 1b's step 6 sweep,
             which until now has only ever measured containers re-emitting bytes

@@ -76,11 +76,13 @@ export default function run(check) {
   const {
     modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix,
     modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText,
+    modelEmitLeaf,
   } = loadSource(
     "model.js",
     {},
     "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix," +
-      " modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText };",
+      " modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText," +
+      " modelEmitLeaf };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -98,6 +100,17 @@ export default function run(check) {
 
   const md = configureMarkdownParser(markdownit());
   const parse = (src) => modelParse(src, md);
+
+  // Every block an edit can re-serialise, in order. A container re-emits as its
+  // children (slice 1b's step 3), so what reaches slice 3's emitter is always a
+  // block with none — which makes a leaf the unit both the emitter checks and
+  // the metric at the bottom of this file count in.
+  const leavesOf = (doc) => {
+    const out = [];
+    const walk = (b) => (b.children ? b.children.forEach(walk) : out.push(b));
+    doc.blocks.forEach(walk);
+    return out;
+  };
 
   // The two rules are why the file was moved, so the suite says out loud that it
   // has them. Both read the token stream rather than the model: what is under
@@ -1617,6 +1630,184 @@ export default function run(check) {
     );
   }
 
+  // ---- Slice 3, step 3: the leaf emitter composes ------------------------
+
+  // The step that finally reads 1b's step 5 marker, step 1's quote chain and
+  // step 2's heading shape, and puts an edited leaf back together out of them.
+  //
+  // What makes it small is the measurement slice 3 was planned from: a block's
+  // `source` is `inline.content` with an affix glued to the front of each of
+  // its lines, and slice 2's step 3 already reconstructs that content byte for
+  // byte. So these checks are about the **affixes**, in the two directions they
+  // can be wrong — a prefix the model invents, and one it writes twice.
+  {
+    const emitted = (src, want) => {
+      const doc = parse(src);
+      const leaf = want(leavesOf(doc));
+      modelTouch(leaf);
+      return modelSerialise(doc, (block) => modelEmitLeaf(block, md));
+    };
+    // The common case, and the only one where nothing at all is glued on.
+    const first = (leaves) => leaves[0];
+    const nth = (n) => (leaves) => leaves[n];
+    const kind = (k) => (leaves) => leaves.find((b) => b.kind === k);
+    const quoted = (leaves) => leaves.find((b) => b.quotePrefixes);
+    const roundTrips = (src, want = first) => emitted(src, want) === src;
+
+    check(
+      "a bare paragraph emits its own bytes back",
+      roundTrips("Some *emphatic* prose.\n"),
+    );
+
+    // Step 2's three spellings, now read by something. The closing run and the
+    // underline are the only bytes in the model that go behind the content, so
+    // an emitter that only knew about prefixes would pass the first of these
+    // and drop the tail of the other two.
+    check(
+      "each of markdown's three heading spellings emits back as written",
+      roundTrips("# Title\n") &&
+        roundTrips("#### Deep ####\n") &&
+        roundTrips("Title\n=====\n") &&
+        roundTrips("Title\n-\n"),
+    );
+    check(
+      "an indented ATX heading keeps the indent its `open` recorded",
+      roundTrips("   ### Three in\n"),
+    );
+
+    // 1b's step 5's two fields: the marker on the first line of the item's
+    // content, the continuation indent on every other line — and on every line
+    // of a block that is not the one opening the item.
+    check(
+      "an item's marker goes on the first line and its indent on the rest",
+      roundTrips("*   One line\n    and its continuation.\n"),
+    );
+    check(
+      "a second block in the same item gets the indent and never the marker",
+      roundTrips("- One paragraph.\n\n  And a second one.\n", nth(1)),
+    );
+
+    // The rule the measurement decided: the affixes are **absolute**, so only
+    // the nearest item contributes. Stacking them indents a nested bullet by
+    // the sum of the indents its own marker already carried — which is what 154
+    // of the oracle's 861 inline-bearing leaves look like when you get it
+    // wrong, every one of them a bullet inside a bullet.
+    check(
+      "a nested item's marker is absolute, not stacked on its parent's",
+      roundTrips("- Outer\n\n  - Inner item\n    wrapped.\n", (leaves) => leaves[1]),
+    );
+    // 1b's step 5's own bug, one layer along: the derived indent for `-\t` is
+    // ` \t`, the same column and different bytes from the bare tab the file
+    // continues under. Recorded rather than derived at parse, so read rather
+    // than re-derived here.
+    check(
+      "a tab-marked item's continuation keeps the tab the file wrote",
+      roundTrips("-\tTab-marked item, whose continuation\n\tis a bare tab.\n"),
+    );
+
+    // Step 1's chain, per line. The third of these is the one a per-block
+    // prefix gets wrong: its second line is a lazy continuation carrying no
+    // `>` at all.
+    check(
+      "a quote emits the chain each of its own lines carried, at any depth",
+      roundTrips("> Quoted.\n") &&
+        roundTrips("> > Twice quoted.\n") &&
+        roundTrips("> Quoted, and then\nlazily continued.\n") &&
+        roundTrips("  > Indented two columns in.\n"),
+    );
+    // The chain outside the marker, which is the order the plan named and the
+    // measurement confirmed: `> 1. x` has both stripped to reach its content.
+    check(
+      "an item behind a `> ` emits the chain and then the marker",
+      roundTrips("> 1. A list inside a quote.\n") &&
+        roundTrips("> - An item\n>   and its continuation.\n"),
+    );
+
+    // The two suppressions, and both are cases where an inner affix was
+    // recorded from its own column 0 and so already carries the item's indent.
+    // Adding it again writes the same columns in different bytes — the exact
+    // failure 1b's step 5 had for a day with a tab, and the only two leaves in
+    // the oracle that a naive composition gets wrong.
+    check(
+      "a quote inside an item is not indented twice",
+      roundTrips("- Holding a quote:\n\n  > The datum was moved.\n", quoted),
+    );
+    check(
+      "a heading inside an item is not indented twice either",
+      roundTrips("- Holding a heading:\n\n  #### A heading inside a list item\n", kind("heading")),
+    );
+
+    // The three refusals. Each is a spelling the model recorded as `null`
+    // rather than guessing at, so the emitter has nothing to work from — and a
+    // throw is what `modelEmitBlock` already does for a leaf with no serialiser
+    // at all, for the same reason: writing something else into the user's file
+    // is the outcome worth crashing to avoid.
+    const throwsOn = (src, want) => {
+      try {
+        emitted(src, want);
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    check(
+      "a leaf with no inline tree refuses rather than emitting — its content is source and is edited as source",
+      throwsOn("```sh\nls\n```\n", first) && throwsOn("---\n", first) && throwsOn("[label]: u\n", first),
+    );
+    check(
+      "a heading whose shape did not line up refuses rather than inventing a spelling",
+      throwsOn("- # Heading on an item's own first line\n", kind("heading")),
+    );
+    check(
+      "a block inside an item with no recorded marker refuses the same way",
+      (() => {
+        const doc = parse("- An item.\n");
+        const leaf = leavesOf(doc)[0];
+        leaf.parent.marker = null;
+        modelTouch(leaf);
+        try {
+          modelSerialise(doc, (block) => modelEmitLeaf(block, md));
+          return false;
+        } catch {
+          return true;
+        }
+      })(),
+    );
+
+    // And the property the step can state exactly, which is the one worth
+    // having: throw away every inline-bearing leaf's `source` and emit it from
+    // its tree alone. This is slice 2's step 3 claim with the affixes now
+    // included, and it is what makes the emitter testable with no browser
+    // anywhere near it.
+    let inlineBearing = 0;
+    let sourceless = 0;
+    const wrong = [];
+    for (const path of ORACLE_FILES) {
+      const doc = parse(repoFile(path));
+      for (const leaf of leavesOf(doc)) {
+        if (!leaf.inlines) {
+          sourceless += 1;
+          continue;
+        }
+        inlineBearing += 1;
+        const own = leaf.source;
+        leaf.source = null;
+        let out;
+        try {
+          out = modelEmitLeaf(leaf, md);
+        } catch (error) {
+          out = `threw: ${error.message}`;
+        }
+        if (out !== own) wrong.push(`${path}: ${JSON.stringify(own.slice(0, 40))}`);
+      }
+    }
+    check(
+      `every inline-bearing leaf in the oracle emits its own bytes from its tree alone (${inlineBearing} of them, ${sourceless} leaves having no tree to emit from)` +
+        (wrong.length ? ` — ${wrong.length} did not: ${wrong.slice(0, 3).join(", ")}` : ""),
+      inlineBearing > 800 && wrong.length === 0,
+    );
+  }
+
   // ------------------------------------------------------------- the metric
 
   // Slice 1b's step 6: the number the slice exists to move, asserted rather
@@ -1624,15 +1815,8 @@ export default function run(check) {
   // say the mechanism works on the shapes we thought of; this says what it is
   // worth on the files this project is written in.
   //
-  // "One block" is the unit an edit re-serialises, which is a leaf: a container
-  // re-emits as its children, so what reaches slice 3's emitter is always a
-  // block with none.
-  const leavesOf = (doc) => {
-    const out = [];
-    const walk = (b) => (b.children ? b.children.forEach(walk) : out.push(b));
-    doc.blocks.forEach(walk);
-    return out;
-  };
+  // "One block" is the unit an edit re-serialises, which is a leaf — see
+  // `leavesOf` at the top of this file.
   const lineCount = (text) => text.split("\n").length;
 
   const metricFiles = ORACLE_FILES;

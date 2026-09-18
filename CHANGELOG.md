@@ -4390,3 +4390,64 @@ waits on it. The `outline` suite now hands the observer's callback both record
 shapes — its stub's `setTimeout` fires at once, so what it asserts is whether
 the timer was armed at all, and that the nav has been redrawn by the time a
 swap-shaped call returns. CLAUDE.md's outline section says the same.
+
+## 2026-09-18 — Compose an edited leaf from its affixes, slice 3's step 3
+
+`modelEmitLeaf` in [front/model.js](front/model.js), and with it the thing
+`modelEmitBlock`'s `emit` argument has been standing in for since slice 1b's
+step 3 gave it somewhere to be called from: an edited leaf back to markdown.
+Slice 2's `modelInlineSource` for the content, then the affixes back in the
+order markdown-it took them off — per line, the quote chain slice 3's step 1
+recorded, then the item marker or continuation indent 1b's step 5 recorded, and
+for a heading the `open` and closing run or setext underline step 2 recorded.
+
+It is small because the slice was measured before it was planned: a block's
+`source` is `inline.content` with something glued to the front of each of its
+lines, and slice 2 already reconstructs that content byte for byte. So this
+puts back what markdown-it stripped on the way in, which is the same sentence
+1b's step 5 and slice 2's step 3 are each an instance of, arriving a third time
+one level up.
+
+**The affixes are absolute, which the measurement decided rather than the
+plan.** Only the nearest item ancestor contributes: a child's source is its
+lines whole, so the marker recorded for a nested bullet already carries every
+outer indent. Stacking each item above a block instead reproduces 707 of the
+oracle's 861 inline-bearing leaves, and all 154 misses are a bullet inside a
+bullet.
+
+**Two suppressions, and both are 1b's tab bug one layer along** — an affix
+recorded from its own column 0 has already claimed the item's indent, so adding
+it again writes the same columns in different bytes. `modelQuotePrefix` matches
+` {0,3}>` from the raw line, so a quote *inside* a bullet claims the bullet's
+indent with it; a heading's `open` was read off the chain-stripped line the same
+way, which is exactly what step 2 pinned. The reverse nesting is untouched and
+has to be: in `> - item` the item sits at the quote's own depth and both affixes
+are needed. Those two are the only leaves in the whole oracle a naive
+composition gets wrong, and both are in `tests/fixtures/torture.md`.
+
+Three refusals, each a `null` something recorded on purpose rather than a gap. A
+leaf with no inline tree — a fence, an indented code block, a rule, a gap, a
+table row — has its content *as* source and is edited as source, so a command
+sets `source` rather than nulling it and this is never reached; that answers
+five of the seven leaf kinds, and it is a constraint on stage 2's input layer.
+A heading whose shape did not line up against `inline.content`, and an item
+whose first line carried no marker, throw the way `modelEmitBlock` already
+throws for a leaf with no serialiser at all.
+
+Fifteen checks in the `model` suite, 208 to 223, and **every one of the seven
+ways the composition can be wrong was written as a deliberate break first and
+confirmed to fail** — stacked affixes, either suppression dropped, the marker on
+every line, every block treated as opening its item, the heading suffix dropped,
+one prefix for a whole block. Two were caught only by the oracle sweep on the
+first pass, which is how a hand-written case reaching for the wrong leaf was
+found and fixed. Step 6's headline property landed here rather than waiting, the
+way slice 2 folded its own step 6 into each step: throw away every
+inline-bearing leaf's `source` and emit it from its tree alone, and all 861 come
+back byte-identical, the 114 without a tree refusing rather than guessing.
+
+`npm test` is green at 1225 checks. Nothing in `front/` loads `model.js`, so
+there is nothing to verify in a browser: the model is pure string and token work
+and the suite is the whole of its verification. REWRITE.md's step 3 line, the
+slice 3 header and step 6's line say where this leaves the slice; CLAUDE.md's
+model section gains the emitter and loses the paragraph claiming an edited leaf
+cannot be serialised at all.

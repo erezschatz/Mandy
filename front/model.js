@@ -1306,6 +1306,119 @@ function modelParse(markdown, md) {
 }
 
 /**
+ * The item affix a leaf's lines carry: the marker its first line opens with and
+ * the indent the rest sit under, taken off the **nearest** item ancestor.
+ *
+ * Nearest, and not a stack of every item above it, because a child's `source`
+ * is its lines **whole** (slice 1b's step 2): the marker `modelItemPrefix` read
+ * off `    *   **1.1.6**` already carries the four columns the item outside it
+ * contributed. The affixes in this model are absolute, from the line's own
+ * column 0, and stacking them would indent a nested item by the sum of the
+ * indents it already had. Measured: doing it that way reproduces 707 of the
+ * oracle's 861 inline-bearing leaves, and every one of the 154 it misses is a
+ * bullet nested inside another.
+ *
+ * `first` is whether this block opens the item's content, which is what decides
+ * marker-or-indent for line 0. It reads `leading === ""` as well as first-child,
+ * because a container's leading bytes are emitted by `modelEmitBlock`'s case 2
+ * before any child is reached — every one of the oracle's containers has none,
+ * and a shape that grew one would otherwise have its marker written twice.
+ *
+ * **A quote between the two suppresses it entirely**, which is the one rule here
+ * that is not arithmetic. `modelQuotePrefix` matches ` {0,3}>` from the raw
+ * line's column 0, so for `  > quoted` inside a bullet it claims `"  > "` — the
+ * item's own indent included. Adding the indent again on top of that writes
+ * `  >   quoted`, the same column count and different bytes, which is the exact
+ * failure 1b's step 5 had for a day with a tab. The reverse nesting is not
+ * affected and must not be: in `> - item` the item sits at the quote's own
+ * depth, `modelItemPrefix` read its marker off the chain-stripped line, and both
+ * affixes are needed.
+ */
+function modelItemAffix(block) {
+  let node = block;
+  for (let parent = block.parent; parent; node = parent, parent = parent.parent) {
+    if (parent.kind === "quote") return null;
+    if (parent.kind !== "item") continue;
+    return {
+      first: parent.leading === "" && parent.children !== null && parent.children[0] === node,
+      marker: parent.marker,
+      contentIndent: parent.contentIndent,
+    };
+  }
+  return null;
+}
+
+/**
+ * One edited leaf back to markdown. Slice 3's step 3, and what
+ * `modelEmitBlock`'s `emit` argument has been standing in for since slice 1b's
+ * step 3 gave it somewhere to be called from.
+ *
+ * **This is an affix problem rather than a serialisation problem**, which is
+ * what the measurement behind slice 3 found and what makes the step small.
+ * Slice 2's `modelInlineSource` already reconstructs `inline.content` byte for
+ * byte; a block's `source` is that content with something glued to the front of
+ * each of its lines — 851 of the oracle's 861 inline-bearing leaves exactly, the
+ * other ten being the headings whose spelling is a **suffix**. So the job here
+ * is not *turn a tree into markdown*, which is done, but **put back what
+ * markdown-it stripped off `inline.content` on the way in** — the same sentence
+ * 1b's step 5 and slice 2's step 3 are each an instance of, arriving a third
+ * time one level up.
+ *
+ * The affixes go back **in the order markdown-it took them off**, measured
+ * rather than assumed: the quote chain sits outside the item marker, because
+ * `> 1. A list inside a quote.` has the content `A list inside a quote.` and
+ * both were stripped to get there. So, per line: the chain, then the marker or
+ * the continuation indent, then the content. A line an edit added past the end
+ * of the recorded chain takes the last one recorded, which is step 1's own rule.
+ *
+ * A heading is the exception at both ends. Its `open` was recorded off the
+ * chain-stripped line from *that* line's column 0, so it already carries any
+ * indent an enclosing item contributed — step 2 pinned exactly this, that the
+ * shape plus the chain reassembles the heading's own source — and the item
+ * affix is therefore suppressed rather than added on top. Its `close` and its
+ * setext `underline` are the only bytes in this model that go *behind* the
+ * content.
+ *
+ * **Three refusals, and every one of them is a spelling the model does not
+ * have rather than one it could guess at.** A leaf with no inline tree is a
+ * fence, an indented code block, a rule, a gap or a table row: their content
+ * *is* source, so a command edits `source` rather than nulling it and this is
+ * never reached — five of the seven leaf kinds, right rather than missing. A
+ * heading whose shape did not line up against `inline.content` recorded `null`
+ * instead of a guess (step 2), and an item whose first line did not start with
+ * a marker this model recognises recorded `null` too (1b's step 5). In each
+ * case the throw is the same one `modelEmitBlock` already makes for a leaf with
+ * no serialiser at all, and for the same reason: writing something else into
+ * the user's file is the one outcome here worth crashing to avoid.
+ */
+function modelEmitLeaf(block, md) {
+  if (!block.inlines) {
+    throw new Error(`edited ${block.kind} block has no inline tree`);
+  }
+
+  let content = modelInlineSource(block.inlines, md);
+  let item = modelItemAffix(block);
+
+  if (block.kind === "heading") {
+    if (!block.headingShape) throw new Error("edited heading with no recorded shape");
+    const { open, close, underline } = block.headingShape;
+    content = underline === null ? open + content + close : open + content + "\n" + underline;
+    item = null;
+  }
+
+  if (item && item.marker === null) {
+    throw new Error("edited block inside an item with no recorded marker");
+  }
+
+  const chain = block.quotePrefixes;
+  const last = chain && chain.length ? chain[chain.length - 1] : "";
+  return content
+    .split("\n")
+    .map((line, i) => (chain ? chain[i] ?? last : "") + (item ? (i === 0 && item.first ? item.marker : item.contentIndent) : "") + line)
+    .join("\n");
+}
+
+/**
  * One block back to markdown.
  *
  * Three cases, in this order, and the order is the contract:
@@ -1320,7 +1433,10 @@ function modelParse(markdown, md) {
  *    depth. This is the whole point of slice 1b, and it falls out of the
  *    invariant rather than being arranged on top of it.
  * 3. **It is edited and is a leaf** — `emit` turns it into markdown, which is
- *    stage 1's slice 3. Until that exists an edited leaf with no emitter
+ *    `modelEmitLeaf` above. It stays an argument rather than a call: a caller
+ *    has to hand over the parser anyway (the escaper reparses), and a
+ *    serialiser that reached for its own would be the module-fetches-its-own-
+ *    parser mistake the top of this file rules out. A caller that passes none
  *    throws, rather than quietly writing something else into the user's file.
  *
  * `leading` is in case 2 because the invariant includes it, not because any
