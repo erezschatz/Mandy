@@ -2080,6 +2080,159 @@ export default function run(check) {
     );
   }
 
+  // ---- Slice 3, step 6: the two claims one level up ---------------------
+
+  // Everything above drives `modelEmitLeaf` directly. These drive
+  // `modelSerialise`, so the emitter sits under the whole recursion — a leaf's
+  // bytes, then its item, its list, the separators between them, and the
+  // document's prefix — which is the arrangement the app will actually use and
+  // the one a per-leaf check cannot reach.
+  {
+    // Counted, because the way all three of these pass by doing nothing is a
+    // `modelTouch` that did not clear: an untouched document serialises from
+    // its own bytes and comes back identical without the emitter ever running.
+    // So each claim below also says how many times the emitter was asked.
+    let calls = 0;
+    const emitAt = (doc, width) => modelSerialise(doc, (b) => {
+      calls += 1;
+      return modelEmitLeaf(b, md, doc, width);
+    });
+    const inlineLeaves = (doc) => leavesOf(doc).filter((b) => b.inlines);
+
+    // Every inline-bearing leaf in a file, edited at once, and the file still
+    // comes back. The five source-edited kinds are left alone deliberately:
+    // their content *is* source, a command sets it rather than nulling it, and
+    // `modelEmitLeaf` refuses them on purpose (step 3).
+    let touched = 0;
+    const whole = [];
+    for (const path of ORACLE_FILES) {
+      const src = repoFile(path);
+      const doc = parse(src);
+      const leaves = inlineLeaves(doc);
+      touched += leaves.length;
+      leaves.forEach(modelTouch);
+      if (emitAt(doc, 0) !== src) whole.push(path);
+    }
+    check(
+      `every inline-bearing leaf in a file edited at once, and the file still serialises byte-identical (${touched} leaves across ${ORACLE_FILES.length} files, ${calls} emitter calls)` +
+        (whole.length ? ` — ${whole.length} did not: ${whole.join(", ")}` : ""),
+      touched > 800 && whole.length === 0 && calls === touched,
+    );
+
+    // The same with each file's own sniffed width on. What moves is a block
+    // holding a line the author let run past it, which is a guaranteed
+    // population rather than a fault: `sniffWrapWidth` is a 95th percentile, so
+    // about one prose line in twenty is longer than the width by construction.
+    // The number is here rather than in prose because it is the one figure that
+    // says what re-wrapping costs at document scale.
+    const perFile = [];
+    for (const path of ORACLE_FILES) {
+      const src = repoFile(path);
+      const width = sniffMarkdownStyle(src).wrapWidth;
+      const doc = parse(src);
+      const leaves = inlineLeaves(doc);
+      let over = 0;
+      for (const leaf of leaves) {
+        const own = leaf.source;
+        modelTouch(leaf);
+        if (modelEmitLeaf(leaf, md, doc, width) !== own) over += 1;
+      }
+      perFile.push(`${path.split("/").pop()} ${over}/${leaves.length} at ${width}`);
+      // A file that is not hard-wrapped sniffs to 0, and nothing may move there:
+      // imposing a width on a document that never had one is its own damage.
+      if (width === 0 && over !== 0) perFile.push("!! moved at width 0");
+    }
+    check(
+      `with each file's own width on, the leaves that move are the ones holding a line the author let run past it (${perFile.join(", ")})`,
+      !perFile.some((p) => p.startsWith("!!")),
+    );
+
+    // 1b's step 6 sweep, with a real emitter under it instead of a sentinel.
+    // Until now that sweep only ever measured containers handing back bytes
+    // that already existed; this asks the emitter to reconstruct each block in
+    // turn and puts the whole file back together around it. Re-parsed per leaf,
+    // because `modelTouch` clears ancestors and a second measurement on the
+    // same document would be measuring one that has already been edited.
+    let swept = 0;
+    let sweptCalls = 0;
+    const wrong = [];
+    for (const path of ORACLE_FILES) {
+      const src = repoFile(path);
+      const total = inlineLeaves(parse(src)).length;
+      for (let i = 0; i < total; i += 1) {
+        const doc = parse(src);
+        const leaf = inlineLeaves(doc)[i];
+        const own = leaf.source;
+        modelTouch(leaf);
+        swept += 1;
+        calls = 0;
+        if (emitAt(doc, 0) !== src) wrong.push(`${path}: ${JSON.stringify(own.slice(0, 30))}`);
+        // One touch, one emitter call: no sibling is ever re-serialised, which
+        // is 1b's whole result and is invisible to a byte comparison alone.
+        sweptCalls += calls;
+      }
+    }
+    check(
+      `and each one edited alone rebuilds the file around itself exactly, for exactly one emitter call (${swept} of them, ${sweptCalls} calls, one parse each)` +
+        (wrong.length ? ` — ${wrong.length} did not: ${wrong.slice(0, 3).join(", ")}` : ""),
+      swept > 800 && wrong.length === 0 && sweptCalls === swept,
+    );
+  }
+
+  // ---- Stage 1's exit criterion: the save-fidelity cases, on the model ---
+
+  // The estimate table's third clause for this stage, and the only one that is
+  // not already asserted above: "the `save-fidelity` suite's cases pass against
+  // the model". Those cases are statements about constructs the old core has to
+  // work to preserve — a break inside a list item, a quote's prefix on a
+  // continuation line, a table's padding, a definition's exact bytes — and the
+  // model's claim is that it preserves them by never throwing them away.
+  //
+  // So each one is driven both ways: the document round-trips untouched, and
+  // every inline-bearing leaf in it re-emits its own bytes. The second half is
+  // what makes it a real check — the first passes for a model that parsed
+  // nothing at all.
+  {
+    const CASES = {
+      "a break inside a list item": "- An item with a break  \n  and its continuation.\n",
+      "a break inside a blockquote": "> Quoted with a break  \n> and its continuation.\n",
+      "the backslash spelling of a break": "A line with a break\\\nand its continuation.\n",
+      "both spellings in one document": "One  \nbreak.\n\nAnother\\\nbreak.\n",
+      "a wrapped list item indented to its content": "*   An item whose second line\n    aligns under the content.\n",
+      "a nested list at three depths": "- One\n  - Two\n    - Three\n",
+      "an ordered list numbered all-ones": "1.  First\n1.  Second\n1.  Third\n",
+      "a table with its own padding": "| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+      "a table with alignment colons": "| a | b |\n| :-- | --: |\n| 1 | 2 |\n",
+      "each rule character": "a\n\n---\n\nb\n\n***\n\nc\n\n___\n\nd\n",
+      "a setext heading, which is not a rule": "Heading\n-------\n\nBody.\n",
+      "snake_case, which is not emphasis": "A snake_case_identifier here.\n",
+      "a fence with a language": "```sh\nls -la\n```\n",
+      "a single-line reference definition": "A [link][foo].\n\n[foo]: http://example.com\n",
+      "a titled reference definition": 'A [link][foo].\n\n[foo]: http://example.com "Title"\n',
+      "a definition inside a fence, which is not one": "```\n[foo]: http://example.com\n```\n",
+      "an inline equation": "The value $x = a*b*c$ holds.\n",
+      "a display equation": "Before.\n\n$$\nx = y\n$$\n\nAfter.\n",
+      "an autolink": "See <https://example.com> for more.\n",
+      "a code span holding a delimiter": "Use `a_b` and `a*b` here.\n",
+    };
+    const failed = [];
+    for (const [name, src] of Object.entries(CASES)) {
+      if (modelSerialise(parse(src)) !== src) {
+        failed.push(`${name} (round trip)`);
+        continue;
+      }
+      const doc = parse(src);
+      const leaves = leavesOf(doc).filter((b) => b.inlines);
+      leaves.forEach(modelTouch);
+      if (modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc, 0)) !== src) failed.push(`${name} (re-emit)`);
+    }
+    check(
+      `the save-fidelity suite's constructs round-trip and re-emit through the model (${Object.keys(CASES).length} of them)` +
+        (failed.length ? ` — ${failed.length} did not: ${failed.slice(0, 3).join("; ")}` : ""),
+      failed.length === 0,
+    );
+  }
+
   // ------------------------------------------------------------- the metric
 
   // Slice 1b's step 6: the number the slice exists to move, asserted rather

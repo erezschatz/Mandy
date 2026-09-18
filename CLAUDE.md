@@ -545,7 +545,9 @@ has split the paragraph in two before any inline rule runs.
 ### The model
 
 [model.js](front/model.js) is the start of what replaces the section above, and
-the branch note at the top says why nothing loads it. It is pure string and
+the branch note at the top says why nothing loads it. **Stage 1 closed on
+2026-09-18**; where each stage stands is in
+[docs/REWRITE.md](docs/REWRITE.md). It is pure string and
 token work, which is what lets the `model` suite drive it with no DOM anywhere.
 
 `modelParse(markdown, md)` returns `{ prefix, blocks }`, and the invariant that
@@ -755,9 +757,11 @@ Twelve things that are decisions rather than details:
   one place instead of a second derivation at parse. Verified against
   `inline.content`, and a null is a shape the emitter refuses on.
 
-What it does not do yet: nothing in stage 1 but the suite work that closes slice
-3's step 6 — the two claims one level up, with a real emitter under them instead
-of a throw. Rendering, input and the format commands are stages 2 and 3, and
+**Stage 1 is closed** — 2026-09-18, all four slices. The model parses a
+document, holds it as blocks that tile the file and children that tile their
+containers, records every spelling markdown-it discards, and emits an edited
+block back in the conventions its own bytes recorded. What it does *not* do is
+render, take input, or run a format command: those are stages 2 and 3, and
 nothing in `front/` loads this file until stage 4.
 
 ### Links and heading anchors

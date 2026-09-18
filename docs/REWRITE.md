@@ -511,13 +511,30 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     left when there was not", and it is a model-command decision rather than an
     input-layer one.
 
-*   **1. Model and serialiser — in progress, started 2026-09-11.**
-    **→ MERGE TO `main` WHEN THIS CLOSES** — D8 in
+*   **1. Model and serialiser — done and tested, 2026-09-18**, started
+    2026-09-11.
+    **→ MERGE TO `main` NOW** — D8 in
     [DECISIONS.md](DECISIONS.md). It changes nothing the editor does, since
     `model.js` is in none of the three registries; what it carries to `main` is
-    `markdown-parser.js`'s refactor of the live parser configuration, and an end
-    to the two branches' documents drifting. Slice 3 and slice 4's remaining
-    per-slice coverage are what is left before it.
+    `markdown-parser.js`'s refactor of the live parser configuration, slice 3
+    step 5's change to `wrapMarkdownLine`, TODO 2.3's hard-break fix in
+    `markdown-style.js`, and an end to the two branches' documents drifting.
+
+    **The exit criterion is the estimate table's, and all three clauses are
+    met.** Checked against the **living** files rather than the frozen oracle
+    copies, once and by hand on 2026-09-18, because that is what the criterion
+    names: `CLAUDE.md`, `README.md`, `front/welcome.md` and `docs/TODO.md` all
+    round-trip byte-identical through the model with no browser involved, and
+    every inline-bearing leaf in each re-emits its own bytes: 279, 107, 34 and
+    121 of them. Editing one paragraph changing one paragraph is the
+    suite's sweep, now with a real emitter under it. The third clause, *the
+    `save-fidelity` suite's cases pass against the model*, is the one that
+    needed reading rather than running: that suite's cases are statements about
+    constructs the old core has to work to preserve, and about Turndown and the
+    DOM, which have no model equivalent. So the constructs are what is
+    asserted — twenty of them, each round-tripped and then re-emitted from its
+    own tree. That is an interpretation, and it is written down here so it can
+    be argued with rather than assumed.
 
     Pure JS in `front/model.js`, no browser and no `dom.mjs`: this is the stage
     that proves D1 survives before anything is at risk. The exit criterion is
@@ -1352,8 +1369,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         slice that fills it. The genuinely new machinery is the escaper and the
         link rebuilder; the rest is a tree fold and two offset functions.
 
-    *   **3. The block serialiser — in progress, started 2026-09-16.** Steps 1
-        through 5 are in; only 6 is not. An edited
+    *   **3. The block serialiser — done and tested, 2026-09-18.** All six
+        steps are in; 1 and 2 landed on the 16th, 3 to 6 on the 18th. An edited
         block emits markdown in the conventions **its own bytes recorded**,
         falling back to the ones `sniffMarkdownStyle` read off the file it came
         from, and `reflowMarkdown` re-wraps it — the same two layers as today,
@@ -1719,27 +1736,41 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             for TODO 2.3's reason rather than this step's: the committed
             wrapper produces exactly the same divergence.
 
-        6.  **The suite grows again — in progress.** The property this slice can
+        6.  **The suite grows again — done and tested, 2026-09-18.** The
+            property this slice can
             state exactly, and it is the sharpest one available — **throw away
             every inline-bearing leaf's `source` and emit it from its tree —
             every one of them comes back byte-identical** — **landed with step 3
             rather than waiting for this one**, the way slice 2 folded its own
-            step 6 into each step as it went. That is slice 2's step 3 claim
-            with the affixes now included, and it is what makes the emitter
-            testable without a browser at all.
+            step 6 into each step as it went. The hand-written cases landed the
+            same way, one per decision as each step went in.
 
-            What is left for this line is the two claims one level up, which are
-            the existing checks with a real emitter under them instead of a
-            throw: `modelSerialise` over
-            all six files is still byte-identical, and each of those blocks
-            edited alone still rewrites exactly itself — 1b's step 6 sweep,
-            which until now has only ever measured containers re-emitting bytes
-            that already existed. The hand-written cases are one per decision
-            above: each heading spelling both ways, a quote at all three depths,
-            the lazy continuation, an item behind a `> `, a tab-indented item's
-            continuation, a rebuilt reference whose definition is still in the
-            document and one whose definition is gone, and an edited paragraph
-            in a file that sniffs to width 0.
+            So this line is the two claims one level up, which are the
+            existing checks with a real emitter under them instead of a
+            throw — and the difference is that they go through
+            `modelSerialise`, so the emitter sits under the whole recursion (a
+            leaf's bytes, its item, its list, the separators between them, the
+            document's prefix) rather than being called directly. **Every
+            inline-bearing leaf in a file edited at once, and the file still
+            serialises byte-identical; and each one edited alone rebuilds the
+            file around itself exactly, for exactly one emitter call.** That
+            second is 1b's step 6 sweep with a real emitter under it, where
+            until now it had only ever measured containers handing back bytes
+            that already existed.
+
+            **Both count the emitter's calls, because that is the only way they
+            can pass by doing nothing.** A `modelTouch` that failed to clear
+            leaves an untouched document, which serialises from its own bytes
+            and comes back identical with the emitter never running — so the
+            counts are asserted (861 leaves, 861 calls; and one call per
+            single-leaf edit, which is 1b's no-sibling-is-re-serialised result
+            stated at document scale). Confirmed against a `modelTouch` stubbed
+            to a no-op, where both read **0 emitter calls** and fail.
+
+            A third check turns the width on, and the per-file counts match
+            step 5's own measurement exactly from the other direction — which
+            is worth more than either alone, since the two are computed by
+            different code.
 
         **It closes TODO 2.3 by construction, and that is worth stating because
         the wording above understates it.** "The conventions `sniffMarkdownStyle`
@@ -1776,8 +1807,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         reference question, which is small and is the only place the emitter
         needs to know about anything outside its own block.
 
-    *   **4. The suite — scaffolded 2026-09-11, and it grows with each slice
-        rather than landing once.** `tests/model.test.mjs` drives this repo's
+    *   **4. The suite — done, 2026-09-18, having grown with each slice rather
+        than landing once.** `tests/model.test.mjs` drives this repo's
         own files as the oracle; the scaffold, the file oracle and the 39 checks
         covering slice 1 are already in, and every step since has added its own.
         How many there are is what a run prints; it is not written down here,
@@ -1785,7 +1816,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         way `server/deno.json` already imports `npm:hono` — flagged per
         CLAUDE.md and decided 2026-09-11: the app keeps its CDN tags, the two
         pins have to be kept in step, and `npm test` wants the network once.
-        What is left is per-slice coverage, so this line closes when 3 does.
+        Per-slice coverage was what was left, so this line closed when 3 did.
 
     What this stage deliberately does not do: edit inside a table cell, or
     reach the inline structure of anything beyond slice 2's tree. Before 1b it

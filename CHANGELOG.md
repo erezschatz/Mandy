@@ -4739,3 +4739,67 @@ One correction to a reading taken during that run: editing CHARLIE first
 appeared to delete the break outright, which was the test method rather than the
 app — assigning `textContent` replaces a paragraph's children and takes the
 `<br>` with it. Editing only the first text node leaves the break in place.
+
+## 2026-09-18 — Close slice 3's step 6, and with it stage 1 of the rewrite
+
+Four checks in the `model` suite, 1251 to 1255, and stage 1 of TODO 3.1 is done.
+
+**The new checks go through `modelSerialise` rather than calling the emitter
+directly**, which is the difference between this step and everything above it:
+the emitter now sits under the whole recursion — a leaf's bytes, its item, its
+list, the separators between them, the document's prefix — which is the
+arrangement the app will actually use and the one a per-leaf check cannot reach.
+
+- **Every inline-bearing leaf in a file edited at once, and the file still
+  serialises byte-identical** — 861 leaves across the six oracle files.
+- **Each one edited alone rebuilds the file around itself exactly, for exactly
+  one emitter call.** That is slice 1b's step 6 sweep with a real emitter under
+  it, where until now it had only ever measured containers handing back bytes
+  that already existed. Re-parsed per leaf, since `modelTouch` clears ancestors
+  and a second measurement on the same document would be measuring one that has
+  already been edited.
+- **The same with each file's own width on**, and the per-file counts match slice
+  3 step 5's measurement exactly from the other direction — worth more than
+  either alone, since the two are computed by different code.
+
+**Both of the first two count the emitter's calls, because that is the only way
+they can pass by doing nothing.** A `modelTouch` that failed to clear leaves an
+untouched document, which serialises from its own bytes and comes back identical
+with the emitter never running. Confirmed against a `modelTouch` stubbed to a
+no-op: both read `0 emitter calls` and fail. One more break was tried and
+correctly caught nothing — a container that recurses into its children even when
+it still holds its own source produces the same bytes, because the tiling
+invariant says `leading` plus the children *is* the source. That is an
+equivalent implementation rather than a bug, and nothing should have flagged it.
+
+**Stage 1's exit criterion is the estimate table's, and all three clauses are
+met** — checked against the **living** files rather than the frozen oracle
+copies, once and by hand, because that is what the criterion names:
+`CLAUDE.md`, `README.md`, `front/welcome.md` and `docs/TODO.md` all round-trip
+byte-identical through the model with no browser involved, and every
+inline-bearing leaf in each re-emits its own bytes — 279, 107, 34 and 121 of
+them. Editing one paragraph changing one paragraph is the sweep above.
+
+The third clause — *the `save-fidelity` suite's cases pass against the model* —
+needed reading rather than running, and the reading is written into
+[docs/REWRITE.md](docs/REWRITE.md) so it can be argued with rather than assumed.
+That suite's cases are partly statements about Turndown and the DOM, which have
+no model equivalent, and partly statements about constructs the old core has to
+work to preserve. The constructs are what is asserted: twenty of them — a break
+inside a list item and inside a blockquote, both break spellings and a document
+mixing them, a wrapped item's content indent, three-deep nesting, an all-ones
+ordered list, a padded table and an aligned one, each rule character, a setext
+heading that is not a rule, `snake_case` that is not emphasis, a fenced block, a
+single-line and a titled reference definition, a definition inside a fence that
+is not one, inline and display maths, an autolink, and a code span holding a
+delimiter — each round-tripped and then re-emitted from its own tree.
+
+**So stage 1 closes and this branch goes back to `main`**, per D8. It changes
+nothing the editor does, since `model.js` is in none of the three registries.
+What it carries over is `markdown-parser.js`'s refactor of the live parser
+configuration, slice 3 step 5's new third argument on `wrapMarkdownLine`, TODO
+2.3's hard-break fix in `markdown-style.js`, and an end to the two branches'
+documents drifting.
+
+Stage 2 — render, input, the formats — is next, and it is the first stage that
+touches what the editor does.
