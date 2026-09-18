@@ -4740,7 +4740,7 @@ appeared to delete the break outright, which was the test method rather than the
 app — assigning `textContent` replaces a paragraph's children and takes the
 `<br>` with it. Editing only the first text node leaves the break in place.
 
-## 2026-09-18 — Close slice 3's step 6, and with it stage 1 of the rewrite
+## 2026-09-18 — `9b321b7` — Close slice 3's step 6, and with it stage 1 of the rewrite
 
 Four checks in the `model` suite, 1251 to 1255, and stage 1 of TODO 3.1 is done.
 
