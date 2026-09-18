@@ -5423,7 +5423,7 @@ documents drifting.
 Stage 2 — render, input, the formats — is next, and it is the first stage that
 touches what the editor does.
 
-## 2026-09-18 — `rewrite` merges back: stage 1 of the editing-core rewrite
+## 2026-09-18 — `5322693` — `rewrite` merges back: stage 1 of the editing-core rewrite
 
 D8's first of two merges, at the end of stage 1. **It changes nothing the editor
 does** — `model.js` is in none of the three registries — which is the whole
