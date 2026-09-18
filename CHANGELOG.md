@@ -4681,7 +4681,7 @@ reference.
 No code in `front/` changed, so `npm test` proves nothing about this and was not
 run for it. The verification is the Safari run above.
 
-## 2026-09-18 — Fix the hard-break half of TODO 2.3
+## 2026-09-18 — `bd9c84d` — Fix the hard-break half of TODO 2.3
 
 **The condition on that item was the wrong test, and removing it is most of
 this change.** 2.3 read *no fix on the old core unless it turns up in daily
