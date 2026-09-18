@@ -4589,7 +4589,7 @@ written over.
   its line re-wrapped. That is **TODO 2.3**, which this fixture exists to find,
   and the committed wrapper produces exactly the same divergence.
 
-## 2026-09-18 — Teach the paste check Safari's keyboard, TODO 1.3
+## 2026-09-18 — `6289e11` — Teach the paste check Safari's keyboard, TODO 1.3
 
 [tests/paste-check.html](tests/paste-check.html) could not measure the one
 browser it was still waiting on. Reported by hand in Safari: the plain-text
