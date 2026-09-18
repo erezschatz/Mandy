@@ -5484,7 +5484,7 @@ That is a pre-existing gap rather than merge work, and folding it in would mean
 chasing `front/outline.js` and CLAUDE.md in a commit that is meant to be a
 merge.
 
-## 2026-09-18 — TODO 4.6 leaves the file, and its number with it
+## 2026-09-18 — `a1eba4b` — TODO 4.6 leaves the file, and its number with it
 
 The outline's one-second lag was fixed on 2026-09-18 in `4a45f48`, with all
 three of its stages — measure, fix, verify in a browser — marked done. The item
