@@ -4361,3 +4361,32 @@ sentence keeping `==mark==` — the author's emphasis, in the file — apart fro
 the reader's marker beside it.
 
 No code changed, so no suite ran.
+
+## 2026-09-18 — The outline follows a tab switch at once, TODO 4.6
+
+The sidebar used to keep the previous document's headings for a second after a
+tab switch, a new tab, Open, Reload or New. The whole delay was
+`OUTLINE_DEBOUNCE` in [front/outline.js](front/outline.js): the rebuild hangs
+off a `MutationObserver`, debounced by a second so it does not flicker while a
+heading is being typed, and a document swap is one `innerHTML` assignment and
+so one observer batch that waited the full second behind it. Measured before
+changing anything, in the running app with a second observer on `#editor` and
+one on `#outline`: a new tab and a switch back each produced exactly one
+record — target `#editor`, type `childList` — at 6ms and one render at 1007ms,
+so nothing was re-arming the timer and the fix is the constant's shape rather
+than a second cause.
+
+`scheduleOutline` now reads the records it is handed. One whose target is the
+editor itself with `childList` is a top-level structural change — a swap, or
+an Enter or Backspace at the top level — and renders at once; anything inside
+the subtree, or a text change, keeps the second. The shape is read off the
+record rather than off a flag, so `tabs.js`, `file-api.js` and the welcome
+fetch are all covered without any of them learning that the outline exists.
+
+Filed as **TODO 4.6** rather than under 3.1: `outline.js` is in the row of
+modules REWRITE.md leaves alone because they read the rendered DOM, and the
+observer survives per-block re-render, so the rewrite neither changes this nor
+waits on it. The `outline` suite now hands the observer's callback both record
+shapes — its stub's `setTimeout` fires at once, so what it asserts is whether
+the timer was armed at all, and that the nav has been redrawn by the time a
+swap-shaped call returns. CLAUDE.md's outline section says the same.

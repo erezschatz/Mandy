@@ -1580,11 +1580,17 @@ Three more things worth knowing:
   sized from `--outline-width` rather than from the nav's content. Both exist so
   the editor does not render full-width and then shift once `outline.js` runs —
   the same problem `.toolbar`'s `min-height` solves.
-- **Rebuilds hang off a debounced `MutationObserver` on `#editor`**, not an
-  `input` listener, because the document also changes from Open, Reload, New,
-  paste and the welcome fetch. The click handler captures the heading *element*
-  rather than looking it up by slug, since a slug goes stale the moment its
-  heading is edited and the rebuild is a second behind.
+- **Rebuilds hang off a `MutationObserver` on `#editor`**, not an `input`
+  listener, because the document also changes from Open, Reload, New, paste
+  and the welcome fetch. It is debounced by a second for typing and **not for
+  a document swap**: a record whose target is the editor itself with
+  `childList` — which is what one `innerHTML` assignment produces, measured
+  2026-09-18 — renders at once, so a tab switch does not show the previous
+  document's headings for a second (TODO 4.6). The shape is read off the record
+  rather than off a flag, so the assignment sites need not know. The click
+  handler captures the heading *element* rather than looking it up by slug,
+  since a slug goes stale the moment its heading is edited and the rebuild can
+  be a second behind.
 
 The static export's TOC is gated on `outlineIsOpen()`. That is a placeholder for
 a Settings pane, not a design — the sidebar is chrome for the author and the

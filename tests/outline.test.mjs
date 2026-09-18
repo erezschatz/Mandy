@@ -89,7 +89,7 @@ function loadOutline() {
           this.fn = fn;
         }
         observe(target, options) {
-          observed.push({ target, options });
+          observed.push({ target, options, fn: this.fn });
         }
       },
       Event: class {
@@ -117,6 +117,7 @@ function loadOutline() {
         observed,
         actions,
         selection,
+        timers,
       },
     },
     "; return { ctx: __ctx, outlineDepths, outlineEntries, copyInline," +
@@ -354,6 +355,34 @@ export default function run(check) {
       ctx.observed[0].options.subtree === true &&
       ctx.observed[0].options.characterData === true,
   );
+
+  // TODO 4.6: a document swap is one childList record on the editor itself,
+  // and it must not wait behind the typing debounce. The stub's setTimeout
+  // runs its callback at once, so the observable difference is whether the
+  // timer was armed at all -- `timers` grows by one on the debounced path and
+  // not on the immediate one.
+  const observer = ctx.observed[0].fn;
+  setOutlineOpen(true);
+  let armed = ctx.timers.length;
+  observer([{ target: editor, type: "childList" }]);
+  check(
+    "a document swap renders the outline without arming the debounce",
+    ctx.timers.length === armed,
+  );
+  const nav = ctx.container.children.find((c) => c.id === "outline");
+  check("and the sidebar has been redrawn by the time the swap returns",
+    !!nav && nav.children.length === 1);
+
+  armed = ctx.timers.length;
+  observer([{ target: editor.children[0], type: "childList" }]);
+  check(
+    "a change inside the document still waits behind the debounce",
+    ctx.timers.length === armed + 1,
+  );
+  armed = ctx.timers.length;
+  observer([{ target: editor.children[0], type: "characterData" }]);
+  check("and so does typing", ctx.timers.length === armed + 1);
+  setOutlineOpen(false);
 
   check(
     "both toolbar actions are registered",
