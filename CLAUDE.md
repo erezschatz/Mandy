@@ -335,12 +335,20 @@ that half again needs a real keyboard rather than this page.
 
 [tests/paste-check.html](tests/paste-check.html) is the last, and the only one
 that cannot be run by a machine at all: it measures what a browser puts in a
-paste event for Ctrl+Shift+V, which needs a real clipboard and a real
-keystroke. It answered the question TODO 1.3 opened with: Chrome 152 and Firefox
+paste event for the paste-as-plain-text binding, which needs a real clipboard
+and a real keystroke. It answered the question TODO 1.3 opened with: Chrome 152 and Firefox
 154 both offer `text/plain` alone on that binding, so the plain branch in
 `app.js` already fires and there was nothing to build for either — the opposite
 of what the item predicted. Safari is still unmeasured; its binding is
-Cmd+Shift+Option+V. Unlike the two before it, it needs no server and no app —
+Cmd+Shift+Option+V, and until 2026-09-18 this page could not have measured it:
+the keydown matcher tested `e.key === "v"`, and on macOS Option composes
+characters, so Option+V is `√` and the match never fired. **It did not fail
+loudly** — the keydown was dropped and the paste was attributed to whichever
+keystroke came before it. It now matches `e.code`, names the binding from the
+modifiers actually pressed, logs every keydown it sees, and consumes a
+keystroke once a paste has used it. A check page that drops evidence quietly is
+worse than none, since the whole point is to report what the browser did rather
+than what we expected. Unlike the two before it, it needs no server and no app —
 open the file itself, which is why it is not in `CHECK_PAGES`.
 
 [spike/block-model.html](spike/block-model.html) is a sixth page of the same

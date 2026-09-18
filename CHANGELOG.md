@@ -4588,3 +4588,52 @@ written over.
 - CHARLIE still diverges — its backslash break is rewritten to two spaces and
   its line re-wrapped. That is **TODO 2.3**, which this fixture exists to find,
   and the committed wrapper produces exactly the same divergence.
+
+## 2026-09-18 — Teach the paste check Safari's keyboard, TODO 1.3
+
+[tests/paste-check.html](tests/paste-check.html) could not measure the one
+browser it was still waiting on. Reported by hand in Safari: the plain-text
+paste logged as `menu or unknown`, with the meaning "use the keyboard rather
+than a menu" — when the keyboard was exactly what had been used.
+
+**The cause is one line.** The keydown matcher was `e.key !== "v" && e.key !==
+"V"`, and `e.key` is the character *produced*. On macOS the Option key composes
+characters, so Option and V together make `√`. Safari's binding is
+Cmd+Shift+Option+V, so `e.key` is never `"v"` while it is held, the handler
+returned early, and the keydown was thrown away. `e.code` is the physical key
+and is immune to both the layout and the modifiers, so that is what it reads
+now.
+
+**Reproduced and then re-run against the fix**, by driving the page's own
+script with synthetic events carrying `key: "√"`, `code: "KeyV"`: the committed
+page logs that keystroke as `menu or unknown`, and the fixed one logs it as
+`Cmd+Shift+Option+V` and classifies it as a plain-text paste. Cmd+V,
+Cmd+Shift+V and Ctrl+Shift+V all still classify as they did.
+
+**Doing that turned up a worse failure in the same family, now closed too.** A
+dropped keydown left the *previous* one sitting in `lastKey`, so a second paste
+inside the two-second window was silently attributed to it — Safari's binding
+reported as `Ctrl/Cmd+V`, a wrong measurement rather than a missing one, and
+visible only because the tester happened to take longer than two seconds. A
+keystroke is now consumed once a paste has used it, so one keystroke explains
+one paste and no more.
+
+Three smaller changes follow from the same root cause, which is that the page
+had a fixed idea of the keyboard:
+
+- **The binding is named from the modifiers actually pressed**, so the table and
+  the summary read `Cmd+Shift+Option+V` in Safari and `Cmd+Shift+V` in Chrome
+  rather than a constant the reader has to translate.
+- **Plain-text paste is Ctrl/Cmd+V with any extra modifier**, not Shift alone,
+  which covers both bindings without the page carrying a table of which browser
+  binds what.
+- **Every keydown that reaches the page is logged**, matched or not, above the
+  table. That line is what would have answered this in one run instead of two:
+  a keystroke listed there and marked ignored says the page has the wrong idea
+  about the keyboard, where silence says the browser swallowed it — and those
+  are opposite conclusions for 1.3, whose proposed fix hangs off that keydown.
+
+The instructions now name both bindings and say to try the other if nothing
+happens. Nothing in `front/` changed and no suite loads this page, so `npm test`
+proves nothing about it and was not run for it; the verification is the harness
+above plus a real Safari, which is still TODO 1.3's remaining measurement.

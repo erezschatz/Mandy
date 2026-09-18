@@ -171,6 +171,19 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     the page logs as a plain-text paste. If WebKit strips the flavour like the
     other two, this item closes with no further code.
 
+    **The page could not have measured Safari until 2026-09-18**, which is why
+    this is still open rather than merely unrun. Its keydown matcher tested
+    `e.key === "v"`, and on macOS the Option key composes characters — Option
+    and V make `√` — so with Option held the match never fired. The keydown was
+    dropped, and the paste was attributed to whatever keystroke came before it:
+    "Ctrl/Cmd+V" if the tester was quick, "menu or unknown" if they were not.
+    Fixed by matching `e.code` (the physical key, immune to layout and
+    modifiers), naming the binding from the modifiers actually pressed,
+    treating *any* extra modifier as the plain-text binding rather than Shift
+    alone, logging every keydown that reaches the page, and consuming a
+    keystroke once a paste has used it. **A wrong measurement is worse than a
+    missing one**, and this page produced one.
+
 *   **1.4** *(closed by 3.1)* Invisible whitespace: what the cleanup does not
     reach. Pasted HTML is sanitised on the way in and U+00A0 is normalised on
     the way out (see D3
