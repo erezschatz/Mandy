@@ -4517,3 +4517,74 @@ reference-links section now records it as the third of that family.
 the suite is the whole of this step's verification. REWRITE.md's step 4 line and
 the slice 3 header say where this leaves the slice; step 5, re-wrapping, is what
 is left of it.
+
+## 2026-09-18 — Re-wrap an edited block, slice 3's step 5
+
+`modelEmitLeaf` takes a width, and `wrapMarkdownLine` in
+[front/markdown-style.js](front/markdown-style.js) takes the prefixes to put
+back rather than reading them off the line it was handed. The derivation moved
+into `wrapMarkdownPrefixes` and stays as the default, because `reflowMarkdown`
+is handed a document as text and has nothing else to consult.
+
+**The difference is the tab.** Derived, a continuation indent is spaces, so the
+marker `"-\t"` continues under two of them — the same column and different bytes
+from the bare tab the file used, on 1 item in 343 across the oracle, and exactly
+the bug 1b's step 5 fixed at parse sitting unfixed one layer along. Measuring it
+also explains why nobody saw it: a marker only ever reaches that path from
+Turndown's own `listItem` rule, whose pad comes from a sniff matching spaces
+alone, so the case is unreachable through the app. It took reading a file's own
+bytes to find at all, which is the argument for recording rather than deriving,
+made once more.
+
+**Most of the value is in what is not re-wrapped.** Never a heading, in either
+spelling — a wrap turns its tail into a paragraph, and `reflowMarkdown` refuses
+one by looking for a `#`, which misses setext entirely where the model knows
+what kind of block it is holding. Never a line carrying maths, the one guard
+structure cannot replace. And never a line already inside the width, because
+`inline.content` keeps the author's own breaks: only a line the edit made too
+long is touched. A width of 0 stays a real answer meaning *this file is not
+hard-wrapped*, which `corpus/readme.md` is.
+
+The metric on the six oracle files: **all 861 inline-bearing leaves compose
+exactly, and re-wrapping each at its own file's width leaves 783 byte-identical.**
+The 78 that move hold a line the author let run past the width — a guaranteed
+population rather than a fault, since `sniffWrapWidth` takes the 95th percentile
+and about one prose line in twenty is longer than it by construction. On `main`,
+where an edited paragraph is one Turndown line re-flowed whole, all 861 would
+move.
+
+**It found a defect in step 3.** A paragraph indented one to three spaces is
+still a paragraph, and markdown-it strips that indent off `inline.content`
+exactly as it strips a list marker — so an edited one came back flush left,
+silently, and 861 of 861 passed with it missing because not one paragraph in the
+oracle is indented. `leadingAffix` is the fix: everything markdown-it took off
+the first line, recorded whole, with the emitter subtracting the item prefix it
+is putting back. Whole rather than named because the pieces worth naming already
+are, and one subtraction in the emitter beats a second derivation at parse.
+
+`model.js` now calls into `markdown-style.js` for `wrapMarkdownLine` and
+`hasMathSpan` rather than carrying a second copy of either — a real load-order
+dependency the three registries will have to honour when it joins them at stage
+4, and why the `model` suite loads the two together.
+
+Six checks in `model` and three in `save-fidelity`, 1233 to 1246, each of the six
+ways the composition can be wrong broken on purpose first and confirmed to fail.
+
+**`npm test` is not the verification here, and this is the first step where that
+matters**: the change lands in `markdown-style.js`, on the save path, and no
+suite opens a document, edits it and saves it. So the recipe was run by hand, in
+Chrome, against [tests/fixtures/break-test.md](tests/fixtures/break-test.md) —
+opened through the real `openFile`, saved through the real `saveFile` to a
+scratch path outside the repo, diffed, scratch deleted, the fixture never
+written over.
+
+- The refactored wrapper writes **byte-identical output to the committed one**
+  for the same document, checked by stashing the change, saving again and
+  diffing the two saves against each other.
+- Editing DELTA re-wraps DELTA at the sniffed width of 78 and moves no other
+  paragraph.
+- ALPHA's and BRAVO's two-space hard breaks survive, and ECHO comes back
+  byte-identical.
+- CHARLIE still diverges — its backslash break is rewritten to two spaces and
+  its line re-wrapped. That is **TODO 2.3**, which this fixture exists to find,
+  and the committed wrapper produces exactly the same divergence.

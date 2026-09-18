@@ -148,7 +148,10 @@ They cover the invariants that fail *silently* rather than loudly:
   handed it over would pass everything else and change nothing.
 - **model** — `front/model.js`, TODO 3.1's stage 1, and the only suite with no
   DOM in it: the model is pure string and token work, so it borrows dom.mjs's
-  file helpers and nothing else. Its oracle is `ORACLE_FILES`, and every file in
+  file helpers and nothing else. It loads `markdown-style.js` ahead of
+  `model.js`, and that order is load-bearing rather than tidy: since slice 3's
+  step 5 the model calls `wrapMarkdownLine` and `hasMathSpan` rather than
+  carrying a second copy of either. Its oracle is `ORACLE_FILES`, and every file in
   it is a **fixture** — `tests/fixtures/corpus/`, five frozen copies taken on
   2026-09-16 of documents this project maintains by hand, plus
   [tests/fixtures/torture.md](tests/fixtures/torture.md).
@@ -533,7 +536,7 @@ back. That is the inversion the whole rewrite is for. Two identical paragraphs
 cannot be confused for one another by a source span, and `indexMarkdownBlocks`
 keys on content precisely because it has no span to use instead.
 
-Eleven things that are decisions rather than details:
+Twelve things that are decisions rather than details:
 
 - **The parser is injected, never reached for.** `modelParse` takes the
   markdown-it instance as an argument. Both callers now configure it the same
@@ -706,12 +709,35 @@ Eleven things that are decisions rather than details:
   `referenceAwareLink` replaces markdown-it's `link` rule and nothing else, so
   an image carries no stamp; an untouched one round-trips on its recorded tail
   and a rebuilt one comes back inline.
+- **Re-wrapping is the second layer, and it is applied to one block.** Slice 3's
+  step 5. `modelEmitLeaf` takes a width and hands each over-long composed line to
+  `wrapMarkdownLine` — **with the prefixes it recorded at parse rather than
+  letting the wrapper read them back off the line**, which is that function's
+  new third argument and the reason `wrapMarkdownPrefixes` now exists as its
+  default. The difference is the tab: derived, the marker `"-\t"` continues
+  under two spaces, the same column in different bytes, on 1 item in 343 across
+  the oracle. Most of the value is in what is *not* wrapped — never a heading
+  (a wrap turns its tail into a paragraph, and a `#` scan cannot see a setext
+  one), never a line carrying maths, and never a line already inside the width,
+  because `inline.content` keeps the author's own breaks so only a line the edit
+  made too long is touched. A width of 0 is a real answer meaning *this file is
+  not hard-wrapped*, and `README.md` is one. This is why `model.js` must load
+  **after** `markdown-style.js`: it calls `wrapMarkdownLine` and `hasMathSpan`
+  rather than carrying a second copy of either.
+- **`leadingAffix` is everything markdown-it took off the first line, recorded
+  whole.** A paragraph indented one to three spaces is still a paragraph and has
+  that indent stripped off `inline.content` exactly as a list marker is — so
+  until 2026-09-18 an edited one came back flush left, silently, and every check
+  passed because no paragraph in the oracle is indented. Whole rather than named
+  because the pieces worth naming already are: the emitter subtracts the item
+  prefix it is putting back and keeps the remainder, which is one subtraction in
+  one place instead of a second derivation at parse. Verified against
+  `inline.content`, and a null is a shape the emitter refuses on.
 
-What it does not do yet: re-wrap an edited block to the width the file was
-written at. That is `reflowMarkdown`'s job, and doing it from the model means
-handing it the prefixes rather than letting it re-derive them off the line —
-slice 3's step 5, and the rest of stage 1. Rendering, input and the format
-commands are stages 2 and 3.
+What it does not do yet: nothing in stage 1 but the suite work that closes slice
+3's step 6 — the two claims one level up, with a real emitter under them instead
+of a throw. Rendering, input and the format commands are stages 2 and 3, and
+nothing in `front/` loads this file until stage 4.
 
 ### Links and heading anchors
 

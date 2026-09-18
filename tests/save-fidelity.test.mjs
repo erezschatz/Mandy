@@ -230,11 +230,12 @@ function referenceLinkChecks(check) {
 // markdown-style.js is all pure string work, so unlike the options above these
 // drive the real functions rather than asserting what app.js asked for.
 function styleChecks(check) {
-  const { sniff, reflow, index, restore } = loadSource(
+  const { sniff, reflow, index, restore, wrapLine, wrapPrefixes } = loadSource(
     "markdown-style.js",
     {},
     "; return { sniff: sniffMarkdownStyle, reflow: reflowMarkdown," +
-      " index: indexMarkdownBlocks, restore: restoreSourceWrapping };",
+      " index: indexMarkdownBlocks, restore: restoreSourceWrapping," +
+      " wrapLine: wrapMarkdownLine, wrapPrefixes: wrapMarkdownPrefixes };",
   );
 
   check("dash bullets are sniffed", sniff("- a\n- b\n").bulletListMarker === "-");
@@ -297,6 +298,32 @@ function styleChecks(check) {
   check(
     "a wrapped blockquote keeps its prefix on every line",
     quoted.trimEnd().split("\n").every((line) => line.startsWith(">")),
+  );
+
+  // The prefixes a wrap puts back are now a parameter, so a caller that knows
+  // them does not have to let the wrapper guess a second time — TODO 3.1's
+  // slice 3 step 5, where the model hands over what it recorded at parse. The
+  // derivation stays as the default for reflowMarkdown, which is handed a
+  // document as text and has nothing else to consult.
+  check(
+    "the derived prefixes are the quote chain, the marker and a content-aligned indent",
+    JSON.stringify(wrapPrefixes("> -   text")) === JSON.stringify({ first: "> -   ", continuation: ">     " }) &&
+      JSON.stringify(wrapPrefixes("plain text")) === JSON.stringify({ first: "", continuation: "" }),
+  );
+  check(
+    "and a caller that passes its own gets them back verbatim, tab and all",
+    wrapLine("-\talpha beta gamma delta epsilon zeta eta theta", 20, { first: "-\t", continuation: "\t" })
+      .slice(1)
+      .every((line) => line.startsWith("\t")),
+  );
+  // Which is the bug: derived, that same item continues under two spaces — the
+  // same column and different bytes. Unreachable through reflowMarkdown, since
+  // a marker only arrives there from Turndown's listItem rule and the sniff
+  // behind it matches spaces alone, so this is here to pin the difference the
+  // model measured rather than to report a live fault.
+  check(
+    "where the derivation would have written spaces of the same width instead",
+    wrapPrefixes("-\talpha").continuation === "  ",
   );
 
   const item = reflow("-   alpha beta gamma delta epsilon zeta eta theta\n", 30);

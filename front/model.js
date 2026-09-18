@@ -169,6 +169,7 @@ function modelBlockFromSpan(span, md) {
     contentIndent: null,
     quotePrefixes: null,  // inside a quote only: see modelQuotePrefix
     headingShape: null,   // a heading only: see modelHeadingShape
+    leadingAffix: null,   // everything markdown-it took off the first line: see below
   };
   // Eagerly rather than on first edit: the fold is a walk over tokens the
   // parser has already produced — 980 blocks and ~11,000 tokens across the
@@ -196,6 +197,7 @@ function modelGapBlock() {
     contentIndent: null,
     quotePrefixes: null,  // inside a quote only: see modelQuotePrefix
     headingShape: null,   // a heading only: see modelHeadingShape
+    leadingAffix: null,   // everything markdown-it took off the first line: see below
   };
 }
 
@@ -1191,6 +1193,33 @@ function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
       }
     }
 
+    // Everything markdown-it took off the front of the first line, taken whole
+    // rather than named: the item marker if there is one, the continuation
+    // indent if this block is not the one opening its item, and **a paragraph's
+    // own leading indent**, which is the piece none of the recorded affixes
+    // carried and which slice 3's step 3 therefore dropped. A paragraph indented
+    // one to three spaces is still a paragraph, and `inline.content` has that
+    // indent stripped exactly as it has a marker stripped — the oracle happens
+    // to hold no such paragraph, which is why 861 of 861 passed with it missing.
+    //
+    // Whole rather than named because the pieces are already named: the emitter
+    // subtracts the item prefix it is putting back and keeps the remainder, so
+    // there is one subtraction in one place rather than a second derivation
+    // here. Verified against `inline.content` rather than trusted, the same way
+    // `modelHeadingShape` is — a first line that does not end with its own
+    // content's first line is a shape this does not understand, and a null
+    // leaves the emitter with nothing to work from rather than a guess.
+    //
+    // Not for a heading: `modelHeadingShape`'s `open` already runs from the
+    // chain-stripped column 0 and so carries the indent with it.
+    if (piece.block.inline && piece.block.kind !== "heading") {
+      const first = unquote(lines[piece.start]);
+      const content = piece.block.inline.content.split("\n")[0];
+      if (first.endsWith(content)) {
+        piece.block.leadingAffix = first.slice(0, first.length - content.length);
+      }
+    }
+
     // The same thing for a heading, and the only affix in the model that is a
     // suffix: a closing hash run and a setext underline both sit behind the
     // content. Read off the chain-stripped lines, since a heading inside a
@@ -1471,7 +1500,7 @@ function modelItemAffix(block) {
  * no serialiser at all, and for the same reason: writing something else into
  * the user's file is the one outcome here worth crashing to avoid.
  */
-function modelEmitLeaf(block, md, doc) {
+function modelEmitLeaf(block, md, doc, width = 0) {
   if (!block.inlines) {
     throw new Error(`edited ${block.kind} block has no inline tree`);
   }
@@ -1503,12 +1532,60 @@ function modelEmitLeaf(block, md, doc) {
     throw new Error("edited block inside an item with no recorded marker");
   }
 
+  // What the item puts back on the first line, and what every line after it
+  // carries instead.
+  const opener = item ? (item.first ? item.marker : item.contentIndent) : "";
+  const indent = item ? item.contentIndent : "";
+
+  // A paragraph's own leading indent is whatever markdown-it took off the first
+  // line beyond that — see `leadingAffix` in the tiler. One subtraction, here,
+  // rather than a second thing recorded at parse: the pieces the model names
+  // are named, and this is the rest. A heading never asks, because its `open`
+  // carries the indent already.
+  let extra = "";
+  if (block.kind !== "heading") {
+    if (block.leadingAffix === null || !block.leadingAffix.startsWith(opener)) {
+      throw new Error(`edited ${block.kind} block whose first line does not start with its own affix`);
+    }
+    extra = block.leadingAffix.slice(opener.length);
+  }
+
   const chain = block.quotePrefixes;
   const last = chain && chain.length ? chain[chain.length - 1] : "";
-  return content
-    .split("\n")
-    .map((line, i) => (chain ? chain[i] ?? last : "") + (item ? (i === 0 && item.first ? item.marker : item.contentIndent) : "") + line)
-    .join("\n");
+  const lines = content.split("\n");
+  const out = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const quote = chain ? chain[i] ?? last : "";
+    const first = quote + (i === 0 ? opener + extra : indent);
+    const composed = first + lines[i];
+
+    // Slice 3's step 5, and everything it does not do is the point. **A
+    // heading is never re-wrapped**, because a wrap turns its tail into a
+    // paragraph — `reflowMarkdown` refuses one by looking for a `#`, which
+    // misses a setext heading entirely, and the model simply knows. **A line
+    // holding maths is never re-wrapped**, the one guard the model cannot
+    // replace with structure, since an equation is inline and can be anywhere
+    // in a paragraph. And a line already inside the width is left exactly as it
+    // is: `inline.content` keeps the author's own breaks, so only a line the
+    // edit made too long is touched. That is the whole of "only where the
+    // content moved" — the block that moved is the only one re-emitted at all,
+    // and inside it only the lines that outgrew the width.
+    if (!width || block.kind === "heading" || composed.length <= width || hasMathSpan(composed)) {
+      out.push(composed);
+      continue;
+    }
+    // The prefixes are handed over rather than left to be read back off the
+    // line. That is this step's change to `markdown-style.js`, and the reason
+    // is the tab: `wrapMarkdownPrefixes` computes a continuation indent of
+    // spaces, which for the marker `"-\t"` is the same column and different
+    // bytes from the file's own bare tab. Measured at 1 item in 343 across the
+    // oracle — the same bug 1b's step 5 fixed at parse, sitting unfixed one
+    // layer along, and invisible until something read a file's own bytes.
+    out.push(...wrapMarkdownLine(composed, width, { first, continuation: quote + indent }));
+  }
+
+  return out.join("\n");
 }
 
 /**

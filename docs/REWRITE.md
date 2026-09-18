@@ -1353,7 +1353,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         link rebuilder; the rest is a tree fold and two offset functions.
 
     *   **3. The block serialiser — in progress, started 2026-09-16.** Steps 1
-        through 4 are in; 5 and 6 are not. An edited
+        through 5 are in; only 6 is not. An edited
         block emits markdown in the conventions **its own bytes recorded**,
         falling back to the ones `sniffMarkdownStyle` read off the file it came
         from, and `reflowMarkdown` re-wraps it — the same two layers as today,
@@ -1623,7 +1623,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             configuration rather than to this emitter, and belongs wherever
             slice 2's step 0 would be revisited.
 
-        5.  **Re-wrap, and only where the content moved — not started.**
+        5.  **Re-wrap, and only where the content moved — done and tested,
+            2026-09-18.**
             `inline.content` preserves the author's own line breaks — 582 of 767
             paragraphs hold one — so an **unedited** block needs no width at all,
             and an edited one re-wraps only because its text changed.
@@ -1647,6 +1648,76 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             [DECISIONS.md](DECISIONS.md) is why that costs nothing** — it
             deletes a workaround rather than carrying one forward, which is the
             work rather than a detour from it.
+
+            **The derivation is now `wrapMarkdownPrefixes`, and it stays as the
+            default**: `reflowMarkdown` is handed a document as text and has
+            nothing else to consult, so the guess is right there and only there.
+            What the measurement adds is *why it was never seen*: a marker only
+            ever reaches that path from Turndown's own `listItem` rule, whose pad
+            comes from a sniff matching spaces alone
+            (`/^(\s*)([-*+])( +)\S/`), so the tab case is unreachable through
+            the app. It took reading a file's own bytes to find it at all, which
+            is the whole argument for recording rather than deriving. The check
+            in `save-fidelity` therefore pins the difference rather than
+            reporting a live fault.
+
+            **What is not re-wrapped is most of the value.** A heading never is,
+            in either spelling — a wrap turns its tail into a paragraph, and
+            `reflowMarkdown` refuses one by looking for a `#`, which misses
+            setext entirely where the model simply knows what kind of block it
+            holds. A line carrying maths never is, which is the one guard
+            structure cannot replace since an equation is inline and can sit
+            anywhere. And a line already inside the width is left exactly where
+            it was, because `inline.content` keeps the author's own breaks: only
+            a line the edit made too long is touched. `reflowMarkdown`'s own
+            comment has said it never joins, only breaks, since it was written;
+            that is what makes this minimal rather than a re-flow.
+
+            **The metric, on the six oracle files: all 861 inline-bearing leaves
+            compose exactly, and re-wrapping each at its own file's width leaves
+            783 of them byte-identical.** The 78 that move are blocks holding a
+            line the author let run past the width — which is a *guaranteed*
+            population rather than a fault, since `sniffWrapWidth` takes the
+            95th percentile and so about one prose line in twenty is longer than
+            it by construction. Against `main`, where an edited paragraph is one
+            Turndown line re-flowed whole, every one of the 861 would move.
+
+            **It found a defect in step 3, which is the honest account rather
+            than a footnote.** A paragraph indented one to three spaces is still
+            a paragraph, and markdown-it strips that indent off
+            `inline.content` exactly as it strips a list marker — so an edited
+            one came back flush left, silently. None of the recorded affixes
+            carried it, and 861 of 861 passed with it missing because not one
+            paragraph in the oracle is indented. `leadingAffix` is the fix:
+            **everything markdown-it took off the first line, recorded whole**,
+            with the emitter subtracting the item prefix it is putting back and
+            keeping the remainder. Whole rather than named because the pieces
+            that need naming are named already — a command has to be able to
+            change a marker — and one subtraction in the emitter beats a second
+            derivation at parse. Verified against `inline.content` the way
+            `modelHeadingShape` is, and a shape that does not line up leaves a
+            null the emitter refuses on.
+
+            **`model.js` now calls into `markdown-style.js`**, for
+            `wrapMarkdownLine` and `hasMathSpan`, rather than carrying a second
+            copy of either. That is a real load-order dependency the three
+            registries have to honour when the model joins them at stage 4 — it
+            follows `markdown-style.js` the way `undo.js` follows `app.js` — and
+            the `model` suite loads the two together for the same reason.
+
+            Six checks in `model` and three in `save-fidelity`, with each of the
+            six ways the composition can be wrong broken on purpose first and
+            confirmed to fail. And because this is the first step to change a
+            file the app loads on the **save path**, `npm test` is not the
+            verification: the real one is
+            [tests/fixtures/break-test.md](../tests/fixtures/break-test.md),
+            run by hand in the browser on 2026-09-18 and reported in the
+            CHANGELOG — the refactored wrapper writes **byte-identical output**
+            to the committed one for the same document, editing DELTA re-wraps
+            DELTA and nothing else, ALPHA's and BRAVO's hard breaks survive, and
+            ECHO comes back byte-identical. CHARLIE still diverges, and still
+            for TODO 2.3's reason rather than this step's: the committed
+            wrapper produces exactly the same divergence.
 
         6.  **The suite grows again — in progress.** The property this slice can
             state exactly, and it is the sharpest one available — **throw away

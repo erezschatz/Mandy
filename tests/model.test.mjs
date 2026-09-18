@@ -76,13 +76,19 @@ export default function run(check) {
   const {
     modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix,
     modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText,
-    modelEmitLeaf, modelReferenceLabels,
+    modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle,
   } = loadSource(
-    "model.js",
+    // markdown-style.js comes first because model.js calls into it: slice 3's
+    // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
+    // `hasMathSpan`, rather than carrying a second copy of either. That is a
+    // real load-order dependency the three registries will have to honour when
+    // model.js joins them at stage 4 — it has to follow markdown-style.js the
+    // way undo.js has to follow app.js.
+    ["markdown-style.js", "model.js"],
     {},
     "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix," +
       " modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText," +
-      " modelEmitLeaf, modelReferenceLabels };",
+      " modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -1942,6 +1948,135 @@ export default function run(check) {
         modelTouch(leaf);
         return modelEmitLeaf(leaf, md, doc) === "An ![by reference](https://example.org/p.png).";
       })(),
+    );
+  }
+
+  // ---- Slice 3, step 5: re-wrap, and only where the content moved -------
+
+  // The second of the two layers `markdown-style.js` has always had, applied to
+  // one block instead of to a whole document that then has most of itself
+  // restored. What it does *not* do is most of the value: `inline.content` keeps
+  // the author's own breaks, so a line already inside the width is left exactly
+  // where it was and only one the edit made too long is touched.
+  {
+    const emit = (src, width, want = (leaves) => leaves[0]) => {
+      const doc = parse(src);
+      const leaf = want(leavesOf(doc));
+      modelTouch(leaf);
+      return modelEmitLeaf(leaf, md, doc, width);
+    };
+
+    // The step-3 defect this step found, and it is a defect rather than a gap:
+    // a paragraph indented one to three spaces is still a paragraph, its indent
+    // is stripped off `inline.content` exactly as a list marker is, and nothing
+    // recorded carried it — so an edited one came back flush left, silently.
+    // 861 of 861 passed with it missing because not one paragraph in the oracle
+    // is indented. `leadingAffix` is the fix: everything markdown-it took off
+    // the first line, taken whole, with the emitter subtracting the item prefix
+    // it is putting back.
+    check(
+      "a paragraph's own leading indent survives an edit, which step 3 dropped",
+      emit("   indented paragraph\n", 0) === "   indented paragraph" &&
+        emit("  two spaces\n  and a second line\n", 0) === "  two spaces\n  and a second line",
+    );
+    check(
+      "including one indented inside a quote, and one indented past its item's own indent",
+      emit(">    indented inside a quote\n", 0) === ">    indented inside a quote" &&
+        emit("- item\n\n    over-indented second block\n", 0, (leaves) => leaves[1]) ===
+          "    over-indented second block",
+    );
+
+    // Width 0 is a real answer, not an absence: `sniffWrapWidth` gives it for a
+    // file that is not hard-wrapped, and README.md is one. Imposing a width
+    // there would be its own damage.
+    const RAGGED = "One sentence on its own line.\nA second, also on its own, which runs a good deal longer than eighty columns would allow.\n";
+    check(
+      "at width 0 nothing is wrapped, however long the line",
+      emit(RAGGED, 0) === RAGGED.trimEnd(),
+    );
+
+    // The property itself: the long line splits, its neighbours do not move.
+    const wrapped = emit(RAGGED, 40).split("\n");
+    check(
+      `a line over the width is wrapped and the lines beside it are not (${wrapped.length} lines out of 2 in)`,
+      wrapped[0] === "One sentence on its own line." && wrapped.length > 2 &&
+        wrapped.slice(1).every((line) => line.length <= 40),
+    );
+
+    // Never a heading — a wrap turns its tail into a paragraph. reflowMarkdown
+    // refuses one by looking for a `#`, which misses setext entirely; the model
+    // knows what kind of block it is holding.
+    const LONG_HEAD = "# A heading long enough that any width worth sniffing would break it in two\n";
+    const LONG_SETEXT = "A setext heading long enough that any width would break it in two\n===\n";
+    check(
+      "a heading is never wrapped, in either spelling — the setext one being what a `#` scan cannot see",
+      emit(LONG_HEAD, 40) === LONG_HEAD.trimEnd() && emit(LONG_SETEXT, 40) === LONG_SETEXT.trimEnd(),
+    );
+
+    // The one guard structure cannot replace, since an equation is inline and
+    // can sit anywhere in a paragraph.
+    const MATHS = "A line carrying $x = a \\times b \\times c \\times d$ and running past the width.\n";
+    check(
+      "a line holding maths is never wrapped",
+      emit(MATHS, 40) === MATHS.trimEnd(),
+    );
+
+    // The prefixes are handed over rather than re-derived, and this is the item
+    // the difference shows on: derived, the continuation is two spaces of the
+    // same width as the tab the file actually used.
+    // It has to have a continuation line, because that is what states the
+    // indent: 1b's step 5 derives one only when the item has none, and the
+    // derived value for `"-\t"` is `" \t"` — right, in the absence of anything
+    // better. torture.md's own tab-marked item is this shape.
+    const TABBED = "-\tA tab-marked item whose first line runs past any sniffed width at all\n\tand continues under a bare tab.\n";
+    check(
+      `a wrapped tab-marked item continues under the tab the file wrote, not spaces of the same width (${JSON.stringify(emit(TABBED, 40).split("\n")[1])})`,
+      emit(TABBED, 40).split("\n").slice(1).every((line) => line.startsWith("\t")),
+    );
+    check(
+      "and a wrapped item inside a quote keeps both affixes on every line it produces",
+      emit("> - An item inside a quote, long enough that it has to be broken somewhere\n", 40)
+        .split("\n")
+        .slice(1)
+        .every((line) => line.startsWith(">   ")),
+    );
+    // Held back and re-applied to the last line out, which is wrapMarkdownLine's
+    // own rule reached through the model rather than through reflowMarkdown.
+    check(
+      "a hard break survives a wrap, landing on the last line the wrap produced",
+      /\S {2}$/.test(emit("A paragraph with a hard break at its end, long enough to have to wrap somewhere  \nand a second line.\n", 40).split("\n").find((l, i, a) => a[i + 1] === "and a second line.")),
+    );
+
+    // And the metric. The two numbers are the claim: composition is exact
+    // everywhere, and the re-wrap moves only the blocks holding a line the
+    // author let run past the width their file sniffs to — where the running
+    // editor re-flows every edited paragraph whole.
+    let total = 0;
+    let exact = 0;
+    let unmoved = 0;
+    const perFile = [];
+    for (const path of ORACLE_FILES) {
+      const src = repoFile(path);
+      const width = sniffMarkdownStyle(src).wrapWidth;
+      const doc = parse(src);
+      let n = 0;
+      let kept = 0;
+      for (const leaf of leavesOf(doc)) {
+        if (!leaf.inlines) continue;
+        total += 1;
+        n += 1;
+        if (modelEmitLeaf(leaf, md, doc, 0) === leaf.source) exact += 1;
+        if (modelEmitLeaf(leaf, md, doc, width) === leaf.source) {
+          unmoved += 1;
+          kept += 1;
+        }
+      }
+      perFile.push(`${path.split("/").pop()} ${kept}/${n} at ${width}`);
+    }
+    check(
+      `every inline-bearing leaf composes exactly (${exact} of ${total}), and re-wrapping at each file's own width moves ${total - unmoved} of them` +
+        ` (${perFile.join(", ")})`,
+      exact === total && unmoved / total > 0.9,
     );
   }
 
