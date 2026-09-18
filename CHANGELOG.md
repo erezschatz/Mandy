@@ -4640,8 +4640,8 @@ above plus a real Safari, which is still TODO 1.3's remaining measurement.
 
 ## 2026-09-18 — `1361fd6` — Safari answers it too, and TODO 1.3 closes
 
-Run in Safari on macOS with a real clipboard and a real keyboard, which is the
-only way this question can be asked:
+Run in Safari 26.6.2 on macOS (`Version/26.6.2 Safari/605.1.15`) with a real
+clipboard and a real keyboard, which is the only way this question can be asked:
 
 | Paste | Flavours offered | Mandy would take |
 | --- | --- | --- |

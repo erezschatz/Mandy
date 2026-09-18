@@ -337,13 +337,15 @@ that half again needs a real keyboard rather than this page.
 that cannot be run by a machine at all: it measures what a browser puts in a
 paste event for the paste-as-plain-text binding, which needs a real clipboard
 and a real keystroke. **It answered the question in all three engines, and the
-answer was no every time** — Chrome 152 and Firefox 154 on 2026-08-30, Safari on
-2026-09-18: each offers `text/plain` alone on its own plain-text binding, so the
-plain branch in `app.js` already fires and there was never anything to build.
-That is the opposite of what TODO 1.3 predicted for all three, which is the whole
-argument for the check pages, and it is what closed that item with no code. All
-three deliver the `keydown` to the page as well, so the flag-from-keydown shape
-stays available if a browser ever changes its mind.
+answer was no every time** — Chrome 152 and Firefox 154 on 2026-08-30, Safari
+26.6.2 on 2026-09-18: each offers `text/plain` alone on its own plain-text
+binding, so the plain branch in `app.js` already fires and there was never
+anything to build. That is the opposite of what the item behind it predicted for
+all three, which is the whole argument for the check pages, and it is what
+closed that item with no code — see CHANGELOG.md, since the item has left
+docs/TODO.md and its number is free for something else. All three deliver the
+`keydown` to the page as well, so the flag-from-keydown shape stays available if
+a browser ever changes its mind.
 
 **So the page is now a regression check rather than an open question, and that
 is why it stays**: the answer is per browser and per version, and the way it
