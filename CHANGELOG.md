@@ -1257,7 +1257,7 @@ The toolbar suite picked up eight checks with no new test code, since it derives
 them from the spec and both bundle lists — every one of the four new actions has
 a handler in a script each variant ships.
 
-## 2026-08-30 — Links can be authored, not just imported (TODO 1.1.1)
+## 2026-08-30 — `725a5b0` — Links can be authored, not just imported (TODO 1.1.1)
 
 The first slice of TODO 1.1. Links rendered when a document was opened and
 Ctrl/Cmd+click already followed them, but there was no way to make one — the
@@ -1335,7 +1335,7 @@ rather than sitting in a card.
 `sw.js` is at `v1.24`, with `welcome-banner.png` and `welcome-banner-dark.png`
 added to `SHELL_ASSETS`.
 
-## 2026-08-31 — `d604beb` — Undo history becomes a detachable bundle (TODO 4.1)
+## 2026-08-31 — `8f166fc` — Undo history becomes a detachable bundle (TODO 4.1)
 
 The first slice of tabbed view, and nothing changes for a single document —
 this is groundwork.
@@ -1373,7 +1373,7 @@ the dirty flag, and draining one tab's history never surfaces another's markup.
 
 `sw.js` is at `v1.25`.
 
-## 2026-08-31 — Two workflow rules, and the cache bump `d604beb` missed
+## 2026-08-31 — `8f166fc` — Two workflow rules, and the cache bump that missed
 
 [CLAUDE.md](CLAUDE.md) gained a "Making a change" section with two rules: every
 change goes in this file as part of itself — hash-less first, header backfilled
@@ -1381,10 +1381,14 @@ once committed — and tests are not run for a change that touches no code, and
 otherwise only the suite naming the touched file rather than the whole
 `npm test`.
 
-`d604beb` edited `undo.js`, a `SHELL_ASSETS` entry, without moving `VERSION`, so
-`sw.js` goes to `v1.25` here to retire the stale cached copy. The CHANGELOG
-entry for `0da618a` — the icon/logo commit, which had gone in without one — was
-written at the same time.
+The undo change above edited `undo.js`, a `SHELL_ASSETS` entry, without moving
+`VERSION`, so `sw.js` goes to `v1.25` here to retire the stale cached copy.
+(This entry named that change as `d604beb`, which is not an object in this
+repository: the two were amended together and both are `8f166fc`, so the hash
+written here was the pre-amend one. Found and corrected on 2026-09-18 — it was
+the only dangling hash in any metafile.) The
+CHANGELOG entry for `0da618a` — the icon/logo commit, which had gone in without
+one — was written at the same time.
 
 ## 2026-09-02 — `f022926` — Rebrand: Marky becomes Mandy
 
@@ -1432,7 +1436,7 @@ set in Poppins ExtraBold, the closest match to the original; the banners are now
 flat vector renders rather than the previous textured raster, so they are also
 about a tenth of the file size.
 
-## 2026-09-02 — Packaging Mandy: two items recorded, no code
+## 2026-09-02 — `2964f26` — Packaging Mandy: two items recorded, no code
 
 [docs/TODO.md](docs/TODO.md) gained **6.3** — ship Mandy as a single executable
 via `deno compile`, the binary starting the server and opening the browser. The
@@ -1596,7 +1600,7 @@ reclassifies the model rewrite from a roadmap item to a 1.0 blocker**, on the
 argument that past that point the hand-rolls are the input-layer spec rather
 than a way of deferring it. No code.
 
-## 2026-09-05 — Cross-reference the escalation rule and a bundled fix, so scoped work can't miss them
+## 2026-09-05 — `2baad56` — Cross-reference the escalation rule and a bundled fix, so scoped work can't miss them
 
 Two near-misses, closed the same way. Asking for "1.1.2" alone would not have
 surfaced that 1.1.5's heading-in-list refusal was cheap enough to land with it
@@ -1611,7 +1615,7 @@ without anyone re-reading the rule first.
 verify (the current cluster count) before writing either. ROADMAP.md's
 escalation-rule paragraph gained a line back to that check. No code.
 
-## 2026-09-05 — Six heading levels, a list indent control, and the heading-in-list refusal (TODO 1.1.2, 1.1.3, 1.1.5)
+## 2026-09-05 — `2baad56` — Six heading levels, a list indent control, and the heading-in-list refusal (TODO 1.1.2, 1.1.3, 1.1.5)
 
 Three slices from [docs/TODO.md](docs/TODO.md)'s markdown-authoring list, taken
 together because the third was cheap enough to bundle with the first rather
@@ -1683,7 +1687,7 @@ collapsing the list. All matched the documented behaviour; nothing in
 mention accordingly — the gap was discoverability of an existing capability,
 not a missing one, and no code closes that kind of gap.
 
-## 2026-09-05 — D5: indent stays list-only, and TODO 1.1.5 closes
+## 2026-09-05 — `ae44638` — D5: indent stays list-only, and TODO 1.1.5 closes
 
 The last open question from TODO 1.1.5 was never a coding task — it was the
 "settle before or alongside 1.1.6" decision the item said it was. Measured
@@ -1719,7 +1723,7 @@ backstop still pointed at 1.1.5 as future work rather than at
 refusal. All three now point at what's actually there. No behaviour changed;
 811-check Deno suite still green.
 
-## 2026-09-06 — The editor rewrite becomes 1.0 work (TODO 3.1, D6, REWRITE.md)
+## 2026-09-06 — `b3645a3` — The editor rewrite becomes 1.0 work (TODO 3.1, D6, REWRITE.md)
 
 The question was put as arithmetic: finish the remaining editing items on the
 current core and rewrite after, or rewrite now — with the rewrite's own cost
@@ -4128,7 +4132,7 @@ into each as it landed) are in.
 
 `npm test`: **1185 checks, no failures.**
 
-## 2026-09-16 — Three tab/file-browser items added to the TODO
+## 2026-09-16 — `7af84ee` — Three tab/file-browser items added to the TODO
 
 **4.6, 4.7 and 4.8** in [docs/TODO.md](docs/TODO.md), all *(undecided)*: New
 is one action today — `newTab()` in [front/tabs.js](front/tabs.js) always
@@ -4142,7 +4146,7 @@ from a single array, so the redraw side is free.
 
 No code changed, so nothing was run — `tests/` reads none of these files.
 
-## 2026-09-16 — Visual redesign approved; TODO 4.9 and stage 0 of its plan
+## 2026-09-16 — `fa4fba3` — Visual redesign approved; TODO 4.9 and stage 0 of its plan
 
 **The chrome/document restyle in
 [docs/redesign/design_handoff_mandy_chrome/README.md](docs/redesign/design_handoff_mandy_chrome/README.md)
@@ -4172,7 +4176,7 @@ and are recorded in the design doc as well as the TODO entry:
 
 No code changed, so nothing was run — `tests/` reads none of these files.
 
-## 2026-09-16 — Redesign stage 1: tokens
+## 2026-09-16 — `f7b0afb` — Redesign stage 1: tokens
 
 **`front/app.css`'s two `:root` / `[data-theme="dark"]` blocks are replaced**
 with the token set from
@@ -4213,7 +4217,7 @@ every `var()` resolves to a declared custom property except the
 intentionally-external `--link-hint`, no old token name left in the file) and
 a smoke-served copy of `app.css` and `index.html` over `npm run serve`.
 
-## 2026-09-16 — Redesign stage 2: document typography
+## 2026-09-16 — `9ab7910` — Redesign stage 2: document typography
 
 **`#editor` is now the measured column the doc describes** — TODO 4.9's
 stage 2. No inner wrapper: `#editor` itself gets `max-width: 68ch; margin: 0
@@ -4251,7 +4255,7 @@ var(--selection) }` closes it, scoped to `#editor` since the chrome has
 nothing worth selecting. Screenshotted a selected paragraph in both themes —
 teal tint in light, the darker teal in dark, no blue left anywhere.
 
-## 2026-09-16 — Redesign stage 3: one-row toolbar, tab strip moved out
+## 2026-09-16 — `3e96526` — Redesign stage 3: one-row toolbar, tab strip moved out
 
 **The menu row is one fixed 40px row now, in both the app and an exported
 document, and the tab strip is a sibling of `.toolbar` rather than a second
@@ -4319,7 +4323,7 @@ width before and after the narrow-width fix, with the tab-bar reservation and
 the menu-row overflow measured directly (`getBoundingClientRect`,
 `scrollWidth` vs `clientWidth`) rather than eyeballed.
 
-## 2026-09-16 — Redesign stage 3 follow-up: the tab strip stays put
+## 2026-09-16 — `cd5f89d` — Redesign stage 3 follow-up: the tab strip stays put
 
 **The tab strip scrolling away with the document — stage 3's implementation
 of the design doc's own explicit "intended" — read as a bug the moment it was
@@ -4345,7 +4349,7 @@ than always visible — is deliberately not what shipped here. Recorded in
 `npm test` (994 checks) passes — nothing in `tests/` reads computed sticky
 positioning, so none of it needed updating for this.
 
-## 2026-09-16 — TODO 4.10: the native scrollbar still runs the full page
+## 2026-09-16 — `2f13479` — TODO 4.10: the native scrollbar still runs the full page
 
 **Making the tab strip sticky did not fix everything reported against it.**
 The browser's own scrollbar still spans the whole viewport, its track
@@ -4366,7 +4370,7 @@ rather than land mid-stream.
 
 No code changed, so nothing was run — `tests/` reads none of these files.
 
-## 2026-09-16 — Redesign stage 5: format bar, menu panel
+## 2026-09-16 — `4f5d609` — Redesign stage 5: format bar, menu panel
 
 **Pure restyle — TODO 4.9's stage 5, and the first stage with no structural
 change at all.** Every rule in the design doc's §02 lands directly:
@@ -4393,7 +4397,7 @@ themes, and the format bar in selection, caret, active and mixed states,
 confirming the mixed state's outline ring reads distinctly from the active
 fill rather than just in the spec's prose.
 
-## 2026-09-16 — Two redesign bugs fixed, three more recorded
+## 2026-09-16 — `02b6b0d` — Two redesign bugs fixed, three more recorded
 
 **The outline sidebar's `border-right` used to stop where its last entry
 did, not at the sidebar's own bottom.** `:root[data-outline="open"] .outline`
@@ -4434,7 +4438,7 @@ same inner span instead of setting `textContent` directly. Confirmed:
   point, a split ratio) and deciding what "the active document" means to
   the format bar and the outline once there can be two on screen at once.
 
-## 2026-09-16 — TODO 6.7: register as a file handler for .md/.markdown
+## 2026-09-16 — `941247b` — TODO 6.7: register as a file handler for .md/.markdown
 
 **A new capability, not a gap in an existing one** — `front/manifest.json`
 has no `file_handlers` member at all, so an installed Mandy has never shown
@@ -4452,7 +4456,7 @@ writing may settle which is worth building at all.
 
 No code changed, so nothing was run — `tests/` reads none of these files.
 
-## 2026-09-16 — Redesign stage 6: dialogs, notify, and the outline's own restyle
+## 2026-09-16 — `48c5caf` — Redesign stage 6: dialogs, notify, and the outline's own restyle
 
 **The file dialog's header is paper now, not a teal band** — TODO 4.9's
 stage 6. The current directory moved into it as a second line under the
@@ -4496,7 +4500,7 @@ both themes, `ask()` at warn and error severity, `askForInput`, all four
 toast severities, and the outlined danger button in both themes — the one
 place doc and screenshot disagreeing would have mattered.
 
-## 2026-09-16 — Redesign stage 7: print block, and the whole thing closes out
+## 2026-09-16 — `599695c` — Redesign stage 7: print block, and the whole thing closes out
 
 **The `@media print` block forces the redesign's light tokens now**, the
 last piece of `docs/redesign/design_handoff_mandy_chrome/README.md` (TODO
@@ -4551,7 +4555,7 @@ screen). The full stage-by-stage record stays in this file rather than in
 since the number itself stops meaning anything once the item it named is
 gone.
 
-## 2026-09-16 — Two post-ship tweaks to the redesign
+## 2026-09-16 — `edfa01a` — Two post-ship tweaks to the redesign
 
 **The outline sidebar's "Outline" section label is gone** — user feedback
 given after the redesign had already closed out. `renderOutline()` in
@@ -4576,7 +4580,7 @@ alongside a stray `--tab-bar-height` literal in `CLAUDE.md` (`44px`, now
 `npm test` (994 checks) passes untouched; watched in a real browser, light
 and dark, with the outline open.
 
-## 2026-09-16 — ROADMAP: the app mark doubled by a Windows PWA titlebar
+## 2026-09-16 — `8233e3b` — ROADMAP: the app mark doubled by a Windows PWA titlebar
 
 **Recorded rather than fixed**: installed as a PWA on Windows, `.app-mark`
 (the white Mandy mark `buildAppMark()` puts at the left of the menu row)
@@ -4602,7 +4606,7 @@ PWA's own titlebar".
 
 No code changed, so nothing was run — `tests/` reads none of these files.
 
-## 2026-09-16 — The real Mandy logo replaces the placeholder banner
+## 2026-09-16 — `8c255b7` — The real Mandy logo replaces the placeholder banner
 
 **`front/welcome-banner.png` and `front/welcome-banner-dark.png` are the
 actual logo now**, not the placeholder swapped in when the welcome document
@@ -5508,3 +5512,33 @@ called now.
 
 Nothing but a comment changed in `front/`, and the `outline` suite — the one
 that names that file — is green.
+
+## 2026-09-18 — Every entry in this file now carries its commit
+
+Twenty-one entries had no hash in the header, spread from 2026-08-30 to
+2026-09-16 — the convention lapsed twice, once for a handful of entries in
+early September and once across the whole chrome-redesign run. The merge two
+entries above worked around the gap by ordering those entries from `main`'s own
+commit sequence; this closes it.
+
+**Derived rather than guessed.** For each one, the commit that *added its
+heading line to this file* is the commit it describes: these were never
+backfilled, so the entry landed in the same commit as its change. `git log -S`
+on the heading answers that exactly, and every one of the twenty-one resolved to
+exactly one commit. Two are worth naming because they look wrong and are not:
+`2baad56` carries two entries, which is a thing this file already does
+elsewhere, and `b3645a3`'s subject is the terse "moving to the rewrite" rather
+than anything resembling its entry.
+
+**Checking the result turned up a dangling hash that had been there for weeks.**
+Every backticked hash-shaped token in this file and in the other metafiles was
+resolved against the object database — 125 distinct in this file alone — and
+exactly one did not exist: `d604beb`, mentioned three times around 2026-08-31.
+The entries it named are both `8f166fc`, so the two changes were amended
+together after the entry was written and the hash recorded was the pre-amend
+one. Both entries now carry `8f166fc`, and the sentence that referred to the
+other change by hash refers to it by name instead, with a parenthesis recording
+what happened — the hash is wrong history rather than an entry to rewrite
+silently.
+
+145 entries, all with a hash, all resolving. No code changed, so nothing ran.
