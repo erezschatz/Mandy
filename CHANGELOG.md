@@ -4334,3 +4334,30 @@ Byte-correct, semantically wrong. `MODEL_BLOCK_KINDS` already names a
 `front_matter` kind for whenever that is worth fixing; it is not this slice's.
 
 `npm test`: **1206 checks, no failures**, 208 of them in `model`.
+
+## 2026-09-18 — Record the sidecar idea in the roadmap
+
+A new section in [docs/ROADMAP.md](docs/ROADMAP.md), *Annotations beside the
+file, not in it*: highlights and per-document preferences kept in a `.mandy`
+file next to the document, holding Mandy's opinion about the file rather than
+anything of the file's own — the line TODO 4.4 already draws for direction,
+generalised from a localStorage key to disk. Written before anything is built,
+per the rule in CLAUDE.md, and it is roadmap rather than TODO because it waits
+on 3.1: the running core cannot render a mark that is not in the document,
+and after the rewrite a decoration pass at render time can, with the file
+unreachable by construction.
+
+The section records what makes it a feature rather than a file format. A
+preference is a scalar and is trivial; a highlight is a range, and the file
+changes under it from both ends, so the work is in what a highlight *points
+at* — a block anchor plus the quoted text, with an orphaned state reported
+rather than hidden, which is the content-key trick `indexMarkdownBlocks` uses
+today given a second life after the rewrite retires it. Five decisions are
+left open with both sides argued: sibling file versus central store, a derived
+server route versus a fourth allowed extension, the fallback for a document
+with no path, drift against the file's mtime and hash, and whether the sidecar
+autosaves and whether a highlight undoes. The held-constructs section gained a
+sentence keeping `==mark==` — the author's emphasis, in the file — apart from
+the reader's marker beside it.
+
+No code changed, so no suite ran.

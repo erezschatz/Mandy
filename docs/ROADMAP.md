@@ -28,6 +28,10 @@ existing `math` and `referenceAwareLink` rules; the decision to hand-roll or
 depend is made per-construct when it is picked up, against the project's
 standing aversion to extra dependencies.
 
+`==mark==` is the author's highlight, in the file. The reader's — a marker
+run over someone else's document, kept beside it rather than in it — is a
+different feature, and has its own section below.
+
 Footnotes and heading IDs were the two with a real case; heading IDs went into
 1.0 with the link editor (TODO 1.1.10), footnotes did not. Syntax highlighting
 is also out of scope for 1.0 and sits with "More export options" below as a
@@ -199,6 +203,98 @@ being "all of them".
 Neither is worth a pane on its own, which is why this waited: one preference
 does not justify the surface, and a Settings pane built for one preference
 tends to acquire the rest by accident rather than by decision.
+
+## Annotations beside the file, not in it
+
+The idea, raised 2026-09-18: highlight a document the way a marker does —
+select a run of text, mark it, and have the mark still be there next week —
+without writing anything into the `.md`. Together with the per-document
+preferences that already want a home (right-to-left is TODO 4.4; a theme per
+document would be the same shape), that is a **sidecar file**: a `.mandy`
+beside the document, holding Mandy's opinion *about* it. TODO 4.4 already
+draws the line this sits on: "direction is Mandy's opinion about the file
+rather than the file's content", and a flipped document saves byte-identical
+to its unflipped self. The sidecar generalises that from a localStorage key
+to disk, so it travels with the file and outlives the browser.
+
+**It is not a third document.** Today the DOM is the document and markdown is
+a boundary format; after 3.1 the model is the document and the DOM is a
+rendering of it. Either way there is one document with two representations,
+and the sidecar is neither: it holds no content, only references into it.
+Getting that framing right is what keeps this small.
+
+**Preferences are the easy half. Highlights are different in one way, and that
+way is the whole feature.** A direction or a theme is a scalar about the whole
+document. A highlight is a *range*, so the sidecar has to point into the
+document, and the document changes under it from both ends — Mandy edits it,
+and so does everything else on disk, which is the reason the mtime machinery
+in `file-api.js` exists at all. So the question is not where highlights live
+but what a highlight points at. Three answers, one of which survives:
+
+- **A DOM `Range`** dies on every render and cannot be written down.
+- **A character offset into the file** rots the moment anything edits a line
+  above it, including an editor that is not Mandy.
+- **A block anchor plus the quoted text.** The model's own position is
+  `(block, offset)`, and `modelInlineAt` already maps an offset to a node.
+  Record the block's source bytes (or a hash of them), the offset range within
+  that block, and the exact text the highlight covers. On load, try block and
+  offset; if the block's bytes moved, search for the quote inside that block,
+  then document-wide; otherwise the highlight is **orphaned**, and orphaned is
+  reported rather than silently dropped. That is the W3C Web Annotation shape
+  — a position selector with a quote selector as the fallback — and it is
+  also `indexMarkdownBlocks`'s content-key trick, which the rewrite is retiring:
+  the anchoring problem gives it a second life.
+
+**It waits on 3.1, and 3.1 is what makes it cheap.** The running core cannot
+render something that is not in the document, because the DOM *is* the
+document: a highlight would have to be a `<mark>` in `#editor`, and everything
+fights it — Turndown either writes `<mark>` into the file, contradicting
+`html: false` (D0), or drops it, and `normaliseEditorMarkup` strips inline
+wrappers on principle. After the rewrite, render is per block from the model
+([REWRITE.md](REWRITE.md), *Rendering*), so a decoration pass can wrap text
+nodes in `<mark>` from a second source and the model never hears of it; and
+serialisation reads the model, not the DOM, so a highlight *cannot* reach the
+file. That is the same by-construction argument REWRITE.md already makes for
+U+00A0 and for Mermaid's stash. D4's amendment applies: nothing of this is
+built against contenteditable. It slots after build-order step 2 at the
+earliest, and realistically alongside step 5, when `file-api.js` and `tabs.js`
+reintegrate — because it touches both.
+
+**The file itself is the easy part, with five decisions, all open.**
+
+- **Where it goes.** A sibling — `name.md.mandy`, so the pairing is one glob
+  and unambiguous — travels with the file when the file is moved and is what
+  the idea asked for; it also litters, and ends up committed unless
+  `.gitignore`d. A central store (`~/.mandy/…`, keyed on the path) litters
+  nothing and is never committed, and loses the annotations the moment the
+  file is moved. Sibling is the lean, since travelling with the file is the
+  point; JSON either way, not a bespoke format.
+- **The server.** `MARKDOWN_EXTENSIONS` gates the file API on three
+  extensions, and adding `.mandy` to that list would also put sidecars in the
+  Open dialog. A route that *derives* the sidecar path from the `.md` path is
+  smaller, and cannot be pointed at an arbitrary file.
+- **A document with no path** has nowhere to put a sidecar. The tab-scoped key
+  mechanism is the natural fallback — a document key for annotations in
+  localStorage, moved to the sidecar on first save — which also makes
+  annotations a fourth bundle in `tabs.js`'s park and adopt swap, beside
+  `undo`, `file` and `md`.
+- **Drift.** Stamp the sidecar with the file's mtime and a content hash. On
+  open, a mismatch means re-anchor rather than trust offsets; re-anchor and
+  rewrite as part of every save of the `.md`, when block bytes are final.
+- **Write policy, and undo.** Mandy never writes to disk without Save. A
+  highlight is not the user's authored content and has no diff-noise stake, so
+  autosaving the sidecar on a highlight change is defensible — but it is a new
+  behaviour, and it goes in DECISIONS.md rather than happening by accident.
+  Same for undo: a highlight must neither dirty the `.md` nor share its stack,
+  and whether it is undoable at all, on a stack of its own, is undecided.
+
+**Two things to keep apart.** `==mark==` (above, under the held constructs) is
+a markdown construct: the *author's* emphasis, in the file, travelling with
+it. A sidecar highlight is the *reader's* marker, beside the file. Both can
+exist and they must not be one button. And exported documents have no
+server: the editable export would inline the annotations the way it inlines
+everything else, and whether the static export renders them at all is the
+reader's-copy question the settings pane above already owns.
 
 ## Save fidelity past the point of diminishing returns
 
