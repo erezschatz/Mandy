@@ -4518,7 +4518,7 @@ the suite is the whole of this step's verification. REWRITE.md's step 4 line and
 the slice 3 header say where this leaves the slice; step 5, re-wrapping, is what
 is left of it.
 
-## 2026-09-18 — Re-wrap an edited block, slice 3's step 5
+## 2026-09-18 — `cddd1c9` — Re-wrap an edited block, slice 3's step 5
 
 `modelEmitLeaf` takes a width, and `wrapMarkdownLine` in
 [front/markdown-style.js](front/markdown-style.js) takes the prefixes to put
