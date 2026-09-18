@@ -748,15 +748,25 @@ function modelEscapeLinkTitle(title) {
  * source might once have used — CLAUDE.md's own accepted loss for an edited
  * reference link, unchanged and needing no new argument here.
  *
- * What this does not reach, on purpose: whether the label still resolves to a
- * definition anywhere in the document is a question about the whole document,
- * which a single node's own `token` cannot answer, and belongs to whatever
- * block-level emitter eventually calls this — the same boundary
- * `scanReferenceDefinitions` already draws on the running app.
+ * **Whether that label still resolves is slice 3's step 4**, and `defines` is
+ * how the answer gets here: step 5 declined the question because a single
+ * node's `token` cannot answer one about the whole document, and named
+ * whichever block-level emitter eventually called this as the owner.
+ * `modelEmitLeaf` is that emitter. A label the document no longer defines
+ * falls through to the inline form instead of writing a reference that renders
+ * as literal text — the href on the token being the last thing the label
+ * resolved to, which is the best answer available and strictly better than a
+ * dangling one.
+ *
+ * With no resolver it answers yes, which is step 5's behaviour unchanged: a
+ * caller emitting one block in isolation has handed over no document and so
+ * cannot be told the label is gone, and inventing an inline link out of a
+ * possibly stale href on that basis would be worse than leaving the spelling
+ * the stamp asked for.
  */
-function modelRebuildTail(token, destAttr) {
+function modelRebuildTail(token, destAttr, defines = () => true) {
   const label = token.attrGet("data-ref-label");
-  if (label !== null) return "[" + label + "]";
+  if (label !== null && defines(label)) return "[" + label + "]";
   const dest = modelEscapeLinkDestination(token.attrGet(destAttr) || "");
   const title = token.attrGet("title");
   return title === null ? "(" + dest + ")" : "(" + dest + " " + modelEscapeLinkTitle(title) + ")";
@@ -779,7 +789,7 @@ function modelRebuildTail(token, destAttr) {
  * changed, or one built fresh, has no `tail` either, and is rebuilt from its
  * token's `attrs` instead of the bytes nobody wrote yet.
  */
-function modelInlineSource(nodes, md) {
+function modelInlineSource(nodes, md, defines) {
   let out = "";
   for (const node of nodes || []) {
     switch (node.kind) {
@@ -800,17 +810,17 @@ function modelInlineSource(nodes, md) {
         break;
       case "image":
         out += "![" + (node.raw ?? modelEscapeText(md, node.content)) + "]" +
-          (node.tail ?? modelRebuildTail(node.token, "src"));
+          (node.tail ?? modelRebuildTail(node.token, "src", defines));
         break;
       case "link":
-        if (node.markup === "autolink") out += "<" + modelInlineSource(node.children, md) + ">";
+        if (node.markup === "autolink") out += "<" + modelInlineSource(node.children, md, defines) + ">";
         else {
-          out += "[" + modelInlineSource(node.children, md) + "]" +
-            (node.tail ?? modelRebuildTail(node.token, "href"));
+          out += "[" + modelInlineSource(node.children, md, defines) + "]" +
+            (node.tail ?? modelRebuildTail(node.token, "href", defines));
         }
         break;
       default:
-        if (node.children) out += node.markup + modelInlineSource(node.children, md) + node.markup;
+        if (node.children) out += node.markup + modelInlineSource(node.children, md, defines) + node.markup;
         else out += node.raw ?? modelEscapeText(md, node.content);
     }
   }
@@ -1306,6 +1316,65 @@ function modelParse(markdown, md) {
 }
 
 /**
+ * The reference labels the document defines **as it now stands**, normalised
+ * the way markdown-it normalises them. Slice 3's step 4.
+ *
+ * The model can answer this where `main` cannot, and that is the whole reason
+ * the step exists. On the running editor a definition has no DOM node to
+ * survive on, so `scanReferenceDefinitions` reads the markdown the document
+ * *arrived* with and `appendReferenceDefinitions` collects every definition at
+ * the end of the file; here a definition is an ordinary block in its own
+ * position (slice 1), so the document is a list that can be searched and one
+ * that is still there stays where the author put it.
+ *
+ * **Where a definition can be, measured rather than assumed**: in a leaf with
+ * no inline tree, and nowhere else. markdown-it consumes a definition line and
+ * emits no token, so nothing at any depth claims those bytes as content — they
+ * end up in a `gap` block, or in a container that turned out to have no
+ * children at all and so is a leaf itself. That second case is real and is why
+ * this is not simply a scan of the gaps: `> [b]: u` parses to a **quote** whose
+ * only content is the definition, so it has no child tokens and never becomes
+ * a gap. Scanning gaps alone misses it, and misses `> > [h]: deep` with it.
+ *
+ * It is the same set step 3 refuses to emit, which is not a coincidence: a leaf
+ * with no inline tree is one whose content *is* source, and a definition is
+ * content no inline tree ever held.
+ *
+ * **The parser answers, rather than a regex here.** Each candidate's bytes go
+ * back through `md.parse`, whose `env.references` is markdown-it's own record
+ * of what it just defined — the same reuse `modelFirstConstruct` and the link
+ * tail parsing already argue for, and it costs nothing to keep: label
+ * normalisation, the destination and title grammar, and a definition wrapped
+ * onto a second line all come for free. That last one is the accepted loss this
+ * retires — `scanReferenceDefinitions`'s single-line regex cannot see a wrapped
+ * definition at all, and `tests/fixtures/torture.md` carries one for exactly
+ * that reason.
+ *
+ * Measured against the parser's answer for the whole file, on all six oracle
+ * files and on hand-written cases either side of the line: a definition inside
+ * a list item, one in a quote and one two quotes deep, two in one block, one
+ * wrapped, and the four places a definition-shaped line is **not** one — inside
+ * a fence, inside indented code, inside a table cell, and lazily continuing a
+ * paragraph. Parsing a leaf's bytes on their own gets every one of them right,
+ * because the bytes carry their own indent and their own chain.
+ */
+function modelReferenceLabels(doc, md) {
+  const labels = new Set();
+  const visit = (block) => {
+    if (block.children) {
+      block.children.forEach(visit);
+      return;
+    }
+    if (block.inlines) return;
+    const env = {};
+    md.parse(block.source, env);
+    for (const label of Object.keys(env.references || {})) labels.add(label);
+  };
+  doc.blocks.forEach(visit);
+  return labels;
+}
+
+/**
  * The item affix a leaf's lines carry: the marker its first line opens with and
  * the indent the rest sit under, taken off the **nearest** item ancestor.
  *
@@ -1379,6 +1448,17 @@ function modelItemAffix(block) {
  * setext `underline` are the only bytes in this model that go *behind* the
  * content.
  *
+ * **The document is the third argument, and it is the one piece of new
+ * plumbing slice 3 has** (its step 4). Slice 2's step 5 rebuilds `[text][label]`
+ * from the `data-ref-label` stamp and explicitly declines to ask whether the
+ * label still resolves, because a single node's token cannot answer a question
+ * about the whole document; this is the emitter it named as the owner. Handed a
+ * document, a label it no longer defines falls back to the inline form rather
+ * than writing a reference that renders as literal text. Handed none — emitting
+ * one block in isolation — it answers as step 5 did and keeps the stamp's
+ * spelling. `modelReferenceLabels` above is where the searching happens, and
+ * why the model can do this at all where the running editor cannot.
+ *
  * **Three refusals, and every one of them is a spelling the model does not
  * have rather than one it could guess at.** A leaf with no inline tree is a
  * fence, an indented code block, a rule, a gap or a table row: their content
@@ -1391,12 +1471,25 @@ function modelItemAffix(block) {
  * no serialiser at all, and for the same reason: writing something else into
  * the user's file is the one outcome here worth crashing to avoid.
  */
-function modelEmitLeaf(block, md) {
+function modelEmitLeaf(block, md, doc) {
   if (!block.inlines) {
     throw new Error(`edited ${block.kind} block has no inline tree`);
   }
 
-  let content = modelInlineSource(block.inlines, md);
+  // Scanned at most once per emitted block, and not at all unless a link in it
+  // actually needs rebuilding — which is the overwhelmingly common case, since
+  // step 3 records every parsed link's tail as written and only a command that
+  // built or changed one leaves none. Not cached across blocks on purpose: the
+  // answer is about the document as it now stands, and an edit to a definition
+  // is exactly the thing a cache would go stale on.
+  let labels = null;
+  const defines = (label) => {
+    if (!doc) return true;
+    if (labels === null) labels = modelReferenceLabels(doc, md);
+    return labels.has(md.utils.normalizeReference(label));
+  };
+
+  let content = modelInlineSource(block.inlines, md, defines);
   let item = modelItemAffix(block);
 
   if (block.kind === "heading") {

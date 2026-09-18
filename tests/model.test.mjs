@@ -76,13 +76,13 @@ export default function run(check) {
   const {
     modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix,
     modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText,
-    modelEmitLeaf,
+    modelEmitLeaf, modelReferenceLabels,
   } = loadSource(
     "model.js",
     {},
     "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix," +
       " modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText," +
-      " modelEmitLeaf };",
+      " modelEmitLeaf, modelReferenceLabels };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -1645,7 +1645,7 @@ export default function run(check) {
       const doc = parse(src);
       const leaf = want(leavesOf(doc));
       modelTouch(leaf);
-      return modelSerialise(doc, (block) => modelEmitLeaf(block, md));
+      return modelSerialise(doc, (block) => modelEmitLeaf(block, md, doc));
     };
     // The common case, and the only one where nothing at all is glued on.
     const first = (leaves) => leaves[0];
@@ -1766,7 +1766,7 @@ export default function run(check) {
         leaf.parent.marker = null;
         modelTouch(leaf);
         try {
-          modelSerialise(doc, (block) => modelEmitLeaf(block, md));
+          modelSerialise(doc, (block) => modelEmitLeaf(block, md, doc));
           return false;
         } catch {
           return true;
@@ -1794,7 +1794,7 @@ export default function run(check) {
         leaf.source = null;
         let out;
         try {
-          out = modelEmitLeaf(leaf, md);
+          out = modelEmitLeaf(leaf, md, doc);
         } catch (error) {
           out = `threw: ${error.message}`;
         }
@@ -1805,6 +1805,143 @@ export default function run(check) {
       `every inline-bearing leaf in the oracle emits its own bytes from its tree alone (${inlineBearing} of them, ${sourceless} leaves having no tree to emit from)` +
         (wrong.length ? ` — ${wrong.length} did not: ${wrong.slice(0, 3).join(", ")}` : ""),
       inlineBearing > 800 && wrong.length === 0,
+    );
+  }
+
+  // ---- Slice 3, step 4: the definition a rebuilt reference needs ---------
+
+  // Slice 2's step 5 rebuilds `[text][label]` off the `data-ref-label` stamp and
+  // declines to ask whether the label still resolves, because a single node's
+  // token cannot answer a question about the whole document. This is the
+  // emitter it named as the owner, and the model can answer where the running
+  // editor cannot: a definition is an ordinary block in its own position, so
+  // the document is a list that can be searched.
+  {
+    const whole = (src) => {
+      const env = {};
+      md.parse(src, env);
+      return new Set(Object.keys(env.references || {}));
+    };
+    const same = (a, b) => a.size === b.size && [...a].every((k) => b.has(k));
+
+    // Where a definition can live, against the parser's own answer for the
+    // whole file. The five corpus files hold no reference definition at all —
+    // the bias `torture.md` exists to cover — so the oracle half of this check
+    // is carried by one file, and the hand-written half is what says the rule
+    // is a rule rather than a fit to it.
+    const files = ORACLE_FILES.map((path) => {
+      const src = repoFile(path);
+      return { path, want: whole(src), got: modelReferenceLabels(parse(src), md) };
+    });
+    const torture = files.find((f) => f.path === "tests/fixtures/torture.md");
+    check(
+      `the labels a document defines are the parser's own, on every oracle file (${torture.want.size} in torture.md, none in the other five)` +
+        ` — ${files.filter((f) => !same(f.want, f.got)).length} disagreed`,
+      files.every((f) => same(f.want, f.got)) && torture.want.size === 5,
+    );
+
+    // Either side of the line, and the two quote cases are why this is not a
+    // scan of the gap blocks: `> [b]: u` is a quote whose only content is the
+    // definition, so it has no child tokens and is a childless leaf rather than
+    // a container holding a gap.
+    const CASES = [
+      "[a]: u\n",
+      "[e]: u1\n[f]: u2\n",
+      "[i]:\n  wrapped onto a second line\n",
+      "- item\n\n  [a]: u\n",
+      "> [b]: u\n",
+      "> > [h]: deep\n",
+      "```\n[c]: not a definition\n```\n",
+      "    [g]: not a definition either\n",
+      "text\n[d]: a lazy continuation, not a definition\n",
+      "| a | b |\n| - | - |\n| [j]: u | x |\n",
+    ];
+    const missed = CASES.filter((src) => !same(whole(src), modelReferenceLabels(parse(src), md)));
+    check(
+      `and in each of the ${CASES.length} places a definition-shaped line either is or is not one` +
+        (missed.length ? ` — ${missed.length} disagreed: ${JSON.stringify(missed[0])}` : ""),
+      missed.length === 0,
+    );
+    // The one `main` cannot see at all: `scanReferenceDefinitions`'s regex is
+    // single-line, so a wrapped definition is invisible to it and the link that
+    // used it saves as a plain inline link. Here it is only a taller block.
+    check(
+      "including a definition wrapped onto a second line, which the running editor's scanner cannot see",
+      modelReferenceLabels(parse("[wrapped]:\n  https://example.org/x\n"), md).has(md.utils.normalizeReference("wrapped")),
+    );
+
+    // Now the emitter. To reach the rebuild path at all the recorded tail has
+    // to go — step 3 records one for every parsed link, so only a command that
+    // built or changed a link leaves none, which is the case step 5 is for.
+    const REF = "A [full reference][papers] in a paragraph.\n\n[papers]: https://example.org/papers \"The Bexley Papers\"\n";
+    const rebuilt = (src, { drop = false } = {}) => {
+      const doc = parse(src);
+      const leaf = leavesOf(doc)[0];
+      const link = leaf.inlines.find((n) => n.kind === "link");
+      link.tail = null;
+      if (drop) doc.blocks = doc.blocks.filter((b) => b.kind !== "gap");
+      modelTouch(leaf);
+      return modelEmitLeaf(leaf, md, doc);
+    };
+
+    check(
+      "a rebuilt reference whose definition is still in the document keeps the label",
+      rebuilt(REF) === "A [full reference][papers] in a paragraph.",
+    );
+    check(
+      `and one whose definition has been deleted falls back to the inline form (${JSON.stringify(rebuilt(REF, { drop: true }))})`,
+      rebuilt(REF, { drop: true }) ===
+        'A [full reference](https://example.org/papers "The Bexley Papers") in a paragraph.',
+    );
+    // Handed no document the emitter cannot be told the label is gone, so it
+    // keeps the stamp's spelling rather than materialising a possibly stale
+    // href on a question it was not given the means to answer.
+    check(
+      "with no document handed over it keeps the stamp's spelling, which is step 5's behaviour unchanged",
+      (() => {
+        const doc = parse(REF);
+        const leaf = leavesOf(doc)[0];
+        leaf.inlines.find((n) => n.kind === "link").tail = null;
+        doc.blocks = doc.blocks.filter((b) => b.kind !== "gap");
+        modelTouch(leaf);
+        return modelEmitLeaf(leaf, md) === "A [full reference][papers] in a paragraph.";
+      })(),
+    );
+
+    // The definition stays where the author put it, which is the half the model
+    // gets for free and `appendReferenceDefinitions` cannot: it has no position
+    // to reason about and collects every definition at the end of the file.
+    // torture.md says out loud that its definitions sit in the middle.
+    check(
+      "editing the paragraph that uses a reference leaves the definition where it was",
+      (() => {
+        const src = "Intro.\n\n[a] and [b].\n\n[a]: u1\n[b]: u2\n\nA trailing paragraph.\n";
+        const doc = parse(src);
+        const leaf = leavesOf(doc).find((b) => b.source === "[a] and [b].");
+        modelTouch(leaf);
+        return modelSerialise(doc, (block) => modelEmitLeaf(block, md, doc)) === src;
+      })(),
+    );
+
+    // Pinned as a limitation rather than asserted as a design: `data-ref-label`
+    // is stamped by `referenceAwareLink`, which replaces markdown-it's inline
+    // `link` rule and nothing else, so an image resolved through a reference
+    // carries no stamp at all and a rebuilt one can only come back inline. An
+    // untouched one still round-trips on its recorded tail. Fixing it means
+    // copying the `image` rule the way the `link` rule was copied, which is a
+    // parser change rather than an emitter one.
+    check(
+      "a reference image carries no stamp, so a rebuilt one comes back inline — pinned, and it is referenceAwareLink's gap rather than the emitter's",
+      (() => {
+        const doc = parse("An ![by reference][plate].\n\n[plate]: https://example.org/p.png\n");
+        const leaf = leavesOf(doc)[0];
+        const image = leaf.inlines.find((n) => n.kind === "image");
+        if (image.token.attrGet("data-ref-label") !== null) return false;
+        if (image.tail !== "[plate]") return false;
+        image.tail = null;
+        modelTouch(leaf);
+        return modelEmitLeaf(leaf, md, doc) === "An ![by reference](https://example.org/p.png).";
+      })(),
     );
   }
 

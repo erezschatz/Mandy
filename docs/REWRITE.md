@@ -1352,8 +1352,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         slice that fills it. The genuinely new machinery is the escaper and the
         link rebuilder; the rest is a tree fold and two offset functions.
 
-    *   **3. The block serialiser — in progress, started 2026-09-16.** Steps 1,
-        2 and 3 are in; 4, 5 and 6 are not. An edited
+    *   **3. The block serialiser — in progress, started 2026-09-16.** Steps 1
+        through 4 are in; 5 and 6 are not. An edited
         block emits markdown in the conventions **its own bytes recorded**,
         falling back to the ones `sniffMarkdownStyle` read off the file it came
         from, and `reflowMarkdown` re-wraps it — the same two layers as today,
@@ -1554,15 +1554,16 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             byte-identical**, the 114 without a tree refusing rather than
             guessing.
 
-        4.  **The reference definition a rebuilt link needs — not started.**
+        4.  **The reference definition a rebuilt link needs — done and tested,
+            2026-09-18.**
             Slice 2's step 5 rebuilds `[text][label]` from the `data-ref-label`
             stamp and explicitly declines to ask whether that label still
             resolves, because a single node's token cannot answer a question
             about the whole document — it named "whichever block-level emitter
             eventually calls this" as the owner, and **this is that emitter**.
 
-            The model can answer it where `main` cannot. A definition is a `gap`
-            block in its own position (slice 1), so the document is a list that
+            The model can answer it where `main` cannot. A definition is a block
+            in its own position (slice 1), so the document is a list that
             can be searched and a definition that is still there stays where the
             author put it — where `appendReferenceDefinitions` has no position
             to reason about and collects every definition at the end of the
@@ -1570,6 +1571,57 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             well as the block. That is the one piece of new plumbing in the
             slice, and it is worth it for being the step that retires a named
             accepted loss rather than carrying it across.
+
+            **The plan said `gap` block and the measurement said otherwise**,
+            which is the one thing here that was not known in advance.
+            `> [b]: u` parses to a **quote** whose only content is the
+            definition, so it has no child tokens at all and is a childless leaf
+            rather than a container holding a gap; `> > [h]: deep` is the same
+            one level down. Scanning the gaps misses both. The rule that holds is
+            **a leaf with no inline tree, and nowhere else** — which is exactly
+            the set step 3 refuses to emit, and not by coincidence: such a leaf's
+            content *is* source, and a definition is content no inline tree ever
+            held.
+
+            **`modelReferenceLabels` asks the parser rather than a regex.** Each
+            candidate leaf's bytes go back through `md.parse`, whose
+            `env.references` is markdown-it's own record of what it just defined
+            — the same reuse `modelFirstConstruct` and step 3's link-tail parsing
+            already argue for, and it is what makes the retired loss free:
+            `scanReferenceDefinitions`'s single-line regex cannot see a
+            definition **wrapped onto a second line** at all, and `torture.md`
+            carries one saying so in its own prose. The scan is lazy and runs at
+            most once per emitted block, never cached across blocks — the answer
+            is about the document as it now stands, and an edit to a definition
+            is exactly what a cache would go stale on.
+
+            Verified against the parser's answer for the whole file, on all six
+            oracle files — **five definitions, every one of them in
+            `torture.md`, and none in the other five**, which is the bias that
+            fixture exists for arriving a fifth time — and on ten hand-written
+            cases either side of the line: a definition in a list item, one in a
+            quote, one two quotes deep, two in one block, one wrapped, and the
+            four places a definition-shaped line is *not* one (inside a fence,
+            inside indented code, inside a table cell, lazily continuing a
+            paragraph). Then the emitter itself: a rebuilt reference whose
+            definition is still there keeps its label, one whose definition has
+            been deleted falls back to the inline form rather than writing a
+            reference that renders as literal text, and one emitted with **no
+            document handed over** keeps the stamp's spelling — step 5's
+            behaviour unchanged, because a caller that was not given the means to
+            answer should not materialise a possibly stale href on the strength
+            of a guess. Each of the five ways it can be wrong was broken on
+            purpose first and confirmed to fail.
+
+            **One limitation is pinned rather than fixed, and it was measured
+            here**: `referenceAwareLink` replaces markdown-it's inline `link`
+            rule and nothing else, so an **image** resolved through a reference
+            carries no `data-ref-label` at all. An untouched one still
+            round-trips on the tail step 3 recorded; a rebuilt one can only come
+            back inline. Fixing it means copying the `image` rule the way the
+            `link` rule was copied, which is a change to the parser
+            configuration rather than to this emitter, and belongs wherever
+            slice 2's step 0 would be revisited.
 
         5.  **Re-wrap, and only where the content moved — not started.**
             `inline.content` preserves the author's own line breaks — 582 of 767

@@ -210,7 +210,12 @@ They cover the invariants that fail *silently* rather than loudly:
   comes back byte-identical. Its hand-written cases are one per affix rule, and
   each rule was broken on purpose first to confirm the check fails — two of them
   were caught only by the oracle sweep on the first pass, which is how a case
-  reaching for the wrong leaf was found.
+  reaching for the wrong leaf was found. Step 4 adds the reference-definition
+  search, checked against the parser's own answer for the whole file rather than
+  against itself: on the six oracle files, where all five definitions are in
+  `torture.md`, and on ten hand-written cases either side of the line — in a
+  list item, in a quote, two quotes deep, two in one block, wrapped, and the
+  four places a definition-shaped line is not one.
 - **tabs** — the per-tab state boundaries and the swap between documents: that
   park and adopt are lossless and adopting nothing is a blank document rather
   than a half-cleared one; the migration off the flat keys and both ways a
@@ -528,7 +533,7 @@ back. That is the inversion the whole rewrite is for. Two identical paragraphs
 cannot be confused for one another by a source span, and `indexMarkdownBlocks`
 keys on content precisely because it has no span to use instead.
 
-Ten things that are decisions rather than details:
+Eleven things that are decisions rather than details:
 
 - **The parser is injected, never reached for.** `modelParse` takes the
   markdown-it instance as an argument. Both callers now configure it the same
@@ -680,14 +685,33 @@ Ten things that are decisions rather than details:
   a leaf with no inline tree (a fence, indented code, a rule, a gap, a table
   row — their content *is* source and is edited as source), a heading whose
   shape did not line up, an item whose marker was never found.
+- **The emitter is handed the document, and that is what a reference link costs.**
+  Slice 3's step 4, and the slice's one piece of new plumbing.
+  `modelRebuildTail` writes `[text][label]` off the `data-ref-label` stamp for a
+  link a command built or changed, and whether that label still resolves is a
+  question about the whole document — so `modelReferenceLabels(doc, md)`
+  searches it and a label nobody defines any more falls back to the inline form
+  instead of a reference that renders as literal text. It searches **every leaf
+  with no inline tree**, not the `gap` blocks: `> [b]: u` is a quote whose only
+  content is the definition, so it has no children and is a childless leaf, and
+  a scan of the gaps misses it. And it asks **`md.parse`**, whose
+  `env.references` is markdown-it's own record — which is what makes a
+  definition **wrapped onto a second line** work here where
+  `scanReferenceDefinitions`'s single-line regex cannot see one at all. The scan
+  is lazy, at most once per emitted block and never cached across blocks, since
+  an edit to a definition is exactly what a cache would go stale on. Handed no
+  document it keeps the stamp's spelling, which is slice 2's behaviour: a caller
+  not given the means to answer should not materialise a possibly stale href on
+  a guess. **A reference *image* is the one thing this cannot reach** —
+  `referenceAwareLink` replaces markdown-it's `link` rule and nothing else, so
+  an image carries no stamp; an untouched one round-trips on its recorded tail
+  and a rebuilt one comes back inline.
 
-What it does not do yet: check that a rebuilt reference link's label still
-resolves to a definition still in the document — a question about the whole
-document, which the emitter is handed the block and not the document to answer
-(slice 3's step 4) — or re-wrap an edited block to the width the file was
-written at, which is `reflowMarkdown`'s job and needs the prefixes passed in
-rather than re-derived off the line (step 5). Those are the rest of stage 1;
-rendering, input and the format commands are stages 2 and 3.
+What it does not do yet: re-wrap an edited block to the width the file was
+written at. That is `reflowMarkdown`'s job, and doing it from the model means
+handing it the prefixes rather than letting it re-derive them off the line —
+slice 3's step 5, and the rest of stage 1. Rendering, input and the format
+commands are stages 2 and 3.
 
 ### Links and heading anchors
 
@@ -1117,8 +1141,8 @@ would otherwise destroy, read it back at serialise time.
   fold it onto a continuation line at an indent CommonMark never promised
   meant anything.
 
-Two things this does not reach, both consequences of the same root cause —
-markdown-it giving a definition no DOM node — and both accepted rather than
+Three things this does not reach, all consequences of the same root cause —
+markdown-it giving a definition no DOM node — and all accepted rather than
 solved. **A definition spanning more than one line** is invisible to the
 scan, so a reference resolved through one saves as a plain inline link
 instead. **An edited or freshly-typed reference link** — one whose usage
@@ -1126,9 +1150,22 @@ syntax does not byte-match what the source wrote, which includes every
 `[text][]` or bare `[text]` shortcut form, since the rule always writes the
 explicit `[text][label]` — falls out of the segment-matching restore the same
 way any edited paragraph does, and saves in the explicit form rather than the
-collapsed one the author chose. Neither loses the link or the definition; both
-just cost the byte-perfection an untouched, already-explicit reference gets
-for free.
+collapsed one the author chose. Neither of those loses the link or the
+definition; both just cost the byte-perfection an untouched, already-explicit
+reference gets for free.
+
+**A reference *image* is the third, and it is the one that does lose
+something.** Measured 2026-09-18 while building slice 3's step 4:
+`referenceAwareLink` replaces markdown-it's inline `link` rule and nothing
+else, so `![alt][label]` gets no `data-ref-label` at all — and the
+`referenceLink` rule filters on `nodeName !== "A"` besides. So an image
+resolved through a reference always serialises inline, and if it was the only
+use of that label the definition is dropped with it. Reaching it means copying
+markdown-it's `image` rule the way its `link` rule was copied, which is worth
+doing under 3.1's parser configuration rather than bolted onto this one; the
+model retires the first of these three by construction (a definition is an
+ordinary block, so a wrapped one is only a taller one) and the rewrite is where
+the other two belong too.
 
 ### Lazy loading
 

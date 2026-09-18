@@ -4451,3 +4451,69 @@ and the suite is the whole of its verification. REWRITE.md's step 3 line, the
 slice 3 header and step 6's line say where this leaves the slice; CLAUDE.md's
 model section gains the emitter and loses the paragraph claiming an edited leaf
 cannot be serialised at all.
+
+## 2026-09-18 — The definition a rebuilt reference needs, slice 3's step 4
+
+`modelReferenceLabels` in [front/model.js](front/model.js), and a third
+argument on `modelEmitLeaf`: the document. Slice 2's step 5 rebuilds
+`[text][label]` off the `data-ref-label` stamp and explicitly declines to ask
+whether that label still resolves, because a single node's token cannot answer
+a question about the whole document — it named whichever block-level emitter
+eventually called it as the owner, and this is that emitter. A label the
+document no longer defines now falls back to the inline form instead of writing
+a reference that renders as literal text.
+
+The model can answer this where the running editor cannot: a definition is an
+ordinary block in its own position (slice 1), so the document is a list that can
+be searched, and one that is still there stays where the author put it — where
+`appendReferenceDefinitions` has no position to reason about and collects every
+definition at the end of the file.
+
+**The plan said `gap` block and the measurement said otherwise.** `> [b]: u`
+parses to a quote whose only content is the definition, so it has no child
+tokens at all and is a childless leaf rather than a container holding a gap;
+`> > [h]: deep` is the same one level down, and scanning the gaps misses both.
+The rule that holds is a **leaf with no inline tree, and nowhere else** — which
+is exactly the set step 3 refuses to emit, and not by coincidence: such a leaf's
+content *is* source, and a definition is content no inline tree ever held.
+
+**It asks the parser rather than a regex.** Each candidate leaf's bytes go back
+through `md.parse`, whose `env.references` is markdown-it's own record of what
+it just defined — the same reuse `modelFirstConstruct` and step 3's link-tail
+parsing already argue for. That is what makes the retired loss free:
+`scanReferenceDefinitions`'s single-line regex cannot see a definition wrapped
+onto a second line at all, and `tests/fixtures/torture.md` carries one saying so
+in its own prose. The scan is lazy — at most once per emitted block, and not at
+all unless a link in it actually needs rebuilding — and never cached across
+blocks, since an edit to a definition is exactly what a cache would go stale on.
+
+Eight checks, 223 to 231. The search is checked against the parser's own answer
+for the whole file rather than against itself: on all six oracle files, where
+**all five definitions are in `torture.md` and the other five files hold none** —
+the bias that fixture exists for, arriving a fifth time — and on ten
+hand-written cases either side of the line, a definition in a list item, in a
+quote, two quotes deep, two in one block, wrapped, and the four places a
+definition-shaped line is not one. Then the emitter: a rebuilt reference whose
+definition is still there keeps its label, one whose definition has been deleted
+falls back to inline, one emitted with no document handed over keeps the stamp's
+spelling (step 5's behaviour unchanged, since a caller not given the means to
+answer should not materialise a possibly stale href on a guess), and editing a
+paragraph that uses a reference leaves the definition where it was. Each of the
+five ways it can be wrong was broken on purpose first and confirmed to fail.
+
+**One limitation is pinned rather than fixed, and measuring it turned up an
+accepted loss on `main` that was not written down.** `referenceAwareLink`
+replaces markdown-it's inline `link` rule and nothing else, so `![alt][label]`
+carries no stamp — and the `referenceLink` Turndown rule filters on
+`nodeName !== "A"` besides. In the model an untouched reference image still
+round-trips on the tail step 3 recorded and only a rebuilt one comes back
+inline; in the running editor it always serialises inline, and if it was the
+only use of that label the definition is dropped with it. Reaching it means
+copying the `image` rule the way the `link` rule was copied, which belongs under
+3.1's parser configuration rather than bolted onto this. CLAUDE.md's
+reference-links section now records it as the third of that family.
+
+`npm test` is green at 1233 checks. Nothing in `front/` loads `model.js`, so
+the suite is the whole of this step's verification. REWRITE.md's step 4 line and
+the slice 3 header say where this leaves the slice; step 5, re-wrapping, is what
+is left of it.
