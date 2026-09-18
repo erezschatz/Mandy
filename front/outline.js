@@ -168,7 +168,7 @@ function renderOutline() {
 // to follow at once. A record inside the subtree, or a text change, is someone
 // typing, and keeps the second. Read off the record rather than off a flag
 // the callers would set, so nothing that assigns `innerHTML` has to know the
-// outline exists. Measured 2026-09-18 (TODO 4.6): a swap is exactly one such
+// outline exists. Measured 2026-09-18: a swap is exactly one such
 // record, and used to wait the full second behind it.
 function scheduleOutline(records) {
   const swap = (records || []).some(

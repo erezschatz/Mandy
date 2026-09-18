@@ -5483,3 +5483,28 @@ fixed on 2026-09-18, per TODO.md's own rule. It is still listed as an open bug.
 That is a pre-existing gap rather than merge work, and folding it in would mean
 chasing `front/outline.js` and CLAUDE.md in a commit that is meant to be a
 merge.
+
+## 2026-09-18 — TODO 4.6 leaves the file, and its number with it
+
+The outline's one-second lag was fixed on 2026-09-18 in `4a45f48`, with all
+three of its stages — measure, fix, verify in a browser — marked done. The item
+stayed in [docs/TODO.md](docs/TODO.md) anyway, still reading *(bug, survives
+3.1)*, which is forty-four lines of finished work sitting in a list of open
+work. The merge one entry above named it as something it was deliberately not
+doing; this is that.
+
+TODO.md's own rule is what this follows: a finished item leaves rather than
+staying struck through, because what was done and why is better looked for here,
+and a list of open work reads better without closed items in the way. **The
+number goes back into circulation with it**, so the two live references were
+chased in the same commit — [CLAUDE.md](CLAUDE.md)'s outline section and a
+comment in [front/outline.js](front/outline.js). Neither lost anything: both
+already carried the measurement date and the reasoning, and the number was the
+only part that could go stale.
+
+CHANGELOG entries keep it, the way they kept TODO 1.3's: this file is a record
+of what things were called when they happened, not an index of what they are
+called now.
+
+Nothing but a comment changed in `front/`, and the `outline` suite — the one
+that names that file — is green.

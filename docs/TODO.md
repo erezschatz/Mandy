@@ -634,50 +634,6 @@ category fidelity deliberately does not extend to.
     call and nothing else. Nothing here reloads or merges on its own either —
     the report is the whole feature, and what to do about it stays the user's.
 
-*   **4.6** *(bug, survives 3.1)* The outline is a second late. Switch tabs,
-    open a new one, open or reload a file, and the sidebar goes on showing the
-    previous document's headings for a second before it catches up — long
-    enough to read as a different document's outline, and long enough that a
-    tab switch feels like it has not finished.
-
-    **The whole delay is one constant.** Rebuilds hang off a `MutationObserver`
-    on `#editor`, debounced by `OUTLINE_DEBOUNCE` in
-    [outline.js](../front/outline.js) — one second, copied from the autosave so
-    that the sidebar does not flicker while someone is still typing a heading.
-    A document swap is one `innerHTML` assignment and so one observer batch,
-    which then waits the full second. Every swap pays it: `adoptActive` in
-    [tabs.js](../front/tabs.js), Open and Reload in `file-api.js`, New, and
-    the welcome fetch.
-
-    **It is a `main` bug, not a rewrite one.** [REWRITE.md](REWRITE.md) lists
-    `outline.js` among the modules 3.1 leaves alone because they read the
-    rendered DOM, and says in *Rendering* that the observer survives per-block
-    re-render. Nothing in the model, the renderer or the input layer changes
-    when the observer fires or how long it waits, so this does not wait on 3.1
-    and gains nothing from riding it.
-
-    *   **Measure** — *done 2026-09-18*. Instrumented the running app with a
-        second observer on `#editor` and one on `#outline`: a new tab and a
-        switch back each produced exactly one mutation record, target
-        `#editor`, type `childList`, at 6ms, and one outline render at 1007ms.
-        Nothing re-arms the timer inside the window; what feels like two
-        seconds is one, plus the redraw. So the fix is the constant's shape,
-        not a second cause.
-
-    *   **Fix** — *done and tested*. The debounce defends typing, and a swap is
-        not typing: a record whose target is `#editor` itself with
-        `childList` is a top-level structural change — a document swap, or an
-        Enter or Backspace at the top level — and renders at once; a record
-        inside the subtree, or a text change, keeps the second. The
-        distinction is read off the record the browser hands over rather than
-        off a flag the callers would each have to set, so Open, Reload, New
-        and the welcome fetch are covered without any of them learning about
-        the outline. The `outline` suite drives the observer's callback with
-        both record shapes and asserts which one arms the timer.
-
-    *   **Verify in a browser** — *done 2026-09-18, Chrome*. Same
-        instrumentation, after the change: the render lands in the same
-        animation frame as the swap, both directions.
 *   **4.7** *(undecided)* The Open dialog's starting directory
     (`showOpenDialog()` / `loadDir()` in [file-api.js](../front/file-api.js))
     is the last directory *that tab* browsed, stored under `documentKey("dir")`
