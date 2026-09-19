@@ -747,6 +747,76 @@ category fidelity deliberately does not extend to.
     decision on what happens to the blank tab it made if the browse dialog is
     cancelled: left as an empty tab, or closed back out.
 
+*   **4.13** *(undecided, survives 3.1)* A tab switch always comes back to the
+    top of the document, wherever you were in it. Nothing records where that
+    was: `parkActive()` in [tabs.js](../front/tabs.js) flushes autosave and
+    parks the three bundles — `undo`, `file`, `md` — and neither the caret nor
+    the scroll offset is among them, so `adoptActive()` has nothing to come
+    back to even if it wanted one. What it does instead is end on
+    `focusDocumentStart()` in [app.js](../front/app.js), which puts the caret
+    at `editor.firstChild` offset 0 and calls `editor.focus()`, and focusing
+    scrolls the editor into view. That is the right ending for the other caller
+    — `resetDocument()`, where the document is blank and start-of-document is
+    the only place a caret can go — and it is only the tab switch that inherits
+    it as a jump.
+
+    **It is two restorations rather than one, and that is the part worth
+    deciding before any of it is written.** A document you were editing wants
+    its caret back, and the `focus()` that follows would scroll to it for free.
+    A document you were only reading never moved its caret off the start, so
+    the caret alone restores nothing and the thing to remember is `scrollY`.
+    Doing the first and calling it done leaves the second case behaving exactly
+    as it does today, which is the case that prompted this.
+
+    **The undo bundle almost has the caret and should not be the source of
+    it.** Every snapshot carries a `selection` (`undoCaptureSelection` in
+    [undo.js](../front/undo.js)), but snapshots are taken on `input`, so that
+    is where the caret was at the last *edit*. Switching away after five
+    minutes of scrolling and coming back to the last keystroke is a different
+    wrong answer, and a worse one to diagnose than landing at the top. Park
+    should read `window.getSelection()` and `window.scrollY` at the moment it
+    is called; nothing has to be tracked continuously, so this needs no
+    listener of its own.
+
+    What it should reuse is the *representation*. `adoptActive` assigns
+    `editor.innerHTML`, which destroys every node a `Range` points at — the
+    same reason undo stores a character offset rather than a Range — and
+    `undoTextOffset` / `undoLocateOffset` already convert both ways, including
+    the rule for an offset that runs past the end of a document that got
+    shorter. A second copy of that conversion in `tabs.js` would be free to
+    disagree with the first about where a boundary belongs.
+
+    **Undecided: whether the position survives a page load.** A tab this
+    session has never shown hydrates from its six storage keys, and there is no
+    position among them, so a restored tab would land at the top regardless.
+    Adding a seventh means `DOCUMENT_KEYS` in `app.js`, `migrateSingleDocument`
+    and `forgetTabStorage` all grow an entry, and something has to write it on
+    a cadence — the autosave debounce being the obvious hook. Against: a scroll
+    position is a session habit rather than part of the document, the five keys
+    beside `content` all describe the *file* rather than the view of it, and
+    landing at the top after a reload is what every editor does. For: the
+    autosave carries unsaved edits across a reload precisely so that a reload
+    is not a loss, and coming back to the top of a 700-line file you were
+    halfway down is the same loss in miniature. **The in-session half needs
+    neither answer** and can land on its own, which is the order to do this in.
+
+    One ordering note against **4.10**: that item moves the scroll off the
+    window and onto a new wrapper, and names the two call sites reading
+    window-level scroll today. Whatever this one writes would be a third. Do
+    4.10 first, or read the position here through a single helper so there is
+    one place to repoint rather than three.
+
+    It survives **3.1**: there the caret is an offset into a block's inline
+    text (`modelInlineOffset`, which keeps undo.js's own boundary rule on
+    purpose — see [REWRITE.md](REWRITE.md)), so the representation changes and
+    the question does not. It is not blocked on it either — the offsets that
+    exist today are undo.js's and work now.
+
+    Numbered 4.13 rather than reusing 4.6 or 4.9, both of which went back into
+    circulation on 2026-09-18. 4.2's reasoning applies unchanged: a reused
+    number is fine once the CHANGELOG entries naming the old item are not this
+    week's.
+
 
 ## 6. Product
 

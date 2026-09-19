@@ -5542,3 +5542,38 @@ what happened — the hash is wrong history rather than an entry to rewrite
 silently.
 
 145 entries, all with a hash, all resolving. No code changed, so nothing ran.
+
+## 2026-09-18 — The tab switch's lost position is written down as TODO 4.13
+
+Reported from use: coming back to a tab lands at the same place every time,
+wherever you were in the document. That is exactly what the code does, and
+nothing in it was ever decided — `parkActive()` in
+[front/tabs.js](front/tabs.js) parks `undo`, `file` and `md`, the caret and the
+scroll offset are among neither, and `adoptActive()` ends on
+`focusDocumentStart()`, which puts the caret at the first child and lets
+`editor.focus()` scroll the editor into view. That ending is right for its other
+caller, `resetDocument()`, where the document is blank; the tab switch inherited
+it.
+
+Filed rather than fixed, because the shape of the fix is a real question and not
+a missing line. **It is two restorations**: a document being edited wants its
+caret back and gets the scroll for free from `focus()`, while one being read
+never moved its caret off the start and wants `scrollY` — do the first alone and
+the case that prompted this behaves exactly as it does now. **The undo bundle's
+`selection` is not the source**, since snapshots are taken on `input` and that
+caret is the last edit's rather than the last position's. And **whether the
+position survives a page load is undecided**, argued both ways in the item: a
+seventh document key, written on the autosave's cadence, against a scroll offset
+being a session habit rather than part of the document. The in-session half
+needs no answer either way and can land on its own.
+
+The item also carries the two reuses it should make rather than re-derive —
+`undoTextOffset` / `undoLocateOffset` for the offset conversion, since
+`adoptActive` assigns `editor.innerHTML` and a `Range` would not survive it —
+and an ordering note against 4.10, which moves the scroll off the window
+entirely and already names the two call sites that would have to be repointed.
+
+Numbered 4.13 rather than reusing 4.6 or 4.9, both freed earlier today: 4.2's
+argument against minting a number whose old entries are this week's.
+
+No code changed, so nothing ran.
