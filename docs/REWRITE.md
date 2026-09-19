@@ -513,12 +513,22 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
 *   **1. Model and serialiser — done and tested, 2026-09-18**, started
     2026-09-11.
-    **→ MERGE TO `main` NOW** — D8 in
-    [DECISIONS.md](DECISIONS.md). It changes nothing the editor does, since
-    `model.js` is in none of the three registries; what it carries to `main` is
-    `markdown-parser.js`'s refactor of the live parser configuration, slice 3
-    step 5's change to `wrapMarkdownLine`, TODO 2.3's hard-break fix in
-    `markdown-style.js`, and an end to the two branches' documents drifting.
+    **→ MERGED TO `main` 2026-09-18, `5322693`** — D8's first of two, in
+    [DECISIONS.md](DECISIONS.md), and the safe one: it changed nothing the
+    editor does, since `model.js` is in none of the three registries. What it
+    carried over is `markdown-parser.js`'s refactor of the live parser
+    configuration, slice 3 step 5's change to `wrapMarkdownLine`, TODO 2.3's
+    hard-break fix in `markdown-style.js`, the six oracle fixtures, the spike
+    page, and an end to the two branches' documents drifting. All of the code
+    merged with no conflict, which is what D8 predicted; the documents were
+    where the work was, and two of them were hiding a number collision no
+    textual merge would have shown — both branches had been allocating D- and
+    TODO-numbers from one space for a fortnight, so `main`'s D7 became D9 and
+    its 4.6 became 4.12. CHANGELOG.md's entry for the merge is the detail.
+
+    **The branches have been identical since**, so stage 2 is what makes them
+    diverge again, and the next merge is stage 4's — the one that cannot be
+    taken back.
 
     **The exit criterion is the estimate table's, and all three clauses are
     met.** Checked against the **living** files rather than the frozen oracle

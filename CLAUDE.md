@@ -18,10 +18,11 @@ carry the old core's compromises into the new one.
 **It goes back to `main` twice, not once** — at the end of stage 1 and at the
 end of stage 4, per **D8** in [docs/DECISIONS.md](docs/DECISIONS.md), so that
 the work is exercised in the editor in daily use and the two branches' documents
-stop drifting. Stage 1's merge changes nothing the editor does; stage 4's is
-irreversible, because it converts the autosave. The reminders are on the stage
-lines in [docs/REWRITE.md](docs/REWRITE.md), where the status is updated as part
-of each landing.
+stop drifting. **The first has happened** — `5322693`, 2026-09-18 — and changed
+nothing the editor does; stage 4's is the one left, and it is irreversible,
+because it converts the autosave. The reminders are on the stage lines in
+[docs/REWRITE.md](docs/REWRITE.md), where the status is updated as part of each
+landing.
 
 Most of what the branch has added so far happens to sit *beside* the running
 editor rather than inside it:

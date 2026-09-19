@@ -5577,3 +5577,61 @@ Numbered 4.13 rather than reusing 4.6 or 4.9, both freed earlier today: 4.2's
 argument against minting a number whose old entries are this week's.
 
 No code changed, so nothing ran.
+
+## 2026-09-18 — Stage 1's merge is recorded as done, and stage 2 is planned
+
+Two things, both [docs/REWRITE.md](docs/REWRITE.md)'s "Where each stage stands"
+section, done in the order they have to be: correct the record, then plan on top
+of it.
+
+**The stage 1 line still read "→ MERGE TO `main` NOW".** The merge landed in
+`5322693` on 2026-09-18 and the line was never updated, so the file carried a
+pending instruction for something a week's worth of commits old — against its own
+rule that the status is updated as part of the landing. It now records the merge
+with its date and hash, what crossed over, and the two number collisions the
+merge turned up that no textual merge would have shown. The matching sentence in
+[CLAUDE.md](CLAUDE.md)'s branch note said the same thing in the same tense and
+is fixed with it: the first of D8's two merges has happened, the irreversible one
+has not, and the branches have been identical since.
+
+**Stage 2 was one paragraph saying why it is not a merge point, and nothing
+about what it is.** Stage 1 had five slices written before any of it was built;
+this had none, and CLAUDE.md's rule is that the plan comes first — the failure it
+names is a CHANGELOG entry announcing "stage two" of a sequence that exists
+nowhere a reader can find. It now carries the exit criterion, seven slices in a
+forced order — render, selection, input/text, input/structure, paste, undo,
+formats — and, for each, what it entails and what it is allowed to leave alone.
+
+Four things in it are decisions rather than plan, and each is written with both
+sides and a recommendation rather than left to whoever reaches it first:
+
+- **A table cell.** Today you can type in one; the model's floor is the row,
+  because `td_open` carries no `map`. Extending the tiler below the row means a
+  second source of spans derived here rather than taken from the parser. The
+  recommendation is to edit a row as source — the same affordance a fence gets —
+  and to leave cells-as-structure to stage 3, which was already going to build
+  table editing.
+- **What an undo state is.** Copy-on-write blocks are cheap and mean rethinking
+  `modelTouch` and the `parent` link; cloning the document per step keeps
+  everything as it is at O(document). The recommendation is the clone, on the
+  ground that it is *not a regression* — today's undo snapshots the whole
+  document as an HTML string on the same cadence — and that it is reversible
+  where rebuilding `modelTouch` mid-input-layer is not.
+- **The savepoint id** stays document-scoped and parked with the bundle rather
+  than going global, because the ordering it forces in `adoptActive` is proven
+  and the failure it prevents is one no manual pass finds.
+- **Typing at a mark's edge** goes inside when the caret was inside, which
+  `modelInlineAt`'s `path` already knows.
+
+Two smaller corrections fall out of writing it down. **`model.js` joins the three
+registries at slice 1, not at stage 4** — for the editor to draw from the model
+it has to be in `index.html` and `SHELL_ASSETS`, and an editable export whose
+core is the model needs it in `ASSETS` or it ships a dead editor. Slice 1's own
+line and CLAUDE.md both still say stage 4; they are corrected in the commit that
+lands slice 1, so the claim moves when the fact does. And **the input layer's
+check page is stood up in slice 3 rather than at the end**, because `dom.mjs` has
+no editing engine and no HTML parser, so until that page exists nothing is
+measuring the one part of the stage that can blow the estimate.
+
+No code changed, so nothing ran. `npm test` was green at 1258 checks before it,
+which is the tree this was written against.
