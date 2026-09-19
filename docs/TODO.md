@@ -103,6 +103,17 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
         at the caret, Tab between cells. An edited table's bytes are 2.1's
         problem either way.
 
+        **This item now also lifts a refusal, decided 2026-09-19.** The
+        rewrite's stage 2 renders a table `contenteditable="false"` and takes no
+        edit inside one, because the model cannot address a cell — 1b's floor is
+        the row, `td_open` carrying no `map` — and both alternatives were worse:
+        splitting a row's source on pipes is a second source of spans derived
+        outside the parser, and editing a row as source would show the user
+        pipes for one stage and then be unpicked by this item. So the one thing
+        a table can do today, typing into a cell's text, stops working for a
+        stage and comes back here as structure. [REWRITE.md](REWRITE.md)'s slice
+        4 is the argument and its stage 2 exit criterion names the exception.
+
     *   **1.1.9** *(task lists — needs 3.1)* A block type on the model: a list
         item that carries a checkbox. Render a **live** checkbox, not the
         `disabled` one `markdown-it-task-lists` emits — toggling it is an

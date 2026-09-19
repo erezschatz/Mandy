@@ -1838,15 +1838,524 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     what the branch may touch: **D7 in [DECISIONS.md](DECISIONS.md)** is there
     because this sentence used to claim the second thing, and slice 2 opens by
     moving two rules out of `app.js` on the strength of it.
-*   **2. Core to parity — not started.** Not a merge point, and neither is any
-    place inside it: build-order steps 2 through 4 are render, input and
-    formats, and between a renderer that exists and formats at parity there is
-    nowhere to stop. Its end is a real boundary and still the wrong merge —
-    `main` would take the whole input layer's risk while the save path is still
-    the three-layer restore. D8 has the argument.
+*   **2. Core to parity — not started; planned 2026-09-18.** Not a merge point,
+    and neither is any place inside it: build-order steps 2 through 4 are
+    render, input and formats, and between a renderer that exists and formats
+    at parity there is nowhere to stop. Its end is a real boundary and still
+    the wrong merge — `main` would take the whole input layer's risk while the
+    save path is still the three-layer restore. D8 has the argument.
+
+    The exit criterion is the estimate table's: **everything the app does
+    today, on the new core** — undo, the thirteen formats, lists including the
+    two hand-rolled behaviours, paste, links, Mermaid and MathJax. What it
+    pointedly does not include is the save path. At the end of this stage
+    `file-api.js` still reads `editor.innerHTML`, Turndown still serialises it,
+    and a save still goes through `indexMarkdownBlocks` and
+    `restoreSourceWrapping`. The model owns *editing*; the file belongs to the
+    old core until stage 4. That split is the whole of D8's objection to
+    merging here, and it is also what makes the stage survivable: every slice
+    below can be wrong without a file on disk being wrong.
+
+    **The criterion has one named exception, decided before the work rather
+    than discovered during it: a table refuses edits.** Slice 4 has the
+    argument. It means this stage closes *knowingly* short of "everything the
+    app does today" by one behaviour — typing into a cell's text — and that is
+    written here rather than only in the slice so the stage cannot be reported
+    as at parity by someone reading the criterion alone. Stage 3 lifts it, as
+    TODO 1.1.8.
+
+    **`model.js` joins the three registries in slice 1, not at stage 4.** Slice
+    1 above says stage 4, and that was written when the boundary had not been
+    looked at closely: for the editor to draw from the model the file has to be
+    in `index.html` and in `SHELL_ASSETS`, and an editable export whose core is
+    the model needs it in `ASSETS` too or it ships a dead editor. The sentence
+    in slice 1 and the matching one in CLAUDE.md are corrected in the commit
+    that lands slice 1 rather than now, so the claim moves when the fact does.
+
+    **The model is built by converting the stored HTML, not from the `source`
+    key.** Decided 2026-09-19, and it is the one question that blocks slice 1.
+    Five of the places a document arrives hand over markdown and are fine —
+    file open, the welcome document, upload, paste markdown, a new blank
+    document. **Two hand over HTML**: the restore-from-autosave at boot and
+    `adoptActive`'s load from storage, because this stage deliberately leaves
+    `content` as HTML. The `source` key looks like the answer and is not: it
+    holds the markdown the document *arrived* as, so at boot with unsaved edits
+    it has the right bytes and the wrong content, and rendering a model built
+    from it would wipe those edits off the screen.
+
+    So those two sites run the stored HTML through Turndown and parse the
+    result. It loses the source spans of blocks edited before the reload —
+    which is **exactly today's behaviour**, since such a block already misses
+    `indexMarkdownBlocks` and is re-wrapped — and it is the same conversion
+    stage 4 has to write anyway as its one-time migration, so it gets exercised
+    for two stages before it becomes the thing a `git revert` cannot undo. It
+    also settles a question the slices would otherwise have to: a tab switch
+    re-parses on adopt, so **`tabs.js` needs no model bundle and this stage
+    does not touch it**, which is what the replaced-code table already
+    promises.
+
+    **The new core sits behind a flag, default off, until the stage 4 merge.**
+    Decided 2026-09-19. Slice 3's real verification is driving the running app
+    — the way `list-indent-check` and `list-empty-item-check` already do it in
+    an `<iframe src="/">` — and a flag is also what makes an A/B of the same
+    document by hand possible, which is the only way a rendering divergence
+    gets *seen* rather than inferred. The cost is two paths in `app.js` for the
+    length of the stage and a flag to remove afterwards.
+
+    `main` is not a reason for it: no merge is planned before stage 4's end,
+    and if both are wanted running at once the answer is `MANDY_PORT`, since
+    the two share one `localStorage` on one origin. The flag is for the
+    branch's own usability and for measurement.
+
+    Seven slices. The order is forced — each is unusable without the one before
+    it — and the first four are where the estimate's risk is:
+
+    *   **1. Render — not started.** `modelRender(doc)` builds `#editor`'s
+        children; `modelRenderBlock(block)` builds one subtree. Both go through
+        **markdown-it's own renderer over the block's tokens**
+        (`md.renderer.render`), never a hand-written HTML emitter. Two reasons,
+        and the second is the load-bearing one: the output is then identical to
+        what `markdownToHtml` produces today, which is what keeps the ~5,300
+        untouched lines untouched — `outline.js`'s observer, `headingAnchors`,
+        the format bar's geometry, the static export's clone, `renderers.js` —
+        and a second renderer would be a second thing free to disagree with the
+        parser, which is the mistake `modelInlines` already refuses to make by
+        keeping the token on the node.
+
+        A container renders its own open and close with its children between,
+        so a touched item re-renders alone. A `gap` block renders to nothing
+        and **keeps its place in the model while occupying none in the DOM**,
+        which is why the block-to-element correspondence cannot be a positional
+        index into `#editor.children`.
+
+        **The check needs no browser, and that is not luck.** markdown-it's
+        renderer produces a *string*, so "every block rendered and concatenated
+        equals `md.render(file)`" is string equality over the six oracle files
+        — the same move slice 1 made when it got byte-identical for free out of
+        a concatenation. The DOM half — that assigning that string produces the
+        tree the rest of the app expects — is the check page's, below.
+
+        **Identity is a minted id, not an index path.** A path (`3.1.0`) goes
+        stale on every splice, so inserting a block would mean re-stamping
+        every element after it, and the one thing this stage does constantly is
+        splice. Ids come from a counter on the document, never reused, for
+        `modelTouch`'s reason — a recycled id inherits whatever of the previous
+        block's state was not cleaned up. `data-block` carries it, never `id`:
+        ids are what `headingAnchors` stamps on the static export's clone and
+        the two must not collide.
+
+        **The spike's step 6 comes across as a permanent assertion.** After
+        every render, each block's DOM text is compared against
+        `modelInlineText` of its tree; a divergence is the exact failure this
+        design can have and it is reported rather than left to be felt. Behind
+        a flag, off by default, on in the check page.
+
+        **An empty block renders `<p data-filler><br></p>`.** Decided
+        2026-09-19. markdown-it renders an empty paragraph as `<p></p>` —
+        measured, not assumed — and in a `contenteditable` that has no height,
+        takes no caret and is not there at all, which is why `BLANK_DOCUMENT`
+        has always been `<p><br></p>`. So the renderer emits a `<br>` the
+        parser never produces, in an empty block and after a trailing break,
+        and **marks it** rather than leaving it to be recognised later. The
+        alternatives were inferring from position — a `<br>` last in the block
+        is a filler — which is a heuristic about DOM shape that is ambiguous on
+        exactly the case that matters, and giving empty blocks height in CSS
+        instead, which is unmeasured in three engines and would need the check
+        page before it could be chosen rather than after.
+
+        **Nothing is at stake in the markup here, and that is what makes the
+        mark the cheap answer.** A filler never reaches the file: it is a view
+        artifact, the document is the model, and D1 has no opinion about a
+        `data-` attribute nobody serialises. This is one of the few places in
+        the project with that freedom, so the question is only which is
+        simplest for us — and an attribute that states what a node is beats a
+        rule that re-derives it.
+
+        One stage-2-only reason it has to be the marked one: the save path
+        still reads `editor.innerHTML` through Turndown until stage 4, so a
+        filler can reach the serialiser and come back as a spurious hard break
+        in an edited block. A marked filler is stripped in one line before
+        serialising; an inferred one means running the same heuristic again, in
+        a second place, where it can disagree with the first.
+
+        **The outline is told about a document swap rather than inferring
+        one.** Decided 2026-09-19. `scheduleOutline` skips its one-second
+        debounce when a record's target is `#editor` with `childList`, because
+        that is the fingerprint of an `editor.innerHTML` assignment and a tab
+        switch must not show the previous document's headings — which was the
+        right design against *eight* assignment sites. After this slice there
+        is one, and the same fingerprint is also what a block splice produces,
+        so from slice 4 onward every Enter in a top-level paragraph would read
+        as a document swap and rebuild the whole sidebar synchronously on the
+        commonest structural keystroke there is.
+
+        So `modelRender(doc)` — the whole-document path, and the only thing
+        that replaces the document now — calls `renderOutline()` itself, and
+        the observer keeps the debounce for everything else. A whole-document
+        signal is not a new kind of thing in this app; the disk-changed check
+        and the file descriptor are the same shape. What goes is the inference,
+        rather than the inference getting finer. **Four checks in the `outline`
+        suite are pinned to the fingerprint** and change with it: the property
+        becomes *a whole-document render redraws the sidebar at once* and
+        *every mutation waits behind the debounce*.
+
+        Not this slice: the Mermaid and LaTeX stashes. `stampLatexSource` and
+        `.mermaid-source` feed the two Turndown rules on the **save** path,
+        which is still the old core's until stage 4, so rendering leaves both
+        alone and `renderers.js` is untouched here.
+
+    *   **2. Selection — not started.** `(block, offset)` to a DOM `Range` and
+        back, over one block's subtree. Slice 2 of stage 1 built the model half
+        on purpose — `modelInlineText`, `modelInlineOffset`, `modelInlineAt`,
+        with `undo.js`'s boundary rule (`remaining <= length`) kept on purpose
+        so this slice ports the caret behaviour instead of re-deciding it. What
+        is left is the DOM walk, which is `undoTextOffset` / `undoLocateOffset`
+        over a smaller root.
+
+        **The atoms are the whole difficulty.** An image and an equation are
+        one `￼` in the model and a whole subtree in the DOM, so the DOM
+        walk has to treat those subtrees as one character and never descend —
+        and the list of what is an atom has to live in one place used by both
+        directions, or the two disagree by exactly the length of some TeX. The
+        other three correspondences were chosen in stage 1 to line up and
+        should be confirmed rather than assumed: a code span's content counts
+        and its backticks are not in the DOM at all, a mark's delimiters are
+        zero-width and are not in the DOM either, and a break is one newline
+        against one `<br>`.
+
+        **The filler is where the atoms rule has teeth in the other
+        direction.** Slice 1 renders a marked `<br>` into an empty block, and
+        slice 2's space says a `<br>` *is* one character — a break, counted as
+        a newline. Two of them therefore mean different things in the same
+        tag, and the case is ordinary rather than exotic: type `foo`, press
+        Shift+Enter, and the model holds four characters while the DOM holds
+        `<p>foo<br><br></p>`, one break and one filler for the caret to sit on.
+        A walk that counts both reports offset 5 in a 4-character block and
+        every edit after it in that block lands one character out. So
+        `isFillerBreak(node)` is **one predicate used by both the renderer and
+        the walk** — the shape `isGhostElement` already has in
+        `markdown-style.js`, a pure function separate from the traversal
+        because the predicate is the half a suite can drive.
+
+        **Nothing holds a `Range` across a render.** Every model edit records
+        the selection it means to leave in model coordinates and the render
+        step applies it — the rule that makes the whole design work, and the
+        one a stray `getSelection()` cached across a re-render breaks silently.
+
+    *   **3. Input: text and composition — not started.** `beforeinput` on
+        `#editor`, `preventDefault()` on **every** type, handled or not, so the
+        DOM can only change through render. `insertText`,
+        `insertReplacementText` (autocorrect and spellcheck accept),
+        `deleteContentBackward`, `deleteContentForward`, `deleteWordBackward`,
+        `deleteWordForward`, `deleteByCut`.
+
+        **The real work is a mutation API the inline tree does not have.**
+        Stage 1 only ever read that tree: it can be walked, measured, located
+        in and emitted from, and there is no way to change it. This slice adds
+        one — splice text between two offsets and hand back the offset the
+        caret lands on — and it has to answer the question the read side never
+        asked: **text typed at a mark's edge is inside or outside it.** Decided
+        2026-09-19 — **inside when the caret was inside.** That is the
+        conventional answer, and the thing that knows is already there:
+        `modelInlineAt` hands back the mark chain as `path`, so the rule reads
+        the chain at the caret rather than inferring one from the offset's
+        neighbours. Then `modelTouch`, which walks up, and render.
+
+        **U+00A0 is normalised here, once, at the boundary**, which closes TODO
+        1.4 by construction rather than by the caret-preserving text-node
+        rewrite that item describes. The other half of 1.4 closes by
+        construction too and more quietly: the browser rewriting a trailing
+        space to an NBSP behind our back cannot happen when the browser is no
+        longer the one writing.
+
+        **Composition is decided rather than discovered**, per the design
+        section: `insertCompositionText` cannot be cancelled, so from
+        `compositionstart` to `compositionend` the engine owns the one text
+        node under the caret and nothing re-renders; `compositionend` diffs
+        that node against the model, applies the difference as one
+        `insertText`, and renders. The guard that matters is the re-render
+        suppression — a render during composition takes the node the IME is
+        holding out from under it, which is how CJK input breaks outright.
+
+    *   **4. Input: structure — not started.** The edits that change how many
+        blocks there are, and the ones that act on a block with no inline tree.
+
+        `insertParagraph` splits the block at the caret; `insertLineBreak`
+        inserts a hard break node. A **new** break has no recorded spelling, so
+        it takes `sniffMarkdownStyle`'s `hardBreak` — which is the residue TODO
+        2.3 left behind, now answered from two directions at once: an existing
+        break keeps the spelling the model recorded on its node, and only a new
+        one asks the document-wide sniff.
+
+        A deletion whose target range spans two blocks is a merge, read off
+        `getTargetRanges()` — it falls out rather than being special-cased,
+        which is what the spike confirmed. Enter at the end of a heading opens
+        a paragraph.
+
+        This is the slice that would have tripped the outline's swap
+        fingerprint — a top-level split splices `#editor`'s children, which is
+        the record shape that skips the debounce — and does not, because slice
+        1 replaced that inference with `modelRender` saying so.
+
+        **The two hand-rolled list clusters move here and stop depending on an
+        engine.** Enter and Backspace in an empty `<li>` — today a keydown
+        handler in `app.js` doing surgery because contenteditable splits the
+        list and strands `<p><br></p>` — and `outdentListItem`, which exists
+        because Firefox merges a bullet into the item above and that markup is
+        indistinguishable from a deliberate break. As model rules they are one
+        implementation with no engine in it, which is what retires
+        `list-empty-item-check.html` and `list-indent-check.html` as questions.
+
+        **Leaves edited as source.** A fence, indented code, an HTML block, a
+        table row and a `gap` have no inline tree — stage 1 says their content
+        *is* source and is edited as source — so the input layer needs a second
+        text space, offsets into `block.source` rather than into an inline
+        tree. A fence renders as `<pre><code>` holding its body, so the mapping
+        is the body's text and the info string is not editable from the
+        document, which is also true today.
+
+        **A table refuses edits until stage 3.** Decided 2026-09-19, and it
+        was this stage's sharpest question. The model cannot address a cell:
+        1b's floor is the row, because `td_open` carries no `map` and there is
+        no span to hang a block off. Three answers were on the table — extend
+        the tiler below the row by splitting the row's source on unescaped
+        pipes, edit a row as source the way a fence is edited, or refuse.
+
+        **Refusing wins on what the other two are.** Splitting on pipes is a
+        *second source of spans*, derived by this file rather than taken from
+        the parser, so every construct that can hold one becomes ours to get
+        right — and it is the worst possible thing to take on under time
+        pressure in the middle of the input layer. Editing a row as source is a
+        patch that would then have to be unpicked: it shows the user pipes for
+        one stage and is replaced by cell structure in the next, so its whole
+        cost is paid for a behaviour with a known expiry.
+
+        **And the parity it gives up is smaller than it first looked.** A table
+        is already view-only in every way that matters: TODO 1.1.8 records that
+        an existing table cannot have a row or a column added or removed, which
+        was confirmed by hand on this very file. What survives today is typing
+        into a cell's text inside a construct nobody can restructure. Giving
+        that up for one stage, explicitly, is cheaper than either alternative —
+        the user's call, and the argument is theirs.
+
+        **Refusal is an absence rather than a branch**, which is the other
+        reason it is cheap: the handler already calls `preventDefault()` on
+        every `beforeinput` whether it handles it or not, so a table needs no
+        code in the input layer at all. What it does need is to *say so*, since
+        a keystroke that silently does nothing reads as a broken editor rather
+        than as a closed door. The signal is the rendering: a table's subtree
+        is rendered `contenteditable="false"`, so the engine will not put a
+        caret inside it and the user is never in the position of typing into
+        something that ignores them. A `notify` would be the wrong answer —
+        it would fire per keystroke.
+
+        Three things that follow, and the third is the one to watch:
+
+        - **A whole table can still be deleted.** The refusal is about edits
+          whose target is inside the cells; a deletion whose range covers the
+          block removes it, the same as any other leaf.
+        - **Selection across a table still works** — an uneditable island
+          inside an editable root is selectable, so Ctrl+A, copy and the
+          static export are unaffected.
+        - **A table as the last block must not trap the caret.** This is the
+          classic `contenteditable="false"` trap: with nothing after it there
+          may be nowhere for the caret to go, and the document becomes
+          un-appendable. It cannot happen today because everything is
+          editable, so it is new, and it is the first thing to check on the
+          input check page rather than something to reason about here.
+
+    *   **5. Input: paste and drop — not started.** `insertFromPaste` and
+        `insertFromDrop` read `text/html`, run it through `sanitisePastedHtml`
+        and `normaliseNbsp` exactly as today, then **Turndown to markdown and
+        `modelParse` into blocks**, spliced in at the selection. Turndown stays
+        in the bundle for this one path and leaves the save path at stage 4;
+        this is the last thing it does.
+
+        `text/plain` inserts as text rather than being parsed as markdown,
+        which is today's behaviour and the reason Insert → *Paste markdown* is
+        a separate action — that one is the same pipeline without the Turndown
+        step. `paste-check.html` measured all three engines offering
+        `text/plain` alone on their plain-text binding, so the branch that
+        fires does not change and the page stays as the regression check it
+        became.
+
+        The splice rule is the conventional one and should be written down
+        because it is where pasting feels wrong when it is wrong: pasting into
+        the middle of a paragraph splits it, the first pasted block merges into
+        the head and the last into the tail, and whole blocks land between.
+
+    *   **6. Undo — not started.** A stack of model states with the caret as a
+        model position, replacing the whole-document `innerHTML` snapshots.
+        Coalescing carries over unchanged — same `inputType`, inside 600 ms,
+        merges; everything else starts a step — because the commands now name
+        their own `inputType` rather than it being read off an event.
+        `undoReset` / `undoPark` / `undoAdopt` keep their contract and the
+        bundle gets smaller. `undoRefresh` goes: there is nothing to correct
+        after the fact when nothing else was allowed to write. The `undo`
+        suite's count of `editor.innerHTML` assignment sites — eight today,
+        five of them in `app.js` — changes target to *none outside render*.
+
+        **A state is a clone of the document.** Decided 2026-09-19. Blocks are
+        mutable and the tree is cyclic through `parent`, so a state had to be
+        either a clone or a sharing scheme, and copy-on-write — a command
+        replacing the blocks it touches so that a state is a block array with
+        untouched blocks shared by reference — was the other candidate. It is
+        cheaper per step, and it means rethinking `modelTouch` and the `parent`
+        link that lets it walk up.
+
+        **The clone wins because it is not a regression and it is
+        reversible.** `structuredClone` handles the cycle, everything else in
+        the model stays exactly as it is, and the cost is O(document) per
+        coalesced step — against today's undo, which snapshots the *entire
+        document as an HTML string* on the same cadence and has never been
+        complained about. So this is strictly cheaper than what ships, which
+        makes it the safe default rather than the lazy one. Measure it on
+        `docs/TODO.md` when the slice lands; copy-on-write stays available and
+        can be taken later on a measurement, where rebuilding `modelTouch` in
+        the middle of the input layer could not be taken back.
+
+        **The savepoint id stays document-scoped and parked with the bundle.**
+        Decided 2026-09-19, which is to say: keep what ships. The Undo design
+        section above leaves it open between that and globally unique ids,
+        which would retire the undo-before-file ordering in `adoptActive`
+        altogether. The ordering is proven, the failure it prevents is a dirty
+        document reporting clean — which takes the unsaved-work guard and
+        `beforeunload` down together, and only when two tabs' edit counts line
+        up, so no manual pass finds it — and the riskiest stage in the plan is
+        the wrong place to also change the one thing nothing but a suite can
+        catch. The `tabs` suite's mutation checks stay the oracle, and they now
+        guard a property this stage is not allowed to quietly drop.
+
+        TODO 1.6's caret half — Ctrl+Z after Enter at the end of a bullet
+        putting the caret at the top — goes by construction: it is a
+        whole-document offset miscount on a snapshot restore and there is no
+        snapshot restore left. The dot half was already fixed in the tabbed
+        view's stage 4 and stays unverified against the reported case.
+
+    *   **7. Formats and the keyboard — not started.** Every control in
+        `TOOLBAR_MENUS` and on the format bar becomes a model command.
+        `applyFormat` keeps its role as the single entry point and loses its
+        `execCommand` cases; the bar's own logic — when it appears,
+        `CARET_FORMATS`, `blocksInRange`, `updateActiveButtons`'s
+        all/some/none — reads the rendered DOM and needs little change.
+        **`updateActiveButtons` should stay on the DOM this stage** even though
+        the model could answer it better: it is tested, it works, and moving it
+        is a change with no failure driving it.
+
+        Inline marks toggle over a range in the inline tree, with all/some/none
+        deciding add versus remove. A new mark takes the sniffed delimiter;
+        existing nodes keep the spelling the model recorded. Block types change
+        the block's kind or wrap and unwrap it, and the refusals stay where
+        they are — a heading inside a list item, refused at the model now
+        rather than in `applyFormat` before a `formatBlock`; inline code across
+        blocks, still a `notify` rather than a fallback. Lists get indent and
+        outdent as model operations, with D5's list-only rule intact. The
+        leaves are the rule, the image and Insert TOC, which writes model
+        blocks and keeps `buildNestedList` for the sidebar.
+
+        **TODO 1.7 lands here** — Ctrl/Cmd+B and Ctrl/Cmd+I bound as `keydown`
+        on the editable, calling the same commands. Measured 2026-09-10: Blink
+        bolds, Gecko on macOS gives the key to its bookmarks sidebar and the
+        page never sees it, WebKit does nothing, so bold-by-keyboard has been
+        dead in two engines out of three for as long as there has been a format
+        bar. The `formatBold` / `formatItalic` / `formatStrikeThrough`
+        `beforeinput` types are a **bonus entry point rather than the
+        mechanism**, and the handler has to ignore one that arrives after a
+        keydown already did the work or the two cancel out. What no script can
+        answer — whether `preventDefault` actually suppresses what the browser
+        wanted the key for — is 1.7's own measurement.
+
+        `execcommand.js` is deleted when its last caller goes, and
+        `normaliseEditorMarkup` with it; the `execcommand` suite's source scan
+        changes target from "only this file calls it" to "nothing does".
+        Clear — today `runCommand("selectAll")` then `runCommand("delete")`,
+        relying on execCommand to raise `input` so it undoes as one step —
+        becomes a model command that is one step by construction.
+
+    **What this stage deliberately does not do**, so each is a decision rather
+    than a gap found later: the save path, `markdown-style.js`'s index and
+    restore, and the Mermaid and LaTeX stashes, all of which are stage 4's and
+    all of which keep working meanwhile; blockquote, image and table *insert*
+    and table structural editing, which are stage 3's; Android's virtual
+    keyboards and in-document drag, which the plan accepts as unmeasured;
+    editing inside a table cell as structure, per slice 4's decision.
+
+    **How it is verified, honestly.** The Deno suite can cover more of this
+    than it looks: renderer equivalence is string equality, and the inline
+    mutation API, the split and merge rules, the paste pipeline down to blocks,
+    undo's stack rules and every format command are pure model operations with
+    no DOM in them — the same reason the `model` suite needs no `dom.mjs`.
+    **What no suite in this repo can see is `beforeinput`**: `dom.mjs` has no
+    editing engine and no HTML parser, so a stub can only agree with whatever
+    it was told. The input layer's instrument is therefore
+    `tests/input-check.html` — the stage 0 spike grown into a real check page,
+    added to `CHECK_PAGES` in `server.ts` — and it is **stood up in slice 3
+    rather than at the end**, because until it exists there is nothing
+    measuring the part of the stage that can blow the estimate. It runs in
+    Chrome, Firefox and Safari, and it carries the verify assertion from slice
+    1. `browser-check`, `list-indent-check` and `list-empty-item-check` stop
+    being questions at slices 4 and 7 and are deleted at stage 4 with the rest
+    of the test work; `paste-check` and `tab-shortcut-check` measure the
+    browser rather than the core and stay. Per CLAUDE.md's rule, anything whose
+    real verification is type-and-look says so and gives the recipe rather than
+    reporting `npm test` as cover.
+
+    **Every open decision was settled 2026-09-19, before any of the work
+    started**, which is the order this repo's rules ask for and not the order
+    these things usually happen in. Six: four the plan raised, and two more
+    found by probing the code while answering them — the empty block and the
+    outline, neither of which is visible from the design and both of which
+    block a slice. Each is written up where the slice that obeys it lives, with
+    what it was decided against:
+
+    - **The model is built by converting the stored HTML** (preamble) rather
+      than from the `source` key, which holds the document as it *arrived* and
+      would drop unsaved edits at boot.
+    - **The new core sits behind a flag, default off** (preamble), so the
+      branch stays usable and the input layer can be driven in the running app.
+    - **A table refuses edits until stage 3** (slice 4) rather than being given
+      a row-as-source stopgap or a tiler that splits on pipes.
+    - **An empty block renders a marked filler `<br>`** (slices 1 and 2) rather
+      than one recognised by position or replaced by CSS height — and the mark
+      is cheap precisely because nothing here reaches the file, so simplicity
+      is the only criterion.
+    - **The outline is told about a document swap** (slice 1) rather than
+      inferring one from a mutation record, now that render is the only thing
+      that replaces the document.
+    - **An undo state is a clone of the document** (slice 6) rather than
+      copy-on-write, on the ground that it is cheaper than the HTML-string
+      snapshots that ship today and can be changed later on a measurement.
+    - **The savepoint id stays document-scoped and parked** (slice 6) rather
+      than going globally unique, keeping `adoptActive`'s undo-before-file
+      ordering load-bearing.
+    - **Text typed at a mark's edge goes inside when the caret was inside**
+      (slice 3).
+
+    None of them is in [DECISIONS.md](DECISIONS.md), and that is a judgement
+    rather than an oversight: all but one are implementation choices inside one
+    stage's slices, and the table refusal — the only one a user can see — has a
+    **named expiry** in stage 3, where TODO 1.1.8 makes cells editable as
+    structure. DECISIONS.md records what the project has settled for good; a
+    refusal that ends in a fortnight is plan. If the refusal outlives stage 3
+    it stops being plan and wants a D number, which is the thing to notice
+    rather than a thing to pre-empt.
+
+    **Two decisions inside the rewrite are still open, and neither is this
+    stage's**: Enter in a table cell, a no-op or a row insertion, which the
+    formats design section leaves to whoever builds it in stage 3; and whether
+    `tabsSwitchAllowed()`'s switch lock comes off once a background tab is a
+    live model rather than a frozen string, which the tabs section defers to
+    stage 4 and keeps by default until then.
 *   **3. The 1.1 items — not started.** Not a merge point either, for the same
     reason: reintegration has not happened, so the app around the new core is
     still reading `editor.innerHTML`.
+
+    **It inherits one debt from stage 2, named on both sides so it cannot be
+    lost between them:** a table refuses edits from slice 4 onwards, and TODO
+    1.1.8's structural editing is what lifts the refusal. Until it does, a
+    table is rendered `contenteditable="false"` and is exactly as editable as
+    it is today, which is to say not. The item is the place the refusal ends;
+    stage 2's exit criterion records that it starts.
 *   **4. Reintegration — not started. → MERGE TO `main` WHEN THIS CLOSES** —
     D8, and **this is the merge that cannot be taken back.** Autosave changes
     from HTML to the model's serialised form and the first load after landing

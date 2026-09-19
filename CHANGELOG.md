@@ -5635,3 +5635,105 @@ measuring the one part of the stage that can blow the estimate.
 
 No code changed, so nothing ran. `npm test` was green at 1258 checks before it,
 which is the tree this was written against.
+
+## 2026-09-19 — Stage 2's open decisions are settled before the work starts
+
+Six of them: the four the plan written yesterday left open, and two more found
+by probing the code while answering them. All decided by the user and written up
+where the slice that obeys each one lives. Deciding them before any code is the
+order this repo's rules ask for and not the order these things usually happen
+in.
+
+**A table refuses edits until stage 3**, rather than the row-as-source stopgap
+that was recommended. Two arguments beat the recommendation. It is *a patch that
+would then be unpicked* — showing the user raw pipes for one stage, at full
+cost, for a behaviour with a known expiry. And **the parity it gives up is
+smaller than the plan claimed**: TODO 1.1.8 already records that an existing
+table cannot have a row or column added or removed, confirmed by hand on
+`docs/TODO.md` itself, so what actually stops working is typing into a cell's
+text inside a construct nobody can restructure. Tables are view-only in every
+way that matters; they now say so.
+
+Three things follow, written into slice 4 because none of them is obvious from
+the decision. **Refusal is an absence, not a branch** — the handler already
+calls `preventDefault()` on every `beforeinput` whether it handles it or not, so
+a table needs no input-layer code at all. It does need to *say so*, since a
+keystroke that silently does nothing reads as a broken editor: the signal is
+rendering the subtree `contenteditable="false"`, so no caret goes in, rather
+than a `notify` that would fire per keystroke. And **a table as the last block
+must not trap the caret** — the classic `contenteditable="false"` trap, which
+cannot happen today because everything is editable, so it is new and it is the
+first thing the input check page has to answer.
+
+The other three, each against what it beat:
+
+- **An undo state is a clone of the document** (`structuredClone`, which handles
+  the `parent` cycle) rather than copy-on-write blocks. It is not a regression —
+  today's undo snapshots the whole document as an HTML string on the same
+  cadence — and it is reversible, where rebuilding `modelTouch` mid-input-layer
+  would not be.
+- **The savepoint id stays document-scoped and parked with the bundle** rather
+  than going globally unique, so `adoptActive`'s undo-before-file ordering stays
+  load-bearing and the `tabs` suite's mutation checks go on guarding it.
+- **Text typed at a mark's edge goes inside when the caret was inside**, read
+  off the mark chain `modelInlineAt` already returns as `path`.
+
+**None of the four goes in DECISIONS.md, and that is a judgement rather than an
+oversight.** Three are implementation choices inside one stage's slices. The
+table refusal is the only one a user can see, and it has a named expiry in stage
+3 — DECISIONS.md records what the project has settled for good, and a refusal
+that ends in a fortnight is plan. If it outlives stage 3 it stops being plan and
+wants a D number, which is written down as the thing to notice.
+
+**Two more decisions came out of checking whether anything else was open, and
+both block a slice.** Neither is visible from the design; both were found by
+probing rather than reading.
+
+**An empty block renders a marked filler `<br>`.** markdown-it renders an empty
+paragraph as `<p></p>` — measured — and in a `contenteditable` that has no
+height and takes no caret, which is why `BLANK_DOCUMENT` has always been
+`<p><br></p>`. So the renderer has to emit a `<br>` the parser never produces,
+and the DOM then holds a node the model has no character for, against a slice 2
+rule that says a `<br>` *is* one character. The collision is an ordinary
+keystroke: type `foo`, press Shift+Enter, and the model holds four characters
+while the DOM holds `<p>foo<br><br></p>` — one break and one filler — so a walk
+counting both lands every later edit in that block one character out. The filler
+is marked rather than recognised by position or replaced with CSS height, on the
+user's framing: nothing here reaches the file, D1 has no opinion about an
+attribute nobody serialises, so the only criterion is which is simplest — and an
+attribute that states what a node is beats a rule that re-derives it.
+`isFillerBreak` is one predicate shared by the renderer and the walk, the shape
+`isGhostElement` already has.
+
+**The outline is told about a document swap rather than inferring one.**
+`scheduleOutline` skips its debounce when a record's target is `#editor` with
+`childList`, which is the fingerprint of an `editor.innerHTML` assignment — and
+also what a top-level block splice produces, so from slice 4 every Enter would
+rebuild the whole sidebar synchronously. `modelRender(doc)` calls
+`renderOutline()` instead, and the inference goes rather than getting finer. The
+reasoning it replaces was sound against eight assignment sites; after slice 1
+there is one. A whole-document signal is not a new kind of thing here — the
+disk-changed check is the same shape. Four checks in the `outline` suite are
+pinned to the fingerprint and change with it.
+
+And the two the plan itself had left implicit, both blocking slice 1. **The
+model is built by converting the stored HTML** at the two places a document
+arrives as HTML — the boot restore and `adoptActive` — because the `source` key
+holds the document as it *arrived* and would drop unsaved edits. That loses the
+source spans of blocks edited before a reload, which is exactly today's
+behaviour, and it exercises stage 4's one-time migration for two stages before
+it becomes irreversible. It also settles that **`tabs.js` is untouched this
+stage**: a switch re-parses on adopt, so there is no model bundle to park.
+**The new core sits behind a flag, default off** until the stage 4 merge, so the
+branch stays usable and the input layer can be driven in the running app the way
+the two list check pages already drive it in an iframe.
+
+Two consequences recorded away from the slice, so the refusal cannot fall
+between the two stages that share it. **Stage 2's exit criterion now carries the
+exception explicitly** — this stage closes knowingly short of "everything the app
+does today" by one behaviour — and **stage 3's line and TODO 1.1.8 both say the
+item is what lifts it**. Two decisions inside the rewrite remain open and neither
+belongs to stage 2: Enter in a table cell, and whether the tab switch lock comes
+off at stage 4. Nothing else is open before slice 1 can start.
+
+No code changed, so nothing ran.
