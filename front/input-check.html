@@ -55,8 +55,11 @@
   <li><b>Backspace at the very start of a paragraph.</b> The range should span <i>two</i> blocks. It is refused for now — nothing happens, no divergence — because a merge is slice 4's.</li>
   <li><b>Type an accented character</b> — hold <kbd>e</kbd> on a Mac, or use a dead key. <code>compositionstart</code>, then the engine writes while we wait, then <code>compositionend</code> applies it as one edit.</li>
   <li><b>Type into the bold run, at its very end, and at its very start.</b> The end continues bold; the start does not.</li>
-  <li><b>Try to type inside the equation or the image.</b> They are one character each: the caret goes before or after, never inside.</li>
+  <li><b>Click on the equation itself and type a letter.</b> The letter appears <i>beside</i> it and the equation survives — the range in the log is collapsed, <code>n–n</code>. This is the one Gecko found on 2026-09-20: a caret inside the span used to report <code>12–13</code> and the letter ate the equation.</li>
+  <li><b>Drag across the whole equation to select it, then type.</b> Now it <i>is</i> replaced, and the range in the log spans it, <code>n–n+1</code>. The pair is the point: one position is not a range.</li>
+  <li><b>Click just after the image and type.</b> The letter lands after it; the image survives. Then <b>select the image</b> — drag across it, or click it and use Shift+Arrow — and type: it is replaced. It is one character, the same as the equation.</li>
   <li><b>Press Enter</b>, and <b>Ctrl/Cmd+Z</b>. Both are cancelled and do nothing — structure is slice 4, undo is slice 6. Nothing should move.</li>
+  <li><b>Use the toolbar's formats — there is no toolbar here, so skip this one.</b> In the app with <code>?core=model</code>, the format bar does nothing on purpose: <code>execCommand</code> fires <code>input</code> but never <code>beforeinput</code>, measured in Chrome 152, so it cannot be intercepted and is refused rather than allowed to change the DOM behind the model's back. Formats arrive as model commands in slice 7.</li>
 </ol>
 <p class="note">Fail is any of: a character that does not appear, a caret that jumps, a divergence line that lights up, or an <code>inputType</code> reported as not cancelable.</p>
 
@@ -86,7 +89,7 @@
     "",
     "A paragraph with **bold** and _em_ to type at the edges of.",
     "",
-    "An equation $x = a*b*c$ and an image ![alt](none.png), one character each.",
+    "An equation $x = a*b*c$ and an image ![alt](/favicon-32x32.png), one character each.",
     "",
     "- a list item",
     "- another one",
@@ -137,11 +140,15 @@
     let ranges = "—";
     try {
       ranges = (e.getTargetRanges() || []).map((r) => {
-        // The same bias the handler uses, or this line reports a range the
+        // The same rule the handler uses, or this line reports a range the
         // handler never saw -- which is the paste-check lesson: a check page
         // that quietly disagrees with the code is worse than no check page.
+        // Outward at both ends only when there are two ends; a collapsed caret
+        // inside an atom is one position, not a range covering it.
+        const flat = r.collapsed === true ||
+          (r.startContainer === r.endContainer && r.startOffset === r.endOffset);
         const from = modelDomBlockAt(editor, doc, r.startContainer, r.startOffset, -1);
-        const to = modelDomBlockAt(editor, doc, r.endContainer, r.endOffset, 1);
+        const to = flat ? from : modelDomBlockAt(editor, doc, r.endContainer, r.endOffset, 1);
         if (!from || !to) return "outside the model";
         return from.block === to.block
           ? "#" + from.block.id + " " + from.offset + "–" + to.offset

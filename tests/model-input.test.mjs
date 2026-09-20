@@ -138,7 +138,7 @@ export default function run(check) {
     for (const type of ["deleteContentBackward", "deleteContentForward", "deleteWordBackward", "deleteWordForward", "deleteByCut"]) {
       const target = { id: 2 };
       const r = rig({ range: [here(target, 1), here(target, 5)] });
-      const e = event(type, { targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] });
+      const e = event(type, { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 4 }] });
       r.api.modelInputBeforeInput(e);
       check(
         `${type} deletes the range the engine named (${r.calls.splice[0] ? r.calls.splice[0].from + "–" + r.calls.splice[0].to : "none"})`,
@@ -153,7 +153,7 @@ export default function run(check) {
     // until then -- the alternative is deleting inside one of them and leaving
     // the other, which is a wrong edit rather than a missing one.
     const r = rig({ range: [here({ id: 3 }, 0), here({ id: 4 }, 0)] });
-    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 0 }] });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 4 }] });
     r.api.modelInputBeforeInput(e);
     check("a deletion spanning two blocks is refused rather than half-applied",
       r.calls.splice.length === 0 && r.calls.rerender.length === 0);
@@ -169,6 +169,41 @@ export default function run(check) {
     r.api.modelInputBeforeInput(e);
     check("a splice that refuses stops the edit rather than rendering anyway",
       r.calls.splice.length === 1 && r.calls.rerender.length === 0 && r.calls.announced.length === 0);
+  }
+
+  {
+    // **A collapsed caret stays collapsed.** Found by hand in Gecko on
+    // 2026-09-20, which puts the caret *inside* a rendered equation where Blink
+    // does not. Both ends of that one position clamp outward -- correctly for a
+    // real selection, which must not collapse onto an atom's front edge -- and
+    // the caret became a range covering the whole equation, so typing a
+    // character ate it. The rig's stub hands back a different answer per call,
+    // so a handler that asked twice gets two offsets and one that asks once
+    // gets one: which is exactly the difference under test.
+    const target = { id: 9 };
+    const r = rig({ range: [here(target, 12), here(target, 13)] });
+    const e = event("insertText", {
+      data: "d",
+      targets: [{ startContainer: 1, startOffset: 4, endContainer: 1, endOffset: 4 }],
+    });
+    r.api.modelInputBeforeInput(e);
+    check(
+      `a caret inside an atom inserts rather than replacing it (${r.calls.splice[0] ? r.calls.splice[0].from + "–" + r.calls.splice[0].to : "none"})`,
+      r.calls.splice.length === 1 && r.calls.splice[0].from === 12 && r.calls.splice[0].to === 12,
+    );
+
+    // And the other half of the same rule, which is why the bias exists at all.
+    const two = { id: 10 };
+    const s2 = rig({ range: [here(two, 12), here(two, 13)] });
+    const e2 = event("insertText", {
+      data: "d",
+      targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 11 }],
+    });
+    s2.api.modelInputBeforeInput(e2);
+    check(
+      `while a real selection over one still replaces it (${s2.calls.splice[0] ? s2.calls.splice[0].from + "–" + s2.calls.splice[0].to : "none"})`,
+      s2.calls.splice.length === 1 && s2.calls.splice[0].from === 12 && s2.calls.splice[0].to === 13,
+    );
   }
 
   // --- composition ----------------------------------------------------------

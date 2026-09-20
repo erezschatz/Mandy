@@ -2276,8 +2276,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         suppression — a render during composition takes the node the IME is
         holding out from under it, which is how CJK input breaks outright.
 
-        **Six findings, and three of them were bugs this slice created and its
-        own instrument caught.**
+        **Eight findings. Three were bugs this slice created and its own
+        instrument caught; two came back from running the check page by hand in
+        an engine this machine does not have, which is the argument for the page
+        rather than an aside about it.**
 
         1.  **An edited block did not render**, and the check page's divergence
             line said so on the first character ever typed into the model core.
@@ -2325,14 +2327,50 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             and not in the second, with nothing added. The rule that ships is
             stage 1's, reused rather than restated.
 
-        5.  **A machine cannot drive the deletions.** Measured 2026-09-20 in
+        5.  **A caret *inside* an atom is one position, not a range over it** —
+            Gecko, by hand, 2026-09-20, and the sharpest thing the page has
+            found. Blink will not put a caret inside a rendered equation and
+            Gecko will, so finding 2's outward clamping met a collapsed range
+            and biased its two ends *apart*: typing `d` inside `$x = a*b*c$`
+            reported `12–13` and replaced the whole equation with a `d`. The
+            rule now reads in one sentence rather than two — outward at both
+            ends only when there are two ends — and a collapsed caret stays
+            collapsed at the atom's front edge, so the character lands beside
+            the equation instead of destroying it.
+
+            **Neither the suite nor Blink could have found this**, and that is
+            the point of the page. It is per engine, it needs a caret placed
+            where only one engine puts it, and the failure is silent in the way
+            that matters: the document looks plausible afterwards.
+
+        6.  **`execCommand` fires `input` but never `beforeinput`.** Measured in
+            Chrome 152 — three commands, all returning true, none of them
+            interceptable — while trying to drive deletions a keyboard could
+            not. So `execCommand` is *not* something the input layer can cancel,
+            and every remaining call site is a DOM mutation the model can
+            neither stop nor hear about. With the new core drawing the document
+            that is the exact failure the interception exists to prevent.
+
+            So **`runCommand` refuses under the model core**, which is the same
+            rule the input layer follows for a type it does not handle: do
+            nothing rather than act behind the model's back. It costs the
+            formats, Tab and Clear for as long as the flag is on, and those are
+            slices 4, 5 and 7 — at the end of which `execcommand.js` is deleted
+            and the guard goes with it. It also settles something the plan left
+            implicit: the interception is only total once the last execCommand
+            call site is gone, so slice 7 is not merely tidying.
+
+        7.  **A machine cannot drive the deletions.** Measured 2026-09-20 in
             Blink: automation delivers a trusted `keydown` for Backspace and the
             engine performs no editing command for it, so no `beforeinput`
             arrives and the DOM does not change. That is the same gap stage 0's
             spike hit, and it decides the shape of the verification rather than
-            being an inconvenience inside it.
+            being an inconvenience inside it. `execCommand` cannot stand in for
+            a keystroke either, per finding 6 — so **the deletions, Enter, undo
+            and a real IME are unmeasured in Blink**, and the page's protocol is
+            the only thing that will measure them.
 
-        6.  **The cost is measured rather than assumed**: 2.1ms per keystroke
+        8.  **The cost is measured rather than assumed**: 2.1ms per keystroke
             on a 636-block document, with the verify clean after 200
             consecutive edits. Most of it is `modelElementFor`'s document-wide
             `querySelector`, which is an optimisation available if a real
@@ -2348,6 +2386,26 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         here — the same reason `paste-check` and `tab-shortcut-check` stay while
         the execCommand pages retire. Finding 5 is what makes it need a human,
         so it carries a numbered protocol the way the spike did.
+
+        **Run in all three on 2026-09-20, and the coverage is uneven on
+        purpose because the instrument is.** WebKit (Safari) and Gecko (Firefox)
+        were driven by hand, which is the only way the deletions, Enter, undo
+        and composition can be driven at all. **Safari: everything correct
+        except the equation bug**, which is finding 5. **Firefox: the same
+        equation bug, which is where it was found.** Blink was driven by
+        automation as far as automation goes — typing mid-word, both edges of a
+        mark, beside and over an atom, and a selection replaced — and no
+        further, per finding 7.
+
+        **The page had two faults of its own, and both cost a step.** Its image
+        was `![alt](none.png)`, which 404s: Blink and WebKit draw a broken-image
+        placeholder and **Gecko draws nothing at all**, so the atom that step is
+        about was invisible in one engine out of three. It is a real file now.
+        And the step read "try to type inside the equation or the image", which
+        is not an instruction anybody can follow — it now says where to click,
+        what to type, and what the log should say, with the equation split into
+        the two cases whose difference is the whole of finding 5: a caret is one
+        position, a selection is a range.
 
         **It is in `front/` rather than in `tests/` plus `CHECK_PAGES`**, which
         the preamble assumed. The static handler that already serves `front/`

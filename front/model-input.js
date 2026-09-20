@@ -80,10 +80,25 @@ function modelInputRange(event, doc) {
     range = live.getRangeAt(0);
   }
 
-  // Outward at both ends: an endpoint a browser normalised into the middle of
-  // an equation must not collapse the range onto the atom's front edge.
+  // **Outward at both ends only when there are two ends.** A selection covering
+  // an equation hands over a range whose end a browser has normalised to inside
+  // the `<span data-math>`, and clamping that inward would collapse the range
+  // and leave the equation standing. But a *collapsed* caret inside the same
+  // span is one position, and biasing its two ends apart turns it into a range
+  // covering the whole atom — so a keystroke replaces the equation instead of
+  // inserting beside it. Measured in Gecko on 2026-09-20, which puts the caret
+  // in there where Blink does not: typing `d` inside `$x = a*b*c$` reported
+  // `12–13` and ate the equation.
+  //
+  // So a collapsed range stays collapsed, at the atom's front edge, which is
+  // also where `modelDomLocate` would have put the caret. The result is a
+  // character inserted before the equation rather than one that destroys it.
+  const collapsed = range.collapsed === true ||
+    (range.startContainer === range.endContainer && range.startOffset === range.endOffset);
   const from = modelDomBlockAt(editor, doc, range.startContainer, range.startOffset, -1);
-  const to = modelDomBlockAt(editor, doc, range.endContainer, range.endOffset, 1);
+  const to = collapsed
+    ? from
+    : modelDomBlockAt(editor, doc, range.endContainer, range.endOffset, 1);
   if (!from || !to || from.block !== to.block) return null;
   return { block: from.block, from: Math.min(from.offset, to.offset), to: Math.max(from.offset, to.offset) };
 }

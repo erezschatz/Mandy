@@ -5957,8 +5957,9 @@ normalised there, once, at the boundary, closing TODO 1.4 by construction; its
 other half closes more quietly still, since the browser cannot rewrite a
 trailing space behind our back when it is not the one writing.
 
-**Six findings, and three of them were bugs this slice created and its own
-instrument caught on the first try.**
+**Eight findings. Three were bugs this slice created and its own instrument
+caught on the first try; two more came back from running the check page by hand
+in engines this machine does not have.**
 
 **An edited block did not render at all.** The check page's divergence line said
 so on the first character ever typed into the model core: `modelRenderBlock`
@@ -5996,11 +5997,24 @@ boundary rule — a position belongs to the node that *ends* there, kept from
 one before it outside, so typing continues the bold in the first case and not in
 the second, with nothing added.
 
+**`execCommand` fires `input` but never `beforeinput`.** Measured in Chrome 152
+— three commands, all returning true, none interceptable — while trying to drive
+deletions a keyboard could not. So `execCommand` is *not* something the input
+layer can cancel, and every remaining call site is a DOM mutation the model can
+neither stop nor hear about. `runCommand` therefore **refuses under the model
+core**, which is the same rule the input layer follows for a type it does not
+handle: do nothing rather than act behind the model's back. It costs the
+formats, Tab and Clear for as long as the flag is on, and those are slices 4, 5
+and 7 — at the end of which `execcommand.js` is deleted and the guard goes with
+it. It also settles something the plan left implicit: the interception is only
+total once the last execCommand call site is gone, so slice 7 is not tidying.
+
 **A machine cannot drive the deletions.** Measured in Blink: automation delivers
 a trusted `keydown` for Backspace and the engine performs no editing command for
 it, so no `beforeinput` arrives and the DOM does not change. That is the same
-gap stage 0's spike hit, and it decides the shape of the verification rather
-than being an inconvenience inside it.
+gap stage 0's spike hit, and `execCommand` cannot stand in for a keystroke
+either. It decides the shape of the verification rather than being an
+inconvenience inside it.
 
 **And the cost is measured rather than assumed**: 2.1ms per keystroke on a
 636-block document, with the verify clean after 200 consecutive edits. Most of
@@ -6039,5 +6053,25 @@ allows in **Chrome 152 on macOS**: typing mid-word, typing at both edges of a
 bold run — inside at the end, outside at the start — typing beside an atom and
 typing over a selected equation, all with the model, the DOM, the caret and the
 emitted markdown agreeing and the divergence line quiet throughout. **The
-deletions, Enter, undo and a real IME are not measured**, in any engine, and the
-page's protocol is what measures them.
+deletions, Enter, undo and a real IME are not measured in Blink**, because
+neither a keystroke nor `execCommand` can drive them there.
+
+**Run by hand in Safari and Firefox, and it earned its keep immediately.**
+Safari: everything correct except one bug. Firefox: the same bug, and it is the
+sharpest thing found in this slice — **a caret placed *inside* a rendered
+equation replaced the whole equation with the typed character.** Blink will not
+put a caret in there and Gecko will, so the outward clamping above met a
+collapsed range and biased its two ends apart: `12–13` where it should have
+been `12–12`. Outward at both ends only when there are two ends, now, and a
+collapsed caret stays collapsed at the atom's front edge — so the character
+lands beside the equation instead of destroying it. Neither the suite nor Blink
+could have found it, which is the argument for the page rather than an aside
+about it.
+
+The page also had two faults of its own, both costing a step. Its image was a
+404, and where Blink and WebKit draw a broken-image placeholder **Gecko draws
+nothing at all**, so the atom that step is about was invisible in one engine out
+of three; it is a real file now. And a step read "try to type inside the
+equation or the image", which is not an instruction anybody can follow — it now
+says where to click, what to type and what the log should say, with the equation
+split into the two cases whose difference is the whole of the bug above.

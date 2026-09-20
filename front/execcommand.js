@@ -294,6 +294,21 @@ function normaliseEditorMarkup(root) {
  * normalisation but a new call site that never reaches it.
  */
 function runCommand(command, value = null) {
+  // **Inert under the model core**, and the reason is a measurement rather
+  // than tidiness. Chrome 152, 2026-09-20: `execCommand` fires `input` but
+  // **never `beforeinput`** — three commands tried, all returned true, none of
+  // them interceptable. So every call here is a DOM mutation the model has no
+  // way to cancel or hear about, and with the new core drawing the document
+  // that means the DOM and the model come apart silently, which is the exact
+  // failure the whole interception exists to prevent.
+  //
+  // Refusing is the same rule the input layer follows for an `inputType` it
+  // does not handle: do nothing, rather than act behind the model's back. It
+  // costs the formats, Tab and Clear for as long as the flag is on, and those
+  // are slices 4, 5 and 7 — at the end of which this file is deleted and the
+  // guard goes with it.
+  if (typeof modelCoreEnabled === "function" && modelCoreEnabled()) return false;
+
   const result = document.execCommand(command, false, value);
 
   // execCommand dispatches `input` synchronously, before this line, so every

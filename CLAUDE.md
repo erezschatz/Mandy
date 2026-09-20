@@ -948,6 +948,13 @@ meaning the same thing. Four things about it:
   closed by construction. Its other half goes more quietly still: the browser
   cannot rewrite a trailing space behind our back when it is not the one
   writing.
+- **`runCommand` refuses under the model core**, and that is a measurement
+  rather than tidiness: Chrome 152, `execCommand` fires `input` but **never
+  `beforeinput`**, so it cannot be intercepted at all. Every call site would be
+  a DOM mutation the model can neither cancel nor hear about. The formats, Tab
+  and Clear therefore do nothing while the flag is on — slices 4, 5 and 7 bring
+  them back as model commands, and `execcommand.js` is deleted at the end of
+  them.
 - **`modelInlineTokens` puts the tokens back in step with the tree**, and
   without it an edited block does not render at all — the renderer goes through
   markdown-it over the block's *tokens* and an edit changes the *tree*. The

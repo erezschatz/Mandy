@@ -14,6 +14,10 @@
 import { loadSource, makeEl, makeText, readFront } from "./dom.mjs";
 import { readdirSync } from "node:fs";
 
+// The model core's flag, which runCommand refuses under. Module-scoped so a
+// check can flip it and the next load() sees the change.
+let modelCore = false;
+
 function load() {
   const editor = makeEl("div");
   const commands = [];
@@ -31,6 +35,7 @@ function load() {
       },
       editor,
       undoRefresh: () => refreshes.push(1),
+      modelCoreEnabled: () => modelCore,
     },
     "; return { normaliseEditorMarkup, runCommand };",
   );
@@ -350,5 +355,39 @@ export default function run(check) {
     check(`${label} ships execcommand.js`, scripts.includes("execcommand.js"));
     check(`${label} loads it before format-bar.js`,
       scripts.indexOf("execcommand.js") < scripts.indexOf("format-bar.js"));
+  }
+
+  // --- and the one case this file must *not* act in -------------------------
+  //
+  // Measured in Chrome 152 on 2026-09-20: execCommand fires `input` but never
+  // `beforeinput`. So under the model core every call here would be a DOM
+  // mutation the model has no way to cancel and no way to hear about, and the
+  // two would come apart silently -- which is the exact failure the input
+  // layer's interception exists to prevent. Refusing is the same rule that
+  // layer follows for a type it does not handle: do nothing rather than act
+  // behind the model's back.
+
+  modelCore = true;
+  {
+    const rig = load();
+    // The file calls styleWithCSS once at load, so what is counted is what the
+    // call adds rather than what the list holds.
+    const before = rig.commands.length;
+    const result = rig.runCommand("bold");
+    check(
+      `under the model core runCommand refuses (${result}, ${rig.commands.length - before} commands run)`,
+      result === false && rig.commands.length === before,
+    );
+    check("and normalisation does not run either", rig.refreshes.length === 0);
+  }
+  modelCore = false;
+  {
+    const rig = load();
+    const before = rig.commands.length;
+    rig.runCommand("bold");
+    check(
+      `with the flag off it is the command it always was (${JSON.stringify(rig.commands.slice(before))})`,
+      rig.commands.length === before + 1 && rig.commands[before] === "bold",
+    );
   }
 }
