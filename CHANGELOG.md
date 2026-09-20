@@ -6458,3 +6458,25 @@ which a once-only one does not. Nobody has asked for it, so nobody has built it.
 The check page's own step says all three answers now, and asks which you get.
 No code changed, so nothing ran; `npm test` was green at 1,443 checks before
 it, which is the tree this was written against.
+
+## 2026-09-21 — All three engines pass slice 4's protocol
+
+Safari closed it out. Both of the bugs the hand runs found — the hard break the
+renderer dropped and the bullet's trailing space the DOM builder's `trim()` ate
+— were reproduced in all three engines and are cleared in all three, and all
+three have now been driven through the whole protocol with the divergence line
+quiet throughout.
+
+That includes the **merge**, which is the one path no machine can reach in any
+engine: a constructed `InputEvent` carries no target ranges, so a synthetic
+Backspace at a block's start is a zero-width deletion where a real keystroke
+hands over a range spanning two blocks. It was the riskiest thing in the slice
+and it is measured now, three times, by hand.
+
+Same gate stage 0 set — will an engine announce what it is about to do and let
+us do it instead — and the same answer, one layer further in: the structural
+edits go through the model in Blink, Gecko and WebKit alike.
+
+Slice 4 is *done and tested* rather than *done and measured as far as a machine
+reaches*, and stage 2 stands at four slices of seven. No code changed, so
+nothing ran; `npm test` was green at 1,443 checks before it.

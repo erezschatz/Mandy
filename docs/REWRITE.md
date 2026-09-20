@@ -1844,9 +1844,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the second thing, and slice 2 opens by moving two rules out of `app.js` on
     the strength of it.
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
-    Slices 1, 2 and 3 of seven are done and tested; slice 4 is done and
-    measured as far as a machine reaches. Not a merge point,
-    and neither is any place inside it: build-order steps 2 through 4 are
+    Slices 1 to 4 of seven are done and tested, slice 4 in all three engines
+    at a real keyboard. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -2431,21 +2430,19 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         app's state on the same origin. The untracked scratch harness stays for
         what a machine *can* drive.
 
-    *   **4. Input: structure — done 2026-09-20; driven clean by hand in Blink
-        and Gecko on 2026-09-21, after two rounds of fixes. WebKit is the one
-        left.** All seven steps below are in, the model half of every one of
+    *   **4. Input: structure — done and tested, 2026-09-20; driven clean by
+        hand in Blink, Gecko and WebKit on 2026-09-21, after two rounds of
+        fixes.** All seven steps below are in, the model half of every one of
         them is covered by the `model` suite against the oracle, and the input
         layer's routing is covered by `model-input`. The half only a human at a
         keyboard can reach is
         [front/input-check.html](../front/input-check.html)'s numbered
-        protocol, which this slice grew by eight steps. **Blink and Gecko have
-        both been driven through all of it and both pass**, having turned up two
+        protocol, which this slice grew by eight steps. **All three engines
+        have been driven through it and all three pass**, having turned up two
         real bugs, one per-engine fact, one wrong instruction and three faults
-        in the page — all below. **WebKit has run the deletion case and the
-        table step and no more**, so the merge and most of the real keystrokes
-        there are the one part of this slice still untested in the only place
-        that can test it. The edits that change how many blocks there are, and
-        the ones that act on a block with no inline tree.
+        in the page — all below. Same gate stage 0 set, same answer. The edits
+        that change how many blocks there are, and the ones that act on a block
+        with no inline tree.
 
         `insertParagraph` splits the block at the caret; `insertLineBreak`
         inserts a hard break node. A **new** break has no recorded spelling, so
@@ -2610,7 +2607,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         **A deletion at the end of a bullet lost the space before the word, in
         all three engines** — the one that took two passes to catch, because it
         appeared, went away, and was reported as "I got one diverged but I
-        missed what step it was". Option+Backspace over a bullet's last word
+        missed what step it was". Reproduced in all three and cleared in all
+        three. Option+Backspace over a bullet's last word
         leaves the space in front of it, correctly: the engine's target range
         covered the word and not the space, and every editor keeps it. The model
         kept it and the screen did not. The fault is in **slice 1's DOM
@@ -2685,11 +2683,13 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         table: the argument against a `notify` was that it would fire per
         keystroke, which a once-only one does not. Nobody has asked for it.
 
-        **Blink and Gecko have both since been driven through the whole protocol
-        clean** — every step, with the divergence line quiet throughout. WebKit
-        has run the deletion case and the table step and no more, so the merge
-        and most of the real keystrokes there are still unmeasured. That is the
-        one thing left before this slice is measured everywhere it runs.
+        **All three engines have since been driven through the whole protocol
+        clean** — every step, with the divergence line quiet throughout,
+        including the **merge**, which no machine can reach in any engine: a
+        constructed `InputEvent` carries no target ranges, so a synthetic
+        Backspace at a block's start is a zero-width deletion where a real
+        keystroke hands over a range spanning two blocks. Both of the bugs below
+        were reproduced in all three and are cleared in all three.
 
         **And driven by automation**, on `front/input-check.html` in Blink,
         as far as automation reaches: the split, Enter at the end of a heading,

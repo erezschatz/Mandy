@@ -445,8 +445,11 @@ the page's own monospace, so a fenced code block was indistinguishable from a
 paragraph; the divergence banner sat below the fold; and a divergence that fixed
 itself left no trace at all, so one was hit and then lost. The banner is first
 and sticky now, it keeps a count that survives a recovery, and every divergence
-goes into the log as well. Blink and Gecko both pass the whole protocol; WebKit
-has run only the deletion case and the table step. It lives in `front/` so the static handler already serves it
+goes into the log as well. **All three engines pass the whole protocol** — the
+same gate stage 0 set, and the same answer — including the merge, which no
+machine can drive in any of them: a constructed `InputEvent` carries no target
+ranges, so a synthetic Backspace at a block's start is a zero-width deletion
+where a real keystroke hands over a range spanning two blocks. It lives in `front/` so the static handler already serves it
 same-origin with `/model.js`, which is the only thing the `/tests/` route was
 ever buying — so it needs no `CHECK_PAGES` entry and no server change — and it
 installs the input layer itself rather than flipping the model core's flag, so
@@ -1031,10 +1034,10 @@ undo stack all hang off exactly that.
 
 **Slice 4 gave it structure**, 2026-09-20, in the same two files: the edits that
 change how many blocks there are, and the ones that act on a block with no
-inline tree. **Driven through by hand in Blink and Gecko on 2026-09-21, clean in
-both after two rounds of fixes** — they found two real bugs, both of which every
-check in the suite passed straight over. WebKit is the one left. Seven steps,
-and the ones worth knowing from outside:
+inline tree. **Driven through by hand in all three engines on 2026-09-21, clean
+in all three after two rounds of fixes** — they found two real bugs, both of
+which every check in the suite passed straight over, and both reproduced and
+cleared everywhere. Seven steps, and the ones worth knowing from outside:
 
 - **What Enter splits is the block, and then its container when that container
   is an item.** So Enter in a top-level paragraph makes a paragraph, Enter in a
