@@ -6365,7 +6365,7 @@ page that drops evidence quietly is worse than no check page.
 so the merge and every real keystroke there remain untested in the only place
 that can test them.
 
-## 2026-09-21 — The bullet's missing space, and Gecko through the whole protocol
+## 2026-09-21 — `f5dd78f` — The bullet's missing space, and Gecko through the whole protocol
 
 The second hand run of slice 4's protocol, and the one that caught the
 divergence the first run saw and lost. Option+Backspace over the last word of a
