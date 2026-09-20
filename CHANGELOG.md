@@ -6296,7 +6296,7 @@ place that can test them.
 `sw.js`'s `VERSION` goes to `v1.35`: `model.js`, `model-input.js` and `app.js`
 all changed, and all three are shell assets.
 
-## 2026-09-21 — Slice 4's first hand run, in Gecko: one real bug and three faults in the page
+## 2026-09-21 — `7c7d97c` — Slice 4's first hand run, in Gecko: one real bug and three faults in the page
 
 The protocol on [front/input-check.html](front/input-check.html) had never been
 driven. Firefox was the first engine through it, and it earned its keep on the
