@@ -235,9 +235,19 @@ export default async function run(check) {
 
   // MathJax reads the text back out of the DOM, so the delimiters have to be
   // written back with it -- and the TeX escaped, or `$a < b$` is a stray tag.
+  //
+  // The wrapper is TODO 3.1 stage 2 slice 2's, and it is the selection mapping
+  // that wants it rather than anything about maths: an equation is one
+  // character in the model's offset space, and until MathJax has run there is
+  // nothing in the DOM to count as one -- the rule's own output is bare text,
+  // by design, because that is what MathJax reads. The delimiters stay inside
+  // it for exactly that reason.
   const written = renderRules.math(
     [{ markup: "$", content: "a < b & c" }],
     0,
   );
-  check("the delimiters are written back", written === "$a &lt; b &amp; c$");
+  check(
+    `the delimiters are written back, inside the marker the mapping counts (${JSON.stringify(written)})`,
+    written === '<span data-math>$a &lt; b &amp; c$</span>',
+  );
 }

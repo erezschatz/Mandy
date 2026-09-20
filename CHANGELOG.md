@@ -5837,3 +5837,93 @@ different news: un-typeset maths is bare text in the DOM while the model holds
 one `￼` for it, and **slice 2 inherits that** — its offset space says an
 equation is one character, which is true of MathJax's output and false of the
 text standing in for it until MathJax has run.
+
+## 2026-09-20 — Stage 2, slice 2: the selection mapping
+
+`(block, offset)` to a DOM position and back. The model half was built in stage
+1 on purpose — `modelInlineText`, `modelInlineOffset`, `modelInlineAt`, written
+to `undo.js`'s boundary rule — so what lands here is `modelDomText`,
+`modelDomOffset` and `modelDomLocate`, which are `undoTextOffset` /
+`undoLocateOffset` over one block's subtree, plus `modelApplySelection` and
+`modelReadSelection` in the browser's own terms. `modelRender` and
+`modelRerenderBlock` now take a selection and apply it, because **nothing holds
+a `Range` across a render**: every node the old one pointed at has just been
+thrown away.
+
+Five things were measured before the work started; four corrected a slice.
+
+**A `<br>` is zero characters, not one.** markdown-it renders a hard break as
+`<br>\n`, so the newline is the text node *after* it — which is why
+`<p>foo<br>\nbar</p>` has a `textContent` of `"foo\nbar"`, exactly what the
+model already says. The plan had it as one character. `undoTextOffset`, the
+function the plan said to port, has always counted it as zero, and it was right.
+
+**`isFillerBreak` is not built, because measurement removed both of its
+reasons.** It was wanted so a walk would not count a break and a filler as two
+characters — neither counts, so there is nothing to tell apart. And slice 1
+wanted it so a filler could be stripped before the old core serialises:
+`<p><br data-filler></p>` goes through Turndown to `""` and
+`<p>foo<br><br data-filler></p>` to `"foo"`, so nothing reaches the file either
+way. The mark stays — it costs nothing and states what a node is — and the first
+thing that genuinely has to read it can add the reader.
+
+**Maths is wrapped in `<span data-math>`, by the parser, for both cores.** This
+is the atom problem and it was sharper than "an equation is a subtree": until
+MathJax has run an equation is *bare text*, because the `math` rule re-emits the
+source verbatim so MathJax can find it — `a $x = a*b*c$ b` is fifteen characters
+in the DOM where the model says five. The same model mapped to two different
+DOMs and no fixed offset space fits both. Every objection to a wrapper was
+measured rather than argued: MathJax typesets inside the span and leaves it
+standing with the `<mjx-container>` as its child; `normaliseEditorMarkup`
+unwraps a `<span>` only when it carries a `style`, so this one survives every
+execCommand; Turndown's output is byte-identical to before in both states, so
+nothing reaches anybody's file differently; layout is pixel-identical inline and
+display, so there is no CSS for it; and MathJax already skips `<code>`. Both
+cores rather than behind the flag, so the parser's output does not depend on one
+and the shape the new core rests on is the shape everything exercises. It cost
+one `latex` check that asserts the rule's exact output.
+
+**A block owning no element is addressed through the one that owns it.**
+markdown-it hides a tight list item's paragraph, so it has none — and most of
+this repo's documents are tight lists, so "the caret cannot go there" would not
+have been an edge. The answer falls out of the tiling invariant one more level
+down: a container's text is its children's concatenated, so a child's offset
+inside its owner is its own plus the text of the siblings before it.
+`modelBlockText` is that recursion, and it is the only new idea in the slice.
+
+**And slice 1 left cosmetic whitespace inside every container, which slice 2 is
+what could see.** `(open + close).trim()` on `<ul>\n</ul>\n` trims the outer
+edges and keeps the newline *inside* the tags, as a text node no block owns.
+Nothing counted characters in slice 1, so nothing noticed; here a container's
+text has to be exactly its children's or a child's offset is out by every stray
+newline in front of it. Each half is trimmed now, and the render verify — once
+it was exact — reported it on the first run.
+
+That verify is the other half of the slice. It compares atom-aware DOM text
+against `modelBlockText` at every block owning an element, so slice 1's two
+kinds of skip are both retired: a block holding an image or an equation is
+*checked*, and one owning no element is covered by its container. What it still
+does not measure is a block bearing no inline tree anywhere — a fence, a rule, a
+gap, and **a table**, whose floor is the row because `td_open` carries no `map`.
+That is the same statement slice 4 makes out loud, that a table is not editable
+as text, rather than an exception carved for the verify.
+
+**How it was verified.** Twenty-six new checks in `model`, driving node trees
+built by hand — which is a different thing from slice 1's DOM building and is
+why they belong there: what is under test is a walk over nodes, and `makeEl` /
+`makeText` answer `nodeType`, `textContent`, `childNodes` and `hasAttribute` the
+way a real tree does, with no HTML parser in the loop to disagree with. The
+trees are the ones markdown-it actually renders, measured in a browser rather
+than assumed. The suite now loads `markdown-parser.js`, `markdown-style.js` and
+`model.js` in one scope, matching the real bundle order, instead of loading the
+parser separately. 1,298 checks pass.
+
+In the scratch harness, **green in Chrome 152 on macOS**, before and after
+MathJax: every position of every text-bearing leaf maps to a DOM position that
+maps back to itself — exhaustively, not sampled, because the cheap version would
+miss exactly the boundaries the boundary rule exists for — a tight item's
+paragraph is addressable and maps back to itself rather than to its `<li>`, a
+model position becomes a real caret that reads back as itself, and a render
+reapplies the selection it was given. Swept over a 645-block document in the
+running app with the flag on: **40,578 positions, every one a fixpoint**, and
+439 blocks compared by the verify with nothing to report.

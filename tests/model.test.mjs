@@ -25,7 +25,7 @@
 
 import markdownit from "markdown-it";
 import { readFileSync } from "node:fs";
-import { loadSource } from "./dom.mjs";
+import { loadSource, makeEl, makeText } from "./dom.mjs";
 
 const repoFile = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -78,6 +78,8 @@ export default function run(check) {
     modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText,
     modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle,
     modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled,
+    modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt,
+    modelIsAtomNode, configureMarkdownParser,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -85,12 +87,14 @@ export default function run(check) {
     // real load-order dependency the three registries will have to honour when
     // model.js joins them at stage 4 — it has to follow markdown-style.js the
     // way undo.js has to follow app.js.
-    ["markdown-style.js", "model.js"],
+    ["markdown-parser.js", "markdown-style.js", "model.js"],
     {},
     "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix," +
       " modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText," +
       " modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle," +
-      " modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled };",
+      " modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled," +
+      " modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt," +
+      " modelIsAtomNode, configureMarkdownParser };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -100,12 +104,6 @@ export default function run(check) {
   // `data-ref-label` stamp, and those are the two things slice 2's re-emission
   // and link steps are about — it would report full marks on constructs the app
   // never hands it.
-  const { configureMarkdownParser } = loadSource(
-    "markdown-parser.js",
-    {},
-    "; return { configureMarkdownParser };",
-  );
-
   const md = configureMarkdownParser(markdownit());
   const parse = (src) => modelParse(src, md);
 
@@ -2351,6 +2349,198 @@ export default function run(check) {
   // The flag is off wherever there is no browser to read it from, which is what
   // lets every suite load this file and get the old behaviour.
   check("the model core's flag reads off outside a browser", modelCoreEnabled() === false);
+
+
+  // ---- Stage 2, slice 2: the selection mapping ---------------------------
+  //
+  // These drive a node tree built by hand rather than parsed, which is a
+  // different thing from the DOM building in slice 1 and is why they belong
+  // here: what is under test is a walk over nodes, and a tree assembled with
+  // makeEl/makeText answers nodeType, textContent, childNodes and hasAttribute
+  // the way a real one does. There is no HTML parser in the loop to disagree
+  // with -- that is the thing tests/dom.mjs cannot supply, and the reason the
+  // slice's other half is measured in the scratch harness instead.
+  //
+  // The trees below are exactly what markdown-it renders, which was measured in
+  // a browser on 2026-09-20 rather than assumed: `<p>foo<br>\nbar</p>` really
+  // does carry the newline in the text node *after* the <br>, which is what
+  // makes a <br> zero characters here.
+
+  {
+    const el = (tag, kids, attrs = {}) => {
+      const node = makeEl(tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      for (const kid of kids) node.appendChild(kid);
+      return node;
+    };
+    const t = (text) => makeText(text);
+
+    // <p>foo<br>\nbar</p> -- one hard break, the newline after the <br>.
+    const br = el("br", []);
+    const hardBreak = el("p", [t("foo"), br, t("\nbar")]);
+    check(
+      `a <br> counts nothing and the newline after it counts one (${JSON.stringify(modelDomText(hardBreak))})`,
+      modelDomText(hardBreak) === "foo\nbar",
+    );
+    check(
+      "and the model agrees with it, which is the whole correspondence",
+      modelDomText(hardBreak) === modelInlineText(parse("foo  \nbar\n").blocks[0].inlines),
+    );
+
+    // The filler slice 1 renders, and the case the plan worried about: one
+    // break and one filler in the same tag. Neither counts, so there is
+    // nothing to tell apart and isFillerBreak was never needed.
+    const filler = el("br", [], { "data-filler": "" });
+    const trailing = el("p", [t("foo"), el("br", []), t("\n"), filler]);
+    check(
+      `a trailing break and a filler do not add up to two (${JSON.stringify(modelDomText(trailing))})`,
+      modelDomText(trailing) === "foo\n",
+    );
+    const empty = el("p", [el("br", [], { "data-filler": "" })]);
+    check("an empty block is zero characters", modelDomText(empty) === "");
+    check(
+      "and its only position is the element itself, since it holds no text node",
+      (() => { const at = modelDomLocate(empty, 0); return at.node === empty && at.offset === 0; })(),
+    );
+
+    // Atoms. An image contributes nothing to textContent and one character
+    // here; an equation is a span the parser marks, and it is one character
+    // whether or not MathJax has replaced its contents.
+    const img = el("img", []);
+    const mathRaw = el("span", [t("$x = a*b*c$")], { "data-math": "" });
+    const mathDone = el("span", [el("mjx-container", [t("x=a∗b∗c")])], { "data-math": "" });
+    check("an <img> is one character", modelDomText(el("p", [t("a "), img, t(" b")])) === "a ￼ b");
+    check(
+      "un-typeset maths is one character, not eleven",
+      modelDomText(el("p", [t("a "), mathRaw, t(" b")])) === "a ￼ b",
+    );
+    check(
+      "and typeset maths is the same one character",
+      modelDomText(el("p", [t("a "), mathDone, t(" b")])) === "a ￼ b",
+    );
+    check(
+      "which is the point: the two states of the same equation agree",
+      modelDomText(el("p", [mathRaw])) === modelDomText(el("p", [mathDone])),
+    );
+    check("a <br> is not an atom", modelIsAtomNode(br) === false);
+
+    // Both directions, over a tree holding an atom.
+    const para = el("p", [t("a "), mathRaw, t(" b")]);
+    const roundTrip = [];
+    for (let i = 0; i <= 5; i++) {
+      const at = modelDomLocate(para, i);
+      roundTrip.push(modelDomOffset(para, at.node, at.offset));
+    }
+    check(
+      `every offset maps to a position that maps back (${JSON.stringify(roundTrip)})`,
+      JSON.stringify(roundTrip) === JSON.stringify([0, 1, 2, 3, 4, 5]),
+    );
+    // The boundary rule wins over the atom rule, and that is right: offset 2
+    // is the end of "a " as much as it is the front of the atom, and the two
+    // are the same place in the DOM. So the parent-relative form only comes up
+    // where there is no text node ending there -- an atom opening the block.
+    check(
+      "a boundary in front of an atom is still the text node that ends there",
+      (() => { const at = modelDomLocate(para, 2); return at.node === para.childNodes[0] && at.offset === 2; })(),
+    );
+    // A fresh span: appendChild re-parents, and `para` is still under test.
+    const leading = el("p", [el("span", [t("$y$")], { "data-math": "" }), t(" b")]);
+    check(
+      "an atom opening the block is addressed from the parent, at its own index",
+      (() => { const at = modelDomLocate(leading, 0); return at.node === leading && at.offset === 0; })(),
+    );
+    check(
+      "and the position after an atom is the next index",
+      (() => { const at = modelDomLocate(para, 3); return at.node === para && at.offset === 2; })(),
+    );
+    check(
+      "a position inside an atom answers with the atom's own start",
+      modelDomOffset(para, mathRaw.childNodes[0], 4) === 2,
+    );
+    check(
+      "a node from another tree is null rather than 0, the way undoTextOffset has it",
+      modelDomOffset(para, t("elsewhere"), 0) === null,
+    );
+
+    // undo.js's boundary rule, kept on purpose so this ports the caret
+    // behaviour rather than re-deciding it: a boundary belongs to the node that
+    // *ends* there, and past the end clamps.
+    const two = el("p", [t("ab"), el("strong", [t("cd")])]);
+    check(
+      "a boundary belongs to the node that ends there",
+      (() => { const at = modelDomLocate(two, 2); return at.node === two.childNodes[0] && at.offset === 2; })(),
+    );
+    check(
+      "and past the end clamps to the last position",
+      (() => { const at = modelDomLocate(two, 99); return at.offset === 2; })(),
+    );
+    check(
+      "which is the same answer modelInlineAt gives, one space over",
+      modelInlineAt(parse("ab**cd**\n").blocks[0].inlines, 2).offset === 2,
+    );
+  }
+
+  // A container's text is its children's, concatenated -- the tiling invariant
+  // one more level down, in text rather than in bytes. It is what lets a block
+  // with no element of its own be addressed through the one that owns it.
+  {
+    const doc = parse("- Walk the transect.\n  1. Record at ten metres.\n");
+    const item = doc.blocks[0].children[0];
+    const paragraph = item.children[0];
+    check(
+      `a tight item's text is its paragraph's plus its sublist's (${JSON.stringify(modelBlockText(item))})`,
+      modelBlockText(item) === "Walk the transect.Record at ten metres.",
+    );
+    check(
+      "and its paragraph's own text is just its own",
+      modelBlockText(paragraph) === "Walk the transect.",
+    );
+    check(
+      "a container with no inline tree still has text, through its children",
+      modelBlockText(doc.blocks[0]) === modelBlockText(item),
+    );
+    const fence = parse("```\nbody\n```\n").blocks[0];
+    check(
+      `a leaf whose content is source has no text in this space (${fence.kind})`,
+      fence.kind === "fence" && modelBlockText(fence) === "",
+    );
+  }
+
+  // The invariant the whole mapping rests on, across the oracle: a container's
+  // text is exactly its children's, at every depth. A failure here is an offset
+  // that lands in the wrong block.
+  {
+    let containers = 0;
+    const bad = [];
+    const walkBlock = (block) => {
+      if (block.children) {
+        containers += 1;
+        const own = modelBlockText(block);
+        const kids = block.children.map(modelBlockText).join("");
+        if (own !== kids) bad.push(`${block.kind}#${block.id}`);
+        block.children.forEach(walkBlock);
+      }
+    };
+    for (const path of ORACLE_FILES) parse(repoFile(path)).blocks.forEach(walkBlock);
+    check(
+      `every container's text tiles its children's, at every depth (${containers} containers)` +
+        (bad.length ? ` — ${bad.length} did not: ${bad.slice(0, 3).join(", ")}` : ""),
+      containers > 300 && bad.length === 0,
+    );
+  }
+
+  // And the wrapper the mapping needs is what the parser actually writes.
+  {
+    const html = md.render("a $x = a*b*c$ b\n");
+    check(
+      `the parser wraps an equation so the walk has one node to count (${JSON.stringify(html.trim())})`,
+      html.trim() === '<p>a <span data-math>$x = a*b*c$</span> b</p>',
+    );
+    check(
+      "and a price is still prose, outside any wrapper",
+      md.render("costs $5 and $10\n").indexOf("data-math") === -1,
+    );
+  }
 
   // ------------------------------------------------------------- the metric
 

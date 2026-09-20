@@ -153,9 +153,15 @@ They cover the invariants that fail *silently* rather than loudly:
   and handed to Turndown. That last check sits with the options rather than the
   re-wrapper deliberately — a sniffer that read the spelling correctly and never
   handed it over would pass everything else and change nothing.
-- **model** — `front/model.js`, TODO 3.1's stage 1, and the only suite with no
-  DOM in it: the model is pure string and token work, so it borrows dom.mjs's
-  file helpers and nothing else. It loads `markdown-style.js` ahead of
+- **model** — `front/model.js`, TODO 3.1's stage 1 and stage 2. It is the suite
+  with **no HTML parser** in it, which is the constraint that actually matters
+  and is what "no DOM" always meant: the model is string and token work, so it
+  borrows dom.mjs's file helpers — and, since stage 2's slice 2, `makeEl` and
+  `makeText`, because the selection walks are pure functions over a node tree
+  and a tree built by hand answers `nodeType`, `textContent`, `childNodes` and
+  `hasAttribute` the way a real one does. What it still cannot do is turn a
+  string into a tree, which is why everything that renders markup is measured
+  in the scratch harness instead. It loads `markdown-style.js` ahead of
   `model.js`, and that order is load-bearing rather than tidy: since slice 3's
   step 5 the model calls `wrapMarkdownLine` and `hasMathSpan` rather than
   carrying a second copy of either. Its oracle is `ORACLE_FILES`, and every file in
@@ -553,7 +559,21 @@ passing through as text — with every inline rule applied to it en route.
 `$x = a*b*c$` came back italicised with the asterisks gone. `mathSpan` and the
 `math` rule in [markdown-parser.js](front/markdown-parser.js) claim the span
 ahead of markdown-it's `escape` rule and re-emit the source verbatim, so the
-parser now hands MathJax what the author wrote. Two things follow from where it sits: the rule runs before `backticks`
+parser now hands MathJax what the author wrote.
+
+**Since 2026-09-20 the rule wraps what it writes in `<span data-math>`**, and
+the reason is the selection mapping rather than anything about maths: TODO
+3.1's stage 2 counts an equation as **one character**, and until MathJax has run
+there is no element to count — the source it re-emits is bare text, so
+`a $x = a*b*c$ b` is fifteen characters in the DOM where the model says five,
+and the same model maps to two different DOMs. The wrapper is one node in both
+states. Every objection to it was measured rather than argued: MathJax typesets
+*inside* the span and leaves it standing, `normaliseEditorMarkup` unwraps a
+`<span>` only when it carries a `style`, Turndown's output is byte-identical to
+before in both states so nothing reaches a file differently, and layout is
+pixel-identical inline and display, so there is no CSS for it.
+
+Two things follow from where it sits: the rule runs before `backticks`
 in the chain but positionally after it, so `` `$HOME` `` is still code, not
 maths; and it decides equation-versus-price on two heuristics — an opening `$`
 is never followed by whitespace, a closing one never by a digit — which
@@ -836,13 +856,45 @@ rather than details.
   13.4ms for one `innerHTML`, so the map costs about a quarter more on a
   document three times the size of anything in this repo.
 
+**Slice 2 added the selection mapping**, 2026-09-20: `(block, offset)` to a DOM
+position and back. The model half was built in stage 1 on purpose —
+`modelInlineText`, `modelInlineOffset`, `modelInlineAt`, written to `undo.js`'s
+boundary rule so this ports the caret behaviour rather than re-deciding it — so
+what this adds is `modelDomText`, `modelDomOffset` and `modelDomLocate`, which
+are `undoTextOffset` / `undoLocateOffset` over one block's subtree, plus two
+things those never had to know about.
+
+- **Atoms.** `modelIsAtomNode` is the DOM half of `MODEL_ATOM_KINDS` and the two
+  have to agree, or the directions disagree by the length of some TeX. An
+  `<img>` contributes nothing to `textContent` and one character here; an
+  equation is the `<span data-math>` above, one character whether or not MathJax
+  has replaced its contents. A `<br>` is deliberately *not* an atom: measured,
+  markdown-it renders a hard break as `<br>\n`, so the newline is the text node
+  after it and the `<br>` is zero characters — which is exactly what
+  `undoTextOffset` has always counted, and what makes the filler `<br>` slice 1
+  renders cost nothing too.
+- **A block with no element of its own.** markdown-it hides a tight list item's
+  paragraph, so it has none — and most of this repo's documents are tight lists,
+  so this is not an edge. It is addressed through the nearest ancestor that owns
+  one, shifted by the text of the siblings in front of it, which works because
+  **a container's text is its children's concatenated**: the tiling invariant
+  one more level down, in text rather than in bytes. `modelBlockText` is that
+  recursion.
+
+`modelApplySelection` and `modelReadSelection` are the two ends in the browser's
+own terms, and `modelRender` / `modelRerenderBlock` take a selection to apply,
+because **nothing holds a `Range` across a render** — every node the old one
+pointed at has just been thrown away.
+
 `modelVerifyRender` is the spike's step 6 kept as a permanent assertion: after a
 render, each block's DOM text against the text its tree says it holds. Off by
-default. It skips a block holding an image or an equation, and counts those
-apart from the blocks that own no element, because the two are different news —
-un-typeset maths is bare text in the DOM (`markdown-parser.js`'s `math` rule
-re-emits the source verbatim) while the model holds one `\uFFFC` for it, and
-slice 2's offset space inherits that question.
+default. Slice 2 made it **exact** — it compares atom-aware DOM text against
+`modelBlockText` at every block that owns an element, so a block holding maths
+is checked rather than skipped and one owning no element is covered by its
+container. The one thing it still does not measure is a block bearing no inline
+tree anywhere: a fence, a rule, a gap, and **a table**, whose floor is the row
+because `td_open` carries no `map`. That is the same statement slice 4 makes out
+loud — a table is not editable as text — rather than an exception carved here.
 
 What the model still does *not* do is take input or run a format command: those
 are the rest of stage 2 and stage 3.

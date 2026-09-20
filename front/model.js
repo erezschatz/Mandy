@@ -1879,7 +1879,7 @@ function modelOwnedElement(parent, from) {
     if (node.nodeType === 1) {
       if (found) return null;
       found = node;
-    } else if (node.nodeType !== 3 || node.data.trim() !== "") {
+    } else if (node.nodeType !== 3 || node.textContent.trim() !== "") {
       return null;
     }
   }
@@ -1899,12 +1899,14 @@ function modelOwnedElement(parent, from) {
  *
  * **The rendering is trimmed, so a block's DOM is exactly its own element.**
  * What goes is markdown-it's pretty-printing — the newline after a closing tag,
- * and the one `hiddenBefore` puts in front of an opening one. Whitespace
- * between block elements belongs to no block, so leaving it in would mean a
- * re-render either stranding the old copy or adding a second. Nothing inside
- * the block is touched: trimming acts on the outer edges of the string, and a
- * `<pre>`'s body and the space between two inline elements are both inside the
- * tags.
+ * the one between two siblings, and the one `hiddenBefore` puts in front of an
+ * opening one. Whitespace between block elements belongs to no block, so
+ * leaving it in would mean a re-render either stranding the old copy or adding
+ * a second — and, since slice 2, that a container's DOM text would not be its
+ * children's, which is what a child's offset inside its owner is measured
+ * against. Nothing inside the block is touched: trimming acts on the outer
+ * edges of the string, and a `<pre>`'s body and the space between two inline
+ * elements are both inside the tags.
  */
 function modelBuildBlock(parent, block, md, env) {
   if (block.kind === "gap") return [];
@@ -1914,7 +1916,12 @@ function modelBuildBlock(parent, block, md, env) {
     const tokens = block.hiddenBefore ? [block.hiddenBefore, ...block.tokens] : block.tokens;
     const open = modelRenderToken(md, tokens, block.hiddenBefore ? 1 : 0, env);
     const close = modelRenderToken(md, block.tokens, block.tokens.length - 1, env);
-    parent.insertAdjacentHTML("beforeend", (open + close).trim());
+    // Each half trimmed, not the pair: `<ul>\n</ul>\n` trimmed as one string
+    // keeps the newline *inside* the tags, as a text node no block owns. That
+    // survived slice 1 because nothing counted characters yet; slice 2 counts,
+    // and a container's text has to be exactly its children's or a child's
+    // offset inside its owner is out by every stray newline before it.
+    parent.insertAdjacentHTML("beforeend", open.trim() + close.trim());
   } else {
     parent.insertAdjacentHTML("beforeend", modelRenderBlock(block, md, env).trim());
   }
@@ -1954,7 +1961,7 @@ function modelElementFor(root, block) {
  * leave the model holding an empty paragraph block is slice 4's, where there is
  * an edit to decide it from.
  */
-function modelRender(root, doc, md) {
+function modelRender(root, doc, md, selection = null) {
   const env = {};
   root.innerHTML = "";
   for (const block of doc.blocks) modelBuildBlock(root, block, md, env);
@@ -1963,6 +1970,9 @@ function modelRender(root, doc, md) {
     paragraph.appendChild(modelFillerBreak(root.ownerDocument));
     root.appendChild(paragraph);
   }
+  // Applied here, by the render step, because nothing may hold a Range across
+  // one: every node the old selection pointed at has just been thrown away.
+  if (selection) modelApplySelection(root, selection);
   if (typeof renderOutline === "function") renderOutline();
   if (modelVerifyEnabled) modelVerifyLog(modelVerifyRender(root, doc));
   return root;
@@ -1982,7 +1992,7 @@ function modelRender(root, doc, md) {
  * rather than being parsed anywhere detached: moving nodes already parsed is
  * context-free, where re-parsing them is exactly the thing that loses a `<tr>`.
  */
-function modelRerenderBlock(root, block, md, env = {}) {
+function modelRerenderBlock(root, block, md, selection = null, env = {}) {
   let owner = block;
   let el = null;
   while (owner && !(el = modelElementFor(root, owner))) owner = owner.parent;
@@ -1993,6 +2003,7 @@ function modelRerenderBlock(root, block, md, env = {}) {
   parent.removeChild(el);
   const nodes = modelBuildBlock(parent, owner, md, env);
   for (const node of nodes) parent.insertBefore(node, anchor);
+  if (selection) modelApplySelection(root, selection);
   return modelElementFor(root, owner);
 }
 
@@ -2011,69 +2022,52 @@ function modelVerifySetEnabled(on) {
   modelVerifyEnabled = !!on;
 }
 
-function modelInlinesHaveAtom(nodes) {
-  for (const node of nodes || []) {
-    if (node.children ? modelInlinesHaveAtom(node.children) : MODEL_ATOM_KINDS.has(node.kind)) return true;
-  }
-  return false;
+/**
+ * Every block whose DOM text disagrees with its model text.
+ *
+ * **Slice 2 made this exact**, where slice 1 had to skip two kinds of block and
+ * count the skips. It compares `modelDomText(el)` — which counts an atom as one
+ * character, the same as the model does — against `modelBlockText(block)`, so a
+ * block holding an image or an equation is *checked* rather than excused. And
+ * it checks at every block that owns an element rather than only at leaves, so
+ * a block owning none is covered by the container it is inside rather than
+ * skipped: a container's text is its children's concatenated, which is the
+ * tiling invariant in text space.
+ *
+ * What is left unmeasured is a block whose content is source rather than text —
+ * a fence, a rule, a table row, a gap. `modelBlockText` is empty for those by
+ * definition, and their second text space is slice 4's. **A table is the case
+ * where that reaches a container**: 1b's floor is the row, because `td_open`
+ * carries no `map`, so a table's whole subtree bears no inline tree and its
+ * text here is empty while its cells plainly hold some. Skipping it is the same
+ * statement slice 4 makes out loud — a table is not editable as text — rather
+ * than an exception carved for the verify.
+ *
+ * The test is *bears any inline tree at all*, not *has empty text*: an edited
+ * paragraph really can be empty, and that one is checked.
+ */
+function modelBearsInlines(block) {
+  if (block.inlines) return true;
+  return block.children ? block.children.some(modelBearsInlines) : false;
 }
 
-/**
- * Every block whose DOM text disagrees with its model text, and a count of the
- * blocks that could not be asked.
- *
- * **A block holding an atom is skipped this slice, and the reason is a finding
- * for slice 2 rather than a shortcut here.** markdown-parser.js's `math` rule
- * re-emits the source verbatim, so until MathJax has run an equation is bare
- * text in the DOM — `$x$`, indistinguishable from prose — while the model holds
- * one `￼` for it. An image is an element and could be recognised;
- * un-typeset maths cannot be. Slice 2 inherits the sharp end: its offset space
- * says an equation is one character, which is true of MathJax's output and
- * false of the text standing in for it, so the DOM walk and the model disagree
- * by the length of the TeX for as long as typesetting takes.
- *
- * A block owning no element is skipped too, for the reason `modelOwnedElement`
- * gives: its text is not separable from its `<li>`'s.
- *
- * **The two reasons are counted apart**, because they are not the same news.
- * A tight list item's paragraph having no element is structural and permanent,
- * and on a document that is mostly a list it is most of the blocks — so one
- * number covering both would read as the verify quietly covering less and less
- * while nothing was wrong. The atom count is the one that should fall to zero
- * when slice 2 answers the question above.
- */
 function modelVerifyRender(root, doc) {
   const problems = [];
   let compared = 0;
-  let atoms = 0;
-  let unowned = 0;
 
   const walk = (block) => {
-    if (block.children) {
-      block.children.forEach(walk);
-      return;
-    }
-    if (!block.inlines) return;
-    if (modelInlinesHaveAtom(block.inlines)) {
-      atoms += 1;
-      return;
-    }
     const el = modelElementFor(root, block);
-    if (!el) {
-      unowned += 1;
-      return;
+    if (el && modelBearsInlines(block)) {
+      const want = modelBlockText(block);
+      const got = modelDomText(el);
+      compared += 1;
+      if (got !== want) problems.push({ id: block.id, kind: block.kind, want, got });
     }
-    const want = modelInlineText(block.inlines);
-    compared += 1;
-    if (el.textContent !== want) problems.push({ id: block.id, kind: block.kind, want, got: el.textContent });
+    if (block.children) block.children.forEach(walk);
   };
 
   doc.blocks.forEach(walk);
-  // `compared` counts the blocks that were actually asked, which is the number
-  // that makes the other three mean anything: a document where every block
-  // passed reports no problems and no skips, and so is indistinguishable from
-  // one where the walk never reached a block at all.
-  return { problems, compared, atoms, unowned };
+  return { problems, compared };
 }
 
 function modelVerifyLog(report) {
@@ -2131,4 +2125,289 @@ function modelLoad(root, markdown, md) {
   modelDocument = modelParse(markdown, md);
   modelRender(root, modelDocument, md);
   return modelDocument;
+}
+
+// ── Selection ────────────────────────────────────────────────────────────────
+//
+// Stage 2's slice 2: `(block, offset)` to a DOM position and back. Slice 2 of
+// stage 1 built the model half on purpose — `modelInlineText`,
+// `modelInlineOffset`, `modelInlineAt` — with `undo.js`'s boundary rule kept
+// deliberately so this ports the caret behaviour rather than re-deciding it.
+// What is here is the DOM walk, which is `undoTextOffset` / `undoLocateOffset`
+// over a smaller root, plus the two things that walk does not have to know
+// about: atoms, and a block with no element of its own.
+//
+// **Nothing holds a `Range` across a render.** Every model edit records the
+// selection it means to leave in model coordinates and the render step applies
+// it — `modelRender` and `modelRerenderBlock` both take one. A `getSelection()`
+// cached across a re-render points at nodes that no longer exist, and it breaks
+// silently, which is why the rule is stated rather than left to be inferred.
+
+/**
+ * Whether a DOM node stands for one character rather than for its own text.
+ *
+ * **This is the DOM half of `MODEL_ATOM_KINDS` and the two have to agree**, or
+ * the two directions disagree by exactly the length of some TeX. An image is
+ * `<img>`, which contributes nothing to `textContent` and one character here.
+ * An equation is `<span data-math>`, which markdown-parser.js emits for the
+ * mapping's sake — see the comment there. Before MathJax runs it holds the
+ * source text; after, it holds an `<mjx-container>` of glyphs; it is one
+ * character throughout, which is the whole reason it exists.
+ *
+ * A `<br>` is deliberately not here. Measured 2026-09-20: markdown-it renders a
+ * hard break as `<br>\n`, so the newline is the text node *after* it and the
+ * `<br>` itself is zero characters — which is what `undoTextOffset` has always
+ * counted. The filler `<br>` slice 1 renders is zero characters for the same
+ * reason, so the two cannot be confused and there is nothing to tell apart.
+ */
+function modelIsAtomNode(node) {
+  return node.nodeType === 1 && (node.tagName === "IMG" || node.hasAttribute(MATH_SPAN_ATTR));
+}
+
+// A DOM subtree's text in the model's offset space: an atom is one `￼`
+// and is never descended into, and everything else is its own characters. This
+// is `modelInlineText` read off the DOM instead of off the tree, and the render
+// verify is the two of them compared.
+function modelDomText(node) {
+  if (node.nodeType === 3) return node.textContent;
+  if (modelIsAtomNode(node)) return MODEL_ATOM;
+  let out = "";
+  for (const child of node.childNodes) out += modelDomText(child);
+  return out;
+}
+
+/**
+ * A DOM position inside `root`, as an offset into `modelDomText(root)`.
+ *
+ * `undoTextOffset` with two additions: an atom counts one and is not descended
+ * into, and a position *inside* an atom answers with the atom's own start
+ * rather than with something from within it — a caret cannot meaningfully be
+ * half-way through an equation, and the alternative is an offset the model has
+ * no position for.
+ *
+ * Null when the node is not under `root`, the way `undoTextOffset` does it, so
+ * a caller holding a stale node hears about it instead of being handed a 0.
+ */
+function modelDomOffset(root, node, offset) {
+  let total = 0;
+  let found = false;
+
+  (function walk(current) {
+    if (found) return;
+    if (current === node) {
+      if (current.nodeType === 3) total += offset;
+      else if (!modelIsAtomNode(current)) {
+        // An element container: `offset` counts child nodes, not characters.
+        const children = current.childNodes;
+        for (let i = 0; i < offset && i < children.length; i++) total += modelDomText(children[i]).length;
+      }
+      found = true;
+      return;
+    }
+    if (current.nodeType === 3) {
+      total += current.textContent.length;
+      return;
+    }
+    if (modelIsAtomNode(current)) {
+      // A position under an atom is the atom's, and the walk stops looking: a
+      // caret inside MathJax's own markup is not a place the model can name.
+      if (current.contains(node)) {
+        found = true;
+        return;
+      }
+      total += 1;
+      return;
+    }
+    for (const child of current.childNodes) {
+      walk(child);
+      if (found) return;
+    }
+  })(root);
+
+  return found ? total : null;
+}
+
+/**
+ * The DOM position an offset into `modelDomText(root)` names.
+ *
+ * `undoLocateOffset` with the same two additions, and its boundary rule kept
+ * exactly: **a position at a boundary belongs to the node that ends there**
+ * (`remaining <= length`), and past the end clamps to the last position rather
+ * than returning nothing. `modelInlineAt` was written to that rule in stage 1
+ * so the two agree without either having to know about the other.
+ *
+ * An atom is addressed from its parent — `{node: parent, offset: index}` before
+ * it and `index + 1` after — because there is no text node to land in. That is
+ * the one shape this returns that `undoLocateOffset` never does, and a caller
+ * building a `Range` needs no special case for it: both forms are valid
+ * container positions.
+ *
+ * A block holding no text at all — the empty one slice 1 renders as
+ * `<p><br data-filler></p>` — has no text node to offer, so this answers with
+ * the root itself at offset 0, which is where a caret in an empty paragraph
+ * goes.
+ */
+function modelDomLocate(root, offset) {
+  let remaining = Math.max(0, offset);
+  let result = null;
+  let last = null;
+
+  (function walk(current) {
+    if (result) return;
+    if (current.nodeType === 3) {
+      const length = current.textContent.length;
+      last = { node: current, offset: length };
+      if (remaining <= length) result = { node: current, offset: remaining };
+      else remaining -= length;
+      return;
+    }
+    if (modelIsAtomNode(current)) {
+      const parent = current.parentNode;
+      const index = Array.prototype.indexOf.call(parent.childNodes, current);
+      last = { node: parent, offset: index + 1 };
+      if (remaining === 0) result = { node: parent, offset: index };
+      else if (remaining <= 1) result = last;
+      else remaining -= 1;
+      return;
+    }
+    for (const child of current.childNodes) {
+      walk(child);
+      if (result) return;
+    }
+  })(root);
+
+  return result || last || { node: root, offset: 0 };
+}
+
+/**
+ * A block's own text, in the model's offset space.
+ *
+ * A leaf's is its inline tree's. **A container's is its children's,
+ * concatenated** — which is the tiling invariant one more level down, in text
+ * rather than in bytes, and it is what makes the next function possible. A leaf
+ * with no inline tree at all (a fence, a rule, a table row, a gap) has no text
+ * in this space: its content is source and is edited as source, which is slice
+ * 4's second text space and not this one.
+ */
+function modelBlockText(block) {
+  if (block.inlines) return modelInlineText(block.inlines);
+  if (block.children) return block.children.map(modelBlockText).join("");
+  return "";
+}
+
+/**
+ * The element a block's positions are measured in, and how far into that
+ * element the block's own text starts.
+ *
+ * **Not every block owns an element.** markdown-it hides a tight list item's
+ * paragraph, so it renders as bare text inside its `<li>` with nothing to stamp
+ * `data-block` on — and since most of this repo's documents are tight lists,
+ * "the caret cannot go there" would not be an edge case. So such a block is
+ * addressed through the nearest ancestor that does own one, shifted by the text
+ * of the siblings in front of it, which is exactly what `modelBlockText` makes
+ * available.
+ *
+ * Returns null when nothing in the chain owns an element — an `html_block`
+ * whose markup has two roots gets there — rather than guessing at a root.
+ */
+function modelBlockAnchor(root, block) {
+  let shift = 0;
+  for (let node = block; node; node = node.parent) {
+    const el = modelElementFor(root, node);
+    if (el) return { el, shift };
+    const siblings = node.parent && node.parent.children;
+    if (!siblings) return null;
+    for (const sibling of siblings) {
+      if (sibling === node) break;
+      shift += modelBlockText(sibling).length;
+    }
+  }
+  return null;
+}
+
+// `(block, offset)` to a DOM position. Null when the block is not on screen.
+function modelDomPosition(root, block, offset) {
+  const anchor = modelBlockAnchor(root, block);
+  if (!anchor) return null;
+  return modelDomLocate(anchor.el, anchor.shift + Math.max(0, offset));
+}
+
+/**
+ * A DOM position back to `(block, offset)`.
+ *
+ * Walks down from the innermost stamped element the position is inside, then
+ * down the model with it: a container's text is its children's, so the offset
+ * picks a child by subtracting the ones before it. The boundary rule is the
+ * same one going down as coming up — a position at a child's end belongs to
+ * that child rather than to the start of the next — so a caret at the end of a
+ * tight item's paragraph does not report as the start of the nested list
+ * underneath it.
+ *
+ * Null when the position is not inside any block the document owns, which is a
+ * caller's problem to handle rather than this one's to paper over.
+ */
+function modelDomBlockAt(root, doc, node, offset) {
+  let el = node.nodeType === 1 ? node : node.parentNode;
+  while (el && el !== root && !el.hasAttribute(MODEL_BLOCK_ATTR)) el = el.parentNode;
+  if (!el || el === root || !el.hasAttribute(MODEL_BLOCK_ATTR)) return null;
+
+  const id = el.getAttribute(MODEL_BLOCK_ATTR);
+  let block = null;
+  (function find(list) {
+    for (const candidate of list) {
+      if (block) return;
+      if (String(candidate.id) === id) { block = candidate; return; }
+      if (candidate.children) find(candidate.children);
+    }
+  })(doc.blocks);
+  if (!block) return null;
+
+  let remaining = modelDomOffset(el, node, offset);
+  if (remaining === null) return null;
+
+  while (block.children) {
+    let next = null;
+    for (const child of block.children) {
+      const length = modelBlockText(child).length;
+      if (remaining <= length) { next = child; break; }
+      remaining -= length;
+    }
+    if (!next) return { block, offset: remaining };
+    block = next;
+  }
+  return { block, offset: remaining };
+}
+
+// ── Selection: the browser's ─────────────────────────────────────────────────
+
+// Put the caret, or a range, where the model says. A collapsed selection is one
+// position; `to` extends it. Returns whether it could be placed.
+function modelApplySelection(root, selection) {
+  if (!selection || !selection.block) return false;
+  const from = modelDomPosition(root, selection.block, selection.offset);
+  if (!from) return false;
+  const to = selection.to ? modelDomPosition(root, selection.to.block, selection.to.offset) : from;
+  if (!to) return false;
+
+  const range = root.ownerDocument.createRange();
+  range.setStart(from.node, from.offset);
+  range.setEnd(to.node, to.offset);
+  const live = root.ownerDocument.defaultView.getSelection();
+  live.removeAllRanges();
+  live.addRange(range);
+  return true;
+}
+
+// And the way back: what the browser's selection is, in model coordinates.
+// Null when there is none, or when it is not inside this document.
+function modelReadSelection(root, doc) {
+  const live = root.ownerDocument.defaultView.getSelection();
+  if (!live || !live.rangeCount) return null;
+  const range = live.getRangeAt(0);
+  if (!root.contains(range.startContainer)) return null;
+  const from = modelDomBlockAt(root, doc, range.startContainer, range.startOffset);
+  if (!from) return null;
+  if (range.collapsed) return from;
+  const to = modelDomBlockAt(root, doc, range.endContainer, range.endOffset);
+  return to ? { ...from, to } : from;
 }

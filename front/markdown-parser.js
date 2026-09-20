@@ -38,6 +38,34 @@
 // be — a blank line inside `$$…$$` is an error in TeX itself, and markdown-it
 // has split the paragraph in two long before any inline rule runs.
 
+// The attribute marking a rendered equation, and the reason it exists is the
+// selection mapping rather than anything about maths. TODO 3.1's stage 2 maps a
+// position in the model to one in the DOM and back, and in that space an
+// equation is **one character** — what the reader sees is not the characters
+// the model holds, and counting the TeX would put the two out of step. That
+// needs something in the DOM to count as one and never descend into.
+//
+// Until MathJax has run there is nothing: the rule below re-emits the source
+// verbatim, *because* MathJax reads it back out of the DOM, so an equation is
+// bare text and `a $x = a*b*c$ b` is fifteen characters where the model says
+// five. The same model would map to two different DOMs, and no fixed offset
+// space fits both.
+//
+// So the rule wraps. Everything that could have objected was measured on
+// 2026-09-20 rather than argued: MathJax typesets *inside* the span and leaves
+// it standing with the `<mjx-container>` as its child; `normaliseEditorMarkup`
+// unwraps a `<span>` only when it carries a `style`, so this one survives every
+// execCommand; Turndown output is byte-identical to before the wrapper in both
+// states, so nothing reaches anybody's file differently; layout is
+// pixel-identical inline and display, so there is no CSS for it; and MathJax
+// already skips `<code>`, so `` `$HOME` `` is untouched.
+//
+// Both cores rather than behind the model core's flag, so the parser's output
+// does not depend on a flag and the shape the new core rests on is the shape
+// everything exercises. docs/REWRITE.md's slice 2 has what that was decided
+// against.
+const MATH_SPAN_ATTR = "data-math";
+
 // The maths span opening at `start`, or null. Apart from the markdown-it
 // plumbing below because the delimiters are the part with judgement in them:
 // this is what tells an equation from a price, and it is testable on its own.
@@ -228,7 +256,12 @@ function configureMarkdownParser(md) {
   md.inline.ruler.before("escape", "math", mathRule);
   md.renderer.rules.math = function (tokens, idx) {
     const token = tokens[idx];
-    return token.markup + md.utils.escapeHtml(token.content) + token.markup;
+    // The delimiters are written back inside the span, not dropped: MathJax
+    // finds an equation by reading `$…$` out of the DOM text, so the wrapper
+    // marks where it is without taking away what it looks for.
+    return `<span ${MATH_SPAN_ATTR}>` +
+      token.markup + md.utils.escapeHtml(token.content) + token.markup +
+      "</span>";
   };
   md.inline.ruler.at("link", referenceAwareLink);
   return md;

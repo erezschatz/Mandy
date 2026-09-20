@@ -1844,7 +1844,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the second thing, and slice 2 opens by moving two rules out of `app.js` on
     the strength of it.
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
-    Slice 1 of seven is done and tested. Not a merge point,
+    Slices 1 and 2 of seven are done and tested. Not a merge point,
     and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
@@ -2119,7 +2119,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         stage 4's export work. Nothing produces it with the flag off, which is
         the default.
 
-    *   **2. Selection — not started.** `(block, offset)` to a DOM `Range` and
+    *   **2. Selection — done and tested, 2026-09-20.** `(block, offset)` to a DOM `Range` and
         back, over one block's subtree. Slice 2 of stage 1 built the model half
         on purpose — `modelInlineText`, `modelInlineOffset`, `modelInlineAt`,
         with `undo.js`'s boundary rule (`remaining <= length`) kept on purpose
@@ -2156,6 +2156,90 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         the selection it means to leave in model coordinates and the render
         step applies it — the rule that makes the whole design work, and the
         one a stray `getSelection()` cached across a re-render breaks silently.
+
+        **Measured before the work started, 2026-09-20, and four of the five
+        findings correct a slice above.**
+
+        1.  **A `<br>` is *zero* characters, not one, and the newline is the
+            text node after it.** markdown-it renders a hard break as
+            `<br>\n` — measured, and it is why `<p>foo<br>\nbar</p>` has a
+            `textContent` of `"foo\nbar"`, which is already exactly what
+            `modelInlineText` says. So the walk counts text nodes and nothing
+            else, which is what `undoTextOffset` — the function this slice was
+            told to port — has always done. The correspondence was right; the
+            sentence above describing it was not.
+
+        2.  **`isFillerBreak` is therefore not built, because both of its
+            justifications were premises that measurement removed.** It was
+            wanted so a walk would not count a filler and a break as two
+            characters — but neither counts, so there is nothing to tell
+            apart. And slice 1 wanted it so a filler could be stripped before
+            the old core serialises: measured, `<p><br data-filler></p>` goes
+            through Turndown to `""` and `<p>foo<br><br data-filler></p>` to
+            `"foo"`, so nothing reaches the file either way. Building a
+            predicate with no caller would be inventing the need for it. The
+            mark stays, since it costs nothing and states what a node is; the
+            first thing that genuinely has to read it can add the reader.
+
+        3.  **Maths is wrapped in `<span data-math>`, by the parser, for both
+            cores.** This is the atom problem and it is sharper than "an
+            equation is a subtree": until MathJax has run an equation is
+            *bare text* — `a $x = a*b*c$ b` is fifteen characters in the DOM
+            where the model says five — because `markdown-parser.js`'s `math`
+            rule re-emits the source verbatim so MathJax can find it. There is
+            no element to recognise and nothing to not-descend-into, so **the
+            same model maps to two different DOMs** and no fixed offset space
+            fits both.
+
+            A wrapper fixes it in both states at once, and every objection to
+            one was measured away rather than argued away. MathJax typesets
+            *inside* the span and leaves it standing, with the
+            `<mjx-container>` as its child. `normaliseEditorMarkup` unwraps a
+            `<span>` only when it carries a `style`, so this one survives every
+            execCommand. Turndown output is **byte-identical** to today in both
+            states — `a $x = a\*b\*c$ b` un-typeset and `a $x = a*b*c$ b`
+            typeset — so nothing reaches anybody's file differently. Layout is
+            pixel-identical, inline and display, so no CSS is needed. And
+            MathJax already skips `<code>`, so `` `$HOME` `` is untouched.
+
+            **Both cores, rather than behind the flag**, which was the call to
+            make and was the user's. The alternatives were a parser whose
+            output depends on a flag — leaving the shape the default path never
+            exercises as the one the new core depends on — and not wrapping at
+            all, where the walk refuses whenever the DOM does not match the
+            model. That last is cheap and catches every kind of drift, but it
+            makes a maths paragraph uncaretable until MathJax has typeset it
+            (68ms, measured) and *permanently* so when MathJax cannot load at
+            all, which is a fresh offline session, since the CDN script is only
+            in the runtime cache after a first use. One shape everywhere costs
+            one `latex` check that asserts the rule's exact output.
+
+        4.  **Slice 1 left cosmetic whitespace inside a container, and slice 2
+            is what could see it.** `(open + close).trim()` on `<ul>\n</ul>\n`
+            trims the outer edges and keeps the newline *inside* the tags, as a
+            text node no block owns. Nothing counted characters in slice 1 so
+            nothing noticed; here a container's text has to be exactly its
+            children's, or a child's offset inside its owner is out by every
+            stray newline in front of it — and the render verify, once it was
+            exact, said so on the first run. Each half is trimmed now.
+
+        5.  **A block owning no element is addressed through the one that
+            owns it.** Slice 1 found that markdown-it hides a tight list item's
+            paragraph, so it has no element — and most of this repo's documents
+            are tight lists, so "the caret cannot go there" is not an edge.
+            The answer falls out of the tiling invariant one more level down:
+            a container's text is its children's texts concatenated, so a
+            child's offset inside its owner is its own offset plus the text
+            length of the siblings before it. `modelBlockText` is that
+            recursion and it is the only new idea in the slice.
+
+            It also **retires slice 1's two verify skips**. The verify now
+            compares `modelDomText(el)` — atom-aware — against
+            `modelBlockText(block)` at every block that owns an element, so a
+            block holding maths is checked rather than skipped, and one owning
+            no element is covered by its owner rather than skipped. What slice
+            1 recorded as inherited by this slice is answered here rather than
+            carried further.
 
     *   **3. Input: text and composition — not started.** `beforeinput` on
         `#editor`, `preventDefault()` on **every** type, handled or not, so the
