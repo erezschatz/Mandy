@@ -2387,23 +2387,24 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         the execCommand pages retire. Finding 5 is what makes it need a human,
         so it carries a numbered protocol the way the spike did.
 
-        **Run in all three on 2026-09-20, and the coverage is uneven on purpose
-        because the instrument is.** WebKit (Safari) and Gecko (Firefox) were
-        driven by hand, which is the only way the deletions, Enter, undo and
-        composition can be driven at all. Safari reported everything correct
-        except the equation bug; Firefox is where that bug was found. **Both
-        confirmed the fix afterwards, and reported the same three ranges to the
-        character** — `12–12` for a caret inside the equation, `13–14` for a
-        selection over it, `28–29` for one over the image — which is the
-        strongest form the answer comes in: two independent engines agreeing
-        exactly, on the case that had been wrong in both.
+        **Driven by hand in all three on 2026-09-20, and all three pass.** That
+        is the whole protocol — the deletions, the two-block Backspace, the
+        accent popup, the mark edges, the atoms, Enter and Ctrl+Z — in Gecko,
+        WebKit and Blink, with the divergence line quiet and nothing reported as
+        uncancelable. It is the same gate stage 0 set and the same answer:
+        an engine will say what it is about to do and let us do it instead.
 
-        Blink was driven by automation as far as automation goes — typing
-        mid-word, both edges of a mark, beside and over an atom, and a selection
-        replaced — and no further, per finding 7. **So the deletions, Enter,
-        undo and a real IME are measured in Gecko and WebKit and unmeasured in
-        Blink**, which is the opposite of the usual gap here and is worth saying
-        in those words rather than as "not fully tested".
+        The route there is worth keeping, because it is the argument for the
+        page. Firefox found the equation bug; Safari reported everything else
+        correct and then the same bug; **both confirmed the fix afterwards and
+        reported the same three ranges to the character** — `12–12` for a caret
+        inside the equation, `13–14` for a selection over it, `28–29` for one
+        over the image. Two independent engines agreeing exactly, on the case
+        that had been wrong in both, is the strongest form the answer comes in.
+        Blink was automated as far as automation goes — typing mid-word, both
+        edges of a mark, beside and over an atom, a selection replaced — and the
+        rest of it waited on a human, per finding 7, which is precisely what
+        having the page made possible.
 
         **The page is light rather than dark**, since 2026-09-20. The theme was
         never part of what it measures, so it was not a choice the page had any

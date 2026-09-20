@@ -6072,9 +6072,14 @@ about it.
 character** — `12–12` for a caret inside the equation, `13–14` for a selection
 over it, `28–29` for one over the image. Two independent engines agreeing
 exactly, on the case that had been wrong in both, is the strongest form the
-answer comes in. So the deletions, Enter, undo and a real IME are measured in
-Gecko and WebKit and **unmeasured in Blink**, which is the opposite of the usual
-gap here.
+answer comes in.
+
+**The whole protocol has since been driven by hand in all three engines, and all
+three pass** — the deletions, the two-block Backspace, the accent popup, the
+mark edges, the atoms, Enter and Ctrl+Z, with the divergence line quiet and
+nothing reported as uncancelable. Same gate stage 0 set, same answer. Blink was
+automated as far as automation goes and the rest of it waited on a human, which
+is precisely what having the page made possible.
 
 The page is light rather than dark now. The theme was never part of what it
 measures, so it was not a choice the page had any business making for whoever
