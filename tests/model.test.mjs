@@ -85,7 +85,7 @@ export default function run(check) {
     modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice,
     modelSourceText, modelEnsureBlock, modelFlatten, modelIsEmptyBlock,
     modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource,
-    modelInlineLeaves,
+    modelInlineLeaves, modelTrimRendering,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -106,7 +106,7 @@ export default function run(check) {
       " modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice," +
       " modelSourceText, modelEnsureBlock, modelFlatten, modelIsEmptyBlock," +
       " modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource," +
-      " modelInlineLeaves };",
+      " modelInlineLeaves, modelTrimRendering };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -3119,6 +3119,46 @@ export default function run(check) {
       `and the only kinds that refuse are the atoms (${[...loud].sort().join(", ") || "none"})`,
       [...loud].every((kind) => kind === "image" || kind === "math"),
     );
+  }
+
+  {
+    // **The rendering trim keeps back exactly the block's own edge
+    // whitespace.** `trim()` is right only while a block's rendering begins and
+    // ends with a tag, and markdown-it hides a tight list item's paragraph, so
+    // that block renders as bare text whose edges are its content. Delete the
+    // last word of a bullet and the model keeps the space before it — the
+    // engine's target range covered the word, not the space — and the trim ate
+    // it, in all three engines, found by hand on 2026-09-21.
+    //
+    // Driven directly, because tests/dom.mjs has no HTML parser and the
+    // decision is a pure function over two strings — the same split
+    // `isGhostElement` has from its traversal in markdown-style.js.
+    const cases = [
+      ["a paragraph's own tags lose markdown-it's newline", "<p>x</p>\n", "x", "<p>x</p>"],
+      ["a container's opening tag loses the one before it", "\n<ol>", null, "<ol>"],
+      ["a hidden item's trailing space is content and stays", "a third, to nest under the one ", "a third, to nest under the one ", "a third, to nest under the one "],
+      ["and so is the newline a hard break renders after its <br>", "a<br>\n", "a\n", "a<br>\n"],
+      ["a trailing space after a mark stays too", "<em>a</em> ", "a ", "<em>a</em> "],
+      ["a leaf with no inline tree is trimmed whole", "<pre><code>x\n</code></pre>\n", null, "<pre><code>x\n</code></pre>"],
+    ];
+    for (const [label, html, keep, want] of cases) {
+      const got = modelTrimRendering(html, keep);
+      check(`${label} (${JSON.stringify(got)})`, got === want);
+    }
+  }
+
+  {
+    // The other half of the same keystroke: the model keeps the space and the
+    // **file** does not, because markdown strips it on the next parse and
+    // writing it out is bytes in a diff that mean nothing.
+    const doc = parse("- one\n- a third, to nest under the one above\n");
+    const para = textLeaves(doc)[1];
+    const length = modelInlineText(para.inlines).length;
+    modelInlineSplice(para, length - 5, length, "");
+    check(`the model keeps the space the deletion did not cover (${JSON.stringify(modelInlineText(para.inlines))})`,
+      modelInlineText(para.inlines) === "a third, to nest under the one ");
+    check(`and the file does not (${JSON.stringify(emit(doc))})`,
+      emit(doc) === "- one\n- a third, to nest under the one\n");
   }
 
   {

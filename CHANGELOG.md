@@ -6364,3 +6364,65 @@ page that drops evidence quietly is worse than no check page.
 1,435 checks. Blink and WebKit have still not been driven through the protocol,
 so the merge and every real keystroke there remain untested in the only place
 that can test them.
+
+## 2026-09-21 — The bullet's missing space, and Gecko through the whole protocol
+
+The second hand run of slice 4's protocol, and the one that caught the
+divergence the first run saw and lost. Option+Backspace over the last word of a
+bullet, in **all three engines**:
+
+    want: "a list itemanother onea third, to nest under the one "
+    got:  "a list itemanother onea third, to nest under the one"
+
+The model held the space before the deleted word and the screen did not. The
+model is right: the engine's target range covered the word and not the space,
+and every editor keeps it.
+
+**The fault was in slice 1's DOM builder**, not in the edit. `modelBuildBlock`
+`trim()`s a block's rendering to strip markdown-it's pretty-printing — the
+newline after a closing tag, the one between two siblings, the one
+`hiddenBefore` puts in front of an opening one. That is right exactly while a
+block's rendering begins and ends with a tag, and it does not always:
+**markdown-it hides a tight list item's paragraph**, so that block renders as
+*bare text* whose edges are its own content, and the trim took a character of
+the document with it.
+
+`modelTrimRendering` replaces it, and keeps back exactly the edge whitespace the
+block's own text has. That is not a heuristic — it is the invariant
+`modelVerifyRender` checks, applied where the markup is built instead of
+asserted about afterwards, so the two cases need no telling apart: for a block
+whose rendering is tags at both ends it is precisely a `trim()`, and for a
+hidden tight-item paragraph it is precisely a no-op. It settles a second case
+nobody had reached, which would have failed the same way: a hidden paragraph
+ending in a hard break renders `a<br>` plus a newline, and that newline **is**
+the break's one character by `modelInlineText`'s own rule.
+
+**The file still gains no trailing whitespace.** Markdown strips it on the next
+parse, so writing it out is bytes in a diff that mean nothing. `modelEmitLeaf`
+trims the **last** composed line and only ever the last, because a hard break's
+spelling is two trailing spaces and it never sits there — a block ending in one
+leaves an empty line behind it.
+
+Both halves are pinned. `modelTrimRendering` is driven directly, the way
+`isGhostElement` is, because `tests/dom.mjs` has no HTML parser and the decision
+is a pure function over two strings: six cases, one per shape, including the
+hard break and a trailing space after a mark. And the keystroke itself is driven
+end to end — the model keeps the space, the file does not.
+
+**One instruction was wrong rather than the code.** The equation step said to
+drag across *the whole* equation before typing. Dragging across part of one
+replaces it too, and the log reports the same `12–13` either way — which is the
+atom rule working: an equation is one character in the model's offset space, so
+a selection covers it or it does not and there is no half of it to keep. The
+step says so now. A protocol that describes a narrower behaviour than the code
+has reads as a bug the moment somebody goes off the script, which is exactly
+what a check page must not do.
+
+**And the table's two engines are both confirmed at the keyboard now**: Blink
+keeps the caret out of the `contenteditable="false"` island, Gecko lets it in.
+That was recorded yesterday from automation on one side and a report on the
+other; it is measured on both now.
+
+**Gecko passes the whole protocol.** Every step, divergence quiet throughout.
+Blink and WebKit have run only the deletion case and the table step, so the
+merge and most of the real keystrokes there remain unmeasured. 1,443 checks.

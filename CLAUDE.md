@@ -435,14 +435,18 @@ model's. Slice 4 added eight steps to its protocol — the split, the merge acro
 a block boundary, Tab and Shift+Tab, the empty-item rules, a fence edited as
 source, the table refusing the caret, and the guard paragraph that stops a
 trailing table trapping it. **Driven in Gecko on 2026-09-21, and it earned its
-keep on the first run**: one real bug (a hard break the renderer dropped), one
-per-engine fact (Gecko puts a caret inside the uneditable table), and three
-faults in the page — its document was set in the page's own monospace, so a
-fenced code block was indistinguishable from a paragraph; the divergence banner
-sat below the fold; and a divergence that fixed itself left no trace at all, so
-one was reported and then lost. The banner is first and sticky now, it keeps a
-count that survives a recovery, and every divergence goes into the log as well.
-Blink and WebKit are still to run. It lives in `front/` so the static handler already serves it
+keep twice over.** Two real bugs, both of which the whole suite passed over
+because the emitted markdown was right in each: a hard break the renderer
+dropped, and a bullet's trailing space the DOM builder's `trim()` ate. One
+per-engine fact — Blink keeps the caret out of the uneditable table and Gecko
+lets it in. One instruction that was wrong rather than the code, about dragging
+over part of an equation. And three faults in the page: its document was set in
+the page's own monospace, so a fenced code block was indistinguishable from a
+paragraph; the divergence banner sat below the fold; and a divergence that fixed
+itself left no trace at all, so one was hit and then lost. The banner is first
+and sticky now, it keeps a count that survives a recovery, and every divergence
+goes into the log as well. Gecko passes the whole protocol; Blink and WebKit
+have run only the deletion case and the table step. It lives in `front/` so the static handler already serves it
 same-origin with `/model.js`, which is the only thing the `/tests/` route was
 ever buying — so it needs no `CHECK_PAGES` entry and no server change — and it
 installs the input layer itself rather than flipping the model core's flag, so
@@ -1027,9 +1031,10 @@ undo stack all hang off exactly that.
 
 **Slice 4 gave it structure**, 2026-09-20, in the same two files: the edits that
 change how many blocks there are, and the ones that act on a block with no
-inline tree. **Driven by hand in Gecko on 2026-09-21, which found a bug nothing
-else could** — see the last bullet; Blink and WebKit are still to run. Seven
-steps, and the ones worth knowing from outside:
+inline tree. **Driven through in Gecko on 2026-09-21 and clean after two rounds
+of fixes** — it found two real bugs, both of which every check in the suite
+passed straight over; Blink and WebKit are still to run. Seven steps, and the
+ones worth knowing from outside:
 
 - **What Enter splits is the block, and then its container when that container
   is an item.** So Enter in a top-level paragraph makes a paragraph, Enter in a
@@ -1095,6 +1100,19 @@ steps, and the ones worth knowing from outside:
   *is* its delimiters and TeX, so there is no honest way to make one here. The
   rule slices 5 and 7 inherit: **a command that creates an image or an equation
   takes its token from the parser**, never hand-builds one.
+- **A block's rendering is trimmed to its own text, not `trim()`ed.** The trim
+  strips markdown-it's pretty-printing, which is right exactly while a block's
+  rendering begins and ends with a tag — and markdown-it **hides a tight list
+  item's paragraph**, so that block renders as bare text whose edges are its
+  content. Delete a bullet's last word and the model keeps the space before it,
+  correctly, and `trim()` ate it in all three engines. `modelTrimRendering`
+  keeps back exactly the edge whitespace the block's text has: not a heuristic
+  but the invariant `modelVerifyRender` checks, applied where the markup is
+  built. It covers a second case nobody had reached — a hidden paragraph ending
+  in a hard break, whose final newline *is* the break's one character. The
+  **file** still gains no trailing whitespace, since markdown strips it on the
+  next parse: the last composed line is trimmed on the way out, and only ever
+  the last, because a hard break's two spaces are never on it.
 - **Gecko puts a caret inside the table anyway.** The refusal's signal was meant
   to be the rendering — an engine will not put a caret inside a
   `contenteditable="false"` island — and Blink does that while Firefox does not,

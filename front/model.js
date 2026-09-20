@@ -1648,6 +1648,16 @@ function modelEmitLeaf(block, md, doc, width = 0) {
     out.push(...wrapMarkdownLine(composed, width, { first, continuation: quote + indent }));
   }
 
+  // **The last line never goes into the file carrying trailing whitespace.**
+  // The model holds it and should — delete a word with Option+Backspace and the
+  // space before it is still there, which is what the engine's target range
+  // said and what every editor does — but markdown strips it on the next parse,
+  // so writing it out puts bytes in the file that mean nothing and show up in
+  // a diff. The *last* line only: a hard break's spelling is two trailing
+  // spaces, and it never sits on the last line, since a block ending in one
+  // leaves an empty line behind it.
+  if (out.length) out[out.length - 1] = out[out.length - 1].replace(/[ \t]+$/, "");
+
   return out.join("\n");
 }
 
@@ -1971,10 +1981,46 @@ function modelOwnedElement(parent, from) {
  * leaving it in would mean a re-render either stranding the old copy or adding
  * a second — and, since slice 2, that a container's DOM text would not be its
  * children's, which is what a child's offset inside its owner is measured
- * against. Nothing inside the block is touched: trimming acts on the outer
- * edges of the string, and a `<pre>`'s body and the space between two inline
- * elements are both inside the tags.
+ * against.
+ *
+ * **It is `modelTrimRendering` rather than `trim()`, and that cost a character
+ * of the document.** A `trim()` is right exactly while a block's rendering
+ * begins and ends with a tag, which is not always: markdown-it hides a tight
+ * list item's paragraph, so that block renders as **bare text** and its edges
+ * are its own content. Delete the last word of a bullet with Option+Backspace
+ * and the model holds the space before it — correctly, since the engine's
+ * target range covered the word and not the space — and the trim ate it, in
+ * all three engines. Found by hand on 2026-09-21. So the trim keeps back
+ * exactly the edge whitespace the block's own text has, which is not a
+ * heuristic: it is the invariant `modelVerifyRender` checks, applied where the
+ * markup is built instead of being asserted about afterwards.
  */
+/**
+ * Strip markdown-it's own edge whitespace from a rendering, and not a character
+ * more.
+ *
+ * `keep` is the block's text as the model holds it. Whatever whitespace that
+ * text carries at an edge is content and stays; the rest is the parser's
+ * pretty-printing and goes. For a block whose rendering is tags at both ends
+ * — which is most of them — `keep` has no edge whitespace and this is exactly
+ * a `trim()`. For a hidden tight-item paragraph, whose rendering is bare text,
+ * it is exactly a no-op. The two cases need no telling apart.
+ *
+ * It also settles a second one nobody had hit: a hidden paragraph ending in a
+ * hard break renders `a<br>\n`, and that final newline **is** the break's one
+ * character by `modelInlineText`'s own rule, so a `trim()` would have lost it
+ * the same way.
+ */
+function modelTrimRendering(html, keep) {
+  const keepLead = keep === null ? 0 : /^\s*/.exec(keep)[0].length;
+  const keepTail = keep === null ? 0 : /\s*$/.exec(keep)[0].length;
+  const lead = /^\s*/.exec(html)[0].length;
+  let out = html.slice(Math.max(0, lead - keepLead));
+  const tail = /\s*$/.exec(out)[0].length;
+  const cut = Math.max(0, tail - keepTail);
+  return cut ? out.slice(0, out.length - cut) : out;
+}
+
 function modelBuildBlock(parent, block, md, env) {
   if (block.kind === "gap") return [];
   const from = parent.childNodes.length;
@@ -1990,7 +2036,10 @@ function modelBuildBlock(parent, block, md, env) {
     // offset inside its owner is out by every stray newline before it.
     parent.insertAdjacentHTML("beforeend", open.trim() + close.trim());
   } else {
-    parent.insertAdjacentHTML("beforeend", modelRenderBlock(block, md, env).trim());
+    parent.insertAdjacentHTML(
+      "beforeend",
+      modelTrimRendering(modelRenderBlock(block, md, env), block.inlines ? modelInlineText(block.inlines) : null),
+    );
   }
 
   // Before the children go in, so a container's own nodes are the wrapper alone.
