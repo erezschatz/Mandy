@@ -3210,14 +3210,21 @@ function modelInlineTrimEdge(nodes, side) {
  * them on the way. Returns null for a block with no inline tree, the way
  * `modelInlineSplice` does and for the same reason: their content is source,
  * and a caller that gets a null has to refuse rather than fall through.
+ *
+ * **`trim` is false for a paste, and only for a paste** (slice 5). The trim is
+ * there because a markdown block cannot carry whitespace at its own edge, which
+ * is true of a split that *stays* split — Enter. A paste splits only to put
+ * something in the gap and then rejoins both sides, so the whitespace at the
+ * cut ends up in the middle of a line, where it is ordinary text and trimming
+ * it eats the space between two words.
  */
-function modelSplitLeaf(doc, block, offset) {
+function modelSplitLeaf(doc, block, offset, trim = true) {
   if (!block.inlines) return null;
   const extra = modelBlockExtra(block);
   const cut = modelInlineSplit(block.inlines, offset);
-  block.inlines = modelInlineTrimEdge(cut.head, 1);
+  block.inlines = trim ? modelInlineTrimEdge(cut.head, 1) : cut.head;
   if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
-  const fresh = modelLeafLike(doc, block, modelInlineTrimEdge(cut.tail, -1));
+  const fresh = modelLeafLike(doc, block, trim ? modelInlineTrimEdge(cut.tail, -1) : cut.tail);
   modelInsertBlockAfter(doc, block, fresh, extra);
   modelTouch(block);
   modelTouch(fresh);
@@ -3962,4 +3969,182 @@ function modelFillItem(doc, item, md) {
   modelSetLeadingAffix(paragraph, "");
   modelTouch(paragraph);
   return paragraph;
+}
+
+// ── Structure: splicing in a second document ─────────────────────────────────
+//
+// Slice 5's step 1. A paste parses to a **second document**, and nothing in it
+// is safe to put into the first as it stands: its ids were minted from 1 and
+// collide, and its bytes were written flush left with none of the affixes the
+// place it lands needs. Both failures are silent — one hands `modelElementFor`
+// the wrong element, the other writes lines into a quote that carry no `> `.
+
+/**
+ * Make a second document's blocks fit this one, in place.
+ *
+ * `like` is the block they land beside, and everything positional is taken from
+ * it: the quote chain a block inside a quote has to carry on every line, and
+ * the column an item's marker has to start at. Everything identifying is taken
+ * from `doc`: a fresh id per block, from the counter that exists so that a
+ * block the editor creates can never wear a block the parser created's name.
+ *
+ * **Every adopted block loses its `source`.** That looks like throwing bytes
+ * away and is the opposite: the bytes it has describe a document that no longer
+ * exists, written at column 0 with no chain and no indent, so re-emitting them
+ * is how a paste into a blockquote stops being quoted. Cleared, the block goes
+ * through `modelEmitLeaf`, which is what composes an affix from a position —
+ * the one thing the emitter is for.
+ */
+function modelAdoptBlocks(doc, blocks, like) {
+  const chain = like.quotePrefixes;
+  const item = modelItemAncestor(like);
+  const column = item && item.contentIndent !== null ? modelIndentColumn(item.contentIndent) : 0;
+
+  const quote = chain && chain.length ? chain[0] : "";
+
+  const walk = (list, parent) => {
+    for (const block of list) {
+      const bytes = block.source;
+      block.id = modelMintId(doc);
+      block.source = null;
+      block.parent = parent;
+      block.quotePrefixes = chain ? chain.slice() : null;
+      // An item's marker is absolute in this model (slice 4), so a list pasted
+      // into an indented context has every marker beneath it moved by the same
+      // number of columns — the shift `modelMoveItem` does, arriving at the one
+      // other place a block changes container.
+      if (block.kind === "item" && column) {
+        block.marker = modelReindentMarker(block.marker, column);
+        if (block.contentIndent !== null) block.contentIndent = modelShiftIndent(block.contentIndent, column);
+      }
+      if (block.children) {
+        walk(block.children, block);
+      } else if (block.inlines) {
+        modelSetLeadingAffix(block, "");
+      } else {
+        // **A leaf with no inline tree keeps its bytes**, which is slice 4's
+        // inversion arriving here: its content *is* source, the emitter refuses
+        // it, and clearing the source would leave nothing able to write a fence
+        // back at all. So the bytes are moved rather than dropped — every line
+        // shifted to its new column and given the quote chain it now sits
+        // behind.
+        block.source = quote
+          ? modelShiftSource(bytes, column).split("\n").map((line) => (line === "" ? quote.replace(/[ \t]+$/, "") : quote + line)).join("\n")
+          : modelShiftSource(bytes, column);
+      }
+    }
+  };
+  walk(blocks, like.parent);
+  return blocks;
+}
+
+/**
+ * Put a run of blocks into the document at a position inside `block`.
+ *
+ * **The splice rule is the conventional one**, and it is written here rather
+ * than in the caller because it is where pasting feels wrong when it is wrong:
+ * the block is split at the offset, the first pasted block merges into the
+ * head, the last merges into the tail, and whole blocks land between. A
+ * one-block paste is that with nothing in the middle, which is the common case
+ * and reduces to an inline splice — so it is taken first, and never reaches the
+ * structural path at all.
+ *
+ * **They land as siblings of the block the caret was in.** Enter promotes to
+ * the nearest item; this does not, so pasting three paragraphs into a bullet
+ * gives one bullet holding three paragraphs rather than three bullets. Nothing
+ * is lifted out of the container the caret was in, which is the direction worth
+ * being cowardly in: a paste that moved content *out* of a list would be a
+ * structural edit nobody asked for.
+ *
+ * Returns the model position the caret lands on — the end of what was pasted —
+ * or null when the target cannot take it.
+ */
+function modelInsertBlocks(doc, block, offset, blocks) {
+  if (!blocks.length) return { block, offset };
+  if (!block.inlines) return null;
+  modelAdoptBlocks(doc, blocks, block);
+
+  const first = blocks[0];
+  const last = blocks[blocks.length - 1];
+
+  // One leaf, merged straight in: the whole of an ordinary paste of a few
+  // words, and it must not split anything.
+  if (blocks.length === 1 && first.inlines && !first.children) {
+    const cut = modelInlineSplit(block.inlines, offset);
+    block.inlines = cut.head.concat(first.inlines, cut.tail);
+    if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
+    modelTouch(block);
+    return { block, offset: offset + modelInlineText(first.inlines).length };
+  }
+
+  // Never trimmed: the two halves are about to be rejoined around what is
+  // pasted, so the whitespace at the cut is in the middle of a line.
+  const tail = modelSplitLeaf(doc, block, offset, false);
+  if (!tail) return null;
+
+  let after = block;
+  for (const pasted of blocks) {
+    modelInsertBlockAfter(doc, after, pasted);
+    after = pasted;
+  }
+
+  // The first and last pasted blocks join the two halves of what was split
+  // rather than sitting beside them, which is what makes a paste in the middle
+  // of a sentence read as one sentence and not as three paragraphs. A pasted
+  // *container* — a whole list — joins neither, and sits between them.
+  //
+  // The caret goes where the tail rejoins, which is the end of what was
+  // pasted. `modelMergeBlocks` hands back exactly that offset.
+  let at = { block: tail, offset: 0 };
+  if (last.inlines && !last.children && tail.inlines) {
+    const join = modelMergeBlocks(doc, last, tail);
+    if (join !== null) at = { block: last, offset: join };
+  } else {
+    // Nothing joined the tail, so it is a block in its own right again and the
+    // whitespace at the cut is at its own edge after all — where markdown
+    // cannot carry it. This is the one case the untrimmed split above has to
+    // hand back, and it is exactly Enter's rule applying because the two halves
+    // stayed apart.
+    modelInlineTrimEdge(tail.inlines, -1);
+    if (tail.inline) tail.inline.children = modelInlineTokens(tail.inlines);
+    modelTouch(tail);
+  }
+  // `first === last` cannot reach here: a single mergeable leaf took the fast
+  // path above, and a single container fails this test as it fails the one
+  // before it.
+  if (first !== last && first.inlines && !first.children && block.inlines) {
+    modelMergeBlocks(doc, block, first);
+  }
+  return at;
+}
+
+/**
+ * Plain text as blocks, with nothing parsed.
+ *
+ * **Never markdown**, which is today's behaviour and the reason Insert →
+ * *Paste markdown* is a separate action. In the model that is stronger than it
+ * is today: a pasted `*foo*` becomes a text node whose `raw` is null, so
+ * `modelEmitLeaf` escapes it on the way out and it stays literal in the file
+ * rather than becoming emphasis the moment it is saved.
+ *
+ * A blank line starts a paragraph and a single newline is a softbreak inside
+ * one, which is what the text itself says and what markdown means by the same
+ * two shapes. U+00A0 is normalised here for the reason slice 3 gives: this is
+ * the boundary, and it is the only place the character can be caught before it
+ * is in the document.
+ */
+function modelTextBlocks(doc, md, text) {
+  const out = [];
+  for (const chunk of String(text).replace(/\r\n?/g, "\n").split(/\n[ \t]*\n+/)) {
+    if (!chunk.length) continue;
+    const block = modelParagraphBlock(doc, md);
+    const lines = chunk.split("\n");
+    for (let i = 0; i < lines.length; i += 1) {
+      if (i) block.inlines.push({ kind: "softbreak", content: "", raw: null, markup: "", children: null, token: null, closeToken: null });
+      if (lines[i]) block.inlines.push(modelTextNode(modelNormaliseTyped(lines[i])));
+    }
+    if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
+    out.push(block);
+  }
+  return out;
 }

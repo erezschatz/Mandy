@@ -1844,8 +1844,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the second thing, and slice 2 opens by moving two rules out of `app.js` on
     the strength of it.
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
-    Slices 1 to 4 of seven are done and tested, slice 4 in all three engines
-    at a real keyboard. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    Slices 1 to 5 of seven are done and tested, slice 4 in all three engines
+    at a real keyboard and slice 5 awaiting the same. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -2879,7 +2879,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         is per browser and per version, and in Blink a machine cannot drive
         them.
 
-    *   **5. Input: paste and drop — planned 2026-09-21, not started.**
+    *   **5. Input: paste and drop — done 2026-09-21; the suites pass and the
+        three-engine protocol is not run.**
         `insertFromPaste` and `insertFromDrop` read `text/html`, run it through
         `sanitisePastedHtml` and `normaliseNbsp` exactly as today, then
         **Turndown to markdown and `modelParse` into blocks**, spliced in at the
@@ -2903,7 +2904,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         built. The first is the primitive the other four call; the last two are
         the two ways content arrives from outside.
 
-        1.  **Splicing foreign blocks — not started.** `modelParse` of the
+        1.  **Splicing foreign blocks — done and tested.** `modelParse` of the
             pasted markdown produces a **second document**, and nothing about
             it is safe to put into the first as it stands. Three things have to
             be fixed up, and every one of them is a silent corruption if it is
@@ -2935,7 +2936,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             direction — a paste that moved content *out* of a list would be a
             structural edit nobody asked for.
 
-        2.  **The pipeline — not started.** `text/html` through
+        2.  **The pipeline — done and tested.** `text/html` through
             `sanitisePastedHtml` and `normaliseNbsp` exactly as today, then
             **Turndown to markdown and `modelParse` into blocks**. Turndown
             stays in the bundle for this one path and leaves the save path at
@@ -2955,7 +2956,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             land between. A one-block paste is that rule with nothing in the
             middle, which is the common case and reduces to an inline splice.
 
-        3.  **Plain text is inserted as text, never parsed — not started.**
+        3.  **Plain text is inserted as text, never parsed — done and tested.**
             Today's behaviour, and the reason Insert → *Paste markdown* is a
             separate action: that one is the same pipeline without the Turndown
             step. `paste-check.html` measured all three engines offering
@@ -2970,7 +2971,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             become paragraphs, with the line structure inside each kept as
             softbreaks rather than flattened.
 
-        4.  **The paste event, and the three menu items — not started.** The
+        4.  **The paste event, and the three menu items — done and tested.** The
             `paste` event rather than `beforeinput`: it fires first, carries
             `clipboardData` by specification, and cancelling it stops the
             insertion before an `insertFromPaste` is ever raised. `beforeinput`
@@ -2982,7 +2983,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             way the two list items already do: they reach `runCommand` today,
             which refuses, so they would silently do nothing.
 
-        5.  **Drop — not started, and it is the one with a second half.**
+        5.  **Drop — done and tested, and it is the one with a second half.**
             `dataTransfer` reads the same two types and goes through the same
             pipeline, at the position the pointer was over —
             `caretPositionFromPoint` or `caretRangeFromPoint`, which is per
@@ -3012,6 +3013,42 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         routing, with the clipboard stubbed. And `front/input-check.html` grows
         the steps neither can reach: a real clipboard, a real drag, and whether
         an engine hands over `text/html` at all.
+
+        **What it turned up, none of it in the plan.**
+
+        **A paste must not trim at the cut the way Enter does.** Slice 4 trims
+        both edges of a split, because a markdown block cannot carry whitespace
+        at its own edge — true of a split that *stays* split. A paste splits
+        only to put something in the gap and then rejoins both sides, so the
+        whitespace at the cut lands in the middle of a line, where it is
+        ordinary text: trimming it ran the two words either side of the paste
+        together. `modelSplitLeaf` takes a `trim` flag, false for exactly this
+        one caller, and the trim comes back on the tail when nothing joined it
+        and it is a block in its own right after all.
+
+        **A pasted fence cannot lose its source.** Adoption clears `source` so
+        the emitter can compose the affixes — right for a leaf with an inline
+        tree and fatal for one without, whose content *is* source and which the
+        emitter refuses outright. Slice 4's inversion arrives here too: a
+        source-bearing leaf keeps its bytes and has them **moved** instead,
+        every line shifted to its new column and given the quote chain it now
+        sits behind.
+
+        **`modelOwnsInput` is a function declaration rather than a `const`.** In
+        this shared global scope a `const` sits in its temporal dead zone until
+        its own line runs, and the paste listener and the three clipboard
+        handlers all sit above it. They only ask from inside a callback, so a
+        `const` works by luck; load order is the one thing this codebase does
+        not leave to luck.
+
+        **The check page cannot run the HTML branch**, and that is worth stating
+        rather than working around: it deliberately does not load `app.js`,
+        because what it measures is this layer against a real engine and not the
+        application around it — so `sanitisePastedHtml` and
+        `htmlFragmentToMarkdown` are feature-tested and the HTML branch falls
+        through to the plain text there. The questions that page exists to ask
+        are untouched by it: does the engine hand over `text/html` at all, does
+        cancelling the event stop the insertion, where does a drop land.
 
     *   **6. Undo — not started.** A stack of model states with the caret as a
         model position, replacing the whole-document `innerHTML` snapshots.

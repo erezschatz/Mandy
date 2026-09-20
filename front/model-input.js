@@ -487,6 +487,225 @@ function modelInputCompositionEnd() {
   modelInputAnnounce("insertCompositionText");
 }
 
+// ── Paste and drop ───────────────────────────────────────────────────────────
+//
+// Slice 5. Content arriving from outside the document, which is the one thing
+// the model cannot produce for itself — so it is also the one place Turndown
+// survives into the new core, converting somebody else's HTML on the way in.
+// It leaves the save path at stage 4; this is the last thing it does.
+//
+// **The `paste` and `drop` events rather than `beforeinput`.** Both fire first,
+// both carry their data by specification, and cancelling either stops the
+// insertion before an `insertFromPaste` or `insertFromDrop` is ever raised.
+// `beforeinput` goes on cancelling those types too, which costs nothing and is
+// what the design says to do with a type nobody has claimed — so a browser that
+// raised one without the event before it still changes nothing behind the
+// model's back.
+
+/**
+ * HTML from a clipboard or a drag, as blocks.
+ *
+ * `sanitisePastedHtml` and `normaliseNbsp` exactly as today — a paste should
+ * keep its bold, its links and its tables, and only what nobody can see goes —
+ * then `htmlFragmentToMarkdown` and `modelParse`. Hands back null when the
+ * fragment sanitises to nothing, which is a paste of pure wrappers and is the
+ * caller's cue to fall through to the plain text rather than insert an empty
+ * string and leave the user wondering where their paste went.
+ *
+ * **Both converters are app.js's, and both are feature-tested**, which is not
+ * defensive coding: `front/input-check.html` deliberately does not load app.js,
+ * because what it measures is this layer against a real engine and not the
+ * application around it. There the HTML branch falls through to the plain text
+ * and the page says so, so the questions that page exists to answer — does the
+ * engine hand over `text/html` at all, does cancelling the event stop the
+ * insertion, where does a drop land — are still the ones being asked. In both
+ * real bundles model-input.js loads after app.js and the test always passes.
+ */
+function modelPasteBlocks(doc, html) {
+  if (!html || !html.trim()) return null;
+  if (typeof sanitisePastedHtml !== "function" || typeof htmlFragmentToMarkdown !== "function") return null;
+  const clean = sanitisePastedHtml(html);
+  if (!clean.trim()) return null;
+  const markdown = htmlFragmentToMarkdown(clean);
+  if (!markdown.trim()) return null;
+  return modelParse(markdown, md).blocks;
+}
+
+/**
+ * Put a clipboard's two flavours into the document at a model position.
+ *
+ * HTML first and plain text as the fallback, which is the order
+ * `insertPastedContent` has always used. **Plain text is never parsed as
+ * markdown** — today's behaviour, and the reason Insert → *Paste markdown* is a
+ * separate action: that one is this pipeline without the Turndown step.
+ */
+function modelInputPaste(doc, at, html, text, inputType = "insertFromPaste") {
+  if (!at) return false;
+  const blocks = modelPasteBlocks(doc, html) || (text ? modelTextBlocks(doc, md, text) : null);
+  if (!blocks || !blocks.length) return false;
+  const landed = modelInsertBlocks(doc, at.block, at.offset, blocks);
+  if (!landed) return false;
+  return modelInputRestructure(doc, landed, inputType);
+}
+
+// Where an edit lands: the selection, with any range it covers deleted first.
+// Hands back null when the model cannot name the position, which is a refusal
+// rather than a guess about where the content should go.
+function modelInputCollapsed(doc) {
+  const at = modelReadSelection(editor, doc);
+  if (!at) return null;
+  const live = window.getSelection();
+  if (!live || !live.rangeCount || live.getRangeAt(0).collapsed) return at;
+  // No event to read a target range off — a menu click and a drop have none —
+  // so `modelInputSpan` falls through to the live selection, which is what a
+  // paste replaces.
+  const span = modelInputSpan({}, doc);
+  if (!span || span.collapsed) return at;
+  const landed = modelInputDelete(doc, span);
+  return landed ? { block: landed.block, offset: landed.offset } : null;
+}
+
+function modelInputPasteEvent(event) {
+  const doc = modelCurrentDocument();
+  if (!doc || modelInputComposing()) return;
+  event.preventDefault();
+  const data = event.clipboardData;
+  if (!data) return;
+  modelInputPaste(doc, modelInputCollapsed(doc), data.getData("text/html"), data.getData("text/plain"));
+}
+
+/**
+ * A drag that started inside the editor is a **move**, not a copy.
+ *
+ * The engine would raise `deleteByDrag` and `insertFromDrop` as a pair; both
+ * are cancelled, so doing only the insert would duplicate the text and leave
+ * the original standing — which is the worst of the three possible answers,
+ * because it looks like it worked. The source is recorded here, in model
+ * coordinates, because by the time `drop` fires the selection has moved.
+ */
+let modelDragSource = null;
+
+function modelInputDragStart() {
+  const doc = modelCurrentDocument();
+  if (!doc) return;
+  const live = window.getSelection();
+  if (!live || !live.rangeCount || live.getRangeAt(0).collapsed) return;
+  modelDragSource = modelInputSpan({}, doc);
+}
+
+function modelInputDragEnd() {
+  modelDragSource = null;
+}
+
+/**
+ * The model position under the pointer.
+ *
+ * Two spellings, because this is one of the places the engines never agreed:
+ * `caretPositionFromPoint` is the standard and Gecko's, `caretRangeFromPoint`
+ * is Blink's and WebKit's. Which one answers is a browser fact, so the check
+ * page reports it rather than this file assuming it.
+ */
+function modelInputPointAt(doc, x, y) {
+  const owner = editor.ownerDocument;
+  let node = null;
+  let offset = 0;
+  if (typeof owner.caretPositionFromPoint === "function") {
+    const position = owner.caretPositionFromPoint(x, y);
+    if (position) {
+      node = position.offsetNode;
+      offset = position.offset;
+    }
+  }
+  if (!node && typeof owner.caretRangeFromPoint === "function") {
+    const range = owner.caretRangeFromPoint(x, y);
+    if (range) {
+      node = range.startContainer;
+      offset = range.startOffset;
+    }
+  }
+  return node ? modelDomBlockAt(editor, doc, node, offset, -1) : null;
+}
+
+function modelInputDrop(event) {
+  const doc = modelCurrentDocument();
+  if (!doc || modelInputComposing()) return;
+  event.preventDefault();
+  const data = event.dataTransfer;
+  if (!data) return;
+
+  let at = modelInputPointAt(doc, event.clientX, event.clientY);
+  const source = modelDragSource;
+  modelDragSource = null;
+  if (!at) return;
+
+  if (source) {
+    // **A drag spanning two blocks is refused rather than approximated**, which
+    // is the same refusal the merge made before slice 4 gave it an
+    // implementation: the offsets on the far side of a merge are not the
+    // offsets the drop was measured against, and getting that wrong moves the
+    // user's text somewhere they did not point at.
+    if (source.from.block !== source.to.block) return;
+    const start = Math.min(source.from.offset, source.to.offset);
+    const end = Math.max(source.from.offset, source.to.offset);
+    if (at.block === source.from.block && at.offset >= start && at.offset <= end) return;
+    if (modelInlineSplice(source.from.block, start, end, "") === null) return;
+    // Only when the two are in the same block does taking the source out move
+    // the target; anywhere else the offset still names the same place.
+    if (at.block === source.from.block && at.offset > end) at = { block: at.block, offset: at.offset - (end - start) };
+  }
+
+  modelInputPaste(doc, at, data.getData("text/html"), data.getData("text/plain"), "insertFromDrop");
+}
+
+// ── The clipboard, reached from the menu ─────────────────────────────────────
+//
+// Edit → Paste, Edit → Paste without formatting and Insert → Paste markdown all
+// reach `runCommand` on the old core, which refuses under the flag — so without
+// these three they would silently do nothing. Same arrangement the two list
+// items got in slice 4: app.js asks whether the model core is on, and these do
+// the work when it is.
+
+function modelPasteInto(html, text) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  return modelInputPaste(doc, modelInputCollapsed(doc), html, text);
+}
+
+function modelPastePlain(text) {
+  const doc = modelCurrentDocument();
+  if (!doc || !text) return false;
+  const at = modelInputCollapsed(doc);
+  if (!at) return false;
+  // One line is an ordinary insertion and must not split anything; several are
+  // blocks. `modelInlineSplice` normalises U+00A0 on the way through, which is
+  // the same boundary slice 3 put it at.
+  if (!/[\r\n]/.test(text)) {
+    const offset = modelInlineSplice(at.block, at.offset, at.offset, text);
+    if (offset === null) return false;
+    return modelInputShow(doc, at.block, { block: at.block, offset }, "insertFromPaste");
+  }
+  const landed = modelInsertBlocks(doc, at.block, at.offset, modelTextBlocks(doc, md, text));
+  if (!landed) return false;
+  return modelInputRestructure(doc, landed, "insertFromPaste");
+}
+
+/**
+ * Insert → *Paste markdown*: the same pipeline with the Turndown step taken
+ * out, because what is on the clipboard is already markdown.
+ *
+ * It is the one paste that *parses*, which is exactly the distinction the menu
+ * draws — and the reason it sits in Insert rather than beside Edit's Paste.
+ */
+function modelPasteMarkdown(text) {
+  const doc = modelCurrentDocument();
+  if (!doc || !text || !text.trim()) return false;
+  const at = modelInputCollapsed(doc);
+  if (!at) return false;
+  const landed = modelInsertBlocks(doc, at.block, at.offset, modelParse(text, md).blocks);
+  if (!landed) return false;
+  return modelInputRestructure(doc, landed, "insertFromPaste");
+}
+
 // ── Installation ─────────────────────────────────────────────────────────────
 //
 // After app.js, which defines `editor` and `md`, and after model.js, which
@@ -499,6 +718,10 @@ function modelInputInstall(root) {
   root.addEventListener("compositionstart", modelInputCompositionStart);
   root.addEventListener("compositionend", modelInputCompositionEnd);
   root.addEventListener("keydown", modelInputKeydown);
+  root.addEventListener("paste", modelInputPasteEvent);
+  root.addEventListener("dragstart", modelInputDragStart);
+  root.addEventListener("dragend", modelInputDragEnd);
+  root.addEventListener("drop", modelInputDrop);
 }
 
 if (typeof editor !== "undefined" && editor && modelCoreEnabled()) {

@@ -86,6 +86,7 @@ export default function run(check) {
     modelSourceText, modelEnsureBlock, modelFlatten, modelIsEmptyBlock,
     modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource,
     modelInlineLeaves, modelTrimRendering,
+    modelInsertBlocks, modelTextBlocks, modelAdoptBlocks,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -106,7 +107,8 @@ export default function run(check) {
       " modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice," +
       " modelSourceText, modelEnsureBlock, modelFlatten, modelIsEmptyBlock," +
       " modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource," +
-      " modelInlineLeaves, modelTrimRendering };",
+      " modelInlineLeaves, modelTrimRendering," +
+      " modelInsertBlocks, modelTextBlocks, modelAdoptBlocks };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -3172,6 +3174,99 @@ export default function run(check) {
     check("and until something is typed the bytes are the same", emit(doc) === "- one\n-\n");
     modelInlineSplice(paragraph, 0, 0, "two");
     check(`then it is an ordinary item (${JSON.stringify(emit(doc))})`, emit(doc) === "- one\n- two\n");
+  }
+
+  // ── Slice 5: paste ────────────────────────────────────────────────────────
+  //
+  // A paste parses to a **second document**, and the whole of step 1 is that
+  // nothing in it is safe to put into the first as it stands. What can go wrong
+  // is a byte question — a pasted block re-emitted without the quote chain it
+  // landed in — which is why this half is here and the routing is the
+  // `model-input` suite's.
+
+  {
+    const pasteInto = (src, index, offset, markdown) => {
+      const doc = parse(src);
+      const at = modelInsertBlocks(doc, textLeaves(doc)[index], offset, parse(markdown).blocks);
+      return { markdown: emit(doc), at, doc };
+    };
+    const cases = [
+      ["a few words merge into the paragraph", "one two\n", 3, "X", "oneX two\n"],
+      ["two paragraphs split it, and both ends rejoin", "one two\n", 3, "A\n\nB", "oneA\n\nB two\n"],
+      ["whole blocks land between the two ends", "one two\n", 3, "A\n\nB\n\nC", "oneA\n\nB\n\nC two\n"],
+      ["pasting into a quote carries the chain onto every line", "> one two\n", 3, "A\n\nB", "> oneA\n>\n> B two\n"],
+      ["pasting into a bullet stays inside the item", "- one two\n- next\n", 3, "A\n\nB", "- oneA\n\n  B two\n- next\n"],
+      ["a pasted list is reindented to the column it lands at", "- one two\n", 3, "- x\n- y", "- one\n\n  - x\n  - y\n\n  two\n"],
+      ["a pasted container joins neither end", "one two\n", 3, "- x\n- y", "one\n\n- x\n- y\n\ntwo\n"],
+      ["a pasted fence keeps its own bytes", "one two\n", 3, "```js\nz\n```", "one\n\n```js\nz\n```\n\ntwo\n"],
+      ["at the end of a block", "one two\n", 7, "A\n\nB", "one twoA\n\nB\n"],
+      ["at the start of one", "one two\n", 0, "A\n\nB", "A\n\nBone two\n"],
+    ];
+    for (const [label, src, offset, markdown, want] of cases) {
+      const got = pasteInto(src, 0, offset, markdown).markdown;
+      check(`${label} (${JSON.stringify(got)})`, got === want);
+    }
+    // The caret lands where the tail rejoins, which is the end of what was
+    // pasted rather than the start of what follows it.
+    const one = pasteInto("one two\n", 0, 3, "X");
+    const many = pasteInto("one two\n", 0, 3, "A\n\nB");
+    check(`a one-block paste leaves the caret past it (${one.at.offset})`, one.at.offset === 4);
+    check(`and a multi-block one at the join in the last (${many.at.offset})`, many.at.offset === 1);
+  }
+
+  {
+    // **Ids are re-minted, and that is not housekeeping.** `modelParse` mints
+    // from 1, so every pasted block wears an id the target is already using,
+    // and `modelElementFor` is a `querySelector` — it would answer with
+    // whichever element it met first.
+    const doc = parse("one\n\ntwo\n\nthree\n");
+    const pasted = parse("A\n\nB").blocks;
+    const before = pasted.map((b) => b.id);
+    modelAdoptBlocks(doc, pasted, doc.blocks[0]);
+    const all = modelFlatten(doc).map((b) => b.id).concat(pasted.map((b) => b.id));
+    check(`pasted ids are minted afresh (${before.join(",")} → ${pasted.map((b) => b.id).join(",")})`,
+      pasted.every((b, i) => b.id !== before[i]));
+    check("and collide with nothing in the document", new Set(all).size === all.length);
+    check("and every adopted block has lost the bytes it was written with",
+      pasted.every((b) => b.source === null || b.inlines === null));
+  }
+
+  {
+    // Plain text is never parsed, which is stronger in the model than it is
+    // today: the text node's `raw` is null, so the emitter escapes it and it
+    // stays literal in the file rather than becoming emphasis on the next save.
+    const doc = parse("one two\n");
+    modelInsertBlocks(doc, textLeaves(doc)[0], 3, modelTextBlocks(doc, md, "*lit*"));
+    const got = emit(doc);
+    check(`plain text is escaped rather than parsed (${JSON.stringify(got)})`, got === "one\\*lit* two\n");
+    check("and re-parses to the characters that were pasted",
+      modelInlineText(parse(got).blocks[0].inlines) === "one*lit* two");
+
+    const lines = parse("one two\n");
+    modelInsertBlocks(lines, textLeaves(lines)[0], 3, modelTextBlocks(lines, md, "a\nb"));
+    check(`a single newline stays a break inside one block (${JSON.stringify(emit(lines))})`,
+      emit(lines) === "onea\nb two\n");
+
+    const paras = parse("one two\n");
+    modelInsertBlocks(paras, textLeaves(paras)[0], 3, modelTextBlocks(paras, md, "a\n\nb"));
+    check(`and a blank line starts a paragraph (${JSON.stringify(emit(paras))})`,
+      emit(paras) === "onea\n\nb two\n");
+  }
+
+  {
+    // **A paste must not trim at the cut the way Enter does.** The two halves
+    // are rejoined around what is pasted, so the whitespace there ends up in
+    // the middle of a line, where it is ordinary text — and eating it runs two
+    // words together. The trim comes back only when the tail is left standing
+    // alone, which is the case Enter's rule was written for.
+    const joined = parse("one two\n");
+    modelInsertBlocks(joined, textLeaves(joined)[0], 3, parse("A\n\nB").blocks);
+    check(`the space at the cut survives a rejoin (${JSON.stringify(emit(joined))})`,
+      emit(joined) === "oneA\n\nB two\n");
+    const alone = parse("one two\n");
+    modelInsertBlocks(alone, textLeaves(alone)[0], 3, parse("- x").blocks);
+    check(`and goes when the tail is left on its own (${JSON.stringify(emit(alone))})`,
+      emit(alone) === "one\n\n- x\n\ntwo\n");
   }
 
   {

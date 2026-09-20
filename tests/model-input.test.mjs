@@ -1,4 +1,4 @@
-// The input layer's routing. TODO 3.1, stage 2, slices 3 and 4.
+// The input layer's routing. TODO 3.1, stage 2, slices 3, 4 and 5.
 //
 // **What this suite can see, and what it deliberately cannot.** `beforeinput`
 // itself is unreachable from here: tests/dom.mjs has no editing engine, so a
@@ -24,12 +24,19 @@ export default function run(check) {
   const rig = ({
     coreOn = true, doc = { blocks: [] }, range = null, splice = 7,
     source = false, at = null, item = null, empty = false, hardBreak = "  ",
+    html = "", point = null, selection = false,
   } = {}) => {
     const calls = {
       splice: [], rerender: [], render: [], announced: [], sourceSplice: [],
       merged: [], pruned: [], split: [], broke: [], emptyItem: [], moved: [], filled: [],
+      parsed: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
     };
     const editor = makeEl("div");
+    // The two halves of a drop position, which are the two spellings the
+    // engines never agreed on. A case that wants a drop supplies `point`.
+    editor.ownerDocument = {
+      caretPositionFromPoint: () => (point ? { offsetNode: point, offset: 0 } : null),
+    };
     const block = { kind: "paragraph", inlines: [], source: "x" };
     editor.dispatchEvent = (event) => calls.announced.push(event.inputType ?? event.type);
 
@@ -77,6 +84,24 @@ export default function run(check) {
         modelOutdentItem: (d, i) => { calls.moved.push({ item: i, outdent: true }); return i; },
         modelFillItem: (d, i) => { calls.filled.push(i); return null; },
         modelEnsureBlock: () => null,
+        // The paste pipeline. `sanitisePastedHtml` and `htmlFragmentToMarkdown`
+        // are app.js's and are stubbed here for the same reason the model is:
+        // what this suite asserts is which branch runs, not what Turndown makes
+        // of a fragment.
+        sanitisePastedHtml: (raw) => { calls.sanitised.push(raw); return html; },
+        htmlFragmentToMarkdown: (clean) => { calls.turndown.push(clean); return clean; },
+        modelParse: (markdown) => {
+          calls.parsed.push(markdown);
+          return { blocks: [{ kind: "paragraph", inlines: [], source: markdown }] };
+        },
+        modelTextBlocks: (d, parser, text) => {
+          calls.textBlocks.push(text);
+          return [{ kind: "paragraph", inlines: [], source: text }];
+        },
+        modelInsertBlocks: (d, b, offset, blocks) => {
+          calls.inserted.push({ block: b, offset, blocks });
+          return { block: b, offset };
+        },
         modelRerenderBlock: (root, b, parser, sel) => {
           calls.rerender.push({ block: b, selection: sel });
           return editor;
@@ -87,7 +112,14 @@ export default function run(check) {
         modelElementFor: () => editor,
         modelDomText: () => "abX",
         modelBlockText: () => "ab",
-        window: { getSelection: () => ({ rangeCount: 0 }) },
+        // A drag records its source from the live selection, so a case that
+        // drags has to have one. `collapsed: false` is the whole of what both
+        // `modelInputDragStart` and `modelInputSpan` ask it.
+        window: {
+          getSelection: () => (selection
+            ? { rangeCount: 1, getRangeAt: () => ({ collapsed: false, startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }) }
+            : { rangeCount: 0 }),
+        },
         InputEvent: class {
           constructor(type, init) { this.type = type; this.inputType = init && init.inputType; }
         },
@@ -98,7 +130,8 @@ export default function run(check) {
       },
       "; return { modelInputBeforeInput, modelInputCompositionStart," +
         " modelInputCompositionEnd, modelInputComposing, modelInputInstall," +
-        " modelInputKeydown, modelIndentAtCaret };",
+        " modelInputKeydown, modelIndentAtCaret, modelInputPasteEvent," +
+        " modelInputDrop, modelInputDragStart, modelPastePlain, modelPasteMarkdown };",
     );
     return { api, calls, editor, block };
   };
@@ -424,6 +457,137 @@ export default function run(check) {
     check("as one step, announced once", r.calls.announced.length === 1);
   }
 
+  // --- slice 5: paste and drop ---------------------------------------------
+  //
+  // The `paste` event rather than `beforeinput`: it fires first, carries
+  // clipboardData by specification, and cancelling it stops the insertion
+  // before an insertFromPaste is ever raised.
+
+  const clipboard = (types) => ({
+    preventDefault() { this.prevented = (this.prevented || 0) + 1; },
+    clipboardData: { getData: (type) => types[type] || "" },
+    prevented: 0,
+  });
+
+  {
+    const target = { id: 40, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 2 }, html: "<p>hi</p>" });
+    const e = clipboard({ "text/html": "<p>hi</p>", "text/plain": "hi" });
+    r.api.modelInputPasteEvent(e);
+    check("a paste is cancelled, so the engine does not insert it too", e.prevented === 1);
+    check("the HTML branch runs when there is HTML",
+      r.calls.sanitised.length === 1 && r.calls.turndown.length === 1 && r.calls.parsed.length === 1);
+    check("and the plain text is not touched", r.calls.textBlocks.length === 0);
+    check(`the blocks land at the selection (${r.calls.inserted[0] && r.calls.inserted[0].offset})`,
+      r.calls.inserted.length === 1 && r.calls.inserted[0].block === target && r.calls.inserted[0].offset === 2);
+    check("and the document re-renders, since the block count changed",
+      r.calls.render.length === 1 && r.calls.announced[0] === "insertFromPaste");
+  }
+
+  {
+    // A fragment that was nothing but wrappers sanitises to nothing. Falling
+    // through to the plain text beats inserting an empty string and leaving the
+    // user to wonder where their paste went.
+    const target = { id: 41, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 }, html: "   " });
+    r.api.modelInputPasteEvent(clipboard({ "text/html": "<div><span></span></div>", "text/plain": "fallback" }));
+    check("HTML that sanitises to nothing falls through to the plain text",
+      r.calls.parsed.length === 0 && r.calls.textBlocks.length === 1 && r.calls.textBlocks[0] === "fallback");
+  }
+
+  {
+    // **Plain text is never parsed as markdown**, which is today's behaviour
+    // and the reason Insert -> Paste markdown is a separate action.
+    const target = { id: 42, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 } });
+    r.api.modelInputPasteEvent(clipboard({ "text/plain": "*not emphasis*" }));
+    check("a plain-text paste never reaches the parser",
+      r.calls.parsed.length === 0 && r.calls.textBlocks[0] === "*not emphasis*");
+
+    // ...and Paste markdown is the same pipeline with the Turndown step gone.
+    const two = { id: 43, inlines: [] };
+    const s = rig({ doc: { blocks: [two] }, at: { block: two, offset: 0 } });
+    s.api.modelPasteMarkdown("# heading");
+    check("while Paste markdown parses it and runs no Turndown",
+      s.calls.parsed.length === 1 && s.calls.turndown.length === 0 && s.calls.inserted.length === 1);
+
+    // One line of plain text is an ordinary insertion and must not split.
+    const three = { id: 44, inlines: [] };
+    const u = rig({ doc: { blocks: [three] }, at: { block: three, offset: 1 } });
+    u.api.modelPastePlain("just words");
+    check("one line of plain text is a splice rather than a block insert",
+      u.calls.splice.length === 1 && u.calls.inserted.length === 0);
+    const four = { id: 45, inlines: [] };
+    const v = rig({ doc: { blocks: [four] }, at: { block: four, offset: 1 } });
+    v.api.modelPastePlain("two\nlines");
+    check("and several lines are blocks", v.calls.inserted.length === 1 && v.calls.splice.length === 0);
+  }
+
+  {
+    // A drop lands where the pointer was, not where the caret was.
+    const dropped = { id: 46, inlines: [] };
+    const node = {};
+    const r = rig({ doc: { blocks: [dropped] }, point: node, range: [here(dropped, 5)] });
+    const e = {
+      prevented: 0, clientX: 10, clientY: 20,
+      preventDefault() { this.prevented += 1; },
+      dataTransfer: { getData: (type) => (type === "text/plain" ? "moved" : "") },
+    };
+    r.api.modelInputDrop(e);
+    check("a drop is cancelled", e.prevented === 1);
+    check(`and lands at the position under the pointer (${r.calls.inserted[0] && r.calls.inserted[0].offset})`,
+      r.calls.inserted.length === 1 && r.calls.inserted[0].offset === 5);
+    check("announced as its own inputType", r.calls.announced[0] === "insertFromDrop");
+  }
+
+  {
+    // **A drag that started inside the editor is a move, not a copy.** Both
+    // halves are cancelled, so doing only the insert would duplicate the text
+    // and leave the original standing -- which looks like it worked, and is the
+    // worst of the three possible answers.
+    const block = { id: 47, inlines: [] };
+    const node = {};
+    const r = rig({
+      doc: { blocks: [block] }, point: node, selection: true,
+      range: [here(block, 2), here(block, 6), here(block, 20)],
+    });
+    r.api.modelInputDragStart();
+    r.api.modelInputDrop({
+      clientX: 1, clientY: 1, preventDefault() {},
+      dataTransfer: { getData: () => "moved" },
+    });
+    check(`the source range is deleted before the insert (${r.calls.splice[0] ? r.calls.splice[0].from + "–" + r.calls.splice[0].to : "none"})`,
+      r.calls.splice.length === 1 && r.calls.splice[0].from === 2 && r.calls.splice[0].to === 6 &&
+        r.calls.splice[0].text === "");
+    check(`and the drop offset moves back by what was taken out (${r.calls.inserted[0] && r.calls.inserted[0].offset})`,
+      r.calls.inserted.length === 1 && r.calls.inserted[0].offset === 16);
+  }
+
+  {
+    // Dropping a selection onto itself is a no-op rather than a delete.
+    const block = { id: 48, inlines: [] };
+    const r = rig({ doc: { blocks: [block] }, point: {}, selection: true,
+      range: [here(block, 2), here(block, 8), here(block, 5)] });
+    r.api.modelInputDragStart();
+    r.api.modelInputDrop({ clientX: 1, clientY: 1, preventDefault() {}, dataTransfer: { getData: () => "x" } });
+    check("dropping a selection inside itself changes nothing",
+      r.calls.splice.length === 0 && r.calls.inserted.length === 0);
+  }
+
+  {
+    // A drag spanning two blocks is refused rather than approximated: the
+    // offsets on the far side of a merge are not the ones the drop was measured
+    // against, and getting that wrong moves the text somewhere nobody pointed.
+    const one = { id: 49, inlines: [] };
+    const two = { id: 50, inlines: [] };
+    const r = rig({ doc: { blocks: [one, two] }, point: {}, selection: true,
+      range: [here(one, 1), here(two, 3), here(two, 9)] });
+    r.api.modelInputDragStart();
+    r.api.modelInputDrop({ clientX: 1, clientY: 1, preventDefault() {}, dataTransfer: { getData: () => "x" } });
+    check("a drag spanning two blocks is refused",
+      r.calls.splice.length === 0 && r.calls.inserted.length === 0);
+  }
+
   // --- installation ---------------------------------------------------------
 
   {
@@ -431,9 +595,11 @@ export default function run(check) {
     const { api } = rig();
     api.modelInputInstall(root);
     check(
-      `all four listeners are bound (${Object.keys(root.listeners).sort().join(", ")})`,
+      `all the listeners are bound (${Object.keys(root.listeners).sort().join(", ")})`,
       !!root.listeners.beforeinput && !!root.listeners.compositionstart &&
-        !!root.listeners.compositionend && !!root.listeners.keydown,
+        !!root.listeners.compositionend && !!root.listeners.keydown &&
+        !!root.listeners.paste && !!root.listeners.drop &&
+        !!root.listeners.dragstart && !!root.listeners.dragend,
     );
   }
 }

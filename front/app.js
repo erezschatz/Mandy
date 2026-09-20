@@ -506,11 +506,23 @@ function shieldCodeEdgeSpaces(html) {
 // reports as "\ No newline at end of file". Normalised here rather than in
 // saveFile because Download MD writes a file too, and a copied document that
 // ends in a newline is what the clipboard's consumers expect anyway.
+// The Turndown half alone, which is all a *fragment* may go through.
+//
+// `htmlToMarkdown` below is a **document** function: it appends the reference
+// definitions, re-wraps to the sniffed width and restores the opened file's own
+// bytes. None of those mean anything for a paste from somebody else's
+// clipboard — there is no file for it to be restored against, and re-wrapping
+// it would impose this document's width on text the user has not put anywhere
+// yet. Extracted rather than copied so the two cannot drift, which is TODO
+// 3.1's slice 5 and the last thing Turndown does before stage 4 retires it.
+function htmlFragmentToMarkdown(html) {
+  return turndownService.turndown(shieldCodeEdgeSpaces(normaliseNbsp(html)))
+    .replace(new RegExp(CODE_EDGE_SPACE, "g"), " ");
+}
+
 function htmlToMarkdown(html) {
   usedReferenceLabels = new Set();
-  const markdown = turndownService.turndown(shieldCodeEdgeSpaces(normaliseNbsp(html)))
-    .replace(new RegExp(CODE_EDGE_SPACE, "g"), " ")
-    .replace(/\n*$/, "\n");
+  const markdown = htmlFragmentToMarkdown(html).replace(/\n*$/, "\n");
   const withReferences = appendReferenceDefinitions(markdown, usedReferenceLabels);
   // Re-wrap first, restore second: restoring puts back original bytes, and the
   // re-wrap must not then take a hand-broken line back apart.
@@ -822,6 +834,10 @@ onToolbarAction("insert-link", insertLink);
 onToolbarAction("paste-md", async () => {
   try {
     const clipboardText = await navigator.clipboard.readText();
+    if (modelOwnsInput()) {
+      modelPasteMarkdown(clipboardText);
+      return;
+    }
     if (clipboardText && clipboardText.trim()) {
       const html = markdownToHtml(clipboardText);
       // Caret insertion, not a document replacement — there is a real Open
@@ -1094,6 +1110,11 @@ function insertPastedContent(html, text) {
 }
 
 editor.addEventListener("paste", (e) => {
+  // model-input.js owns the paste under the model core, and has its own
+  // listener. This one would cancel the event and then reach `runCommand`,
+  // which refuses — so it does nothing either way, and returning early is what
+  // keeps that a statement rather than an accident.
+  if (modelOwnsInput()) return;
   e.preventDefault();
   insertPastedContent(
     e.clipboardData.getData("text/html"),
@@ -1127,7 +1148,8 @@ onToolbarAction("paste", async () => {
         text = await (await item.getType("text/plain")).text();
       }
     }
-    insertPastedContent(html, text);
+    if (modelOwnsInput()) modelPasteInto(html, text);
+    else insertPastedContent(html, text);
   } catch (err) {
     notify("Unable to read the clipboard. Press Ctrl+V to paste instead.", {
       severity: "error",
@@ -1137,7 +1159,9 @@ onToolbarAction("paste", async () => {
 
 onToolbarAction("paste-plain", async () => {
   try {
-    insertPlainText(await navigator.clipboard.readText());
+    const text = await navigator.clipboard.readText();
+    if (modelOwnsInput()) modelPastePlain(text);
+    else insertPlainText(text);
   } catch (err) {
     notify("Unable to read the clipboard. Press Ctrl+Shift+V to paste instead.", {
       severity: "error",
@@ -1445,16 +1469,25 @@ editor.addEventListener("keydown", (e) => {
 // must not happen: `outdentListItem` mutates the DOM behind the model's back.
 // The flag is read here rather than inside `modelIndentAtCaret`, so that the
 // input check page can install the layer without flipping the flag for the app.
-const modelOwnsLists = () => typeof modelCoreEnabled === "function" && modelCoreEnabled();
+// `modelOwnsInput` below is the same question the paste handlers ask.
+// A function declaration rather than a `const`, because in this shared global
+// scope a `const` is in its temporal dead zone until its own line runs — and
+// the paste listener and the three clipboard handlers above it all ask this
+// question. They only ask it from inside a callback today, so a `const` works
+// by luck rather than by construction, and load order is the one thing this
+// codebase does not leave to luck.
+function modelOwnsInput() {
+  return typeof modelCoreEnabled === "function" && modelCoreEnabled();
+}
 
 onToolbarAction("indent-list-item", () => {
-  if (modelOwnsLists()) return void modelIndentAtCaret(false);
+  if (modelOwnsInput()) return void modelIndentAtCaret(false);
   const item = listItemAtCaret();
   if (canIndentListItem(item)) runCommand("indent");
 });
 
 onToolbarAction("outdent-list-item", () => {
-  if (modelOwnsLists()) return void modelIndentAtCaret(true);
+  if (modelOwnsInput()) return void modelIndentAtCaret(true);
   const item = listItemAtCaret();
   if (canOutdentListItem(item)) outdentListItem(item);
 });

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  THE INPUT CHECK — TODO 3.1, stage 2. docs/REWRITE.md's slices 3 and 4.
+  THE INPUT CHECK — TODO 3.1, stage 2. docs/REWRITE.md's slices 3, 4 and 5.
 
   This is a check page rather than a harness, and the difference is what it
   measures: **the browser**. Does an engine send a `beforeinput` for each thing
@@ -92,6 +92,13 @@
   <li><b>Click inside the fenced code block and type.</b> Its body is edited as <i>source</i> — the second text space — and Enter inside it is a newline in the body rather than a new block.</li>
   <li><b>Try to click inside the table, then type.</b> Nothing changes either way — a table is rendered <code>contenteditable="false"</code> until stage 3, so an edit inside one is refused. <b>Whether the caret goes in at all is per engine, and Blink is the odd one out</b>, measured in all three on 2026-09-21: Blink keeps it out, so the door is visibly closed; <b>Gecko and WebKit both let the caret in</b>, and typing then does nothing — the reading the refusal was meant to avoid, in two engines out of three. Report which you get. Selecting <i>across</i> the table still works everywhere.</li>
   <li><b>The table is the last thing in the document — click below it and type.</b> There is somewhere to go, because an empty paragraph is kept after it. This is the <code>contenteditable="false"</code> caret trap, and it is the one thing in slice 4 that could make a document un-appendable.</li>
+
+  <li><b>Paste some plain text mid-sentence</b> — copy a line from anywhere and press Ctrl/Cmd+V. It lands at the caret, the sentence stays one sentence, and the log shows a cancelled <code>paste</code> rather than an <code>insertFromPaste</code>. <b>Then paste something markdown-shaped</b>, like <code>*not emphasis*</code>: it stays literal, because plain text is never parsed.</li>
+  <li><b>Paste several paragraphs at once</b>, into the middle of one. The paragraph splits, the first pasted block joins the head, the last joins the tail, and whole blocks land between. The caret ends where the tail rejoins.</li>
+  <li><b>Copy something formatted from a web page and paste it.</b> <b>On this page the HTML branch cannot run</b> — it needs <code>app.js</code>'s Turndown, which this page deliberately does not load — so it falls through to the plain text. What is being measured here is the engine: check the log says the paste was cancelled, and that nothing diverges. The HTML pipeline itself is the <code>model</code> suite's, and the app with <code>?core=model</code> is where to see it end to end.</li>
+  <li><b>Select a few words and drag them somewhere else in the document.</b> They <i>move</i>: the original goes and the text lands where you dropped it. This is the one that fails silently if it fails — the engine raises <code>deleteByDrag</code> and <code>insertFromDrop</code> as a pair, both are cancelled, and doing only the insert would duplicate the text and look like it worked.</li>
+  <li><b>Drag the same selection onto itself, then drag one spanning two blocks.</b> Both do nothing at all, on purpose. Report if either moves anything.</li>
+  <li><b>Drag some text in from another window</b> and drop it. It lands where the pointer was, not where the caret was — which needs <code>caretPositionFromPoint</code> or <code>caretRangeFromPoint</code>, and <b>which of those answers is per engine</b>. Report if the drop lands in the wrong place.</li>
   <li><b>Use the toolbar's formats — there is no toolbar here, so skip this one.</b> In the app with <code>?core=model</code>, the format bar does nothing on purpose: <code>execCommand</code> fires <code>input</code> but never <code>beforeinput</code>, measured in Chrome 152, so it cannot be intercepted and is refused rather than allowed to change the DOM behind the model's back. Formats arrive as model commands in slice 7.</li>
 </ol>
 <p class="note">Fail is any of: a character that does not appear, a caret that jumps, the divergence line at the top lighting up, or an <code>inputType</code> reported as not cancelable. The divergence line is sticky and counts, and every divergence is written into the log as well, so one that comes and goes is still there to be found.</p>

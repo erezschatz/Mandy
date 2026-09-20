@@ -434,7 +434,8 @@ and, after each one, whether any block's DOM text has come adrift from its
 model's. Slice 4 added eight steps to its protocol — the split, the merge across
 a block boundary, Tab and Shift+Tab, the empty-item rules, a fence edited as
 source, the table refusing the caret, and the guard paragraph that stops a
-trailing table trapping it. **Driven in Gecko on 2026-09-21, and it earned its
+trailing table trapping it, and slice 5 added seven more for paste and drop.
+**Driven in Gecko on 2026-09-21, and it earned its
 keep twice over.** Two real bugs, both of which the whole suite passed over
 because the emitted markdown was right in each: a hard break the renderer
 dropped, and a bullet's trailing space the DOM builder's `trim()` ate. One
@@ -1128,8 +1129,73 @@ cleared everywhere. Seven steps, and the ones worth knowing from outside:
   once-per-document notice, which the original "it would fire per keystroke"
   argument does not reach.
 
-What the model still does *not* do is paste, undo, or run a format command:
-those are slices 5, 6 and 7.
+**Slice 5 gave it paste and drop**, 2026-09-21 — the one thing the model cannot
+produce for itself, and so the one place Turndown survives into the new core,
+converting somebody else's HTML on the way in. It leaves the save path at stage
+4; this is the last thing it does. **Its three-engine protocol has not been
+driven by hand yet.** What is worth knowing:
+
+- **A paste parses to a second document, and nothing in it is safe as it
+  stands.** `modelParse` mints ids from 1, so every pasted block wears an id the
+  target is already using and `modelElementFor` is a `querySelector` — it would
+  answer with whichever element it met first. And a pasted block's bytes were
+  written flush left, so dropping them into a quote or a list item would write
+  lines carrying no `> ` and no indent. `modelAdoptBlocks` re-mints every id and
+  **clears every `source`**, letting the emitter compose the chain from the
+  block it lands beside, the leading affix from its new position, and an item's
+  marker shifted to the column its new container starts at.
+- **Except a leaf with no inline tree, which keeps its bytes and has them
+  moved.** Slice 4's inversion again: a fence's content *is* source and the
+  emitter refuses it outright, so clearing it would leave nothing able to write
+  the fence back at all. Its lines are shifted and given the quote chain
+  instead.
+- **The splice rule is the conventional one**, written down because it is where
+  pasting feels wrong when it is wrong: the block splits at the caret, the first
+  pasted block merges into the head, the last into the tail, and whole blocks
+  land between. A one-block paste is that with nothing in the middle and reduces
+  to an inline splice. **A pasted container joins neither end** and sits between
+  them.
+- **Pasted blocks land as siblings of the block the caret was in.** Enter
+  promotes to the nearest item; a paste does not, so three pasted paragraphs
+  give one bullet holding three rather than three bullets. Nothing is lifted out
+  of the container the caret was in, which is the direction worth being cowardly
+  in.
+- **A paste must not trim at the cut.** Slice 4 trims both edges of a split,
+  because a markdown block cannot carry whitespace at its own edge — true of a
+  split that *stays* split. A paste rejoins both sides around what it inserts,
+  so that whitespace ends up mid-line where it is ordinary text, and trimming it
+  ran two words together. `modelSplitLeaf` takes a `trim` flag, false for this
+  one caller; the trim returns on the tail when nothing joined it.
+- **Plain text is never parsed, which is stronger here than it is today.** A
+  pasted `*foo*` becomes a text node whose `raw` is null, so `modelEmitLeaf`
+  escapes it and it stays literal in the file rather than becoming emphasis on
+  the next save. One line is an ordinary splice; several become paragraphs, with
+  single newlines kept as softbreaks.
+- **The `paste` and `drop` events rather than `beforeinput`.** Both fire first,
+  both carry their data by specification, and cancelling either stops the
+  insertion before an `insertFromPaste` is raised. `beforeinput` goes on
+  cancelling those types anyway, so a browser that raised one without the event
+  before it still changes nothing behind the model's back.
+- **A drag that started inside the editor is a move, not a copy.** The engine
+  raises `deleteByDrag` and `insertFromDrop` as a pair, both are cancelled, and
+  doing only the insert would duplicate the text and leave the original standing
+  — which looks like it worked. The source range is recorded at `dragstart` in
+  model coordinates, the deletion runs first, and the drop offset moves back by
+  what was taken out when the two are in the same block. A drag spanning two
+  blocks, or dropped inside itself, does nothing.
+- **`htmlFragmentToMarkdown` is the Turndown half alone.** `htmlToMarkdown` is a
+  *document* function — it appends the reference definitions, re-wraps to the
+  sniffed width and restores the opened file's bytes — and none of that means
+  anything for a fragment from somebody else's clipboard. Extracted rather than
+  copied so the two cannot drift.
+- **Both converters are feature-tested, and that is not defensive coding.**
+  `front/input-check.html` deliberately ships no `app.js`, so there the HTML
+  branch falls through to the plain text and the page says so. The questions
+  that page exists to ask are untouched: does the engine hand over `text/html`,
+  does cancelling stop the insertion, where does a drop land.
+
+What the model still does *not* do is undo, or run a format command: those are
+slices 6 and 7.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.
