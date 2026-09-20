@@ -5718,7 +5718,7 @@ off at stage 4. Nothing else is open before slice 1 can start.
 
 No code changed, so nothing ran.
 
-## 2026-09-20 — Stage 2, slice 1: the model renders
+## 2026-09-20 — `ff3d5c4` — Stage 2, slice 1: the model renders
 
 TODO 3.1's stage 2 starts. The model can draw itself: `modelRenderBlock` is a
 block's HTML out of markdown-it's own renderer, `modelRenderDocument` is the
