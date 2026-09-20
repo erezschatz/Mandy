@@ -34,18 +34,39 @@
      measured, so it is not a choice this page gets to make for whoever has
      to sit and read it. A check page about the app's own theme switch would
      be the exception; this is not one. */
-  body { font: 13px/1.55 ui-monospace, monospace; margin: 0; padding: 1rem; background: #fff; color: #222; }
+  body { font: 13px/1.55 ui-monospace, monospace; margin: 0; padding: 0 1rem 1rem; background: #fff; color: #222; }
   h2 { font-size: 13px; margin: 1.3rem 0 .4rem; color: #16607a; }
   .pass { color: #1a7f37; } .fail { color: #b3261e; font-weight: bold; } .note { color: #666; }
   ol { margin: .2rem 0 .6rem 1.2rem; padding: 0; color: #5a4a00; }
   li { margin: .15rem 0; }
-  #editor { background: #fdfdfd; padding: .5rem 1rem; border: 1px solid #ccc; min-height: 8rem; }
+  /* The document is set in prose, because the page around it is monospace and
+     a code block in a monospace page is indistinguishable from a paragraph —
+     which is what step 16 asks you to look at. Reported from Firefox on
+     2026-09-21: "the code doesn't look like a code at all, so I just guessed."
+     A check page that cannot be read is a check page that gets guessed at. */
+  #editor { background: #fdfdfd; padding: .5rem 1rem; border: 1px solid #ccc; min-height: 8rem;
+            font: 15px/1.6 ui-sans-serif, system-ui, sans-serif; }
   #editor table { border-collapse: collapse; } #editor td, #editor th { border: 1px solid #bbb; padding: 0 .3rem; }
+  #editor pre { background: #f2f4f6; border: 1px solid #d5dade; border-left: 3px solid #16607a;
+                padding: .4rem .6rem; overflow-x: auto; }
+  #editor pre, #editor code { font: 13px/1.5 ui-monospace, monospace; }
+  #editor code { background: #f2f4f6; padding: 0 .2em; }
+  #editor pre code { background: none; padding: 0; }
   #log { white-space: pre-wrap; max-height: 22rem; overflow: auto; border: 1px solid #ccc; padding: .4rem .6rem; background: #fafafa; }
-  #divergence { font-weight: bold; }
+  /* Sticky and first, because it is the one thing on this page you have to be
+     able to see at the moment it changes. It sat under the protocol list, which
+     put it below the fold, and a divergence that came and went was reported as
+     "I got one but I missed what step it was" — so it also writes every
+     divergence into the log below, where nothing overwrites it. */
+  #divergence { font-weight: bold; position: sticky; top: 0; z-index: 2;
+                background: #fff; padding: .55rem .6rem; margin: 0 -.6rem;
+                border-bottom: 1px solid #e3e3e3; }
+  #divergence.fail { background: #fdeceb; }
 </style>
 </head>
 <body>
+
+<div id="divergence" class="pass">quiet</div>
 
 <h2>1. the document (type in it)</h2>
 <div id="editor" contenteditable="true"></div>
@@ -69,16 +90,13 @@
   <li><b>Press Tab and Shift+Tab inside a bullet.</b> The item nests under the one above it and comes back out, with its followers along. This is the move <code>tests/list-indent-check.html</code> watches three engines make on the old core; here there is no engine in it.</li>
   <li><b>Press Shift+Enter mid-line.</b> A hard break: the line wraps and the caret is on the second half.</li>
   <li><b>Click inside the fenced code block and type.</b> Its body is edited as <i>source</i> — the second text space — and Enter inside it is a newline in the body rather than a new block.</li>
-  <li><b>Try to click inside the table.</b> The caret will not go in: a table is rendered <code>contenteditable="false"</code> until stage 3, so a keystroke is a closed door rather than one that silently does nothing. Selecting <i>across</i> it still works.</li>
+  <li><b>Try to click inside the table, then type.</b> Nothing changes either way — a table is rendered <code>contenteditable="false"</code> until stage 3, so an edit inside one is refused. <b>Whether the caret goes in at all is per engine</b>, measured 2026-09-21: Blink keeps it out, so the door is visibly closed; <b>Gecko lets the caret in</b> and typing then does nothing, which is the reading the refusal was supposed to avoid. Report which you get. Selecting <i>across</i> the table still works in both.</li>
   <li><b>The table is the last thing in the document — click below it and type.</b> There is somewhere to go, because an empty paragraph is kept after it. This is the <code>contenteditable="false"</code> caret trap, and it is the one thing in slice 4 that could make a document un-appendable.</li>
   <li><b>Use the toolbar's formats — there is no toolbar here, so skip this one.</b> In the app with <code>?core=model</code>, the format bar does nothing on purpose: <code>execCommand</code> fires <code>input</code> but never <code>beforeinput</code>, measured in Chrome 152, so it cannot be intercepted and is refused rather than allowed to change the DOM behind the model's back. Formats arrive as model commands in slice 7.</li>
 </ol>
-<p class="note">Fail is any of: a character that does not appear, a caret that jumps, a divergence line that lights up, or an <code>inputType</code> reported as not cancelable.</p>
+<p class="note">Fail is any of: a character that does not appear, a caret that jumps, the divergence line at the top lighting up, or an <code>inputType</code> reported as not cancelable. The divergence line is sticky and counts, and every divergence is written into the log as well, so one that comes and goes is still there to be found.</p>
 
-<h2>3. divergence — the DOM against the model</h2>
-<div id="divergence" class="pass">quiet</div>
-
-<h2>4. what the engine sent</h2>
+<h2>3. what the engine sent</h2>
 <div id="log">nothing yet</div>
 
 <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
@@ -139,15 +157,27 @@
   // happens, every block's DOM text against the text its tree says it holds.
   // Reported rather than left to be felt, because a divergence is the exact
   // failure this design can have.
+  let divergences = 0;
+
   function recheck(what) {
     const report = modelVerifyRender(editor, doc);
     if (!report.problems.length) {
-      divergence.className = "pass";
-      divergence.textContent = "quiet — " + report.compared + " blocks agree (after " + what + ")";
+      // **The count survives a recovery.** A divergence that fixes itself on the
+      // next keystroke used to leave no trace at all, and the first Firefox run
+      // lost one exactly that way — "I got one diverged but I missed what step
+      // it was." The banner never goes back to a clean green once anything has
+      // gone wrong, and the log below holds each one whole.
+      divergence.className = divergences ? "fail" : "pass";
+      divergence.textContent = divergences
+        ? divergences + " DIVERGENCE(S) so far — see the log; quiet now, after " + what
+        : "quiet — " + report.compared + " blocks agree (after " + what + ")";
       return;
     }
+    divergences += 1;
+    const detail = "DIVERGED after " + what + ": " + JSON.stringify(report.problems[0]);
     divergence.className = "fail";
-    divergence.textContent = "DIVERGED after " + what + ": " + JSON.stringify(report.problems[0]);
+    divergence.textContent = detail + (divergences > 1 ? "  (" + divergences + " so far)" : "");
+    say(detail, "fail");
   }
 
   // Logged before the real handler, so what is reported is what the engine

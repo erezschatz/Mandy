@@ -6295,3 +6295,72 @@ place that can test them.
 
 `sw.js`'s `VERSION` goes to `v1.35`: `model.js`, `model-input.js` and `app.js`
 all changed, and all three are shell assets.
+
+## 2026-09-21 — Slice 4's first hand run, in Gecko: one real bug and three faults in the page
+
+The protocol on [front/input-check.html](front/input-check.html) had never been
+driven. Firefox was the first engine through it, and it earned its keep on the
+first pass — which is the whole argument for having the page rather than an
+aside about it.
+
+**A hard break went into the model and never onto the screen.** Shift+Enter
+reported a divergence: the model held `"…at the st\nart of."` and the DOM held
+`"…at the start of."`. `modelInsertBreak` builds a `hardbreak` node with
+`token: null` — correctly, since there is no parse behind a node the model
+created — and `modelInlineTokens` fell through its `else if (node.token)` and
+left the node out of the token list the renderer walks. The **markdown was right
+the whole time**, because `modelEmitLeaf` composes from the tree and the node
+carries its own `raw`; only the *rendering* goes through markdown-it. That is
+why 861 oracle splits, every affix check and every emitter check passed straight
+over it, and why nothing but a human at a keyboard was ever going to see it.
+
+Breaks are synthesised now — markdown-it's `hardbreak` and `softbreak` rules
+read nothing off the token but its type — and **the class of bug is closed
+rather than the instance**. The suite asserts what was missing: **no leaf ever
+vanishes on the way to the renderer**, checked by stripping the token off every
+leaf in the oracle, which is exactly the state a node the model built is in.
+That sweep immediately found two more kinds in the same position, and they get
+the opposite treatment: **an atom with no token throws.** An image's rendering
+*is* its `src`, alt and title and an equation's *is* its delimiters and TeX, all
+of which live on the parser's token — which is why slice 2 kept the token on the
+node instead of re-deriving it — so there is no honest way to synthesise one
+here. A throw states the rule slices 5 and 7 inherit: **a command that creates
+an image or an equation takes its token from the parser**, never hand-builds
+one. It is unreachable today, and a crash beats the alternative, which is what
+the hard break just did.
+
+**Gecko puts a caret inside the uneditable table.** Slice 4's refusal was
+designed so that the *rendering* carries the signal — an engine will not put a
+caret inside a `contenteditable="false"` island, so nobody is left typing into
+something that ignores them. Blink does that. Firefox lets the caret in and
+typing there does nothing, which is exactly the "reads as a broken editor"
+reading the refusal was chosen to avoid. Nothing is lost and nothing is wrong:
+the edit is refused either way, and a selection across the table still works.
+Recorded against TODO 1.1.8 — the item that makes the caret welcome again — and
+in the step's own text, rather than papered over with a second mechanism for a
+behaviour with a one-stage life. The step now says what each engine does and
+asks which you got.
+
+**Three faults in the page, and each one cost evidence.**
+
+Its document was set in the page's own monospace, so the fenced code block that
+step 16 is entirely about was indistinguishable from a paragraph — reported as
+"the code doesn't look like a code at all, so I just guessed." The document is
+set in prose now and a code block has a background, a border and a rule down its
+left edge.
+
+The divergence banner sat below the protocol list, which put it under the fold —
+so the one thing on the page you have to see at the moment it changes was the
+one thing off screen. It is first now, and sticky.
+
+And **a divergence that fixed itself left no trace at all**: the banner was the
+only record of one, and the next keystroke overwrote it. One was hit and then
+lost — "I got one diverged but I missed what step it was." The banner now keeps
+a count that survives a recovery rather than going back to a clean green, and
+every divergence is written into the event log as well, where nothing overwrites
+it. Same lesson `paste-check.html` learned in Safari, in the same words: a check
+page that drops evidence quietly is worse than no check page.
+
+1,435 checks. Blink and WebKit have still not been driven through the protocol,
+so the merge and every real keystroke there remain untested in the only place
+that can test them.

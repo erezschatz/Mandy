@@ -2431,16 +2431,17 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         app's state on the same origin. The untracked scratch harness stays for
         what a machine *can* drive.
 
-    *   **4. Input: structure — done 2026-09-20; tested as far as a machine
-        reaches, and the three-engine protocol is not run.** All seven steps
+    *   **4. Input: structure — done 2026-09-20; run by hand in Gecko
+        2026-09-21, Blink and WebKit still to go.** All seven steps
         below are in, the model half of every one of them is covered by the
         `model` suite against the oracle, and the input layer's routing is
-        covered by `model-input`. What is **not** measured is the half only a
-        human at a keyboard can reach — the recipe is
-        [front/input-check.html](../front/input-check.html)'s numbered
-        protocol, which this slice grew by eight steps, in Blink, Gecko and
-        WebKit. Until somebody drives it, the merge and every real keystroke
-        here are untested in the only place that can test them. The edits that
+        covered by `model-input`. The half only a human at a keyboard can reach
+        is [front/input-check.html](../front/input-check.html)'s numbered
+        protocol, which this slice grew by eight steps: **Gecko has been driven
+        through it and found one real bug and three faults in the page itself**
+        — below — and **Blink and WebKit have not**, so the merge and every real
+        keystroke there are still untested in the only place that can test
+        them. The edits that
         change how many blocks there are, and the ones that act on a block with
         no inline tree.
 
@@ -2600,6 +2601,44 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         instead. Every nested item in the oracle is also outdented — 80 of them
         — and what is asserted there is not the bytes, which an outdent is meant
         to change, but that what it wrote re-parses to itself.
+
+        **The first hand run, in Gecko on 2026-09-21, found the one thing
+        nothing else could.** Shift+Enter put a newline in the model and no
+        `<br>` on screen: `modelInsertBreak` builds a hardbreak node with
+        `token: null` — correctly, since there is no parse behind it — and
+        `modelInlineTokens` then left it out of the token list the renderer
+        walks. The **markdown was right the whole time**, because the emitter
+        composes from the tree and the node carries its own `raw`, which is why
+        861 oracle splits and every affix check passed over it. The suite now
+        asserts the invariant that was missing — **no leaf ever vanishes on the
+        way to the renderer**, checked by stripping the token off every leaf in
+        the oracle, which is exactly the state a node the model built is in —
+        and an atom with no token now **throws** rather than disappearing,
+        because its rendering *is* its token and there is no honest way to
+        synthesise one. That is the rule slices 5 and 7 inherit: a command that
+        creates an image or an equation takes its token from the parser.
+
+        **And two things about the page itself, both of which cost evidence.**
+        Its document was set in the page's own monospace, so the fenced code
+        block step 16 is about was indistinguishable from a paragraph — "the
+        code doesn't look like a code at all, so I just guessed". And a
+        divergence that fixed itself on the next keystroke left no trace: the
+        banner was the only record and it was below the fold. The banner is now
+        first and sticky, it keeps a count that survives a recovery, and every
+        divergence is written into the log as well. Same lesson `paste-check`
+        learned in Safari — a check page that drops evidence quietly is worse
+        than none.
+
+        **The table's refusal is quieter in Gecko than it was designed to be**,
+        measured in the same run. The signal was to be the rendering: an engine
+        will not put a caret inside a `contenteditable="false"` island, so
+        nobody is left typing into something that ignores them. Blink does that;
+        **Gecko lets the caret in** and typing there does nothing, which is the
+        reading the refusal was chosen to avoid. Nothing is lost — the edit is
+        refused either way and a selection across the table still works — but
+        for the one stage this lasts, Firefox shuts the door without it looking
+        shut. Recorded against TODO 1.1.8 rather than papered over with a second
+        mechanism, since that item is what makes the caret welcome again.
 
         **And driven in a real browser**, on `front/input-check.html` in Blink,
         as far as automation reaches: the split, Enter at the end of a heading,

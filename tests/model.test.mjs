@@ -85,6 +85,7 @@ export default function run(check) {
     modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice,
     modelSourceText, modelEnsureBlock, modelFlatten, modelIsEmptyBlock,
     modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource,
+    modelInlineLeaves,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -104,7 +105,8 @@ export default function run(check) {
       " modelInsertParagraph, modelMergeBlocks, modelInsertBreak, modelSplitLeaf," +
       " modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice," +
       " modelSourceText, modelEnsureBlock, modelFlatten, modelIsEmptyBlock," +
-      " modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource };",
+      " modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource," +
+      " modelInlineLeaves };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -3056,6 +3058,67 @@ export default function run(check) {
     const empty = parse("");
     modelEnsureBlock(empty, md);
     check("and an empty document gets one empty paragraph to type into", empty.blocks.length === 1);
+  }
+
+  {
+    // **A leaf the model created must survive the trip to the renderer**, and
+    // this is the check that was missing. `modelInsertBreak` builds a hardbreak
+    // node with `token: null` — correctly, since there is no parse behind it —
+    // and `modelInlineTokens` dropped it, so Shift+Enter put a newline in the
+    // model and no `<br>` on screen. The *markdown* was right the whole time,
+    // because the emitter composes from the tree and the node carries its own
+    // `raw`, which is exactly why every check in this suite passed. Found in
+    // Gecko on 2026-09-21 by a human at front/input-check.html.
+    const doc = parse("one two three\n");
+    const block = textLeaves(doc)[0];
+    modelInsertBreak(block, 7, "  ");
+    const html = modelRenderBlock(block, md);
+    check(`a hard break the model inserted renders a <br> (${JSON.stringify(html)})`, html.includes("<br>"));
+    check("and the block's rendering still carries the text either side of it",
+      html.includes("one two") && html.includes("three"));
+    check(`and the markdown spells it the way it was asked to (${JSON.stringify(emit(doc))})`,
+      emit(doc) === "one two  \nthree\n");
+  }
+
+  {
+    // The general form of the same bug, which is what makes it a check rather
+    // than a regression test: **no leaf is silently dropped on the way to the
+    // renderer**. A node the model builds has no `token`, so the sweep strips
+    // every token off first — that is precisely the state `modelInsertBreak`,
+    // `modelTextNode` and slice 7's format commands leave a node in.
+    let leaves = 0;
+    const lost = new Set();
+    const loud = new Set();
+    for (const path of ORACLE_FILES) {
+      for (const leaf of leavesOf(parse(repoFile(path)))) {
+        if (!leaf.inlines) continue;
+        for (const node of modelInlineLeaves(leaf.inlines)) {
+          node.token = null;
+          leaves += 1;
+          try {
+            if (!modelInlineTokens([node]).length) lost.add(node.kind);
+          } catch {
+            loud.add(node.kind);
+          }
+        }
+      }
+    }
+    check(
+      `no leaf ever vanishes on the way to the renderer (${leaves} leaves, ` +
+        `${loud.size ? [...loud].sort().join(" and ") + " refuse loudly" : "none refuse"})` +
+        (lost.size ? ` — dropped silently: ${[...lost].join(", ")}` : ""),
+      leaves > 1000 && lost.size === 0,
+    );
+    // The complement, and the reason the sweep above is not simply "every kind
+    // renders": an atom's rendering *is* its token — an image's src, alt and
+    // title, an equation's delimiters and TeX — so there is no honest way to
+    // synthesise one, and a command that creates one has to take its token from
+    // the parser. That is a rule for slices 5 and 7, and a throw is how it gets
+    // stated rather than discovered.
+    check(
+      `and the only kinds that refuse are the atoms (${[...loud].sort().join(", ") || "none"})`,
+      [...loud].every((kind) => kind === "image" || kind === "math"),
+    );
   }
 
   {

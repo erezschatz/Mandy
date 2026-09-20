@@ -114,6 +114,18 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
         stage and comes back here as structure. [REWRITE.md](REWRITE.md)'s slice
         4 is the argument and its stage 2 exit criterion names the exception.
 
+        **And the refusal is quieter than it was meant to be, measured
+        2026-09-21.** The signal was to be the rendering — an engine will not
+        put a caret inside a `contenteditable="false"` island, so nobody is left
+        typing into something that ignores them. Blink does that. **Gecko does
+        not**: the caret goes in, and typing there does nothing, which is
+        exactly the "reads as a broken editor" reading the refusal was chosen to
+        avoid. Nothing is lost and nothing is wrong — the edit is still refused
+        and a selection across the table still works — but in Firefox the door
+        is shut without looking shut, for the one stage this lasts. Not worth a
+        second mechanism to paper over, since this item is what makes the caret
+        welcome again; worth knowing before somebody reports it as a bug.
+
     *   **1.1.9** *(task lists — needs 3.1)* A block type on the model: a list
         item that carries a checkbox. Render a **live** checkbox, not the
         `disabled` one `markdown-it-task-lists` emits — toggling it is an

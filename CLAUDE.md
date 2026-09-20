@@ -434,7 +434,15 @@ and, after each one, whether any block's DOM text has come adrift from its
 model's. Slice 4 added eight steps to its protocol — the split, the merge across
 a block boundary, Tab and Shift+Tab, the empty-item rules, a fence edited as
 source, the table refusing the caret, and the guard paragraph that stops a
-trailing table trapping it. It lives in `front/` so the static handler already serves it
+trailing table trapping it. **Driven in Gecko on 2026-09-21, and it earned its
+keep on the first run**: one real bug (a hard break the renderer dropped), one
+per-engine fact (Gecko puts a caret inside the uneditable table), and three
+faults in the page — its document was set in the page's own monospace, so a
+fenced code block was indistinguishable from a paragraph; the divergence banner
+sat below the fold; and a divergence that fixed itself left no trace at all, so
+one was reported and then lost. The banner is first and sticky now, it keeps a
+count that survives a recovery, and every divergence goes into the log as well.
+Blink and WebKit are still to run. It lives in `front/` so the static handler already serves it
 same-origin with `/model.js`, which is the only thing the `/tests/` route was
 ever buying — so it needs no `CHECK_PAGES` entry and no server change — and it
 installs the input layer itself rather than flipping the model core's flag, so
@@ -1019,11 +1027,9 @@ undo stack all hang off exactly that.
 
 **Slice 4 gave it structure**, 2026-09-20, in the same two files: the edits that
 change how many blocks there are, and the ones that act on a block with no
-inline tree. **Its three-engine protocol has not been driven by hand yet** — the
-suites and Blink automation cover everything they can reach, and the merge and
-every real keystroke in it wait on somebody running
-[front/input-check.html](front/input-check.html). Seven steps, and the ones
-worth knowing from outside:
+inline tree. **Driven by hand in Gecko on 2026-09-21, which found a bug nothing
+else could** — see the last bullet; Blink and WebKit are still to run. Seven
+steps, and the ones worth knowing from outside:
 
 - **What Enter splits is the block, and then its container when that container
   is an item.** So Enter in a top-level paragraph makes a paragraph, Enter in a
@@ -1078,6 +1084,23 @@ worth knowing from outside:
 - **A structural edit re-renders the whole document.** One block's re-render
   cannot express a block that was added or removed. Named rather than hidden —
   16.8ms on a 1,325-block document, about a frame, and rare next to a keystroke.
+- **No leaf may vanish on the way to the renderer**, which is the rule the first
+  hand run bought. A node the model builds has no parser token — correctly, as
+  there is no parse behind it — and `modelInlineTokens` was dropping exactly
+  those, so Shift+Enter put a newline in the model and no `<br>` on screen. The
+  *markdown* was right throughout, because `modelEmitLeaf` composes from the
+  tree and the node carries its own `raw`, which is why every check in the suite
+  passed over it. Breaks are synthesised now; **an atom with no token throws**,
+  because an image's rendering *is* its `src`, alt and title and an equation's
+  *is* its delimiters and TeX, so there is no honest way to make one here. The
+  rule slices 5 and 7 inherit: **a command that creates an image or an equation
+  takes its token from the parser**, never hand-builds one.
+- **Gecko puts a caret inside the table anyway.** The refusal's signal was meant
+  to be the rendering — an engine will not put a caret inside a
+  `contenteditable="false"` island — and Blink does that while Firefox does not,
+  so there the door is shut without looking shut. The edit is still refused and
+  a selection across the table still works. Recorded against TODO 1.1.8, which
+  is what makes the caret welcome again, rather than papered over.
 
 What the model still does *not* do is paste, undo, or run a format command:
 those are slices 5, 6 and 7.

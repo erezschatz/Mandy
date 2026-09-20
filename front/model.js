@@ -2579,10 +2579,25 @@ function modelTextNode(content) {
  * that a link's href and `data-ref-label` never have to be re-derived, so
  * using them is the cheaper and the safer answer.
  *
- * A token is synthesised for exactly the two kinds an edit can change the
- * content of, and for a leaf the model itself created. Everything else is
- * handed back the parser's own token untouched — which is the same rule the
- * tree follows, one layer along.
+ * A token is synthesised for the kinds an edit can change the content of, and
+ * for a leaf the model itself created. Everything else is handed back the
+ * parser's own token untouched — which is the same rule the tree follows, one
+ * layer along.
+ *
+ * **A break the model created has no token, and dropping it was a real bug.**
+ * Found in Gecko on 2026-09-21, by a human at `front/input-check.html` and by
+ * nothing else: `modelInsertBreak` builds a `hardbreak` node with `token: null`
+ * — correctly, since there is no parse behind it — and the `else if
+ * (node.token)` below then left it out of the token list altogether. The
+ * *markdown* was right, because `modelEmitLeaf` composes from the tree and the
+ * node carries its own `raw`; the **rendering** is what goes through
+ * markdown-it, so Shift+Enter put a newline in the model and no `<br>` on
+ * screen. That is precisely the divergence `modelVerifyRender` exists to
+ * report, and the suite could not see it — it measured the emitted bytes,
+ * where the node is fine.
+ *
+ * markdown-it's own `hardbreak` and `softbreak` rules read nothing off the
+ * token but its type, so a bare `{ type }` is the whole of what they need.
  */
 function modelInlineTokens(nodes, out = []) {
   for (const node of nodes || []) {
@@ -2595,6 +2610,39 @@ function modelInlineTokens(nodes, out = []) {
     if (node.kind === "text") out.push({ type: "text", content: node.content });
     else if (node.kind === "code-span") out.push({ type: "code_inline", content: node.content, markup: node.markup });
     else if (node.token) out.push(node.token);
+    else if (node.kind === "hardbreak" || node.kind === "softbreak") out.push({ type: node.kind, content: "" });
+    // **Anything else with no token is a crash rather than a disappearance.**
+    // An atom is the case: an image's rendering is its `src`, its alt and its
+    // title, and an equation's is its delimiters and its TeX — all of which
+    // live on the parser's token, which is why slice 2 kept the token on the
+    // node instead of re-deriving them. So there is no honest way to
+    // synthesise one here, and a command that wants to *create* an image or an
+    // equation has to get its token from the parser (`md.parseInline`) rather
+    // than hand-build one. That rule is for slices 5 and 7; until then this is
+    // unreachable. It throws because the alternative is what the hard break
+    // just did — the model holds a node, the screen does not show it, and the
+    // only thing that notices is a divergence line in front of a human.
+    else throw new Error(`inline ${node.kind} node with no token to render from`);
+  }
+  return out;
+}
+
+/**
+ * Every leaf of an inline tree that stands for something on screen.
+ *
+ * The companion to `modelInlineTokens`, and it exists so the suite can assert
+ * the one thing that check cannot assert about itself: **no leaf is silently
+ * dropped on the way to the renderer**. A leaf with no token and no synthesis
+ * disappears, the model goes on holding it, and the only thing that notices is
+ * `modelVerifyRender` in front of a human.
+ *
+ * Empty text leaves are excluded, because the fold drops those on purpose and
+ * always has — they hold no bytes and no position.
+ */
+function modelInlineLeaves(nodes, out = []) {
+  for (const node of nodes || []) {
+    if (node.children) modelInlineLeaves(node.children, out);
+    else if (!(node.kind === "text" && node.content === "")) out.push(node);
   }
   return out;
 }
