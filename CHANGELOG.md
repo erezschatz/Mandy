@@ -6427,7 +6427,7 @@ other; it is measured on both now.
 Blink and WebKit have run only the deletion case and the table step, so the
 merge and most of the real keystrokes there remain unmeasured. 1,443 checks.
 
-## 2026-09-21 — Blink passes the whole protocol, and the table's mitigation is Blink's alone
+## 2026-09-21 — `2361bdd` — Blink passes the whole protocol, and the table's mitigation is Blink's alone
 
 Chrome ran slice 4's protocol end to end and came out green, which makes two
 engines through it clean. Safari has run the deletion case and the table step.
