@@ -6481,7 +6481,7 @@ Slice 4 is *done and tested* rather than *done and measured as far as a machine
 reaches*, and stage 2 stands at four slices of seven. No code changed, so
 nothing ran; `npm test` was green at 1,443 checks before it.
 
-## 2026-09-21 — Plan stage 2's slice 5, paste and drop
+## 2026-09-21 — `2e3510b` — Plan stage 2's slice 5, paste and drop
 
 Five steps, written before any of it was built: splicing foreign blocks, the
 HTML pipeline, plain text, the paste event and the menu items, and drop.
@@ -6536,7 +6536,7 @@ core it does nothing at all.
 No code changed, so nothing ran. `npm test` was green at 1,443 checks before it,
 which is the tree this was written against.
 
-## 2026-09-21 — Stage 2, slice 5: the model takes paste and drop
+## 2026-09-21 — `4ff7929` — Stage 2, slice 5: the model takes paste and drop
 
 Content arriving from outside the document, which is the one thing the model
 cannot produce for itself — and so the one place Turndown survives into the new
