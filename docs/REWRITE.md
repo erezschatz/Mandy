@@ -2431,21 +2431,21 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         app's state on the same origin. The untracked scratch harness stays for
         what a machine *can* drive.
 
-    *   **4. Input: structure — done 2026-09-20; driven clean in Gecko
-        2026-09-21, after two rounds of fixes. Blink and WebKit still to
-        go.** All seven steps
-        below are in, the model half of every one of them is covered by the
-        `model` suite against the oracle, and the input layer's routing is
-        covered by `model-input`. The half only a human at a keyboard can reach
-        is [front/input-check.html](../front/input-check.html)'s numbered
-        protocol, which this slice grew by eight steps. **Gecko has been driven
-        through all of it and now passes**, having turned up two real bugs, one
-        per-engine fact, one wrong instruction and three faults in the page —
-        all below. **Blink and WebKit have not**, beyond the deletion case and
-        the table step, so the merge and most of the real keystrokes there are
-        still untested in the only place that can test them. The edits that
-        change how many blocks there are, and the ones that act on a block with
-        no inline tree.
+    *   **4. Input: structure — done 2026-09-20; driven clean by hand in Blink
+        and Gecko on 2026-09-21, after two rounds of fixes. WebKit is the one
+        left.** All seven steps below are in, the model half of every one of
+        them is covered by the `model` suite against the oracle, and the input
+        layer's routing is covered by `model-input`. The half only a human at a
+        keyboard can reach is
+        [front/input-check.html](../front/input-check.html)'s numbered
+        protocol, which this slice grew by eight steps. **Blink and Gecko have
+        both been driven through all of it and both pass**, having turned up two
+        real bugs, one per-engine fact, one wrong instruction and three faults
+        in the page — all below. **WebKit has run the deletion case and the
+        table step and no more**, so the merge and most of the real keystrokes
+        there are the one part of this slice still untested in the only place
+        that can test it. The edits that change how many blocks there are, and
+        the ones that act on a block with no inline tree.
 
         `insertParagraph` splits the block at the caret; `insertLineBreak`
         inserts a hard break node. A **new** break has no recorded spelling, so
@@ -2666,22 +2666,30 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         behaviour than the code has reads as a bug the first time somebody goes
         off the script.
 
-        **The table's refusal is quieter in Gecko than it was designed to be**,
-        confirmed by hand in both engines. The signal was to be the rendering:
-        an engine will not put a caret inside a `contenteditable="false"`
-        island, so nobody is left typing into something that ignores them.
-        **Blink keeps it out and Gecko lets it in**, both confirmed at the
-        keyboard; typing in there does nothing either way, which is the
-        reading the refusal was chosen to avoid. Nothing is lost — the edit is
-        refused either way and a selection across the table still works — but
-        for the one stage this lasts, Firefox shuts the door without it looking
-        shut. Recorded against TODO 1.1.8 rather than papered over with a second
-        mechanism, since that item is what makes the caret welcome again.
+        **The table's refusal is quieter than it was designed to be, in two
+        engines out of three.** The signal was to be the rendering: an engine
+        will not put a caret inside a `contenteditable="false"` island, so
+        nobody is left typing into something that ignores them. Measured by hand
+        in all three on 2026-09-21, **that premise is Blink's behaviour and
+        nobody else's** — Gecko and WebKit both let the caret in, and typing
+        there does nothing, which is exactly the "reads as a broken editor"
+        reading the refusal was chosen to avoid.
 
-        **Gecko has since been driven through the whole protocol clean** — every
-        step, with the divergence line quiet throughout. Blink and WebKit have
-        not, beyond the deletion case above and the table step, so the merge and
-        most of the real keystrokes there are still unmeasured.
+        Nothing is lost and the decision stands: the edit is refused either way,
+        a selection across the table still works everywhere, and refusing was
+        never in question — what failed is the **mitigation**. It is recorded
+        rather than patched because TODO 1.1.8 is what makes the caret welcome
+        again, so anything built now has a one-stage life. What is left on the
+        table, should the silence turn out to matter first, is a
+        **once-per-document** notice the first time a keystroke lands inside a
+        table: the argument against a `notify` was that it would fire per
+        keystroke, which a once-only one does not. Nobody has asked for it.
+
+        **Blink and Gecko have both since been driven through the whole protocol
+        clean** — every step, with the divergence line quiet throughout. WebKit
+        has run the deletion case and the table step and no more, so the merge
+        and most of the real keystrokes there are still unmeasured. That is the
+        one thing left before this slice is measured everywhere it runs.
 
         **And driven by automation**, on `front/input-check.html` in Blink,
         as far as automation reaches: the split, Enter at the end of a heading,

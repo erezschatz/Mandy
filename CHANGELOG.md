@@ -6426,3 +6426,35 @@ other; it is measured on both now.
 **Gecko passes the whole protocol.** Every step, divergence quiet throughout.
 Blink and WebKit have run only the deletion case and the table step, so the
 merge and most of the real keystrokes there remain unmeasured. 1,443 checks.
+
+## 2026-09-21 — Blink passes the whole protocol, and the table's mitigation is Blink's alone
+
+Chrome ran slice 4's protocol end to end and came out green, which makes two
+engines through it clean. Safari has run the deletion case and the table step.
+
+**The table finding inverts.** Yesterday's note read as a Firefox quirk against
+a Chrome baseline; Safari behaves as Firefox does, so the picture is the other
+way round. The refusal's signal was to be the rendering — an engine will not put
+a caret inside a `contenteditable="false"` island, so nobody is left typing into
+something that ignores them — and measured by hand in all three, **that premise
+is Blink's behaviour and nobody else's**. Gecko and WebKit both let the caret
+in, and typing there does nothing, which is exactly the "reads as a broken
+editor" reading the refusal was chosen to avoid.
+
+Nothing is lost and the decision stands: the edit is refused either way, a
+selection across the table still works everywhere, and refusing was never the
+part in question. What failed is the **mitigation**, and saying so plainly
+matters more than the mitigation did — slice 4 argued that refusal was cheap
+*because* the rendering would carry the signal, and in two engines out of three
+it does not.
+
+It stays recorded rather than patched, because TODO 1.1.8 is what makes the
+caret welcome again and anything built now has a one-stage life. What is left on
+the table, should the silence turn out to matter first, is a
+**once-per-document** notice the first time a keystroke lands inside a table:
+the original argument against a `notify` was that it would fire per keystroke,
+which a once-only one does not. Nobody has asked for it, so nobody has built it.
+
+The check page's own step says all three answers now, and asks which you get.
+No code changed, so nothing ran; `npm test` was green at 1,443 checks before
+it, which is the tree this was written against.

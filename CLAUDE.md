@@ -439,14 +439,14 @@ keep twice over.** Two real bugs, both of which the whole suite passed over
 because the emitted markdown was right in each: a hard break the renderer
 dropped, and a bullet's trailing space the DOM builder's `trim()` ate. One
 per-engine fact — Blink keeps the caret out of the uneditable table and Gecko
-lets it in. One instruction that was wrong rather than the code, about dragging
-over part of an equation. And three faults in the page: its document was set in
+and WebKit both let it in. One instruction that was wrong rather than the code,
+about dragging over part of an equation. And three faults in the page: its document was set in
 the page's own monospace, so a fenced code block was indistinguishable from a
 paragraph; the divergence banner sat below the fold; and a divergence that fixed
 itself left no trace at all, so one was hit and then lost. The banner is first
 and sticky now, it keeps a count that survives a recovery, and every divergence
-goes into the log as well. Gecko passes the whole protocol; Blink and WebKit
-have run only the deletion case and the table step. It lives in `front/` so the static handler already serves it
+goes into the log as well. Blink and Gecko both pass the whole protocol; WebKit
+has run only the deletion case and the table step. It lives in `front/` so the static handler already serves it
 same-origin with `/model.js`, which is the only thing the `/tests/` route was
 ever buying — so it needs no `CHECK_PAGES` entry and no server change — and it
 installs the input layer itself rather than flipping the model core's flag, so
@@ -1031,10 +1031,10 @@ undo stack all hang off exactly that.
 
 **Slice 4 gave it structure**, 2026-09-20, in the same two files: the edits that
 change how many blocks there are, and the ones that act on a block with no
-inline tree. **Driven through in Gecko on 2026-09-21 and clean after two rounds
-of fixes** — it found two real bugs, both of which every check in the suite
-passed straight over; Blink and WebKit are still to run. Seven steps, and the
-ones worth knowing from outside:
+inline tree. **Driven through by hand in Blink and Gecko on 2026-09-21, clean in
+both after two rounds of fixes** — they found two real bugs, both of which every
+check in the suite passed straight over. WebKit is the one left. Seven steps,
+and the ones worth knowing from outside:
 
 - **What Enter splits is the block, and then its container when that container
   is an item.** So Enter in a top-level paragraph makes a paragraph, Enter in a
@@ -1113,12 +1113,17 @@ ones worth knowing from outside:
   **file** still gains no trailing whitespace, since markdown strips it on the
   next parse: the last composed line is trimmed on the way out, and only ever
   the last, because a hard break's two spaces are never on it.
-- **Gecko puts a caret inside the table anyway.** The refusal's signal was meant
-  to be the rendering — an engine will not put a caret inside a
-  `contenteditable="false"` island — and Blink does that while Firefox does not,
-  so there the door is shut without looking shut. The edit is still refused and
-  a selection across the table still works. Recorded against TODO 1.1.8, which
-  is what makes the caret welcome again, rather than papered over.
+- **Two engines out of three put a caret inside the table anyway.** The
+  refusal's signal was meant to be the rendering — an engine will not put a
+  caret inside a `contenteditable="false"` island — and measured by hand in all
+  three, **that is Blink's behaviour and nobody else's**: Gecko and WebKit both
+  let the caret in, so there the door is shut without looking shut. The decision
+  stands and nothing is lost — the edit is refused either way and a selection
+  across the table still works everywhere — but the **mitigation** failed.
+  Recorded against TODO 1.1.8, which is what makes the caret welcome again,
+  rather than patched for a one-stage life; what is left on the table there is a
+  once-per-document notice, which the original "it would fire per keystroke"
+  argument does not reach.
 
 What the model still does *not* do is paste, undo, or run a format command:
 those are slices 5, 6 and 7.

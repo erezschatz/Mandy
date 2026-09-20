@@ -114,17 +114,23 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
         stage and comes back here as structure. [REWRITE.md](REWRITE.md)'s slice
         4 is the argument and its stage 2 exit criterion names the exception.
 
-        **And the refusal is quieter than it was meant to be, measured
-        2026-09-21.** The signal was to be the rendering — an engine will not
-        put a caret inside a `contenteditable="false"` island, so nobody is left
-        typing into something that ignores them. Blink does that. **Gecko does
-        not**: the caret goes in, and typing there does nothing, which is
-        exactly the "reads as a broken editor" reading the refusal was chosen to
-        avoid. Nothing is lost and nothing is wrong — the edit is still refused
-        and a selection across the table still works — but in Firefox the door
-        is shut without looking shut, for the one stage this lasts. Not worth a
-        second mechanism to paper over, since this item is what makes the caret
-        welcome again; worth knowing before somebody reports it as a bug.
+        **And the refusal is quieter than it was meant to be — in two engines
+        out of three, measured 2026-09-21.** The signal was to be the rendering:
+        an engine will not put a caret inside a `contenteditable="false"`
+        island, so nobody is left typing into something that ignores them. That
+        premise is **Blink's behaviour and nobody else's**. Gecko and WebKit
+        both let the caret in, and typing there does nothing — exactly the
+        "reads as a broken editor" reading the refusal was chosen to avoid.
+
+        Nothing is lost and nothing is wrong: the edit is refused either way and
+        a selection across the table still works everywhere. What failed is the
+        mitigation, not the decision — and it is recorded here rather than
+        patched because this item is what makes the caret welcome again, so
+        anything built now has a one-stage life. What is left on the table, if
+        the silence turns out to matter before then, is a **once-per-document**
+        notice the first time a keystroke lands inside a table; the original
+        argument against a `notify` was that it would fire per keystroke, which
+        a once-only one does not. Nobody has asked for it.
 
     *   **1.1.9** *(task lists — needs 3.1)* A block type on the model: a list
         item that carries a checkbox. Render a **live** checkbox, not the
