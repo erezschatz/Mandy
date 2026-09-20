@@ -95,6 +95,7 @@ onToolbarAction("export-editable", async () => {
     "/markdown-style.js",
     "/model.js",
     "/app.js",
+    "/model-input.js",
     "/undo.js",
     "/execcommand.js",
     "/outline.js",

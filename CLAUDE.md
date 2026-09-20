@@ -387,6 +387,22 @@ replaces `browser-check`, `list-indent-check` and `list-empty-item-check`, all
 three of which retire with execCommand; `paste-check` and `tab-shortcut-check`
 measure the browser rather than the core and stay.
 
+[front/input-check.html](front/input-check.html) is TODO 3.1's, and it is the
+one the rewrite's riskiest stage is measured by: does an engine send a
+`beforeinput` for each thing a keystroke means, is it cancelable, what does
+`getTargetRanges()` say, and what does a real IME do. **A machine cannot run
+it** — measured 2026-09-20 in Blink, automation delivers a trusted `keydown` for
+Backspace and the engine performs no editing command for it, which is the same
+gap stage 0's spike hit — so it carries a numbered protocol and needs a human at
+a keyboard, the way `paste-check` does. It reports every event the engine sent
+and, after each one, whether any block's DOM text has come adrift from its
+model's. It lives in `front/` so the static handler already serves it
+same-origin with `/model.js`, which is the only thing the `/tests/` route was
+ever buying — so it needs no `CHECK_PAGES` entry and no server change — and it
+installs the input layer itself rather than flipping the model core's flag, so
+running it does not change the app's state on the same origin. It is in none of
+the three registries: it is a page, not a module.
+
 [tests/tab-shortcut-check.html](tests/tab-shortcut-check.html) is the same kind
 of page and the same kind of question, for the tab bar's keyboard: Ctrl+Tab,
 Ctrl+Shift+Tab and Ctrl+1–9 are all bindings some browser claims for its own tab
@@ -501,9 +517,12 @@ claim the second thing. Its place in the load order is load-bearing in one
 direction: **after `markdown-style.js`**, whose `wrapMarkdownLine` and
 `hasMathSpan` it calls rather than carrying a second copy of either.
 
-**Loading it is not running it.** `modelCoreEnabled()` is off until the stage 4
-merge, so the editor still draws through `markdownToHtml` and everything below
-still describes what runs.
+[model-input.js](front/model-input.js) joined all three with slice 3, and sits
+**after `app.js`**, whose `editor` and `md` it reads at its own load time.
+
+**Loading them is not running them.** `modelCoreEnabled()` is off until the
+stage 4 merge, so the editor still draws through `markdownToHtml`, the input
+layer registers no listeners, and everything below still describes what runs.
 
 Skipping a registry is otherwise a bug, and where it is deliberate the reason is
 written down — `tabs.js` is absent from `ASSETS` because an exported document
@@ -896,8 +915,61 @@ tree anywhere: a fence, a rule, a gap, and **a table**, whose floor is the row
 because `td_open` carries no `map`. That is the same statement slice 4 makes out
 loud — a table is not editable as text — rather than an exception carved here.
 
-What the model still does *not* do is take input or run a format command: those
-are the rest of stage 2 and stage 3.
+**Slice 3 gave it input**, 2026-09-20, in [model-input.js](front/model-input.js)
+— its own file because it is an event layer rather than the model, and because
+slices 4 and 5 grow it. `beforeinput` fires on the editable root *before* the
+engine mutates anything, so the handler **cancels every one of them, handled or
+not**, and the DOM can then only change through `modelRender`. That is D4's
+treatment reversed, and it is the one line the whole design rests on: an
+`inputType` nobody has heard of is a keystroke that does nothing, rather than
+one the engine gets to act on behind the model's back.
+
+What it handles is text: `insertText`, `insertReplacementText`, and the five
+delete types. The four delete-word and delete-content types are **one
+implementation**, because the engine has already decided what a word is and
+says so in `getTargetRanges()` — which is also why "a deletion whose target
+range spans two blocks is a merge" falls out rather than being special-cased.
+Such a deletion is refused for now; merging is slice 4's.
+
+`modelInlineSplice` is the mutation the tree never had. Stage 1 only ever read
+it, and the contract a mutation keeps was already written down in
+`modelInlineSource`: every leaf emits `raw ?? <rebuilt from content>`, so an
+edit sets `content` and **clears `raw`** — `modelTouch`'s rule one level down,
+meaning the same thing. Four things about it:
+
+- **Text typed at a mark's edge goes inside when the caret was inside**, and
+  that needed no code: `modelInlineAt`'s boundary rule already puts a position
+  at the node that *ends* there, so the caret after `**bold**` is in the mark
+  and the one before it is not. The rule that ships is the one stage 1 wrote
+  for the caret.
+- **An atom is all or nothing.** One character each, so a range covers one
+  whole or not at all — there is no partial overlap to define.
+- **U+00A0 is normalised here, once, at the boundary**, which is TODO 1.4
+  closed by construction. Its other half goes more quietly still: the browser
+  cannot rewrite a trailing space behind our back when it is not the one
+  writing.
+- **`modelInlineTokens` puts the tokens back in step with the tree**, and
+  without it an edited block does not render at all — the renderer goes through
+  markdown-it over the block's *tokens* and an edit changes the *tree*. The
+  tokens the tree carries on its nodes are what it hands back, which is the
+  second thing that design pays for. Re-parsing the emitted source was the
+  alternative and is worse: a reference link's source is `[text][label]`, and
+  resolving it needs the whole document's definitions in the parser's env.
+
+**Composition is decided rather than discovered.** `insertCompositionText`
+cannot be cancelled, so from `compositionstart` to `compositionend` the engine
+owns the one text node under the caret and **nothing re-renders** — a render
+during composition takes that node away from the IME, which is how CJK input
+breaks outright. On `compositionend` the block's DOM text is diffed against the
+model's and the difference applied as one edit, which is also one undo step for
+one composed word.
+
+Every edit ends by dispatching a synthetic `input`, because `preventDefault()`
+means the engine will not — and autosave, the dirty flag, the outline and the
+undo stack all hang off exactly that.
+
+What the model still does *not* do is change how many blocks there are, or run
+a format command: those are the rest of stage 2 and stage 3.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.

@@ -5927,3 +5927,117 @@ model position becomes a real caret that reads back as itself, and a render
 reapplies the selection it was given. Swept over a 645-block document in the
 running app with the flag on: **40,578 positions, every one a fixpoint**, and
 439 blocks compared by the verify with nothing to report.
+
+## 2026-09-20 — Stage 2, slice 3: the model takes input
+
+`beforeinput` on `#editor`, cancelled unconditionally, so the DOM can only
+change through `modelRender`. That is D4's treatment reversed — contenteditable
+is an input method whose intentions are intercepted, rather than a data
+structure whose mutations are cleaned up afterwards — and it is the question
+stage 0's spike was built to ask, answered yes by all three engines on
+2026-09-11. [front/model-input.js](front/model-input.js) is its own file
+because it is an event layer rather than the model, and because slices 4 and 5
+grow it.
+
+Cancelled **first and unconditionally**, before anything is looked at, which is
+the property the rest rests on: an `inputType` this slice has never heard of is
+a keystroke that does nothing, rather than one the engine gets to act on behind
+the model's back. What it handles is text — `insertText`,
+`insertReplacementText`, and the five delete types, which are **one
+implementation** because the engine has already decided what a word is and says
+so in `getTargetRanges()`. A deletion whose range spans two blocks is a merge
+and is refused until slice 4, which falls out of reading the target ranges
+rather than being special-cased.
+
+`modelInlineSplice` is the mutation the inline tree never had. The contract it
+keeps was already written down in `modelInlineSource`: every leaf emits
+`raw ?? <rebuilt from content>`, so an edit sets `content` and clears `raw` —
+which is `modelTouch`'s rule one level down and means the same thing. U+00A0 is
+normalised there, once, at the boundary, closing TODO 1.4 by construction; its
+other half closes more quietly still, since the browser cannot rewrite a
+trailing space behind our back when it is not the one writing.
+
+**Six findings, and three of them were bugs this slice created and its own
+instrument caught on the first try.**
+
+**An edited block did not render at all.** The check page's divergence line said
+so on the first character ever typed into the model core: `modelRenderBlock`
+goes through markdown-it's renderer over the block's *tokens*, an edit changes
+the *tree*, and nothing put the two back in step — so the model held the new
+text and the DOM went on showing the old. `modelInlineTokens` is the fold run
+backwards, handing back the tokens the tree has carried on its nodes since slice
+2. They were kept there so a link's href and `data-ref-label` would never have
+to be re-derived, and this is the second thing that pays for. Re-parsing the
+emitted source was the other candidate and is worse: a reference link's source
+is `[text][label]`, and resolving it needs the whole document's definitions in
+the parser's env — an empty one turns every reference link in the paragraph into
+literal text on the first keystroke.
+
+**A range endpoint inside an atom collapsed the range.** Select an equation,
+type over it, and the engine hands over a range whose end a browser has
+normalised to inside the `<span data-math>` — which slice 2's walk answers with
+the atom's *start*, correctly for a start and wrongly for an end. The range came
+back collapsed and the typing landed beside the equation instead of replacing
+it. The walk takes a `bias` now: a start clamps to the atom's front edge, an end
+to its back.
+
+**An empty heading re-emitted as a paragraph.** markdown-it records an empty ATX
+heading's opener as `#`, because nothing followed it, so typing into one
+produced `#Title` — which CommonMark reads as a paragraph. Silent in the worst
+way: the document looks right on screen and the file has stopped holding a
+heading. The emitter supplies the separator when content needs one and takes it
+back when the content goes, and what the suite asserts is not the bytes but that
+they still *parse* as the heading they were.
+
+**The mark-edge rule needed no code.** The plan called it the question the read
+side never asked; the read side had already answered it. `modelInlineAt`'s
+boundary rule — a position belongs to the node that *ends* there, kept from
+`undo.js` in stage 1 — puts the caret after `**bold**` inside the mark and the
+one before it outside, so typing continues the bold in the first case and not in
+the second, with nothing added.
+
+**A machine cannot drive the deletions.** Measured in Blink: automation delivers
+a trusted `keydown` for Backspace and the engine performs no editing command for
+it, so no `beforeinput` arrives and the DOM does not change. That is the same
+gap stage 0's spike hit, and it decides the shape of the verification rather
+than being an inconvenience inside it.
+
+**And the cost is measured rather than assumed**: 2.1ms per keystroke on a
+636-block document, with the verify clean after 200 consecutive edits. Most of
+it is `modelElementFor`'s document-wide `querySelector`, available to optimise
+if a real document ever makes it matter.
+
+Composition is decided rather than discovered, per the design:
+`insertCompositionText` cannot be cancelled, so from `compositionstart` to
+`compositionend` the engine owns the one text node under the caret and nothing
+re-renders — a render there takes that node away from the IME, which is how CJK
+input breaks outright. On `compositionend` the block's DOM text is diffed
+against the model's and the difference applied as one edit, which is one undo
+step for one composed word. Every edit ends by dispatching a synthetic `input`,
+because `preventDefault()` means the engine will not, and autosave, the dirty
+flag, the outline and the undo stack all hang off exactly that.
+
+**How it was verified.** A new `model-input` suite, 23 checks, driving the
+dispatcher with hand-built events against a stubbed model — the opposite of the
+usual arrangement here and deliberate: `modelInlineSplice` and the render are
+covered against the real thing in `model`, so stubbing them is what lets this
+suite assert *routing*. What it pins is that every inputType is cancelled
+whether handled or not, that a cross-block deletion is refused rather than
+half-applied, that a splice which refuses stops the edit rather than rendering
+anyway, and that nothing renders during a composition. Plus 33 new checks in
+`model` for the splice, the unfold and the bias. 1,354 checks pass.
+
+**[front/input-check.html](front/input-check.html)** is the other half, and it
+is a check page rather than a harness — the first thing on that side of the
+distinction slices 1 and 2 drew. It measures *the browser*, which is per browser
+and per version, and it needs a human at a keyboard, so it carries a numbered
+protocol the way the spike did. It is in `front/` rather than `tests/` plus
+`CHECK_PAGES`: the static handler already serves it same-origin with
+`/model.js`, which is the only thing the `/tests/` route was ever buying, so no
+route is added and the server stays a file server. Driven as far as automation
+allows in **Chrome 152 on macOS**: typing mid-word, typing at both edges of a
+bold run — inside at the end, outside at the start — typing beside an atom and
+typing over a selected equation, all with the model, the DOM, the caret and the
+emitted markdown agreeing and the divergence line quiet throughout. **The
+deletions, Enter, undo and a real IME are not measured**, in any engine, and the
+page's protocol is what measures them.

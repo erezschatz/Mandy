@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<!--
+  THE INPUT CHECK — TODO 3.1, stage 2. docs/REWRITE.md's slice 3.
+
+  This is a check page rather than a harness, and the difference is what it
+  measures: **the browser**. Does an engine send a `beforeinput` for each thing
+  a keystroke means, is it cancelable, does `getTargetRanges()` say what is
+  about to go, and does a real IME behave the way the design assumes. Those are
+  per browser and per version, and the way the answer changes is a browser
+  release rather than a change here — which is the same reason paste-check.html
+  and tab-shortcut-check.html stay while the execCommand pages retire.
+
+  **A machine cannot run it.** Automation delivers a trusted keydown and no
+  editing command for Backspace — measured 2026-09-20 in Blink, the same gap
+  stage 0's spike hit — so everything below the typing section needs a human at
+  a real keyboard. That is what the numbered protocol is for.
+
+  It is in front/ rather than tests/ so the static handler that already serves
+  front/ serves it too, same-origin with /model.js. No route, no CHECK_PAGES,
+  no /report: the server stays a file server. It is in none of the three
+  registries either — it is a page, not a module.
+
+    npm run serve   →   http://localhost:9130/input-check.html
+
+  It installs the input layer on its own rather than through the model core's
+  flag, so running it does not flip the flag for the app on the same origin.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>input layer — check</title>
+<style>
+  body { font: 13px/1.55 ui-monospace, monospace; margin: 0; padding: 1rem; background: #111; color: #ddd; }
+  h2 { font-size: 13px; margin: 1.3rem 0 .4rem; color: #8cf; }
+  .pass { color: #7d7; } .fail { color: #f77; font-weight: bold; } .note { color: #999; }
+  ol { margin: .2rem 0 .6rem 1.2rem; padding: 0; color: #cc9; }
+  li { margin: .15rem 0; }
+  #editor { background: #1b1b1b; padding: .5rem 1rem; border: 1px solid #333; min-height: 8rem; }
+  #editor table { border-collapse: collapse; } #editor td, #editor th { border: 1px solid #555; padding: 0 .3rem; }
+  #log { white-space: pre-wrap; max-height: 22rem; overflow: auto; border: 1px solid #333; padding: .4rem .6rem; }
+  #divergence { font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h2>1. the document (type in it)</h2>
+<div id="editor" contenteditable="true"></div>
+
+<h2>2. what to do, and what passes</h2>
+<ol>
+  <li><b>Type</b> a few characters mid-word. Each one is a single <code>insertText</code>, the text appears, and divergence stays quiet.</li>
+  <li><b>Select</b> a word and type over it. One <code>insertText</code> whose target range is the selection.</li>
+  <li><b>Backspace</b> mid-word, then <b>Delete</b> (fn+Delete on a Mac). <code>deleteContentBackward</code> / <code>deleteContentForward</code>, each with a target range one character wide.</li>
+  <li><b>Delete a word</b> — Option+Backspace on a Mac, Ctrl+Backspace elsewhere. One <code>deleteWordBackward</code> whose range covers the whole word: the engine decides what a word is, and we do not.</li>
+  <li><b>Backspace at the very start of a paragraph.</b> The range should span <i>two</i> blocks. It is refused for now — nothing happens, no divergence — because a merge is slice 4's.</li>
+  <li><b>Type an accented character</b> — hold <kbd>e</kbd> on a Mac, or use a dead key. <code>compositionstart</code>, then the engine writes while we wait, then <code>compositionend</code> applies it as one edit.</li>
+  <li><b>Type into the bold run, at its very end, and at its very start.</b> The end continues bold; the start does not.</li>
+  <li><b>Try to type inside the equation or the image.</b> They are one character each: the caret goes before or after, never inside.</li>
+  <li><b>Press Enter</b>, and <b>Ctrl/Cmd+Z</b>. Both are cancelled and do nothing — structure is slice 4, undo is slice 6. Nothing should move.</li>
+</ol>
+<p class="note">Fail is any of: a character that does not appear, a caret that jumps, a divergence line that lights up, or an <code>inputType</code> reported as not cancelable.</p>
+
+<h2>3. divergence — the DOM against the model</h2>
+<div id="divergence" class="pass">quiet</div>
+
+<h2>4. what the engine sent</h2>
+<div id="log">nothing yet</div>
+
+<script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
+<script src="/markdown-parser.js"></script>
+<script src="/markdown-style.js"></script>
+<script src="/model.js"></script>
+<!-- Before the inline script, which is what installs it. Its own install
+     block is guarded on `editor`, which does not exist yet here, so it
+     registers nothing and the explicit call below is the only one. -->
+<script src="/model-input.js"></script>
+<script>
+  // The two globals model-input.js reads at load. Defined here rather than by
+  // app.js, which this page deliberately does not load: what is under test is
+  // the input layer against a real engine, not the application around it.
+  const editor = document.getElementById("editor");
+  const md = configureMarkdownParser(window.markdownit());
+
+  const SAMPLE = [
+    "# Input check",
+    "",
+    "A paragraph with **bold** and _em_ to type at the edges of.",
+    "",
+    "An equation $x = a*b*c$ and an image ![alt](none.png), one character each.",
+    "",
+    "- a list item",
+    "- another one",
+    "",
+    "A second paragraph, for Backspace at the start of.",
+    "",
+  ].join("\n");
+
+  const doc = modelLoad(editor, SAMPLE, md);
+
+  const log = document.getElementById("log");
+  const divergence = document.getElementById("divergence");
+  let lines = 0;
+
+  function say(text, cls) {
+    if (lines === 0) log.textContent = "";
+    lines += 1;
+    const row = document.createElement("div");
+    if (cls) row.className = cls;
+    row.textContent = text;
+    log.appendChild(row);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  // The assertion the spike carried and slice 1 made permanent: after anything
+  // happens, every block's DOM text against the text its tree says it holds.
+  // Reported rather than left to be felt, because a divergence is the exact
+  // failure this design can have.
+  function recheck(what) {
+    const report = modelVerifyRender(editor, doc);
+    if (!report.problems.length) {
+      divergence.className = "pass";
+      divergence.textContent = "quiet — " + report.compared + " blocks agree (after " + what + ")";
+      return;
+    }
+    divergence.className = "fail";
+    divergence.textContent = "DIVERGED after " + what + ": " + JSON.stringify(report.problems[0]);
+  }
+
+  // Logged before the real handler, so what is reported is what the engine
+  // sent rather than what survived being handled.
+  editor.addEventListener("keydown", (e) => {
+    say("keydown  " + e.key + (e.code ? " [" + e.code + "]" : "") +
+      (e.isTrusted ? "" : "  UNTRUSTED") + (e.cancelable ? "" : "  NOT CANCELABLE"));
+  }, true);
+
+  editor.addEventListener("beforeinput", (e) => {
+    let ranges = "—";
+    try {
+      ranges = (e.getTargetRanges() || []).map((r) => {
+        // The same bias the handler uses, or this line reports a range the
+        // handler never saw -- which is the paste-check lesson: a check page
+        // that quietly disagrees with the code is worse than no check page.
+        const from = modelDomBlockAt(editor, doc, r.startContainer, r.startOffset, -1);
+        const to = modelDomBlockAt(editor, doc, r.endContainer, r.endOffset, 1);
+        if (!from || !to) return "outside the model";
+        return from.block === to.block
+          ? "#" + from.block.id + " " + from.offset + "–" + to.offset
+          : "#" + from.block.id + "@" + from.offset + " → #" + to.block.id + "@" + to.offset + "  TWO BLOCKS";
+      }).join(", ") || "none";
+    } catch (err) {
+      ranges = "getTargetRanges threw: " + err.message;
+    }
+    say("beforeinput  " + e.inputType +
+      (e.data === null || e.data === undefined ? "" : "  data=" + JSON.stringify(e.data)) +
+      "  ranges=" + ranges +
+      (e.cancelable ? "" : "  NOT CANCELABLE — the design does not hold here"),
+      e.cancelable ? null : "fail");
+  }, true);
+
+  editor.addEventListener("compositionstart", () => say("compositionstart — the engine owns the node now", "note"), true);
+  editor.addEventListener("compositionupdate", (e) => say("compositionupdate  " + JSON.stringify(e.data), "note"), true);
+  editor.addEventListener("compositionend", (e) => say("compositionend  " + JSON.stringify(e.data), "note"), true);
+
+  // A stray `input` that is not ours means something changed the DOM without
+  // going through the model, which is the failure the interception exists to
+  // prevent. Ours are announced with an inputType we recognise.
+  editor.addEventListener("input", (e) => {
+    say("input  " + (e.inputType || "(no inputType)"));
+    recheck(e.inputType || "an input");
+  });
+
+  modelInputInstall(editor);
+  recheck("load");
+</script>
+</body>
+</html>

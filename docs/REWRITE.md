@@ -1844,7 +1844,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the second thing, and slice 2 opens by moving two rules out of `app.js` on
     the strength of it.
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
-    Slices 1 and 2 of seven are done and tested. Not a merge point,
+    Slices 1, 2 and 3 of seven are done and tested. Not a merge point,
     and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
@@ -2241,7 +2241,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             1 recorded as inherited by this slice is answered here rather than
             carried further.
 
-    *   **3. Input: text and composition — not started.** `beforeinput` on
+    *   **3. Input: text and composition — done and tested, 2026-09-20.** `beforeinput` on
         `#editor`, `preventDefault()` on **every** type, handled or not, so the
         DOM can only change through render. `insertText`,
         `insertReplacementText` (autocorrect and spellcheck accept),
@@ -2275,6 +2275,88 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         `insertText`, and renders. The guard that matters is the re-render
         suppression — a render during composition takes the node the IME is
         holding out from under it, which is how CJK input breaks outright.
+
+        **Six findings, and three of them were bugs this slice created and its
+        own instrument caught.**
+
+        1.  **An edited block did not render**, and the check page's divergence
+            line said so on the first character ever typed into the model core.
+            `modelRenderBlock` goes through markdown-it's renderer over the
+            block's **tokens** — which is slice 1's rule and what keeps the
+            output identical to the app's — while an edit changes the **tree**,
+            and nothing put the two back in step. So `modelInlineTokens` is the
+            fold run backwards, and the tokens the tree has carried on its nodes
+            since slice 2 are what it hands back: they were kept there precisely
+            so a link's href and `data-ref-label` would never have to be
+            re-derived, and this is the second thing that pays for.
+
+            **Re-parsing was the other candidate and is worse.** Emitting the
+            block's inline source and handing it to `md.parseInline` needs no
+            new code and keeps one source of truth — but a reference link's
+            source is `[text][label]`, and resolving that needs the whole
+            document's definitions in the parser's env. An empty env turns every
+            reference link in the paragraph into literal text on the first
+            keystroke.
+
+        2.  **A range endpoint inside an atom collapsed the range.** Select an
+            equation, type over it, and the engine hands over a range whose end
+            a browser has normalised to inside the `<span data-math>` — which
+            slice 2's walk answers with the atom's *start*, correctly for a
+            start and wrongly for an end. The range came back collapsed and the
+            typing landed beside the equation instead of replacing it. So the
+            walk takes a `bias`: a start clamps to the atom's front edge, an end
+            to its back, and a selection covering an atom goes on covering it.
+
+        3.  **An empty heading re-emitted as a paragraph.** markdown-it records
+            an empty ATX heading's opener as `#`, because nothing followed it —
+            so typing into one produced `#Title`, which CommonMark reads as a
+            paragraph. Silent in the worst way: the document looks right on
+            screen and the file has stopped holding a heading. The emitter
+            supplies the separator when content needs one and takes it back when
+            the content goes, and what the suite asserts is not the bytes but
+            that they still *parse* as the heading they were.
+
+        4.  **The mark-edge rule needed no code.** The plan calls it the
+            question the read side never asked; it turns out the read side had
+            already answered it. `modelInlineAt`'s boundary rule — a position
+            belongs to the node that *ends* there, kept from `undo.js` in stage
+            1 — puts the caret after `**bold**` inside the mark and the one
+            before it outside, so typing continues the bold in the first case
+            and not in the second, with nothing added. The rule that ships is
+            stage 1's, reused rather than restated.
+
+        5.  **A machine cannot drive the deletions.** Measured 2026-09-20 in
+            Blink: automation delivers a trusted `keydown` for Backspace and the
+            engine performs no editing command for it, so no `beforeinput`
+            arrives and the DOM does not change. That is the same gap stage 0's
+            spike hit, and it decides the shape of the verification rather than
+            being an inconvenience inside it.
+
+        6.  **The cost is measured rather than assumed**: 2.1ms per keystroke
+            on a 636-block document, with the verify clean after 200
+            consecutive edits. Most of it is `modelElementFor`'s document-wide
+            `querySelector`, which is an optimisation available if a real
+            document ever makes it matter.
+
+        **The check page is `front/input-check.html`, and it is a check page
+        rather than a harness** — the distinction slices 1 and 2 drew, and this
+        is the first thing on the other side of it. What it measures is *the
+        browser*: whether an engine sends a `beforeinput` for each thing a
+        keystroke means, whether it is cancelable, what `getTargetRanges()`
+        says, and what a real IME does. Those are per browser and per version,
+        and the way an answer changes is a browser release rather than a change
+        here — the same reason `paste-check` and `tab-shortcut-check` stay while
+        the execCommand pages retire. Finding 5 is what makes it need a human,
+        so it carries a numbered protocol the way the spike did.
+
+        **It is in `front/` rather than in `tests/` plus `CHECK_PAGES`**, which
+        the preamble assumed. The static handler that already serves `front/`
+        serves it too and it is same-origin with `/model.js`, which is the only
+        thing the `/tests/` route was ever buying — so no route is added and the
+        server stays a file server. It installs the input layer itself rather
+        than flipping the model core's flag, so running it does not change the
+        app's state on the same origin. The untracked scratch harness stays for
+        what a machine *can* drive.
 
     *   **4. Input: structure — not started.** The edits that change how many
         blocks there are, and the ones that act on a block with no inline tree.

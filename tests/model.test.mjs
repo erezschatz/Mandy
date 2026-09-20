@@ -80,6 +80,7 @@ export default function run(check) {
     modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled,
     modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt,
     modelIsAtomNode, configureMarkdownParser,
+    modelInlineSplice, modelNormaliseTyped, modelInlineTokens,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -94,7 +95,8 @@ export default function run(check) {
       " modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle," +
       " modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled," +
       " modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt," +
-      " modelIsAtomNode, configureMarkdownParser };",
+      " modelIsAtomNode, configureMarkdownParser," +
+      " modelInlineSplice, modelNormaliseTyped, modelInlineTokens };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -2539,6 +2541,279 @@ export default function run(check) {
     check(
       "and a price is still prose, outside any wrapper",
       md.render("costs $5 and $10\n").indexOf("data-math") === -1,
+    );
+  }
+
+
+  // ---- Stage 2, slice 3: editing the inline tree -------------------------
+  //
+  // Stage 1 only ever read this tree, so everything below is new ground. The
+  // contract a mutation keeps is modelInlineSource's: a leaf emits
+  // `raw ?? <rebuilt from content>`, so an edit sets content and clears raw and
+  // nothing else has to be kept in step. These checks are the emitter's output
+  // rather than the tree's shape wherever they can be, because the tree is a
+  // means and the bytes are the product.
+
+  {
+    // The whole point, in one line: edit a paragraph, get that paragraph back.
+    const doc = parse("a **bold** c\n");
+    const block = doc.blocks[0];
+    const offset = modelInlineSplice(block, 6, 6, "X");
+    check(
+      `typing at the end of a mark goes inside it (${JSON.stringify(modelEmitLeaf(block, md, doc))})`,
+      modelEmitLeaf(block, md, doc) === "a **boldX** c" && offset === 7,
+    );
+  }
+  {
+    const doc = parse("a **bold** c\n");
+    const block = doc.blocks[0];
+    modelInlineSplice(block, 2, 2, "X");
+    check(
+      `and typing at its start stays outside (${JSON.stringify(modelEmitLeaf(block, md, doc))})`,
+      modelEmitLeaf(block, md, doc) === "a X**bold** c",
+    );
+  }
+  {
+    // The rule is stage 1's boundary rule reused rather than restated: a
+    // position belongs to the node that *ends* there. Said out loud, because
+    // the plan called this the question the read side never asked and it turns
+    // out the read side had already answered it.
+    const doc = parse("a **bold** c\n");
+    const inside = modelInlineAt(doc.blocks[0].inlines, 6);
+    const outside = modelInlineAt(doc.blocks[0].inlines, 2);
+    check(
+      "which is modelInlineAt's boundary rule and not a second decision",
+      inside.path.length === 1 && inside.path[0].kind === "strong" && outside.path.length === 0,
+    );
+  }
+
+  {
+    // Deleting inside one leaf, across two, and a whole mark away.
+    const one = parse("hello world\n").blocks[0];
+    modelInlineSplice(one, 5, 11, "");
+    check(`a range inside one leaf (${JSON.stringify(modelEmitLeaf(one, md, null))})`,
+      modelEmitLeaf(one, md, null) === "hello");
+
+    const across = parse("a **bold** c\n").blocks[0];
+    modelInlineSplice(across, 1, 7, "");
+    check(`a range across two leaves and a mark (${JSON.stringify(modelEmitLeaf(across, md, null))})`,
+      modelEmitLeaf(across, md, null) === "ac");
+
+    const whole = parse("a **bold** c\n").blocks[0];
+    modelInlineSplice(whole, 2, 6, "");
+    check(
+      `emptying a mark removes it rather than leaving \`****\` (${JSON.stringify(modelEmitLeaf(whole, md, null))})`,
+      modelEmitLeaf(whole, md, null) === "a  c",
+    );
+
+    const nested = parse("a ***x*** b\n").blocks[0];
+    modelInlineSplice(nested, 2, 3, "");
+    check(
+      `and emptying nested marks removes both (${JSON.stringify(modelEmitLeaf(nested, md, null))})`,
+      modelEmitLeaf(nested, md, null) === "a  b",
+    );
+  }
+
+  {
+    // An atom is one character, so a range either covers it whole or not at
+    // all. That is the offset space paying for itself: there is no partial
+    // overlap to have to define.
+    const img = parse("a ![alt](i.png) b\n").blocks[0];
+    check("an image is one character to the splice", modelInlineText(img.inlines) === "a ￼ b");
+    modelInlineSplice(img, 2, 3, "");
+    check(`deleting over an image removes it whole (${JSON.stringify(modelEmitLeaf(img, md, null))})`,
+      modelEmitLeaf(img, md, null) === "a  b");
+
+    const eq = parse("a $x = b*c$ d\n").blocks[0];
+    modelInlineSplice(eq, 2, 3, "");
+    check(`and over an equation, the same (${JSON.stringify(modelEmitLeaf(eq, md, null))})`,
+      modelEmitLeaf(eq, md, null) === "a  d");
+
+    const beside = parse("a ![alt](i.png) b\n").blocks[0];
+    modelInlineSplice(beside, 3, 3, "X");
+    check(
+      `typing beside an atom lands beside it, not inside (${JSON.stringify(modelEmitLeaf(beside, md, null))})`,
+      modelEmitLeaf(beside, md, null) === "a ![alt](i.png)X b",
+    );
+  }
+
+  {
+    // A code span's content counts and its backticks do not, so typing inside
+    // one stays inside it -- and the emitter writes content raw, not escaped.
+    const code = parse("a `x*y` b\n").blocks[0];
+    modelInlineSplice(code, 4, 4, "*");
+    check(`typing inside a code span stays inside it (${JSON.stringify(modelEmitLeaf(code, md, null))})`,
+      modelEmitLeaf(code, md, null) === "a `x**y` b");
+  }
+
+  {
+    // An empty block is the tree the fold leaves behind, and typing into it has
+    // to make the leaf the parser never produced.
+    const empty = parse("#\n").blocks[0];
+    check("an empty heading's tree is empty rather than absent",
+      Array.isArray(empty.inlines) && empty.inlines.length === 0);
+    const offset = modelInlineSplice(empty, 0, 0, "Title");
+    check(`typing into it produces a leaf (${JSON.stringify(modelEmitLeaf(empty, md, null))})`,
+      modelEmitLeaf(empty, md, null) === "# Title" && offset === 5);
+
+    // The find behind that space, and the property that actually matters.
+    // markdown-it records an empty ATX heading's opener as `#` with nothing
+    // after it, because nothing followed it -- so re-emitting with content gave
+    // `#Title`, which CommonMark reads as a **paragraph**. Silent: the document
+    // looks right on screen and the file has stopped holding a heading. So what
+    // is asserted is not the bytes but that they still parse as what they were.
+    const reparsed = md.parse(modelEmitLeaf(empty, md, null), {})[0];
+    check(
+      `and what it writes still parses as the heading it was (${reparsed.type} ${reparsed.tag})`,
+      reparsed.type === "heading_open" && reparsed.tag === "h1",
+    );
+
+    // Both directions of the same rule: the separator is supplied when content
+    // needs one and taken back when the content goes away.
+    const emptied = parse("## Title\n").blocks[0];
+    modelInlineSplice(emptied, 0, 5, "");
+    const back = modelEmitLeaf(emptied, md, null);
+    check(
+      `emptying a heading does not leave the separator behind (${JSON.stringify(back)})`,
+      back === "##" && md.parse(back, {})[0].tag === "h2",
+    );
+
+    // A setext heading's marker is underneath, so it never wants one.
+    const setext = parse("Title\n=====\n").blocks[0];
+    modelInlineSplice(setext, 5, 5, "!");
+    check(
+      `a setext heading is untouched by the rule (${JSON.stringify(modelEmitLeaf(setext, md, null))})`,
+      modelEmitLeaf(setext, md, null) === "Title!\n=====",
+    );
+  }
+
+  {
+    // raw is cleared, so the emitter escapes what the model now holds rather
+    // than handing back bytes that no longer describe it. The pair is the
+    // point: an untouched neighbour keeps its own bytes.
+    const doc = parse("plain text\n");
+    const block = doc.blocks[0];
+    modelInlineSplice(block, 5, 5, " *not emphasis*");
+    const out = modelEmitLeaf(block, md, doc);
+    check(
+      `an edit re-escapes what it wrote (${JSON.stringify(out)})`,
+      out.includes("\\*") && modelSerialise(doc, () => out).includes(out),
+    );
+  }
+
+  {
+    // U+00A0 at the boundary, once. TODO 1.4 closed by construction.
+    check("a typed NBSP is normalised", modelNormaliseTyped("a b") === "a b");
+    const block = parse("ab\n").blocks[0];
+    modelInlineSplice(block, 1, 1, " ");
+    check(`and never reaches the tree (${JSON.stringify(modelInlineText(block.inlines))})`,
+      modelInlineText(block.inlines) === "a b");
+  }
+
+  {
+    // A block whose content is source has no inline tree, and the splice says
+    // so with a null rather than a 0 -- a caller has to refuse, not carry on.
+    const fence = parse("```\nbody\n```\n").blocks[0];
+    check(`a fence refuses rather than returning an offset (${fence.kind})`,
+      modelInlineSplice(fence, 0, 0, "x") === null);
+    const table = parse("| a |\n| --- |\n| 1 |\n").blocks[0];
+    const row = table.children[0].children[0];
+    check(`and so does a table row (${row.kind})`, modelInlineSplice(row, 0, 0, "x") === null);
+  }
+
+  {
+    // And the thing every edit owes D1: the block is touched, its ancestors
+    // with it, and no sibling is re-serialised.
+    const doc = parse("- one\n- two\n- three\n");
+    const list = doc.blocks[0];
+    const second = list.children[1].children[0];
+    modelInlineSplice(second, 3, 3, "!");
+    const emitted = [];
+    const out = modelSerialise(doc, (b) => { emitted.push(b.kind); return modelEmitLeaf(b, md, doc); });
+    check(
+      `editing one item rewrites exactly it (${JSON.stringify(out)}, ${emitted.length} emitter call)`,
+      out === "- one\n- two!\n- three\n" && emitted.length === 1,
+    );
+    check("and the chain above it is cleared", list.source === null && list.children[1].source === null);
+    check("while its siblings keep their own bytes",
+      list.children[0].source === "- one" && list.children[2].source === "- three");
+  }
+
+
+  // The unfold, which is what makes an edited block render at all. Found by the
+  // check page's divergence line on the first character ever typed into the
+  // model core: modelRenderBlock goes through markdown-it's renderer over the
+  // block's *tokens*, an edit changes the *tree*, and nothing put the two back
+  // in step -- so the model held the new text and the DOM went on showing the
+  // old one. The property is that unfolding an untouched tree gives the parser
+  // its own tokens back, which is the fold run backwards.
+  {
+    let checked = 0;
+    const wrong = [];
+    for (const path of ORACLE_FILES) {
+      for (const block of leavesOf(parse(repoFile(path)))) {
+        if (!block.inlines || !block.inline) continue;
+        const want = block.inline.children.filter((t) => !(t.type === "text" && t.content === ""));
+        const got = modelInlineTokens(block.inlines);
+        checked += 1;
+        if (got.length !== want.length) { wrong.push(`${path} ${block.kind}#${block.id} ${got.length}≠${want.length}`); continue; }
+        for (let i = 0; i < want.length; i++) {
+          if (got[i].type !== want[i].type || got[i].content !== want[i].content) {
+            wrong.push(`${path} ${block.kind}#${block.id} @${i} ${got[i].type}≠${want[i].type}`);
+            break;
+          }
+        }
+      }
+    }
+    check(
+      `unfolding an untouched tree gives back the parser's own tokens (${checked} blocks)` +
+        (wrong.length ? ` — ${wrong.length} did not: ${wrong.slice(0, 3).join(", ")}` : ""),
+      checked > 400 && wrong.length === 0,
+    );
+
+    // And after an edit the token list carries the edit, which is the half the
+    // renderer reads.
+    const doc = parse("a **bold** c\n");
+    const block = doc.blocks[0];
+    modelInlineSplice(block, 6, 6, "X");
+    const contents = block.inline.children.map((t) => t.content).filter((c) => c);
+    check(
+      `an edited block's tokens carry the edit (${JSON.stringify(contents)})`,
+      contents.includes("boldX") && block.inline.children.some((t) => t.type === "strong_open") &&
+        block.inline.children.some((t) => t.type === "strong_close"),
+    );
+  }
+
+  // A range endpoint a browser normalised into the middle of an atom. Measured
+  // on the check page: selecting an equation and typing over it handed the
+  // handler a range whose end was inside the span, which clamped to the atom's
+  // front edge and collapsed the range -- so the equation was not replaced, and
+  // the typing landed beside it instead.
+  {
+    const el = (tag, kids, attrs = {}) => {
+      const node = makeEl(tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      for (const kid of kids) node.appendChild(kid);
+      return node;
+    };
+    const inner = makeText("$x = a*b*c$");
+    const math = el("span", [inner], { "data-math": "" });
+    const para = el("p", [makeText("a "), math, makeText(" b")]);
+    check(
+      `an endpoint inside an atom clamps to its start when asked for a start (${modelDomOffset(para, inner, 5, -1)})`,
+      modelDomOffset(para, inner, 5, -1) === 2,
+    );
+    check(
+      `and to its end when asked for an end (${modelDomOffset(para, inner, 5, 1)})`,
+      modelDomOffset(para, inner, 5, 1) === 3,
+    );
+    check(
+      "so a range over an atom stays a range rather than collapsing",
+      modelDomOffset(para, inner, 0, -1) !== modelDomOffset(para, inner, 11, 1),
+    );
+    check(
+      "and the default is the start, which is what a caret wants",
+      modelDomOffset(para, inner, 5) === 2,
     );
   }
 

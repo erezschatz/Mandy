@@ -17,6 +17,7 @@ const SUITES = [
   ["undo", "./undo.test.mjs"],
   ["execcommand", "./execcommand.test.mjs"],
   ["model", "./model.test.mjs"],
+  ["model-input", "./model-input.test.mjs"],
 ];
 
 let passed = 0;

@@ -298,7 +298,12 @@ function modelInlines(block, md) {
       // popping the root would strand everything after it outside the tree —
       // so the guard drops the token rather than the rest of the block.
       const open = opens[opens.length - 1];
-      if (open) pos = modelCloseInline(open, content, pos, md);
+      // Kept, not discarded, since slice 3: rendering an edited block means
+      // handing markdown-it's renderer a token list built back out of this
+      // tree, and a mark needs the close the parser wrote rather than one this
+      // file invented. It carries nothing an open did not, which is why it was
+      // dropped before there was anything to hand it to.
+      if (open) { open.closeToken = token; pos = modelCloseInline(open, content, pos, md); }
       if (stack.length > 1) { stack.pop(); opens.pop(); }
       continue;
     }
@@ -308,6 +313,7 @@ function modelInlines(block, md) {
       markup: token.markup,
       content: token.content,
       token,
+      closeToken: null,   // a mark only, filled when its close arrives
       children: null,
     };
     stack[stack.length - 1].push(node);
@@ -1560,7 +1566,22 @@ function modelEmitLeaf(block, md, doc, width = 0) {
   if (block.kind === "heading") {
     if (!block.headingShape) throw new Error("edited heading with no recorded shape");
     const { open, close, underline } = block.headingShape;
-    content = underline === null ? open + content + close : open + content + "\n" + underline;
+    // **The one place a recorded spelling is not enough on its own.** An ATX
+    // heading's `open` is the hashes plus whatever followed them, and an *empty*
+    // heading is written `#` with nothing after it — so re-emitting it with
+    // content gives `#Title`, which CommonMark reads as a paragraph, not a
+    // heading. Found by the suite on 2026-09-20, and it is a silent one: the
+    // document looks right on screen and the file has stopped holding a
+    // heading. So the separator is supplied when content needs one and the
+    // recorded bytes do not have it, and taken back off when the content goes
+    // away again, which is the same rule read in both directions. Never for a
+    // setext heading, whose `open` is an indent and whose marker is underneath.
+    const atx = underline === null && /#$/.test(open);
+    const opened = atx && content ? open + " " : open;
+    const closed = atx && !content ? close.replace(/^[ \t]+/, "") : close;
+    content = underline === null
+      ? (content ? opened + content + closed : (opened + closed).replace(/[ \t]+$/, ""))
+      : open + content + "\n" + underline;
     item = null;
   }
 
@@ -2180,15 +2201,23 @@ function modelDomText(node) {
  * A DOM position inside `root`, as an offset into `modelDomText(root)`.
  *
  * `undoTextOffset` with two additions: an atom counts one and is not descended
- * into, and a position *inside* an atom answers with the atom's own start
- * rather than with something from within it — a caret cannot meaningfully be
- * half-way through an equation, and the alternative is an offset the model has
- * no position for.
+ * into, and a position *inside* an atom is not a position the model has, so it
+ * clamps to one of the atom's own edges.
+ *
+ * **Which edge is `bias`, and it is not a detail.** An equation renders as a
+ * span with text or MathJax markup inside it, and a browser normalising a
+ * selection will happily put an endpoint in there — so a user who selects an
+ * equation and types over it hands us a range whose *end* is inside the atom.
+ * Clamp that to the atom's start, as the start of a range rightly clamps, and
+ * the range comes back collapsed: measured 2026-09-20 on the check page, where
+ * typing over a selected equation inserted beside it and left it standing.
+ * So a start biases to the atom's start and an end to its end, and a selection
+ * covering an atom goes on covering it.
  *
  * Null when the node is not under `root`, the way `undoTextOffset` does it, so
  * a caller holding a stale node hears about it instead of being handed a 0.
  */
-function modelDomOffset(root, node, offset) {
+function modelDomOffset(root, node, offset, bias = -1) {
   let total = 0;
   let found = false;
 
@@ -2209,9 +2238,11 @@ function modelDomOffset(root, node, offset) {
       return;
     }
     if (modelIsAtomNode(current)) {
-      // A position under an atom is the atom's, and the walk stops looking: a
-      // caret inside MathJax's own markup is not a place the model can name.
+      // A position under an atom is not one the model can name — a caret is
+      // never half-way through an equation — so it clamps to whichever edge
+      // the caller is asking about.
       if (current.contains(node)) {
+        if (bias > 0) total += 1;
         found = true;
         return;
       }
@@ -2346,7 +2377,7 @@ function modelDomPosition(root, block, offset) {
  * Null when the position is not inside any block the document owns, which is a
  * caller's problem to handle rather than this one's to paper over.
  */
-function modelDomBlockAt(root, doc, node, offset) {
+function modelDomBlockAt(root, doc, node, offset, bias = -1) {
   let el = node.nodeType === 1 ? node : node.parentNode;
   while (el && el !== root && !el.hasAttribute(MODEL_BLOCK_ATTR)) el = el.parentNode;
   if (!el || el === root || !el.hasAttribute(MODEL_BLOCK_ATTR)) return null;
@@ -2362,7 +2393,7 @@ function modelDomBlockAt(root, doc, node, offset) {
   })(doc.blocks);
   if (!block) return null;
 
-  let remaining = modelDomOffset(el, node, offset);
+  let remaining = modelDomOffset(el, node, offset, bias);
   if (remaining === null) return null;
 
   while (block.children) {
@@ -2405,9 +2436,203 @@ function modelReadSelection(root, doc) {
   if (!live || !live.rangeCount) return null;
   const range = live.getRangeAt(0);
   if (!root.contains(range.startContainer)) return null;
-  const from = modelDomBlockAt(root, doc, range.startContainer, range.startOffset);
+  const from = modelDomBlockAt(root, doc, range.startContainer, range.startOffset, -1);
   if (!from) return null;
   if (range.collapsed) return from;
-  const to = modelDomBlockAt(root, doc, range.endContainer, range.endOffset);
+  const to = modelDomBlockAt(root, doc, range.endContainer, range.endOffset, 1);
   return to ? { ...from, to } : from;
+}
+
+// ── Editing the inline tree ──────────────────────────────────────────────────
+//
+// Stage 2's slice 3, and the plan is right that it is the real work: stage 1
+// only ever *read* this tree. It can be walked, measured, located in and
+// emitted from, and until now there was no way to change it.
+//
+// **The contract a mutation has to keep is already written down, in
+// `modelInlineSource`**: every leaf emits `node.raw ?? <rebuilt from content>`,
+// so `raw` is the author's exact bytes and the fallback is what the model would
+// write itself. An edit therefore sets `content` and **clears `raw`** — which is
+// `modelTouch`'s rule one level down, and means exactly the same thing: these
+// bytes no longer describe this content. Nothing else has to be kept in step,
+// because nothing else is read on the way out.
+
+const MODEL_NBSP = /[ ]/g;
+
+/**
+ * What the model accepts as typed text.
+ *
+ * U+00A0 is normalised **here, once, at the boundary**, which is TODO 1.4
+ * closed by construction rather than by the caret-preserving text-node rewrite
+ * that item describes. The other half of 1.4 goes more quietly still: the
+ * browser rewriting a trailing space to an NBSP behind our back cannot happen
+ * when the browser is not the one writing. D3 in docs/DECISIONS.md is why
+ * whitespace nobody can see is not fidelity worth keeping.
+ */
+function modelNormaliseTyped(text) {
+  return String(text == null ? "" : text).replace(MODEL_NBSP, " ");
+}
+
+// Every leaf in an inline tree with the span it occupies and the array holding
+// it. The array rather than an index, because an index goes stale the moment
+// anything is spliced out and the list is what a splice needs anyway.
+function modelInlineLeafSpans(nodes) {
+  const spans = [];
+  let offset = 0;
+  (function walk(list, path) {
+    for (const node of list) {
+      if (node.children) {
+        walk(node.children, path.concat(node));
+        continue;
+      }
+      const length = modelInlineText([node]).length;
+      spans.push({ node, list, start: offset, end: offset + length, path });
+      offset += length;
+    }
+  })(nodes || [], []);
+  return spans;
+}
+
+// A leaf the model wrote rather than the parser. No token and no `raw`: the
+// emitter escapes `content` itself, which is the whole point of the `??`.
+function modelTextNode(content) {
+  return { kind: "text", content, raw: null, markup: "", children: null, token: null, closeToken: null };
+}
+
+/**
+ * The inline tree back to a token list — `modelInlines`'s fold, run backwards.
+ *
+ * **This is what makes an edited block render.** `modelRenderBlock` goes
+ * through markdown-it's own renderer over the block's tokens, which is the rule
+ * that keeps the output identical to what the app produces today; an edit,
+ * though, changes the *tree*, and until slice 3 nothing put the two back in
+ * step. Found on 2026-09-20 by the check page's own divergence line, on the
+ * first character ever typed into the model core: the model held the new text
+ * and the DOM still showed the old, because the tokens had not moved.
+ *
+ * **Re-parsing was the other candidate and it is worse.** Emitting the block's
+ * inline source and handing it back to `md.parseInline` would keep one source
+ * of truth and needs no code at all — but the source of a reference link is
+ * `[text][label]`, and resolving that needs the whole document's definitions in
+ * the parser's env. Get it wrong, or hand over an empty env, and the first
+ * keystroke in a paragraph turns every reference link in it into literal text.
+ * The tokens are already on the nodes, kept there since slice 2 precisely so
+ * that a link's href and `data-ref-label` never have to be re-derived, so
+ * using them is the cheaper and the safer answer.
+ *
+ * A token is synthesised for exactly the two kinds an edit can change the
+ * content of, and for a leaf the model itself created. Everything else is
+ * handed back the parser's own token untouched — which is the same rule the
+ * tree follows, one layer along.
+ */
+function modelInlineTokens(nodes, out = []) {
+  for (const node of nodes || []) {
+    if (node.children) {
+      if (node.token) out.push(node.token);
+      modelInlineTokens(node.children, out);
+      if (node.closeToken) out.push(node.closeToken);
+      continue;
+    }
+    if (node.kind === "text") out.push({ type: "text", content: node.content });
+    else if (node.kind === "code-span") out.push({ type: "code_inline", content: node.content, markup: node.markup });
+    else if (node.token) out.push(node.token);
+  }
+  return out;
+}
+
+// Drop what an edit emptied: a leaf with no text left, and then any mark whose
+// children have all gone. Leaves rather than marks first, and repeatedly,
+// because emptying the last leaf inside nested marks empties both of them.
+function modelInlinePrune(nodes) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const node = nodes[i];
+    if (node.children) {
+      modelInlinePrune(node.children);
+      if (!node.children.length) nodes.splice(i, 1);
+      continue;
+    }
+    // Only the kinds whose text *is* their content can be emptied. A break and
+    // an atom have no content to lose, and an empty one is not a thing.
+    if ((node.kind === "text" || node.kind === "code-span") && node.content === "") nodes.splice(i, 1);
+  }
+}
+
+/**
+ * Replace `[from, to)` in a block's inline tree with `text`, and hand back the
+ * offset the caret lands on.
+ *
+ * Returns null for a block with no inline tree — a fence, a rule, a table row,
+ * a gap — whose content *is* source and whose second text space is slice 4's.
+ * A caller that gets null has to refuse rather than fall through, which is why
+ * it is a null and not a 0.
+ *
+ * **An atom is all or nothing.** An image and an equation are one character
+ * each, so a range can only cover one whole or not at all — there is no partial
+ * overlap to define, which is the offset space paying for itself.
+ *
+ * **Text typed at a mark's edge goes inside when the caret was inside**, which
+ * was decided on 2026-09-19 and needs no code of its own: `modelInlineAt`'s
+ * boundary rule already says a position belongs to the node that *ends* there,
+ * so the caret after `**bold**` is inside the mark and the one before it is
+ * not. Typing continues the bold in the first case and does not in the second,
+ * which is what every editor people arrive from does. The rule that ships is
+ * the rule stage 1 wrote for the caret, reused rather than restated.
+ */
+function modelInlineSplice(block, from, to, text) {
+  if (!block.inlines) return null;
+  const typed = modelNormaliseTyped(text);
+  const length = modelInlineText(block.inlines).length;
+  const start = Math.max(0, Math.min(from, length));
+  const end = Math.max(start, Math.min(to, length));
+
+  if (start !== end) {
+    // In reverse, so a splice cannot move a span this loop has still to reach.
+    for (const span of modelInlineLeafSpans(block.inlines).reverse()) {
+      if (span.end <= start || span.start >= end) continue;
+      const node = span.node;
+      const covered = span.start >= start && span.end <= end;
+      if (covered || !(node.kind === "text" || node.kind === "code-span")) {
+        const at = span.list.indexOf(node);
+        if (at >= 0) span.list.splice(at, 1);
+        continue;
+      }
+      const head = node.content.slice(0, Math.max(0, start - span.start));
+      const tail = node.content.slice(Math.max(0, end - span.start));
+      node.content = head + tail;
+      node.raw = null;
+    }
+    modelInlinePrune(block.inlines);
+  }
+
+  if (typed) {
+    const at = modelInlineAt(block.inlines, start);
+    const node = at.node;
+    if (node && (node.kind === "text" || node.kind === "code-span")) {
+      node.content = node.content.slice(0, at.offset) + typed + node.content.slice(at.offset);
+      node.raw = null;
+    } else if (node) {
+      // A break or an atom: there is no content to land in, so a new leaf goes
+      // beside it, in the list that holds it so it carries the same marks.
+      const span = modelInlineLeafSpans(block.inlines).find((candidate) => candidate.node === node);
+      const list = span ? span.list : block.inlines;
+      const index = list.indexOf(node);
+      list.splice(index < 0 ? list.length : index + (at.offset > 0 ? 1 : 0), 0, modelTextNode(typed));
+    } else {
+      // An empty block. The tree is the empty array the fold leaves behind.
+      block.inlines.push(modelTextNode(typed));
+    }
+  }
+
+  // The tokens the renderer walks, rebuilt from the tree it does not. Without
+  // this the model changes and the DOM does not, which is the one failure the
+  // render verify exists to catch — and did, on the first keystroke.
+  //
+  // `block.inline.content` is deliberately left alone: it is the parser's
+  // record of what it was handed, read at parse time by the fold and by the
+  // affix checks and by nothing afterwards. `modelEmitLeaf` composes from the
+  // tree, not from it.
+  if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
+
+  modelTouch(block);
+  return start + typed.length;
 }
