@@ -6459,7 +6459,7 @@ The check page's own step says all three answers now, and asks which you get.
 No code changed, so nothing ran; `npm test` was green at 1,443 checks before
 it, which is the tree this was written against.
 
-## 2026-09-21 — All three engines pass slice 4's protocol
+## 2026-09-21 — `cc62974` — All three engines pass slice 4's protocol
 
 Safari closed it out. Both of the bugs the hand runs found — the hard break the
 renderer dropped and the bullet's trailing space the DOM builder's `trim()` ate
