@@ -566,7 +566,7 @@ async function openFileBody(filePath) {
     return false;
   }
 
-  editor.innerHTML = markdownToHtml(data.content);
+  loadDocumentMarkdown(data.content);
   await renderMermaidDiagrams(editor);
   await renderLatex(editor);
   localStorage.setItem(documentKey("content"), editor.innerHTML);

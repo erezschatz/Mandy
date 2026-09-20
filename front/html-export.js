@@ -93,6 +93,7 @@ onToolbarAction("export-editable", async () => {
     "/lazy-load.js",
     "/markdown-parser.js",
     "/markdown-style.js",
+    "/model.js",
     "/app.js",
     "/undo.js",
     "/execcommand.js",

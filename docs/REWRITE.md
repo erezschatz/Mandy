@@ -1728,9 +1728,11 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             **`model.js` now calls into `markdown-style.js`**, for
             `wrapMarkdownLine` and `hasMathSpan`, rather than carrying a second
             copy of either. That is a real load-order dependency the three
-            registries have to honour when the model joins them at stage 4 — it
-            follows `markdown-style.js` the way `undo.js` follows `app.js` — and
-            the `model` suite loads the two together for the same reason.
+            registries have to honour, and they do as of stage 2's slice 1 — the
+            model follows `markdown-style.js` the way `undo.js` follows
+            `app.js`. The `model` suite loads the two together for the same
+            reason, which is what pinned the order before there was a bundle to
+            pin it in.
 
             Six checks in `model` and three in `save-fidelity`, with each of the
             six ways the composition can be wrong broken on purpose first and
@@ -1832,13 +1834,17 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     reach the inline structure of anything beyond slice 2's tree. Before 1b it
     did not edit inside a list or a quote either — those were one block each,
     holding their source and their token subtree, and 1b is exactly the slice that stops that being true.
-    Nothing in `front/` loads `model.js` yet, because until the model can render
-    and be edited there is nothing for the app to call — it joins the three
-    registries at stage 4. That is how far the model has got and not a rule about
-    what the branch may touch: **D7 in [DECISIONS.md](DECISIONS.md)** is there
-    because this sentence used to claim the second thing, and slice 2 opens by
-    moving two rules out of `app.js` on the strength of it.
-*   **2. Core to parity — not started; planned 2026-09-18.** Not a merge point,
+    Nothing in `front/` loaded `model.js` through the whole of this stage,
+    because until the model could render there was nothing for the app to call.
+    **That ended with stage 2's slice 1**, on 2026-09-20, which put it in all
+    three registries — earlier than this line used to predict, and the reason is
+    in that slice's preamble. It was always how far the model had got rather
+    than a rule about what the branch may touch: **D7 in
+    [DECISIONS.md](DECISIONS.md)** is there because this sentence used to claim
+    the second thing, and slice 2 opens by moving two rules out of `app.js` on
+    the strength of it.
+*   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
+    Slice 1 of seven is done and tested. Not a merge point,
     and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
@@ -1910,7 +1916,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     Seven slices. The order is forced — each is unusable without the one before
     it — and the first four are where the estimate's risk is:
 
-    *   **1. Render — not started.** `modelRender(doc)` builds `#editor`'s
+    *   **1. Render — done and tested, 2026-09-20.** `modelRender(doc)` builds `#editor`'s
         children; `modelRenderBlock(block)` builds one subtree. Both go through
         **markdown-it's own renderer over the block's tokens**
         (`md.renderer.render`), never a hand-written HTML emitter. Two reasons,
@@ -2003,6 +2009,115 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         `.mermaid-source` feed the two Turndown rules on the **save** path,
         which is still the old core's until stage 4, so rendering leaves both
         alone and `renderers.js` is untouched here.
+
+        **Seven things were measured before the work started, and five of them
+        changed the slice above.** The order this repo asks for; they are
+        written here rather than only in the commit so the plan and the code
+        say the same thing.
+
+        1.  **A block is handed the token that precedes it**, which the design
+            above does not mention and which the check fails without. Rendered
+            from its own token slice alone, every block in five of the six
+            oracle files concatenates to `md.render(file)` exactly —
+            `torture.md` does not. markdown-it opens a block-level tag on a new
+            line when the token *before* it is a hidden one, which is the tight
+            list item `<li>Walk the transect.\n<ol>`, and a slice starting at
+            its own open token cannot see that. So `hiddenBefore` is recorded at
+            parse and prepended when the block is rendered: a hidden token
+            renders to `""` by markdown-it's own rule, so it supplies the
+            context and emits nothing, and **no rule of markdown-it's is
+            re-derived here**. With it, all six match.
+
+        2.  **The filler's mark goes on the `<br>`, not on the `<p>`.** The
+            decision above spells it `<p data-filler><br></p>`, and slice 2
+            asks for `isFillerBreak(node)` to tell apart the two `<br>`s in
+            `<p>foo<br><br></p>` — one a break, one a filler. A mark on the
+            parent cannot answer that, because the parent holds both. So it is
+            `<p><br data-filler></p>`, and the predicate slice 2 wants is the
+            one thing that can read it.
+
+        3.  **The filler belongs to the DOM builder, not to the string
+            renderer** — which is what keeps the check exact rather than
+            approximate. `md.render("#\n")` is `<h1></h1>`: an empty block is
+            *parseable*, not only editable. A string renderer that emitted
+            fillers would therefore diverge from `md.render(file)` on any file
+            holding a bare `#`, and the equality check is this slice's whole
+            instrument. So the string renderer is markdown-it's output and
+            nothing else, and the DOM builder puts a filler where a block would
+            otherwise have no caret to offer. A document with no blocks at all
+            gets one filler paragraph belonging to no block, which is the empty
+            editor; whether deleting everything should instead leave the model
+            holding an empty paragraph block is slice 4's, where there is an
+            edit to decide it from.
+
+        4.  **A block owns an element only when its rendering is exactly one
+            element**, whitespace aside, and that is not always. markdown-it
+            hides a tight list item's paragraph, so it renders to bare text
+            with no element of its own — nothing to stamp `data-block` on and
+            nothing to replace. The rule that falls out: **the re-render unit
+            is the nearest ancestor that owns an element**, which for a tight
+            paragraph is its `<li>`. Cheap, since an item is small, and it is
+            not a heuristic — replacing a block's element with the block's
+            rendering is correct exactly when that rendering *is* the element.
+
+        5.  **The verify assertion covers atom-free blocks this slice**, and
+            the reason is a finding for slice 2 rather than for this one.
+            `markdown-parser.js`'s `math` rule re-emits the source verbatim, so
+            until MathJax has run an equation is bare text in the DOM — `$x$`,
+            indistinguishable from prose — while the model holds one `\uFFFC`.
+            An image is an element and can be recognised; un-typeset maths
+            cannot. So the assertion skips a block whose tree holds an atom and
+            says how many it skipped, rather than reporting a divergence it
+            cannot interpret. **Slice 2 inherits the sharp end of this**: its
+            offset space says an equation is one character, which is true of
+            MathJax's output and false of the text standing in for it before
+            MathJax runs — so the DOM walk and the model disagree by the length
+            of the TeX for exactly as long as typesetting takes. That is a
+            question to answer there, not a gap to find later.
+
+        6.  **The outline's fingerprint is gated on the legacy core rather
+            than removed**, which is the paragraph above amended. Removing it
+            now regresses the branch's own default path: the flag is off, the
+            old core still swaps documents through `editor.innerHTML`, and the
+            fingerprint is still the only signal it has. **The property is
+            immediacy** — a document arriving redraws the sidebar at once,
+            whichever core produced it — and the mechanism is free to differ
+            per core, so `modelRender` says so directly and the inference
+            survives exactly as long as the core that needs it. It goes at
+            stage 4 with `editor.innerHTML`. The four `outline` checks are
+            rewritten to the property rather than to the record shape, which is
+            what they should have asserted all along.
+
+        7.  **The browser half is measured by a scratch page, not by a check
+            page**, and no route is added to `server.ts`. What this slice needs
+            watched is our own code in a real DOM — the block-to-element map at
+            depth, the filler, the verify — which is a harness. A check page
+            measures *the browser*, which is what makes `paste-check` and
+            `tab-shortcut-check` worth keeping and what slice 3's input page
+            will be. So the harness is `front/render-scratch.html`, untracked,
+            served by the static handler that already serves `front/` and
+            same-origin with `/model.js`, which is the only thing the `/tests/`
+            route was ever buying. It is deleted when the stage is. Noted
+            while measuring this: the three pages that *do* need `CHECK_PAGES`
+            are the three stage 4 deletes, so `CHECK_PAGES` and `/report` can
+            go with them and `server.ts` goes back to being a file server.
+
+        **Two more things this slice does, both consequences of the preamble's
+        decisions rather than of the design.** The stored-HTML conversion runs
+        the **whole** of `htmlToMarkdown` rather than a bare Turndown pass: the
+        preamble says "through Turndown", and a bare pass would hand the model
+        a document rewritten in Turndown's house style, where the app's own
+        conversion is style-aware and restores unedited blocks from
+        `markdownSource`. It is the same call the save path makes, so it is
+        exercised rather than invented. And `adoptActive` in `tabs.js` changes
+        by **one line** — the content load goes through the shared loader —
+        which is what the preamble's "this stage does not touch it" means:
+        no model bundle on the tab record, since a switch re-parses.
+
+        **One thing to know while running with the flag on**: `data-block`
+        reaches both exports, since they read the live DOM and stripping it is
+        stage 4's export work. Nothing produces it with the flag off, which is
+        the default.
 
     *   **2. Selection — not started.** `(block, offset)` to a DOM `Range` and
         back, over one block's subtree. Slice 2 of stage 1 built the model half

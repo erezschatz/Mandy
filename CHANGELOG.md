@@ -5717,3 +5717,123 @@ belongs to stage 2: Enter in a table cell, and whether the tab switch lock comes
 off at stage 4. Nothing else is open before slice 1 can start.
 
 No code changed, so nothing ran.
+
+## 2026-09-20 — Stage 2, slice 1: the model renders
+
+TODO 3.1's stage 2 starts. The model can draw itself: `modelRenderBlock` is a
+block's HTML out of markdown-it's own renderer, `modelRenderDocument` is the
+document's, `modelRender` builds `#editor`'s children from them, and
+`modelRerenderBlock` replaces one subtree. `model.js` joined all three
+registries — `index.html`, `sw.js`'s `SHELL_ASSETS` (`VERSION` to `v1.33`) and
+`html-export.js`'s `ASSETS` — because for the editor to draw from the model the
+app has to load the model.
+
+**Loading it is not running it.** `modelCoreEnabled()` is off until the stage 4
+merge; `?core=model` and `?core=legacy` set it and it sticks. With it off the
+editor is byte-for-byte the one that shipped yesterday. With it on the model
+renders and the save path is *still* the old core's — `file-api.js` reads
+`editor.innerHTML`, Turndown serialises it, `restoreSourceWrapping` runs — which
+is the split stage 2 was planned around: the model owns editing, the file
+belongs to the old core until stage 4.
+
+Seven things measured before the work started, five of which changed the plan.
+They are in [docs/REWRITE.md](docs/REWRITE.md)'s slice 1, written there before
+any of this was built; the three worth repeating here:
+
+**A block is rendered with the token that precedes it.** Rendered from its own
+token slice alone, every block in five of the six oracle files concatenates to
+`md.render` of that file — and `torture.md` does not. markdown-it opens a
+block-level tag on a new line when the token before it is hidden, which is the
+tight list item `<li>Walk the transect.\n<ol>`, and a slice starting at its own
+open token cannot see that. So `hiddenBefore` is recorded at parse and
+prepended: a hidden token renders to the empty string by markdown-it's own rule,
+so it supplies the context and emits nothing, and no rule of markdown-it's is
+re-derived. With it, all six match, and that equality is the slice's instrument.
+
+**The filler's mark goes on the `<br>`, not the `<p>`.** The plan spelled it
+`<p data-filler><br></p>`, and slice 2 needs `isFillerBreak(node)` to tell apart
+the two `<br>`s in `<p>foo<br><br></p>` — one a break, one a filler — which a
+mark on the parent cannot do. It is also the DOM builder's rather than the
+renderer's, because `md.render("#\n")` is `<h1></h1>`: an empty block is
+parseable and not only editable, so a renderer that filled one in would diverge
+from `md.render` on any file holding a bare `#`.
+
+**A block owns an element only when its rendering is exactly one.** markdown-it
+hides a tight list item's paragraph, so it renders to bare text with nothing to
+stamp `data-block` on — and the re-render unit is therefore the nearest ancestor
+that does own an element, which for such a paragraph is its `<li>`. Not a
+heuristic: replacing an element with a block's rendering is correct exactly when
+that rendering *is* the element.
+
+Blocks are built one at a time into their real parent rather than as one string
+assigned to `#editor`, which is what makes the block-to-element map fall out
+instead of having to be reconstructed, and gets the fragment parsing context
+right for free — an `<li>` goes into its `<ul>` and a `<tr>` into its `<tbody>`,
+where the same markup parsed detached would be thrown away. Measured on a
+2,399-line document of 1,325 blocks: 16.8ms against 13.4ms for one `innerHTML`.
+
+**The outline's property is immediacy, and the mechanism is now per core.**
+`scheduleOutline` skipped its one-second debounce on a `childList` record
+targeting `#editor`, which is an `editor.innerHTML` assignment's fingerprint —
+and from slice 4 is also what every top-level Enter produces, so the commonest
+structural keystroke there is would rebuild the whole sidebar synchronously. So
+`modelRender` calls `renderOutline` itself and the fingerprint is skipped
+whenever `modelCoreEnabled()`. The plan removed the fingerprint outright; that
+would have regressed the branch's own default path, where the old core is still
+swapping documents and the record is the only signal there is. It goes at stage
+4 with `editor.innerHTML`. The four `outline` checks pinned to the record shape
+are rewritten to the property and now drive both cores.
+
+**Seven routes into the document became three doors.** `loadDocumentMarkdown`,
+`loadDocumentHtml` and `loadBlankDocument` in `app.js`, each one branch on the
+flag, so Open, Reload, welcome, upload, New, the boot restore and a tab adopt
+pick a core in one place rather than seven. The `undo` suite's count of
+`editor.innerHTML` assignment sites goes from 5/1/1 to **3/0/0** — the zeroes
+being assertions rather than absences. The two HTML routes convert with the
+whole of `htmlToMarkdown` rather than a bare Turndown pass, which is the same
+call the save path already makes: style-aware, and restoring unedited blocks
+from `markdownSource`, where a bare pass would hand the model a document
+rewritten in Turndown's house style. `tabs.js` changed by one line, plus moving
+the markdown-style adopt above the content — the one adopt in `adoptActive` with
+no ordering constraint of its own. Content before undo and undo before file are
+untouched.
+
+`isBlankContent` learnt to strip `data-block` and `data-filler` before
+comparing, since a blank document has to read blank whichever core drew it;
+`beforeunload`'s open-coded copy of the same four comparisons was replaced by a
+call to it, which is how that bug would otherwise have shipped twice.
+
+**How it was verified.** The Deno suite covers the string half and nothing else:
+`tests/dom.mjs` has no HTML parser, so a stub could only agree with whatever it
+was told. Thirteen new checks in `model` — the six-file equality, the tight-list
+newline pinned on its own, a gap rendering to nothing, a container as its own
+tags around its children, unique minted ids, four filler cases and the flag
+reading off outside a browser — and four rewritten in `outline`. 1,272 checks
+pass.
+
+The DOM half was measured in a **scratch harness**, `front/render-scratch.html`,
+which is deliberately untracked and adds no route to `server.ts`: a check page
+measures the *browser* and earns its keep by being re-run when a browser
+changes, and this measures our own code in a real DOM. It lives in `front/` only
+so the static handler that already serves `front/` serves it too, same-origin
+with `/model.js` — which is the only thing the `/tests/` route was ever buying.
+Run with `npm run serve`, then `http://localhost:9130/render-scratch.html`.
+**Green in Chrome 152 on macOS**, on a sample covering every branch and on
+`welcome.md`: the block-to-element map at every depth, `<li>`s and `<tr>`s
+surviving as real elements inside their parents, gaps occupying nothing,
+re-rendering a block twice adding no nodes and putting back identical markup,
+the three filler cases, and the verify quiet throughout. **Gecko and WebKit are
+not measured** — the same page, the same recipe, and nothing here depends on an
+engine the way the execCommand pages did.
+
+`modelVerifyRender` is the spike's step 6 kept as a permanent assertion rather
+than a question that retired: after a render, each block's DOM text against the
+text its tree says it holds. Off by default. It reports what it *compared* as
+well as what it skipped, which was a bug caught while running it — counting only
+skips and failures made a document where everything passed read as a document
+where nothing was checked. It skips a block holding an image or an equation, and
+counts those apart from the blocks owning no element, because the two are
+different news: un-typeset maths is bare text in the DOM while the model holds
+one `￼` for it, and **slice 2 inherits that** — its offset space says an
+equation is one character, which is true of MathJax's output and false of the
+text standing in for it until MathJax has run.

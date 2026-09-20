@@ -15,10 +15,18 @@ import { loadSource, makeEl, makeText, readFront } from "./dom.mjs";
 // Every site that replaces the document has to pick a side: undoReset() to
 // forget the history, or an input event to record the change as undoable.
 // Update this when a site is added or removed, having made that choice.
+// Stage 2's slice 1 funnelled seven of these into three: loadDocumentMarkdown,
+// loadDocumentHtml and loadBlankDocument in app.js, which exist because the
+// model core is behind a flag and the alternative was the same branch written
+// out at every call site. The property is unchanged and the surface is smaller
+// -- a new route into the document now has three doors to pick from rather than
+// seven places to add an eighth. A zero is an assertion too: that file no longer
+// replaces the document itself. Stage 4 takes app.js to zero as well, when the
+// legacy branch inside each door goes.
 const REPLACEMENT_SITES = {
-  "app.js": 5, // new, upload, welcome (x2), restore-from-autosave
-  "file-api.js": 1, // openFile, which reload comes through too
-  "tabs.js": 1, // the tab swap, which picks the third option: park and adopt
+  "app.js": 3, // the three doors; their callers still pick a side
+  "file-api.js": 0, // openFile and reload go through loadDocumentMarkdown
+  "tabs.js": 0, // the tab swap goes through loadDocumentHtml
 };
 
 function harness({ html = "<p>start</p>" } = {}) {
@@ -89,6 +97,8 @@ export default function run(check) {
       `${file}: ${expected} innerHTML assignment(s), all accounted for`,
       found === expected,
     );
+    // Vacuous for a file with none left, and said rather than quietly skipped.
+    if (!expected) continue;
     check(
       `${file}: tells the undo stack about them`,
       /undoReset\(\)/.test(src) || /dispatchEvent\(new Event\("input"/.test(src) ||

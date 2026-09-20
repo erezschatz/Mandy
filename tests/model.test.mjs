@@ -77,6 +77,7 @@ export default function run(check) {
     modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix,
     modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText,
     modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle,
+    modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -88,7 +89,8 @@ export default function run(check) {
     {},
     "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix," +
       " modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText," +
-      " modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle };",
+      " modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle," +
+      " modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -2232,6 +2234,123 @@ export default function run(check) {
       failed.length === 0,
     );
   }
+
+
+  // ---- Stage 2, slice 1: the renderer ------------------------------------
+  //
+  // The half of rendering a suite can see. markdown-it's renderer produces a
+  // string, so the property is string equality and needs no DOM at all: every
+  // block rendered and concatenated is the whole file rendered. Anything that
+  // reaches the DOM — the block-to-element map, the filler, the verify — is
+  // unreachable from here, because tests/dom.mjs has no HTML parser and a stub
+  // could only agree with whatever it was told. front/render-scratch.html is
+  // where that half is watched.
+
+  {
+    const diverged = [];
+    for (const path of ORACLE_FILES) {
+      const src = repoFile(path);
+      const want = md.render(src);
+      const got = modelRenderDocument(parse(src), md);
+      if (got === want) continue;
+      const at = [...want].findIndex((c, i) => c !== got[i]);
+      diverged.push(`${path} at ${at}: ${JSON.stringify(want.slice(at, at + 40))} vs ${JSON.stringify(got.slice(at, at + 40))}`);
+    }
+    check(
+      `every block rendered and concatenated is md.render of the file (${ORACLE_FILES.length} files)` +
+        (diverged.length ? ` — ${diverged.join("; ")}` : ""),
+      diverged.length === 0,
+    );
+  }
+
+  // The case that makes the check above worth running, and the one it failed
+  // before `hiddenBefore` existed: markdown-it opens a block-level tag on a new
+  // line when the token before it is hidden, which is what a tight list item
+  // holding a nested list is. A block rendered from its own token slice cannot
+  // see that, so this is pinned on its own rather than left to be one
+  // character inside a 200KB comparison.
+  {
+    const src = "- Walk the transect.\n  1. Record at ten metres.\n";
+    const doc = parse(src);
+    const nested = doc.blocks[0].children[0].children[1];
+    check(
+      `a nested list inside a tight item carries markdown-it's leading newline (${JSON.stringify(modelRenderBlock(nested, md).slice(0, 5))})`,
+      nested.kind === "list" && modelRenderBlock(nested, md).startsWith("\n<ol>"),
+    );
+    check(
+      "and the same list at the top level does not",
+      modelRenderBlock(parse("1. Record at ten metres.\n").blocks[0], md).startsWith("<ol>"),
+    );
+  }
+
+  // A gap renders to nothing and keeps its place in the model, which is why the
+  // block-to-element correspondence cannot be a positional index into
+  // #editor.children. A reference definition is the ordinary case.
+  {
+    const doc = parse("A [link][a].\n\n[a]: https://example.com\n");
+    const gaps = doc.blocks.filter((b) => b.kind === "gap");
+    check(
+      `a reference definition is a block that renders to nothing (${gaps.length} gap, ${JSON.stringify(gaps.map((g) => modelRenderBlock(g, md)))})`,
+      gaps.length === 1 && gaps.every((g) => modelRenderBlock(g, md) === ""),
+    );
+  }
+
+  // An edited container is never re-rendered through the emitter and neither is
+  // an untouched sibling: a container is its open and close with its children
+  // between, so re-rendering one child is exactly that child's string.
+  {
+    const doc = parse("- one\n- two\n- three\n");
+    const items = doc.blocks[0].children;
+    const whole = modelRenderBlock(doc.blocks[0], md);
+    check(
+      `a container renders as its own tags around its children (${items.length} items)`,
+      items.length === 3 &&
+        whole === "<ul>\n" + items.map((i) => modelRenderBlock(i, md)).join("") + "</ul>\n",
+    );
+  }
+
+  // Ids are minted, never reused and never a path. The counter is on the
+  // document so a block the editor creates can take the next one.
+  {
+    const doc = parse(repoFile(CORPUS.todo));
+    const ids = [];
+    const walk = (b) => { ids.push(b.id); if (b.children) b.children.forEach(walk); };
+    doc.blocks.forEach(walk);
+    check(
+      `every block in ${CORPUS.todo} has its own id (${ids.length} blocks, next is ${doc.nextId})`,
+      ids.length > 100 && new Set(ids).size === ids.length && doc.nextId > Math.max(...ids),
+    );
+  }
+
+  // The filler is decided from the model, not sniffed back off the HTML, and
+  // it is emitted by the DOM builder rather than by the renderer — which is
+  // what keeps the equality check above exact. An empty heading is the proof
+  // that an empty block is parseable and not only editable: a renderer that
+  // filled one in would diverge from md.render on any file holding a bare `#`.
+  {
+    const heading = parse("#\n").blocks[0];
+    check(
+      `an empty heading renders as markdown-it renders it (${JSON.stringify(modelRenderBlock(heading, md))})`,
+      modelRenderBlock(heading, md) === "<h1></h1>\n",
+    );
+    check("and the model says it wants a filler", modelNeedsFiller(heading) === true);
+
+    const paragraph = parse("A paragraph.\n").blocks[0];
+    check("an ordinary paragraph does not", modelNeedsFiller(paragraph) === false);
+
+    const broken = parse("foo  \nbar\n").blocks[0];
+    check("nor does one with a break in the middle of it", modelNeedsFiller(broken) === false);
+
+    const fence = parse("```\n\n```\n").blocks[0];
+    check(
+      `nor does a block with no inline tree at all (${fence.kind})`,
+      fence.kind === "fence" && modelNeedsFiller(fence) === false,
+    );
+  }
+
+  // The flag is off wherever there is no browser to read it from, which is what
+  // lets every suite load this file and get the old behaviour.
+  check("the model core's flag reads off outside a browser", modelCoreEnabled() === false);
 
   // ------------------------------------------------------------- the metric
 

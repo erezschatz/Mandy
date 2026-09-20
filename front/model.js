@@ -1,14 +1,15 @@
-// The document model. TODO 3.1, stage 1 — docs/REWRITE.md is the design.
+// The document model. TODO 3.1 — docs/REWRITE.md is the design. Stage 1 built
+// it; stage 2's slice 1 gave it a renderer and put it in all three registries
+// (index.html, sw.js's SHELL_ASSETS, html-export.js's ASSETS), because for the
+// editor to draw from the model the app has to load the model.
 //
-// Nothing loads this file yet. It is in none of the three registries
-// (index.html, sw.js's SHELL_ASSETS, html-export.js's ASSETS), because until
-// the model can render and be edited there is nothing for the app to call.
-// That is how far this has got, not a quarantine: D7 in docs/DECISIONS.md is
-// there because this comment used to say the branch's job was to leave the
-// running editor alone, which is not and never was the goal. What it is: the
-// thing that will own the document once contenteditable stops owning it — an
-// ordered list of blocks, each holding the exact bytes it arrived with and the
-// exact bytes that followed it.
+// **It draws nothing by default.** modelCoreEnabled() at the bottom of this
+// file is off until the stage 4 merge, so the running editor is still the one
+// CLAUDE.md describes and this is still the thing that will own the document
+// once contenteditable stops owning it — an ordered list of blocks, each
+// holding the exact bytes it arrived with and the exact bytes that followed it.
+// What the flag buys is an A/B of the same document by hand, which is the only
+// way a rendering divergence gets seen rather than inferred.
 //
 // The one property this stage exists to prove: a file that is opened and saved
 // with nothing edited comes back byte for byte. That is D1, and here it is
@@ -23,12 +24,18 @@
 // markdown-it's `map` is the source map, so two identical paragraphs can no
 // longer be confused for one another, which `indexMarkdownBlocks` could be.
 
-// There is no export statement: front/ has no modules, and this will be a
-// plain <script> like every other. Every name below is a global, prefixed
+// There is no export statement: front/ has no modules, and this is a plain
+// <script> like every other. It must load **after markdown-style.js**, which is
+// a real dependency rather than tidiness: slice 3's step 5 calls
+// wrapMarkdownLine and hasMathSpan rather than carrying a second copy of
+// either. Every name below is a global, prefixed
 // `model` for the reason `saveFileAs` is not `saveAs` — see CLAUDE.md's
 // load-order section on collisions in the shared scope.
 //
-// Everything here is a pure function over a string and markdown-it's tokens.
+// Everything down to the rendering section is a pure function over a string and
+// markdown-it's tokens, which is what lets the model suite drive it with no DOM
+// anywhere; the rendering section at the bottom is the half that needs one, and
+// says so.
 // The parser is passed in rather than reached for, and since slice 2's step 0
 // both callers configure it the same way — `configureMarkdownParser` in
 // markdown-parser.js, carrying the `math` and `referenceAwareLink` rules — so
@@ -131,12 +138,12 @@ function modelSpansAtLevel(tokens, level) {
     if (token.nesting === 1) {
       let j = i + 1;
       while (j < tokens.length && !(tokens[j].level === level && tokens[j].nesting === -1)) j += 1;
-      spans.push({ open: token, tokens: tokens.slice(i, j + 1), start: token.map[0], end: token.map[1] });
+      spans.push({ open: token, tokens: tokens.slice(i, j + 1), before: tokens[i - 1] || null, start: token.map[0], end: token.map[1] });
       i = j + 1;
       continue;
     }
     if (token.nesting === 0) {
-      spans.push({ open: token, tokens: [token], start: token.map[0], end: token.map[1] });
+      spans.push({ open: token, tokens: [token], before: tokens[i - 1] || null, start: token.map[0], end: token.map[1] });
       i += 1;
       continue;
     }
@@ -151,14 +158,20 @@ const modelIsBlankLine = (line) => line.trim() === "";
 // the token a paragraph or heading carries its content in — the editable
 // structure once stage 2 converts it. Every other kind keeps its token slice
 // and is edited as a whole for now.
-function modelBlockFromSpan(span, md) {
+function modelBlockFromSpan(span, md, id) {
   const kind = MODEL_BLOCK_KINDS[span.open.type] || "unknown";
   const inline = span.tokens.find((t) => t.type === "inline") || null;
   const block = {
+    id,                  // minted, never reused: see modelParse
     kind,
     level: kind === "heading" ? Number(span.open.tag.slice(1)) : 0,
     inline: kind === "paragraph" || kind === "heading" ? inline : null,
     tokens: span.tokens,
+    // The token immediately before this block's own in the parser's stream,
+    // but only when it is a hidden one — which markdown-it's renderer looks
+    // back at, and which a block rendered from its own slice cannot see. See
+    // the rendering section at the bottom of this file.
+    hiddenBefore: span.before && span.before.hidden ? span.before : null,
     inlines: null,       // filled below, from `inline`
     source: null,        // set by the caller, from the span
     separator: "",
@@ -181,12 +194,14 @@ function modelBlockFromSpan(span, md) {
 
 // A line no token claimed. Same shape as any other block, with nothing to parse
 // and nothing to render — see `modelParse` for what lives here and why.
-function modelGapBlock() {
+function modelGapBlock(id) {
   return {
+    id,
     kind: "gap",
     level: 0,
     inline: null,
     tokens: [],
+    hiddenBefore: null,  // it renders to nothing, so it looks back at nothing
     inlines: null,
     source: null,
     separator: "",
@@ -837,6 +852,13 @@ function modelInlineSource(nodes, md, defines) {
 // length of some TeX.
 const MODEL_ATOM = "\uFFFC";
 
+// What counts as one character rather than as its own content. Named rather
+// than spelled out at each test because slice 2's DOM walk has to agree with
+// this exactly — the two directions disagreeing by the length of some TeX is
+// the failure that list exists to prevent — and the render verify below needs
+// the same answer.
+const MODEL_ATOM_KINDS = new Set(["image", "math"]);
+
 /**
  * The text a block's inline tree renders to, and the space its offsets count.
  * Slice 2's step 2, along with the two functions below it.
@@ -873,7 +895,7 @@ function modelInlineText(nodes) {
       out += modelInlineText(node.children);
       continue;
     }
-    if (node.kind === "image" || node.kind === "math") out += MODEL_ATOM;
+    if (MODEL_ATOM_KINDS.has(node.kind)) out += MODEL_ATOM;
     else if (node.kind === "softbreak" || node.kind === "hardbreak") out += "\n";
     else out += node.content;
   }
@@ -1145,7 +1167,7 @@ function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
     if (first >= gapTo) return;
     let last = gapTo - 1;
     while (last > first && modelIsBlankLine(lines[last])) last -= 1;
-    pieces.push({ block: modelGapBlock(), start: first, end: last + 1, span: null });
+    pieces.push({ block: modelGapBlock(ctx.mint()), start: first, end: last + 1, span: null });
   };
 
   for (const span of spans) {
@@ -1159,7 +1181,7 @@ function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
     // so there is no kind here where a blank last line is content.
     let end = span.end;
     while (end > span.start + 1 && modelIsBlankLine(lines[end - 1])) end -= 1;
-    pieces.push({ block: modelBlockFromSpan(span, md), start: span.start, end, span });
+    pieces.push({ block: modelBlockFromSpan(span, md, ctx.mint()), start: span.start, end, span });
     line = Math.max(line, span.end);
   }
   if (line < to) takeGap(line, to);
@@ -1334,14 +1356,28 @@ function modelParse(markdown, md) {
   const startOf = (line) => (line < offsets.length ? offsets[line] : markdown.length);
   const endOf = (line) => (line < offsets.length ? Math.min(offsets[line] - 1, markdown.length) : markdown.length);
 
+  // Identity is a minted id, never an index path. A path goes stale on every
+  // splice and stage 2 splices constantly, so inserting a block would mean
+  // re-stamping every element after it. Ids are never reused, for modelTouch's
+  // reason one level along: a recycled id inherits whatever of the previous
+  // block's state the DOM had not finished forgetting.
+  let nextId = 1;
   const tiled = modelTileRange(
-    { markdown, lines, startOf, endOf, md },
+    { markdown, lines, startOf, endOf, md, mint: () => nextId++ },
     modelSpansAtLevel(md.parse(markdown, {}), 0),
     0,
     lines.length,
   );
 
-  return { prefix: tiled.leading, blocks: tiled.blocks };
+  return { prefix: tiled.leading, blocks: tiled.blocks, nextId };
+}
+
+// The next free id on a document, for a block the editor creates rather than
+// the parser. One function rather than `doc.nextId++` at each call site, for
+// the reason modelTouch is one function: the counter only works if nothing
+// ever hands out an id twice.
+function modelMintId(doc) {
+  return doc.nextId++;
 }
 
 /**
@@ -1673,4 +1709,426 @@ function modelTouch(block) {
     node.source = null;
   }
   return block;
+}
+
+// ── Rendering ────────────────────────────────────────────────────────────────
+//
+// Stage 2's slice 1. Two halves, and the line between them is the line between
+// what a suite can check and what only a browser can.
+//
+// The first half is a **string**: a block's HTML, out of markdown-it's own
+// renderer over the block's own tokens. That half needs no DOM at all, which is
+// not luck — markdown-it's renderer produces a string, so "every block rendered
+// and concatenated is `md.render(file)`" is string equality over the oracle,
+// the same move stage 1's slice 1 made when byte-identical fell out of a
+// concatenation.
+//
+// The second half builds the DOM from those strings and stamps each block's id
+// on the element it produced. **Nothing in that half can be checked by the Deno
+// suite**: tests/dom.mjs has no HTML parser, so a stub could only agree with
+// whatever it was told. front/render-scratch.html is the harness, untracked and
+// temporary by design — see docs/REWRITE.md's slice 1, which says why that is a
+// harness rather than a check page.
+//
+// **Never a hand-written HTML emitter.** Everything below goes through
+// `md.renderer`, for two reasons and the second is the load-bearing one: the
+// output is then identical to what `markdownToHtml` produces today, which is
+// what keeps outline.js's observer, `headingAnchors`, the format bar's
+// geometry, the static export's clone and renderers.js reading a DOM that still
+// looks the same — and a second renderer would be a second thing free to
+// disagree with the parser, which is the mistake `modelInlines` already refuses
+// to make by keeping the token on the node.
+
+// The attribute carrying a block's id. `data-`, never `id`: ids are what
+// headingAnchors stamps on the static export's clone, and the two must not
+// collide.
+const MODEL_BLOCK_ATTR = "data-block";
+
+// The mark on a <br> the parser never produced. On the <br> rather than on the
+// block, which is the plan's own spelling corrected: <p>foo<br><br></p> is an
+// ordinary shape — type, Shift+Enter, and the model holds four characters while
+// the DOM holds one break and one filler for the caret to sit on — so the
+// parent cannot say which of the two it means. Slice 2's isFillerBreak(node)
+// reads this, and a walk that counted both would report every edit after it in
+// that block one character out.
+const MODEL_FILLER_ATTR = "data-filler";
+
+/**
+ * One token, rendered.
+ *
+ * This is the body of markdown-it's own `Renderer.prototype.render` loop for a
+ * single index, and that duplication is deliberate and bounded: what is copied
+ * is the **dispatch** — inline children, a registered rule, or the generic
+ * `renderToken` — and never any decision about what HTML to produce. Rendering
+ * one token at a time is what a block needs, and markdown-it offers no entry
+ * point for it.
+ *
+ * `tokens` is the array the token sits in, not a bare token, because two of
+ * markdown-it's rules look at its neighbours: `renderToken` reads the next one
+ * to decide whether to break the line after an opening tag, and the previous
+ * one to decide whether to open on a new line at all. Hand it a one-token array
+ * and both answers change.
+ */
+function modelRenderToken(md, tokens, idx, env) {
+  const token = tokens[idx];
+  if (token.type === "inline") return md.renderer.renderInline(token.children, md.options, env);
+  const rule = md.renderer.rules[token.type];
+  if (rule) return rule(tokens, idx, md.options, env, md.renderer);
+  return md.renderer.renderToken(tokens, idx, md.options, env);
+}
+
+/**
+ * A block's HTML.
+ *
+ * Three cases, the same three `modelEmitBlock` has one layer down, and for the
+ * same reason: a container is its own open and close with its children between,
+ * so **a touched child re-renders alone** and its siblings are never re-built.
+ * A `gap` renders to nothing and keeps its place in the model while occupying
+ * none in the DOM — which is why the block-to-element correspondence cannot be
+ * a positional index into `#editor.children`.
+ *
+ * **`hiddenBefore` is prepended, and it is the one thing this needs that a
+ * block's own tokens do not carry.** markdown-it opens a block-level tag on a
+ * new line when the token before it is a hidden one — the tight list item
+ * `<li>Walk the transect.\n<ol>` — and a slice starting at its own open token
+ * cannot see that. Prepending costs nothing, because a hidden token renders to
+ * the empty string by markdown-it's own rule: it supplies the context and emits
+ * no output, so no rule of markdown-it's is re-derived here. Without it,
+ * tests/fixtures/torture.md is the one oracle file whose blocks do not
+ * concatenate to `md.render` of itself.
+ *
+ * No filler is emitted here, and that is what keeps the check exact rather than
+ * approximate: `md.render("#\n")` is `<h1></h1>`, so an empty block is
+ * parseable and not only editable, and a renderer that filled one in would
+ * diverge from `md.render(file)` on any file holding a bare `#`. The filler is
+ * the DOM builder's, below, where its only consumer is.
+ */
+function modelRenderBlock(block, md, env = {}) {
+  if (block.kind === "gap") return "";
+  const tokens = block.hiddenBefore ? [block.hiddenBefore, ...block.tokens] : block.tokens;
+  const first = block.hiddenBefore ? 1 : 0;
+
+  if (block.children) {
+    return modelRenderToken(md, tokens, first, env)
+      + block.children.map((child) => modelRenderBlock(child, md, env)).join("")
+      + modelRenderToken(md, block.tokens, block.tokens.length - 1, env);
+  }
+
+  let out = "";
+  for (let i = first; i < tokens.length; i++) out += modelRenderToken(md, tokens, i, env);
+  return out;
+}
+
+/**
+ * The whole document's HTML — the blocks in order, and nothing else.
+ *
+ * Not `prefix` and not the separators: those are source bytes between blocks,
+ * and markdown-it renders neither. This is the function the suite compares
+ * against `md.render(file)`, and the comparison is exact.
+ */
+function modelRenderDocument(doc, md, env = {}) {
+  return doc.blocks.map((block) => modelRenderBlock(block, md, env)).join("");
+}
+
+// ── Rendering: the DOM half ──────────────────────────────────────────────────
+
+/**
+ * Whether a block wants a filler <br>, decided from the model rather than by
+ * sniffing the HTML back.
+ *
+ * Two cases, and both are what a `contenteditable` does with a block holding no
+ * text: it has no height, takes no caret, and is not there at all — which is
+ * why BLANK_DOCUMENT has always been `<p><br></p>`. An empty block is the first
+ * case; a block ending in a hard break is the second, since the line after the
+ * break is as empty as an empty block is.
+ *
+ * Only a block with an inline tree can want one. A fence, a rule, a table row
+ * and a gap have none, and their content is source rather than text.
+ */
+function modelNeedsFiller(block) {
+  if (!block.inlines) return false;
+  if (!block.inlines.length) return true;
+  return block.inlines[block.inlines.length - 1].kind === "hardbreak";
+}
+
+function modelFillerBreak(document) {
+  const br = document.createElement("br");
+  br.setAttribute(MODEL_FILLER_ATTR, "");
+  return br;
+}
+
+/**
+ * The single element a block's rendering produced, or null when it produced
+ * anything else.
+ *
+ * **A block owns an element only when its rendering is exactly one**, ignoring
+ * whitespace either side, and that is not always: markdown-it hides a tight
+ * list item's paragraph, so it renders to bare text with no element of its own.
+ * Such a block has nothing to stamp and nothing to replace, and re-rendering it
+ * goes through the nearest ancestor that does own one — its `<li>`, which is
+ * cheap.
+ *
+ * The rule is not a heuristic, it is the definition of what makes a re-render
+ * correct: replacing an element with the block's rendering is right exactly
+ * when that rendering *is* the element.
+ */
+function modelOwnedElement(parent, from) {
+  let found = null;
+  for (let i = from; i < parent.childNodes.length; i++) {
+    const node = parent.childNodes[i];
+    if (node.nodeType === 1) {
+      if (found) return null;
+      found = node;
+    } else if (node.nodeType !== 3 || node.data.trim() !== "") {
+      return null;
+    }
+  }
+  return found;
+}
+
+/**
+ * Build one block's DOM at the end of `parent`, and hand back the nodes it
+ * added there.
+ *
+ * Built a block at a time, into the real parent, rather than as one string
+ * assigned to `#editor`. That is what makes the block-to-element map fall out
+ * rather than having to be reconstructed — and it is also what gets the
+ * fragment parsing context right everywhere for free: an `<li>` is inserted
+ * into its `<ul>` and a `<tr>` into its `<tbody>`, where the same markup
+ * assigned to a detached `<div>` would be thrown away by the HTML parser.
+ *
+ * **The rendering is trimmed, so a block's DOM is exactly its own element.**
+ * What goes is markdown-it's pretty-printing — the newline after a closing tag,
+ * and the one `hiddenBefore` puts in front of an opening one. Whitespace
+ * between block elements belongs to no block, so leaving it in would mean a
+ * re-render either stranding the old copy or adding a second. Nothing inside
+ * the block is touched: trimming acts on the outer edges of the string, and a
+ * `<pre>`'s body and the space between two inline elements are both inside the
+ * tags.
+ */
+function modelBuildBlock(parent, block, md, env) {
+  if (block.kind === "gap") return [];
+  const from = parent.childNodes.length;
+
+  if (block.children) {
+    const tokens = block.hiddenBefore ? [block.hiddenBefore, ...block.tokens] : block.tokens;
+    const open = modelRenderToken(md, tokens, block.hiddenBefore ? 1 : 0, env);
+    const close = modelRenderToken(md, block.tokens, block.tokens.length - 1, env);
+    parent.insertAdjacentHTML("beforeend", (open + close).trim());
+  } else {
+    parent.insertAdjacentHTML("beforeend", modelRenderBlock(block, md, env).trim());
+  }
+
+  // Before the children go in, so a container's own nodes are the wrapper alone.
+  const nodes = Array.prototype.slice.call(parent.childNodes, from);
+  const el = modelOwnedElement(parent, from);
+  if (el) el.setAttribute(MODEL_BLOCK_ATTR, String(block.id));
+
+  if (block.children) {
+    for (const child of block.children) modelBuildBlock(el || parent, child, md, env);
+  } else if (modelNeedsFiller(block)) {
+    (el || parent).appendChild(modelFillerBreak(parent.ownerDocument));
+  }
+  return nodes;
+}
+
+// The element carrying a block's id, or null when that block owns none.
+function modelElementFor(root, block) {
+  return root.querySelector(`[${MODEL_BLOCK_ATTR}="${block.id}"]`);
+}
+
+/**
+ * Build the whole document under `root`.
+ *
+ * **It tells the outline rather than letting it infer.** `scheduleOutline`
+ * skips its debounce on a `childList` record targeting `#editor`, which is the
+ * fingerprint of an `editor.innerHTML` assignment — and from slice 4 onward it
+ * is also what every Enter in a top-level paragraph produces, so the commonest
+ * structural keystroke there is would rebuild the whole sidebar synchronously.
+ * A whole-document signal is not a new kind of thing here; the disk-changed
+ * check and the file descriptor are the same shape. The guard is for the two
+ * bundles that ship no outline.js: the suites, and nothing else today.
+ *
+ * A document with no blocks at all gets one filler paragraph belonging to no
+ * block, which is the empty editor. Whether deleting everything should instead
+ * leave the model holding an empty paragraph block is slice 4's, where there is
+ * an edit to decide it from.
+ */
+function modelRender(root, doc, md) {
+  const env = {};
+  root.innerHTML = "";
+  for (const block of doc.blocks) modelBuildBlock(root, block, md, env);
+  if (!root.firstChild) {
+    const paragraph = root.ownerDocument.createElement("p");
+    paragraph.appendChild(modelFillerBreak(root.ownerDocument));
+    root.appendChild(paragraph);
+  }
+  if (typeof renderOutline === "function") renderOutline();
+  if (modelVerifyEnabled) modelVerifyLog(modelVerifyRender(root, doc));
+  return root;
+}
+
+/**
+ * Re-render one block in place, and hand back the element that now stands for
+ * it.
+ *
+ * Climbs to the nearest ancestor owning an element, per `modelOwnedElement`, so
+ * a tight list item's paragraph re-renders through its `<li>`. Returns null
+ * when nothing in the chain owns one, which the caller has to handle rather
+ * than assume away — an `html_block` whose markup has two roots is the shape
+ * that gets there.
+ *
+ * The rebuild happens at the end of the parent and is then moved into place,
+ * rather than being parsed anywhere detached: moving nodes already parsed is
+ * context-free, where re-parsing them is exactly the thing that loses a `<tr>`.
+ */
+function modelRerenderBlock(root, block, md, env = {}) {
+  let owner = block;
+  let el = null;
+  while (owner && !(el = modelElementFor(root, owner))) owner = owner.parent;
+  if (!el) return null;
+
+  const parent = el.parentNode;
+  const anchor = el.nextSibling;
+  parent.removeChild(el);
+  const nodes = modelBuildBlock(parent, owner, md, env);
+  for (const node of nodes) parent.insertBefore(node, anchor);
+  return modelElementFor(root, owner);
+}
+
+// ── Rendering: the verify ────────────────────────────────────────────────────
+//
+// The spike's step 6, kept as a permanent assertion rather than as a thing that
+// answered its question and retired. After a render, each block's DOM text is
+// compared against the text its tree says it holds; a divergence is the exact
+// failure this design can have, so it is reported rather than left to be felt.
+//
+// Off by default — it walks the document — and on in the harness.
+
+let modelVerifyEnabled = false;
+
+function modelVerifySetEnabled(on) {
+  modelVerifyEnabled = !!on;
+}
+
+function modelInlinesHaveAtom(nodes) {
+  for (const node of nodes || []) {
+    if (node.children ? modelInlinesHaveAtom(node.children) : MODEL_ATOM_KINDS.has(node.kind)) return true;
+  }
+  return false;
+}
+
+/**
+ * Every block whose DOM text disagrees with its model text, and a count of the
+ * blocks that could not be asked.
+ *
+ * **A block holding an atom is skipped this slice, and the reason is a finding
+ * for slice 2 rather than a shortcut here.** markdown-parser.js's `math` rule
+ * re-emits the source verbatim, so until MathJax has run an equation is bare
+ * text in the DOM — `$x$`, indistinguishable from prose — while the model holds
+ * one `￼` for it. An image is an element and could be recognised;
+ * un-typeset maths cannot be. Slice 2 inherits the sharp end: its offset space
+ * says an equation is one character, which is true of MathJax's output and
+ * false of the text standing in for it, so the DOM walk and the model disagree
+ * by the length of the TeX for as long as typesetting takes.
+ *
+ * A block owning no element is skipped too, for the reason `modelOwnedElement`
+ * gives: its text is not separable from its `<li>`'s.
+ *
+ * **The two reasons are counted apart**, because they are not the same news.
+ * A tight list item's paragraph having no element is structural and permanent,
+ * and on a document that is mostly a list it is most of the blocks — so one
+ * number covering both would read as the verify quietly covering less and less
+ * while nothing was wrong. The atom count is the one that should fall to zero
+ * when slice 2 answers the question above.
+ */
+function modelVerifyRender(root, doc) {
+  const problems = [];
+  let compared = 0;
+  let atoms = 0;
+  let unowned = 0;
+
+  const walk = (block) => {
+    if (block.children) {
+      block.children.forEach(walk);
+      return;
+    }
+    if (!block.inlines) return;
+    if (modelInlinesHaveAtom(block.inlines)) {
+      atoms += 1;
+      return;
+    }
+    const el = modelElementFor(root, block);
+    if (!el) {
+      unowned += 1;
+      return;
+    }
+    const want = modelInlineText(block.inlines);
+    compared += 1;
+    if (el.textContent !== want) problems.push({ id: block.id, kind: block.kind, want, got: el.textContent });
+  };
+
+  doc.blocks.forEach(walk);
+  // `compared` counts the blocks that were actually asked, which is the number
+  // that makes the other three mean anything: a document where every block
+  // passed reports no problems and no skips, and so is indistinguishable from
+  // one where the walk never reached a block at all.
+  return { problems, compared, atoms, unowned };
+}
+
+function modelVerifyLog(report) {
+  if (report.problems.length) console.warn("[model] render diverged from the model", report.problems);
+}
+
+// ── The core's flag ──────────────────────────────────────────────────────────
+//
+// Default off until the stage 4 merge. Two reasons, and neither of them is
+// `main`: the branch stays usable while the input layer is half-built, and an
+// A/B of the same document by hand is the only way a rendering divergence gets
+// *seen* rather than inferred. `?core=model` and `?core=legacy` set it and it
+// sticks; if both cores are wanted running at once the answer is MANDY_PORT,
+// since the two share one localStorage on one origin.
+//
+// Resolved once per page load rather than read per call, so a session cannot
+// half-switch, and behind a try/catch so the Deno suites — which have no
+// location and no localStorage — load this file and get a plain no.
+
+const MODEL_CORE_KEY = "mandy-model-core";
+
+let modelCoreFlag = null;
+
+function modelCoreResolveFlag() {
+  try {
+    const choice = new URLSearchParams(window.location.search).get("core");
+    if (choice === "model" || choice === "legacy") {
+      localStorage.setItem(MODEL_CORE_KEY, choice === "model" ? "on" : "off");
+    }
+    return localStorage.getItem(MODEL_CORE_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+function modelCoreEnabled() {
+  if (modelCoreFlag === null) modelCoreFlag = modelCoreResolveFlag();
+  return modelCoreFlag;
+}
+
+// ── The open document ────────────────────────────────────────────────────────
+//
+// One document, held here, because this stage has exactly one: a tab switch
+// re-parses on adopt rather than carrying a model bundle, which is what the
+// preamble decided and what keeps tabs.js out of this stage. Stage 4 is where
+// that becomes per-tab, along with the autosave it shares a lifecycle with.
+
+let modelDocument = null;
+
+function modelCurrentDocument() {
+  return modelDocument;
+}
+
+function modelLoad(root, markdown, md) {
+  modelDocument = modelParse(markdown, md);
+  modelRender(root, modelDocument, md);
+  return modelDocument;
 }

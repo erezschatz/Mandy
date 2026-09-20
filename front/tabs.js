@@ -198,15 +198,26 @@ function parkActive() {
 // has to land on top of the history it was measured against or a dirty document
 // reports clean -- and it only misfires when two tabs' edit counts line up, so
 // nothing but the order itself will catch it.
+// The markdown style moves above the content as of stage 2's slice 1, and only
+// that. It is the one adopt here with no ordering constraint of its own -- it
+// reads no other module's result and nothing below reads its -- and the model
+// core needs it early, because loadDocumentHtml converts the stored HTML
+// through htmlToMarkdown and that reads the style and the block index. The two
+// orderings that *are* load-bearing are untouched: content before undo, undo
+// before file.
+//
+// This is the whole of what a tab costs this stage. A switch re-parses on
+// adopt, so there is no model bundle on the record and no fourth park -- which
+// is what the preamble means by leaving tabs.js alone.
 function adoptActive(tab) {
-  editor.innerHTML = localStorage.getItem(documentKey("content")) || BLANK_DOCUMENT;
+  if (tab.md) markdownStyleAdopt(tab.md);
+  else markdownStyleAdoptStored();
+
+  loadDocumentHtml(localStorage.getItem(documentKey("content")) || BLANK_DOCUMENT);
   undoAdopt(tab.undo || null);
 
   if (tab.file) fileAdopt(tab.file);
   else fileAdoptStored();
-
-  if (tab.md) markdownStyleAdopt(tab.md);
-  else markdownStyleAdoptStored();
 
   focusDocumentStart();
 }

@@ -36,3 +36,10 @@ certs
 
 # Claude Code local config
 .claude
+
+# The stage 2 scratch harness (TODO 3.1). Untracked on purpose: it measures our
+# own render code in a real DOM, which is a harness rather than a check page,
+# and it lives in front/ only so the static handler already serves it
+# same-origin with /model.js. docs/REWRITE.md's slice 1 has the argument.
+# Delete it, and this entry, when stage 2 closes.
+front/render-scratch.html

@@ -24,13 +24,14 @@ because it converts the autosave. The reminders are on the stage lines in
 [docs/REWRITE.md](docs/REWRITE.md), where the status is updated as part of each
 landing.
 
-Most of what the branch has added so far happens to sit *beside* the running
-editor rather than inside it:
+What the branch has added sat *beside* the running editor until 2026-09-20,
+when stage 2's slice 1 put the model in the bundle:
 
-- [front/model.js](front/model.js) — the document model, stage 1. Nothing loads
-  it yet: it is in none of the three registries below, because there is nothing
-  for the app to do with a model that cannot yet render or be edited. Its own
-  section is under Architecture.
+- [front/model.js](front/model.js) — the document model. It is in all three
+  registries below as of stage 2's slice 1, because for the editor to draw from
+  the model the app has to load the model. **The editor still does not draw from
+  it**: `modelCoreEnabled()` is off until the stage 4 merge, and everything
+  below still describes what runs. Its own section is under Architecture.
 - [spike/block-model.html](spike/block-model.html) — stage 0, which was a gate
   rather than a first step, and throwaway by design. It asked whether an engine
   will announce what it is about to do and let us do it instead. Passed by hand
@@ -133,7 +134,12 @@ They cover the invariants that fail *silently* rather than loudly:
   survive `undoReset()`, and that `undoPark()`/`undoAdopt()` carry it across a
   tab switch whole rather than merging two tabs' stacks. Also counts the
   `editor.innerHTML` assignment sites, because the way this regresses is not a
-  broken stack but a new assignment that never tells the stack about it.
+  broken stack but a new assignment that never tells the stack about it. Since
+  2026-09-20 that count is **three, all in `app.js`** — `loadDocumentMarkdown`,
+  `loadDocumentHtml` and `loadBlankDocument`, the three doors every route into
+  the document now goes through — and **zero** in `file-api.js` and `tabs.js`,
+  which is an assertion rather than an absence. Stage 4 takes `app.js` to zero
+  too, when the legacy branch inside each door goes.
 - **save-fidelity** — the serialiser options app.js asks for, and then
   `markdown-style.js` directly: the sniffers, and every guard in the re-wrapper.
   That second half is the one that writes into the user's file. It also covers
@@ -440,7 +446,13 @@ are no imports. Consequences that bite:
   `markdown-style.js` defines `sniffMarkdownStyle`,
   `reflowMarkdown`, `indexMarkdownBlocks` and `restoreSourceWrapping`, which
   `app.js` calls at top level and on every save;
-  `app.js` defines `editor`, `markdownToHtml`, `htmlToMarkdown`;
+  `model.js` calls `wrapMarkdownLine` and `hasMathSpan` rather than carrying a
+  second copy of either, so it sits after `markdown-style.js` — at emit time
+  rather than at load, so it only has to be *present*, but the dependency is
+  real and the model suite loads the two in that order for the same reason;
+  `app.js` defines `editor`, `markdownToHtml`, `htmlToMarkdown`, and the three
+  doors a document arrives through, all of which call into `model.js` at run
+  time, so it follows it;
   `undo.js` binds to `editor` and so must follow `app.js`;
   `execcommand.js` defines `runCommand`, which `app.js` and `format-bar.js` both
   call — at click time rather than at load, so it only has to be *present* in
@@ -473,14 +485,23 @@ in a way that only shows up later:
 Bump `VERSION` in [sw.js](front/sw.js) when the shell changes; `activate` deletes
 caches whose names don't match.
 
-**`model.js` is the one file that joins none of them, for now.** It is stage 1
-of the rewrite, and until the model can render and be edited there is nothing
-for the app to call. That is a statement about how far the model has got, not a
-quarantine — see D7 in [docs/DECISIONS.md](docs/DECISIONS.md), which is there
-because this sentence used to claim the second thing. Skipping a registry is
-otherwise a bug, and where it is deliberate the reason is written down —
-`tabs.js` is absent from `ASSETS` because an exported document holds one
-document and has no file API.
+**`model.js` joined all three on 2026-09-20**, in stage 2's slice 1, and it had
+to: for the editor to draw from the model the app has to load the model, and an
+editable export whose core is the model needs it in `ASSETS` too or it ships a
+dead editor. It joined *none* of them until then, which was a statement about
+how far the model had got rather than a quarantine — D7 in
+[docs/DECISIONS.md](docs/DECISIONS.md) is there because this sentence used to
+claim the second thing. Its place in the load order is load-bearing in one
+direction: **after `markdown-style.js`**, whose `wrapMarkdownLine` and
+`hasMathSpan` it calls rather than carrying a second copy of either.
+
+**Loading it is not running it.** `modelCoreEnabled()` is off until the stage 4
+merge, so the editor still draws through `markdownToHtml` and everything below
+still describes what runs.
+
+Skipping a registry is otherwise a bug, and where it is deliberate the reason is
+written down — `tabs.js` is absent from `ASSETS` because an exported document
+holds one document and has no file API.
 
 ### Document state
 
@@ -545,11 +566,13 @@ has split the paragraph in two before any inline rule runs.
 
 ### The model
 
-[model.js](front/model.js) is the start of what replaces the section above, and
-the branch note at the top says why nothing loads it. **Stage 1 closed on
-2026-09-18**; where each stage stands is in
-[docs/REWRITE.md](docs/REWRITE.md). It is pure string and
-token work, which is what lets the `model` suite drive it with no DOM anywhere.
+[model.js](front/model.js) is the start of what replaces the section above.
+**Stage 1 closed on 2026-09-18** and stage 2's slice 1 — the renderer — on
+2026-09-20; where each stage stands is in
+[docs/REWRITE.md](docs/REWRITE.md). Everything down to the renderer is pure
+string and token work, which is what lets the `model` suite drive it with no DOM
+anywhere; the renderer's own DOM half is the exception, and the end of this
+section says how it is watched instead.
 
 `modelParse(markdown, md)` returns `{ prefix, blocks }`, and the invariant that
 makes the rest work is that **every character of the input is in exactly one of
@@ -761,9 +784,88 @@ Twelve things that are decisions rather than details:
 **Stage 1 is closed** — 2026-09-18, all four slices. The model parses a
 document, holds it as blocks that tile the file and children that tile their
 containers, records every spelling markdown-it discards, and emits an edited
-block back in the conventions its own bytes recorded. What it does *not* do is
-render, take input, or run a format command: those are stages 2 and 3, and
-nothing in `front/` loads this file until stage 4.
+block back in the conventions its own bytes recorded.
+
+**Stage 2's slice 1 gave it a renderer**, 2026-09-20, and that is the whole of
+what it can do in the DOM so far: `modelRenderBlock` is a block's HTML out of
+markdown-it's own renderer, `modelRender` builds `#editor`'s children from it,
+and `modelRerenderBlock` replaces one subtree. Six things in it are decisions
+rather than details.
+
+- **Never a hand-written HTML emitter.** Everything goes through `md.renderer`,
+  so the output is identical to what `markdownToHtml` produces today — which is
+  what keeps `outline.js`'s observer, `headingAnchors`, the format bar's
+  geometry, the static export's clone and `renderers.js` reading a DOM that
+  still looks the same. A second renderer would be a second thing free to
+  disagree with the parser, which is the mistake `modelInlines` already refuses
+  to make by keeping the token on the node.
+- **A block is rendered with the token that precedes it**, when that token is
+  hidden, which is the one thing a block's own slice does not carry. markdown-it
+  opens a block-level tag on a new line when the token before it is hidden — the
+  tight list item `<li>Walk the transect.\n<ol>` — and prepending costs nothing
+  because a hidden token renders to the empty string by markdown-it's own rule.
+  Without it, `tests/fixtures/torture.md` is the one oracle file whose blocks do
+  not concatenate to `md.render` of itself. That equality, over the six oracle
+  files, is the slice's instrument, and it needs no DOM at all.
+- **Identity is a minted id on `data-block`, never an index path and never
+  `id`.** A path goes stale on every splice and the input layer splices
+  constantly; `id` is what `headingAnchors` stamps on the static export's clone
+  and the two must not collide. The counter is on the document, so a block the
+  editor creates takes the next one, and none is ever reused.
+- **A block owns an element only when its rendering is exactly one**, whitespace
+  aside. markdown-it hides a tight list item's paragraph, so it renders to bare
+  text with nothing to stamp — and **the re-render unit is therefore the nearest
+  ancestor that does own one**, which for such a paragraph is its `<li>`. That
+  is not a heuristic: replacing an element with a block's rendering is correct
+  exactly when that rendering *is* the element.
+- **An empty block renders a marked filler `<br>`**, because a block holding no
+  text has no height in a `contenteditable` and takes no caret — which is why
+  `BLANK_DOCUMENT` has always been `<p><br></p>`. The mark goes on the `<br>`
+  rather than on the block, since `<p>foo<br><br></p>` is an ordinary shape and
+  the parent cannot say which of the two it means. The filler belongs to the DOM
+  builder rather than to the renderer, which is what keeps the equality above
+  exact: `md.render("#\n")` is `<h1></h1>`, so an empty block is parseable, and
+  a renderer that filled one in would diverge on any file holding a bare `#`.
+  Nothing here reaches anyone's file, so simplicity was the only criterion.
+- **Blocks are built one at a time into their real parent**, rather than as one
+  string assigned to `#editor`. That is what makes the block-to-element map fall
+  out instead of having to be reconstructed, and it gets the fragment parsing
+  context right for free — an `<li>` goes into its `<ul>` and a `<tr>` into its
+  `<tbody>`, where the same markup parsed detached would be thrown away.
+  Measured 2026-09-20 on a 2,399-line document of 1,325 blocks: 16.8ms against
+  13.4ms for one `innerHTML`, so the map costs about a quarter more on a
+  document three times the size of anything in this repo.
+
+`modelVerifyRender` is the spike's step 6 kept as a permanent assertion: after a
+render, each block's DOM text against the text its tree says it holds. Off by
+default. It skips a block holding an image or an equation, and counts those
+apart from the blocks that own no element, because the two are different news —
+un-typeset maths is bare text in the DOM (`markdown-parser.js`'s `math` rule
+re-emits the source verbatim) while the model holds one `\uFFFC` for it, and
+slice 2's offset space inherits that question.
+
+What the model still does *not* do is take input or run a format command: those
+are the rest of stage 2 and stage 3.
+
+**The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
+and `?core=model` / `?core=legacy` set it for good, resolved once per page load.
+It is not for `main` — no merge is planned before stage 4 — it is so the branch
+stays usable while the input layer is half-built, and so an A/B of the same
+document by hand is possible, which is the only way a rendering divergence gets
+*seen* rather than inferred. Two cores want two `localStorage`s, so running both
+at once means `MANDY_PORT`.
+
+With the flag on, three things follow that do not with it off. Markdown reaching
+the editor goes through the model rather than through `markdownToHtml`; the
+`content` key still holds **HTML**, so the boot restore and a tab adopt convert
+it with the whole of `htmlToMarkdown` — the same call the save path makes, which
+is why a tab needs no model bundle and `tabs.js` costs one line. And the save
+path is **unchanged**: `file-api.js` still reads `editor.innerHTML`, Turndown
+still serialises it, and `indexMarkdownBlocks` / `restoreSourceWrapping` still
+run. The model owns *rendering*; the file belongs to the old core until stage 4.
+There is no input layer yet either, so with the flag on the DOM is still the
+browser's to mutate and the model goes stale the moment anything is typed —
+which costs nothing, because nothing reads the model back.
 
 ### Links and heading anchors
 
@@ -1718,11 +1820,18 @@ Three more things worth knowing:
 - **Rebuilds hang off a `MutationObserver` on `#editor`**, not an `input`
   listener, because the document also changes from Open, Reload, New, paste
   and the welcome fetch. It is debounced by a second for typing and **not for
-  a document swap**: a record whose target is the editor itself with
-  `childList` — which is what one `innerHTML` assignment produces, measured
-  2026-09-18 — renders at once, so a tab switch does not show the previous
-  document's headings for a second. The shape is read off the record
-  rather than off a flag, so the assignment sites need not know. The click
+  a document swap**, and that second is not a preference: a sidebar lagging the
+  document reads as the app being unable to parse what is in front of it.
+  **The property is immediacy; how a document announces itself depends on
+  which core drew it.** The running core replaces the document from
+  `editor.innerHTML`, and a record whose target is the editor itself with
+  `childList` is that assignment's fingerprint — measured 2026-09-18 as exactly
+  one such record — so it is read off the record rather than off a flag and the
+  assignment sites need not know. The model core cannot use that: from stage
+  2's slice 4 a top-level Enter produces the identical record, so `modelRender`
+  calls `renderOutline` itself and the fingerprint is skipped whenever
+  `modelCoreEnabled()`. The inference lives exactly as long as the core that
+  needs it, and goes at stage 4 with `editor.innerHTML`. The click
   handler captures the heading *element* rather than looking it up by slug,
   since a slug goes stale the moment its heading is edited and the rebuild can
   be a second behind.

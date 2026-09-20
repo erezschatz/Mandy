@@ -13,7 +13,12 @@
 
 import { loadSource, makeEl, makeText, markdownitStub, walk } from "./dom.mjs";
 
-function loadOutline() {
+// `modelCore` picks which editing core the context is running, because the
+// outline's one immediacy property is reached two different ways by the two and
+// a suite that only ever built one of them would be asserting half of it. The
+// flag resolves once per loaded scope (see modelCoreResolveFlag), so this is a
+// second context rather than a switch inside one.
+function loadOutline({ modelCore = false } = {}) {
   const noop = () => {};
   const root = makeEl("html");
   const container = makeEl("div");
@@ -33,6 +38,7 @@ function loadOutline() {
   };
 
   const store = new Map();
+  if (modelCore) store.set("mandy-model-core", "on");
   const alerts = [];
   const scrolled = [];
   const observed = [];
@@ -41,7 +47,7 @@ function loadOutline() {
   const timers = [];
 
   return loadSource(
-    ["markdown-parser.js", "markdown-style.js", "app.js", "outline.js"],
+    ["markdown-parser.js", "markdown-style.js", "model.js", "app.js", "outline.js"],
     {
       window: {
         markdownit: markdownitStub([], {}),
@@ -51,6 +57,7 @@ function loadOutline() {
         scrollTo: (opts) => scrolled.push(opts),
         scrollY: 0,
         getSelection: () => selection,
+        location: { search: "" },
       },
       TurndownService: class {
         constructor() {}
@@ -122,7 +129,7 @@ function loadOutline() {
     },
     "; return { ctx: __ctx, outlineDepths, outlineEntries, copyInline," +
       " buildNestedList, insertToc, setOutlineOpen, renderOutline," +
-      " outlineIsOpen, anchorSlug };",
+      " outlineIsOpen, anchorSlug, modelCoreEnabled, modelRender, md };",
   );
 }
 
@@ -356,17 +363,30 @@ export default function run(check) {
       ctx.observed[0].options.characterData === true,
   );
 
-  // TODO 4.6: a document swap is one childList record on the editor itself,
-  // and it must not wait behind the typing debounce. The stub's setTimeout
-  // runs its callback at once, so the observable difference is whether the
-  // timer was armed at all -- `timers` grows by one on the debounced path and
-  // not on the immediate one.
+  // TODO 4.6, restated as the property rather than as the mechanism, which is
+  // what stage 2's slice 1 needed and what these should have asserted all
+  // along: **a whole document arriving redraws the sidebar at once**, and every
+  // other mutation waits behind the debounce. A second's delay reads as the app
+  // being unable to parse what is in front of it, which is why this is a
+  // property and not a preference.
+  //
+  // How a document announces itself differs by core. The legacy core replaces
+  // it from eight `editor.innerHTML` assignments and the mutation record is the
+  // only signal there is, so the fingerprint -- a childList record on the editor
+  // itself -- is read. The model core says so directly from modelRender, and
+  // must *not* read the fingerprint, because from slice 4 a top-level Enter
+  // produces the identical record and would rebuild the sidebar synchronously
+  // on the commonest structural keystroke there is.
+  //
+  // The stub's setTimeout runs its callback at once, so the observable
+  // difference is whether the timer was armed at all: `timers` grows by one on
+  // the debounced path and not on the immediate one.
   const observer = ctx.observed[0].fn;
   setOutlineOpen(true);
   let armed = ctx.timers.length;
   observer([{ target: editor, type: "childList" }]);
   check(
-    "a document swap renders the outline without arming the debounce",
+    "on the legacy core a document swap redraws the outline without arming the debounce",
     ctx.timers.length === armed,
   );
   const nav = ctx.container.children.find((c) => c.id === "outline");
@@ -383,6 +403,57 @@ export default function run(check) {
   observer([{ target: editor.children[0], type: "characterData" }]);
   check("and so does typing", ctx.timers.length === armed + 1);
   setOutlineOpen(false);
+
+  // The same property, the other way round. A second context, because the flag
+  // resolves once per loaded scope.
+  {
+    const core = loadOutline({ modelCore: true });
+    const c = core.ctx;
+    check("the model core's flag is on in this context", core.modelCoreEnabled() === true);
+
+    const coreEditor = c.byId.get("editor");
+    withHeadings(coreEditor, [["h1", "Heading"]]);
+    core.setOutlineOpen(true);
+
+    // The record the legacy core reads as a swap is, from slice 4, also what an
+    // Enter at the top level produces -- so under this core it must arm the
+    // debounce like any other mutation rather than being read as a swap.
+    const before = c.timers.length;
+    c.observed[0].fn([{ target: coreEditor, type: "childList" }]);
+    check(
+      "on the model core that record waits behind the debounce, since an Enter makes it too",
+      c.timers.length === before + 1,
+    );
+
+    // And a document arriving is announced rather than inferred: modelRender
+    // calls renderOutline itself, with no mutation record in between. The
+    // redraw has to be *observable* or this passes by doing nothing, so the
+    // sidebar is checked to hold the heading before and to have replaced it
+    // with the no-headings message after -- an empty model being the one
+    // document whose render is reachable without an HTML parser in the stub.
+    const nav = () => c.container.children.find((x) => x.id === "outline");
+    check(
+      "the sidebar is showing the heading first",
+      nav().children.length === 1 && nav().children[0].tagName === "UL",
+    );
+    // The incoming document has no headings, which is what makes the redraw
+    // visible: the sidebar has to have swapped the heading list for the
+    // no-headings message by the time modelRender returns. The stub reads
+    // headings off querySelectorAll rather than off the children, so the swap
+    // is staged there.
+    const armedBefore = c.timers.length;
+    coreEditor.ownerDocument = { createElement: (tag) => makeEl(tag) };
+    withHeadings(coreEditor, []);
+    core.modelRender(coreEditor, { prefix: "", blocks: [], nextId: 1 }, core.md);
+    check(
+      "and a whole-document render redraws it at once, arming nothing" +
+        ` (${JSON.stringify(nav().children.map((k) => k.className))}, ${c.timers.length - armedBefore} timers armed)`,
+      c.timers.length === armedBefore &&
+        nav().children.length === 1 &&
+        nav().children[0].className === "outline-empty",
+    );
+    core.setOutlineOpen(false);
+  }
 
   check(
     "both toolbar actions are registered",

@@ -526,6 +526,67 @@ function markdownToHtml(markdown) {
   return md.render(markdown);
 }
 
+// ── The document arrives ─────────────────────────────────────────────────────
+//
+// Three doors, and every route that replaces the document goes through one of
+// them: Open and Reload, the welcome document, upload, New, the boot restore
+// and a tab swap. They exist because the model core is behind a flag
+// (modelCoreEnabled, in model.js) and the alternative was the same branch
+// written out at seven call sites.
+//
+// With the flag off each one is exactly the assignment it replaced. With it on,
+// the model parses the markdown and renders itself into the editor, and the
+// eight editor.innerHTML sites the `undo` suite counts have become three —
+// stage 4 takes them to none outside render.
+
+// Markdown, which is five of the seven: Open, Reload, welcome, upload, paste
+// markdown. The sniff belongs here for the reason it belongs in markdownToHtml,
+// which is that forgetting it at one of five call sites is easy.
+function loadDocumentMarkdown(markdown) {
+  if (!modelCoreEnabled()) {
+    editor.innerHTML = markdownToHtml(markdown);
+    return;
+  }
+  adoptMarkdownStyle(markdown);
+  modelLoad(editor, markdown, md);
+}
+
+// HTML, which is the other two: the boot restore and a tab adopt, both of which
+// read the `content` key — and this stage deliberately leaves that key holding
+// HTML, since the save path is still the old core's until stage 4.
+//
+// **It converts through the whole of htmlToMarkdown, not a bare Turndown pass.**
+// A bare pass would hand the model a document rewritten in Turndown's house
+// style; this is the same call the save path already makes, so it is style-aware
+// and restores unedited blocks from markdownSource, and it gets exercised for
+// two stages before stage 4 makes it the one-time migration a revert cannot
+// undo. What it loses is the source span of a block edited before the reload,
+// which is exactly today's behaviour: such a block already misses
+// indexMarkdownBlocks and is re-wrapped.
+//
+// The style is *not* re-adopted from the converted markdown. The caller has
+// already restored it, and re-sniffing here would repoint markdownSource at the
+// conversion's own bytes — self-consistent, and one file's worth of fidelity
+// poorer than doing nothing.
+function loadDocumentHtml(html) {
+  if (!modelCoreEnabled()) {
+    editor.innerHTML = html;
+    return;
+  }
+  modelLoad(editor, htmlToMarkdown(html), md);
+}
+
+// A document with nothing in it. On the model path that is a model with no
+// blocks, which renders as the one filler paragraph a contenteditable needs to
+// be clickable at all — see modelRender.
+function loadBlankDocument() {
+  if (!modelCoreEnabled()) {
+    editor.innerHTML = "<p><br></p>";
+    return;
+  }
+  modelLoad(editor, "", md);
+}
+
 // ── Button handlers ──────────────────────────────────────────────────────────
 
 // Registered by action name, not bound to an element: download and upload only
@@ -574,7 +635,7 @@ onToolbarAction("copy-md", async (button) => {
 // The file association is not dropped here. Only file-api.js knows there is
 // one, and it hooks the same action to drop it (see its "new" handler).
 function resetDocument() {
-  editor.innerHTML = "<p><br></p>";
+  loadBlankDocument();
   localStorage.removeItem(documentKey("content"));
   localStorage.removeItem(documentKey("source"));
   // Or a block of the old document could come back on the next save. The three
@@ -791,8 +852,7 @@ if (fileInput) {
     const reader = new FileReader();
     reader.onload = async (event) => {
       const markdown = event.target.result;
-      const html = markdownToHtml(markdown);
-      editor.innerHTML = html;
+      loadDocumentMarkdown(markdown);
       await renderMermaidDiagrams(editor);
       await renderLatex(editor);
       localStorage.setItem(documentKey("content"), editor.innerHTML);
@@ -1109,8 +1169,16 @@ editor.addEventListener("input", () => {
   saveTimer = setTimeout(flushAutosave, 1000);
 });
 
+// The view attributes go before the comparison. `data-block` and `data-filler`
+// are the model renderer's, they are never serialised into anybody's file, and
+// "is this document blank" is a question about content — so a blank document
+// has to read blank whichever core drew it. Without this the model core's own
+// empty editor reads as content, and New would leave a filename pointed at it.
 function isBlankContent(html) {
-  const trimmed = (html || "").trim();
+  const trimmed = (html || "")
+    .replace(/ data-block="\d+"/g, "")
+    .replace(/ data-filler(="")?/g, "")
+    .trim();
   return trimmed === "" || trimmed === "<p><br></p>" || trimmed === "<p></p>";
 }
 
@@ -1139,11 +1207,11 @@ async function loadWelcomeDocument() {
   try {
     const res = await fetch("/welcome.md");
     if (!res.ok) throw new Error(res.statusText);
-    editor.innerHTML = markdownToHtml(await res.text());
+    loadDocumentMarkdown(await res.text());
     return true;
   } catch (error) {
     console.error("[Welcome] Could not load welcome.md:", error);
-    editor.innerHTML = "<p><br></p>";
+    loadBlankDocument();
     return false;
   }
 }
@@ -1157,8 +1225,12 @@ window.addEventListener("load", () => {
       // Exported HTML file: keep the embedded content, ignore localStorage
       editor.removeAttribute("data-exported");
     } else if (saved && !isBlankContent(saved)) {
-      editor.innerHTML = saved;
+      // Style first, content second, which is a swap on the line before this
+      // stage. loadDocumentHtml converts through htmlToMarkdown on the model
+      // path, and that reads exactly what markdownStyleAdoptStored restores. On
+      // the legacy path the order is free: neither reads the other's result.
       markdownStyleAdoptStored();
+      loadDocumentHtml(saved);
     } else {
       if (saved) localStorage.removeItem(documentKey("content"));
       localStorage.removeItem(documentKey("source"));
@@ -1188,16 +1260,10 @@ window.addEventListener("load", () => {
 });
 
 window.addEventListener("beforeunload", (e) => {
-  const currentContent = editor.innerHTML.trim();
-  // Check if content is empty or just the empty paragraph placeholder
-  const willSave =
-    currentContent &&
-    currentContent !== "<p><br></p>" &&
-    currentContent !== "<p></p>" &&
-    currentContent !== "";
-
-  // Only save if content is not essentially empty
-  if (willSave) {
+  // isBlankContent rather than the four comparisons this used to spell out: the
+  // two were the same question asked twice, and only one of them had learnt
+  // about the renderer's view attributes.
+  if (!isBlankContent(editor.innerHTML)) {
     localStorage.setItem(documentKey("content"), editor.innerHTML);
   }
 

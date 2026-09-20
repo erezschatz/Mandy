@@ -160,18 +160,32 @@ function renderOutline() {
   outlineNav.appendChild(list);
 }
 
-// The debounce defends typing, and a document swap is not typing. A record
-// whose target is the editor itself, of type childList, is a top-level
-// structural change: a whole document arriving through `editor.innerHTML` --
-// a tab switch, Open, Reload, New, the welcome fetch -- or an Enter or
-// Backspace at the top level, all of which are one-shot and want the sidebar
-// to follow at once. A record inside the subtree, or a text change, is someone
-// typing, and keeps the second. Read off the record rather than off a flag
-// the callers would set, so nothing that assigns `innerHTML` has to know the
-// outline exists. Measured 2026-09-18: a swap is exactly one such
-// record, and used to wait the full second behind it.
+// The debounce defends typing, and a document swap is not typing. **The
+// property is immediacy**: a whole document arriving redraws the sidebar at
+// once, because a second's wait reads as the app being unable to parse what is
+// in front of it rather than as a deliberate delay. Which core drew the
+// document decides how that is known, and the two answers are different in
+// kind.
+//
+// The model core **says so**: modelRender calls renderOutline itself, the way
+// the disk-changed check and the file descriptor announce themselves. Nothing
+// is inferred, which matters from slice 4 onward, because a top-level Enter
+// splices `#editor`'s children and so produces the very record shape below --
+// and rebuilding the whole sidebar synchronously on the commonest structural
+// keystroke there is would be the debounce's own bug wearing the fix's clothes.
+//
+// The legacy core cannot say so: it replaces the document from eight different
+// `editor.innerHTML` assignments, and the record is the only signal there is. A
+// childList record targeting the editor itself is that assignment's fingerprint
+// -- a tab switch, Open, Reload, New, the welcome fetch -- measured 2026-09-18
+// as exactly one such record. Read off the record rather than off a flag, so
+// none of those eight sites has to know the outline exists.
+//
+// So the inference lives exactly as long as the core that needs it, and goes at
+// stage 4 with `editor.innerHTML`. A record inside the subtree, or a text
+// change, is someone typing under either core, and keeps its second.
 function scheduleOutline(records) {
-  const swap = (records || []).some(
+  const swap = !modelCoreEnabled() && (records || []).some(
     (record) => record.target === editor && record.type === "childList",
   );
   clearTimeout(outlineTimer);
