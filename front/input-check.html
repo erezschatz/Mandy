@@ -30,14 +30,18 @@
 <meta charset="utf-8">
 <title>input layer — check</title>
 <style>
-  body { font: 13px/1.55 ui-monospace, monospace; margin: 0; padding: 1rem; background: #111; color: #ddd; }
-  h2 { font-size: 13px; margin: 1.3rem 0 .4rem; color: #8cf; }
-  .pass { color: #7d7; } .fail { color: #f77; font-weight: bold; } .note { color: #999; }
-  ol { margin: .2rem 0 .6rem 1.2rem; padding: 0; color: #cc9; }
+  /* Light, deliberately. The theme here is not part of what is being
+     measured, so it is not a choice this page gets to make for whoever has
+     to sit and read it. A check page about the app's own theme switch would
+     be the exception; this is not one. */
+  body { font: 13px/1.55 ui-monospace, monospace; margin: 0; padding: 1rem; background: #fff; color: #222; }
+  h2 { font-size: 13px; margin: 1.3rem 0 .4rem; color: #16607a; }
+  .pass { color: #1a7f37; } .fail { color: #b3261e; font-weight: bold; } .note { color: #666; }
+  ol { margin: .2rem 0 .6rem 1.2rem; padding: 0; color: #5a4a00; }
   li { margin: .15rem 0; }
-  #editor { background: #1b1b1b; padding: .5rem 1rem; border: 1px solid #333; min-height: 8rem; }
-  #editor table { border-collapse: collapse; } #editor td, #editor th { border: 1px solid #555; padding: 0 .3rem; }
-  #log { white-space: pre-wrap; max-height: 22rem; overflow: auto; border: 1px solid #333; padding: .4rem .6rem; }
+  #editor { background: #fdfdfd; padding: .5rem 1rem; border: 1px solid #ccc; min-height: 8rem; }
+  #editor table { border-collapse: collapse; } #editor td, #editor th { border: 1px solid #bbb; padding: 0 .3rem; }
+  #log { white-space: pre-wrap; max-height: 22rem; overflow: auto; border: 1px solid #ccc; padding: .4rem .6rem; background: #fafafa; }
   #divergence { font-weight: bold; }
 </style>
 </head>

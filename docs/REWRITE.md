@@ -2387,15 +2387,28 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         the execCommand pages retire. Finding 5 is what makes it need a human,
         so it carries a numbered protocol the way the spike did.
 
-        **Run in all three on 2026-09-20, and the coverage is uneven on
-        purpose because the instrument is.** WebKit (Safari) and Gecko (Firefox)
-        were driven by hand, which is the only way the deletions, Enter, undo
-        and composition can be driven at all. **Safari: everything correct
-        except the equation bug**, which is finding 5. **Firefox: the same
-        equation bug, which is where it was found.** Blink was driven by
-        automation as far as automation goes — typing mid-word, both edges of a
-        mark, beside and over an atom, and a selection replaced — and no
-        further, per finding 7.
+        **Run in all three on 2026-09-20, and the coverage is uneven on purpose
+        because the instrument is.** WebKit (Safari) and Gecko (Firefox) were
+        driven by hand, which is the only way the deletions, Enter, undo and
+        composition can be driven at all. Safari reported everything correct
+        except the equation bug; Firefox is where that bug was found. **Both
+        confirmed the fix afterwards, and reported the same three ranges to the
+        character** — `12–12` for a caret inside the equation, `13–14` for a
+        selection over it, `28–29` for one over the image — which is the
+        strongest form the answer comes in: two independent engines agreeing
+        exactly, on the case that had been wrong in both.
+
+        Blink was driven by automation as far as automation goes — typing
+        mid-word, both edges of a mark, beside and over an atom, and a selection
+        replaced — and no further, per finding 7. **So the deletions, Enter,
+        undo and a real IME are measured in Gecko and WebKit and unmeasured in
+        Blink**, which is the opposite of the usual gap here and is worth saying
+        in those words rather than as "not fully tested".
+
+        **The page is light rather than dark**, since 2026-09-20. The theme was
+        never part of what it measures, so it was not a choice the page had any
+        business making for whoever has to sit and read it. A check page *about*
+        the app's own theme switch would be the exception; this is not one.
 
         **The page had two faults of its own, and both cost a step.** Its image
         was `![alt](none.png)`, which 404s: Blink and WebKit draw a broken-image

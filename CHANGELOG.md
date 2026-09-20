@@ -6068,6 +6068,18 @@ lands beside the equation instead of destroying it. Neither the suite nor Blink
 could have found it, which is the argument for the page rather than an aside
 about it.
 
+**Both engines confirmed the fix, and reported the same three ranges to the
+character** — `12–12` for a caret inside the equation, `13–14` for a selection
+over it, `28–29` for one over the image. Two independent engines agreeing
+exactly, on the case that had been wrong in both, is the strongest form the
+answer comes in. So the deletions, Enter, undo and a real IME are measured in
+Gecko and WebKit and **unmeasured in Blink**, which is the opposite of the usual
+gap here.
+
+The page is light rather than dark now. The theme was never part of what it
+measures, so it was not a choice the page had any business making for whoever
+sits and reads it.
+
 The page also had two faults of its own, both costing a step. Its image was a
 404, and where Blink and WebKit draw a broken-image placeholder **Gecko draws
 nothing at all**, so the atom that step is about was invisible in one engine out
