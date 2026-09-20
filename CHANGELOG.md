@@ -5928,7 +5928,7 @@ reapplies the selection it was given. Swept over a 645-block document in the
 running app with the flag on: **40,578 positions, every one a fixpoint**, and
 439 blocks compared by the verify with nothing to report.
 
-## 2026-09-20 — `a4f19ac` — Stage 2, slice 3: the model takes input
+## 2026-09-20 — `a4f19ac`, `49afd3a` — Stage 2, slice 3: the model takes input
 
 `beforeinput` on `#editor`, cancelled unconditionally, so the DOM can only
 change through `modelRender`. That is D4's treatment reversed — contenteditable
