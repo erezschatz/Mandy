@@ -5838,7 +5838,7 @@ one `￼` for it, and **slice 2 inherits that** — its offset space says an
 equation is one character, which is true of MathJax's output and false of the
 text standing in for it until MathJax has run.
 
-## 2026-09-20 — Stage 2, slice 2: the selection mapping
+## 2026-09-20 — `7092835` — Stage 2, slice 2: the selection mapping
 
 `(block, offset)` to a DOM position and back. The model half was built in stage
 1 on purpose — `modelInlineText`, `modelInlineOffset`, `modelInlineAt`, written
