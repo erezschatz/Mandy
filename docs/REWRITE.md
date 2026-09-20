@@ -2430,8 +2430,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         app's state on the same origin. The untracked scratch harness stays for
         what a machine *can* drive.
 
-    *   **4. Input: structure — not started.** The edits that change how many
-        blocks there are, and the ones that act on a block with no inline tree.
+    *   **4. Input: structure — planned 2026-09-20, not started.** The edits
+        that change how many blocks there are, and the ones that act on a block
+        with no inline tree.
 
         `insertParagraph` splits the block at the caret; `insertLineBreak`
         inserts a hard break node. A **new** break has no recorded spelling, so
@@ -2516,6 +2517,183 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           un-appendable. It cannot happen today because everything is
           editable, so it is new, and it is the first thing to check on the
           input check page rather than something to reason about here.
+
+        **Seven steps, in this order**, planned 2026-09-20 before any of it was
+        built. The first is a primitive with no keystroke behind it and the
+        other six are each one behaviour; every one of them needs the one before
+        it, which is the same forcing the slices themselves have.
+
+        1.  **The block splice — not started.** The mutation the block list has
+            never had. Stage 1 built the tree and only ever read it; slice 3
+            added `modelInlineSplice`, which changes a block's *contents* and
+            cannot change how many blocks there are. What is missing is the
+            other half: put a block into the tree, take one out, and leave the
+            tiling invariant true on both sides.
+
+            Four things, and each is a decision the steps above it inherit.
+
+            **A new block's tokens come from the parser, never hand-built.**
+            `modelRenderBlock` goes through `md.renderer` over a block's own
+            tokens, so a block with no tokens does not render at all — and the
+            rule that keeps the renderer honest ("never a hand-written HTML
+            emitter") has an exact twin here. A fresh paragraph is `md.parse`
+            of a one-character template with its inline children replaced;
+            everything else is cloned from the block it came from, which is
+            where the tokens already are.
+
+            **A new separator is a blank line carrying the quote chain** —
+            `"\n"`, the chain with its trailing space trimmed, `"\n"` — which
+            is `"\n\n"` outside a quote and `"\n>\n"` inside one. Splitting a
+            block hands its own separator to the second half, because that is
+            what followed the bytes that are now the second half's.
+
+            **A new block's affixes are computed from its position, never
+            copied from the block it came from.** `modelItemAffix` already
+            answers *first child or not*, and a split's second half is never
+            the first, so it takes the continuation indent where the original
+            took the marker. `leadingAffix` is that opener plus whatever the
+            original had beyond its own opener — the same one subtraction
+            `modelEmitLeaf` does, read in the other direction.
+            `quotePrefixes` is inherited whole, because the emitter already
+            extends a short chain with its last recorded entry.
+
+            **An ordered item's number follows its own list, and siblings are
+            never renumbered.** A new item reads the two items before it: same
+            number twice means the document writes all-ones and the new one
+            copies it, otherwise it takes the next. That is the document's own
+            convention read off the list rather than a document-wide sniff,
+            which is the rule slice 2 of stage 1 already set for delimiters.
+            Renumbering what follows is refused outright: it would re-emit
+            every sibling of an edited block, which is the exact thing slice 1b
+            exists to prevent, and CommonMark numbers the rendered list off the
+            first marker anyway — so the bytes are untidy and the document is
+            not wrong.
+
+        2.  **`insertParagraph` — not started.** The split, and the question it
+            turns on is *what* splits.
+
+            **The block, and then every ancestor up to and including the
+            nearest `item`.** Enter in a top-level paragraph makes a paragraph;
+            Enter in a quoted paragraph makes a second quoted paragraph, since
+            a quote is not an item and the walk stops; Enter in a bullet makes
+            a bullet, because the paragraph's parent is an item and splitting
+            the paragraph alone would put two paragraphs inside one bullet —
+            which is a thing to be able to do and not what Enter means. The
+            walk stops at the first item rather than continuing, so a bullet
+            nested in a bullet splits its own list and not the one above it.
+
+            **Enter at the end of a heading opens a paragraph**, which is the
+            one place the new block's kind is not the old one's. Anywhere else
+            in a heading it splits into two headings of the same level, because
+            the text after the caret is still heading text and the alternative
+            silently demotes it.
+
+            **Deleting everything leaves one empty paragraph block**, which is
+            the question `modelRender` deferred to this slice. An empty
+            document is a block the caret can be in rather than a filler
+            paragraph belonging to no block, so the model always has somewhere
+            to put the next keystroke and the no-block case in `modelRender`
+            stops being reachable from the app.
+
+        3.  **The merge — not started.** A deletion whose target range spans two
+            blocks, which falls out of `getTargetRanges()` rather than being
+            special-cased — the spike confirmed that and slice 3 already refuses
+            exactly this case, so what lands here is the handling behind a
+            refusal that is already in the right place.
+
+            The second block's inline tree is appended to the first's, the
+            second is removed, and **every container the removal emptied goes
+            with it** — an item whose last child left, then the list whose last
+            item left. That unwinding is the merge's real content: a list
+            holding no items serialises to nothing and renders to an empty
+            `<ul>` the caret can sit inside, which is a document that looks
+            broken rather than one that is.
+
+            Two leaves with no inline tree cannot merge, and neither can a leaf
+            with one into a leaf without — a paragraph and a fence have no
+            common text space. Refused, the way slice 3 refuses, rather than
+            approximated.
+
+        4.  **`insertLineBreak` — not started.** A hardbreak node at the caret.
+            **A new break has no recorded spelling**, so it takes
+            `sniffMarkdownStyle`'s `hardBreak` — which is the residue TODO 2.3
+            left behind, answered here from two directions at once: an existing
+            break keeps the spelling its own node recorded, and only a new one
+            asks the document-wide sniff. The sniff is read in
+            `model-input.js` and handed over, never reached for in `model.js`,
+            which is the same boundary the parser injection draws.
+
+        5.  **The list rules — not started.** The two hand-rolled clusters move
+            here and stop depending on an engine. What they do today is the
+            spec: `app.js`'s keydown handler for Enter and Backspace on an empty
+            `<li>`, and `outdentListItem` for Shift+Tab.
+
+            As model rules they are `modelIndentItem` and `modelOutdentItem`
+            plus the emptiness test, which is one implementation with no engine
+            in it — and that is what retires `list-empty-item-check.html` and
+            `list-indent-check.html` as open questions. Four behaviours, taken
+            from the handler rather than reinvented: a nested empty item
+            outdents one level; a top-level empty item leaves the list for a
+            paragraph, splitting the list when it had followers; Backspace on
+            an empty item with a bullet above it removes the item and puts the
+            caret at the end of that bullet; and Tab indents an item that is
+            not the first of its list, because markdown cannot write one nested
+            under nothing.
+
+            **Tab arrives as a keydown, not as a `beforeinput`**, so this is
+            the first thing the input layer binds that is not an `inputType`.
+            It has to be, and it is also the shape slice 7's format shortcuts
+            take — measured in stage 0, where the key arrives in all three
+            engines.
+
+        6.  **Leaves edited as source — not started.** A second text space:
+            offsets into the block's own source rather than into an inline
+            tree. **Scoped to the fence and the indented code block**, which
+            are the two leaves whose rendering is a `<pre><code>` holding text
+            a caret can enter. A gap renders to nothing and has no DOM to be
+            edited through; an `html_block` is arbitrary markup whose text is
+            not its source; a table row refuses, which is step 7.
+
+            A fence's editable text is its body — the info string is not
+            reachable from the document, which is also true today — so the
+            mapping is the body, and the source is recomposed from the body
+            plus what the parse recorded in front of each line: the quote
+            chain, the item's continuation indent, and the fence's own markers.
+
+            **A source-edited leaf keeps a `source`, and it is the new bytes.**
+            That is `modelTouch` inverted and it is the honest shape: the
+            contract is *a block whose content changed must not re-emit its old
+            bytes*, and for a leaf whose content **is** source the new bytes
+            satisfy it directly. So the ancestors are cleared exactly as they
+            are for any other edit and the block itself is assigned rather than
+            nulled — `modelEmitLeaf` refuses a block with no inline tree, and
+            it should go on refusing, because there is nothing for it to
+            compose from.
+
+        7.  **A table refuses edits — not started.** Decided 2026-09-19, above.
+            The refusal itself is an absence: the handler already cancels every
+            `beforeinput` whether it handles it or not. What lands here is the
+            *saying so* — a table's subtree renders `contenteditable="false"`,
+            so the engine never puts a caret inside it and nobody is left
+            typing into something that ignores them.
+
+            Its own three consequences are in the design above and the third is
+            the one to watch: **a table as the last block must not trap the
+            caret**, which is the classic `contenteditable="false"` trap and
+            cannot happen today because everything is editable. It is the first
+            thing to drive on the check page.
+
+        **Verification is the same two halves slice 3 drew.** The `model` suite
+        takes the mutations — split, merge, indent, outdent, the source space —
+        against the real tree and the oracle, because they are pure functions
+        over it and a re-emit after a structural edit is exactly the D1 claim
+        one step further out: a split rewrites its own two blocks and hands back
+        every other line. The `model-input` suite takes the routing, with the
+        model stubbed, as it already does. And `front/input-check.html` grows
+        the steps neither can reach — Enter, Backspace across a block boundary,
+        Tab, and the caret trap — because whether an engine sends these at all
+        is per browser and per version, and in Blink a machine cannot drive
+        them.
 
     *   **5. Input: paste and drop — not started.** `insertFromPaste` and
         `insertFromDrop` read `text/html`, run it through `sanitisePastedHtml`

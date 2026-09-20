@@ -6092,3 +6092,63 @@ of three; it is a real file now. And a step read "try to type inside the
 equation or the image", which is not an instruction anybody can follow — it now
 says where to click, what to type and what the log should say, with the equation
 split into the two cases whose difference is the whole of the bug above.
+
+## 2026-09-20 — Plan stage 2's slice 4, the structural input layer
+
+Slice 4 had a design and no build order. Stage 1's slices 1b and 3 each carried
+six numbered steps written before any of them was built, and this is the slice
+where that matters most: it is the one that changes how many blocks there are,
+so every mistake in it is a mistake in the tree the file is emitted from.
+
+Seven steps now, in a forced order — the block splice, `insertParagraph`, the
+merge, `insertLineBreak`, the list rules, leaves edited as source, and the
+table's refusal. The first has no keystroke behind it and exists so the other
+six have something to call.
+
+**Four decisions inside the first step**, because everything after it inherits
+them. A new block's **tokens come from the parser, never hand-built**, which is
+the exact twin of the rule that keeps `modelRenderBlock` honest — a fresh
+paragraph is `md.parse` of a one-character template with its inline children
+replaced, and everything else is cloned from the block it came from. A new
+**separator is a blank line carrying the quote chain**, so it is `"\n\n"` at top
+level and `"\n>\n"` inside a quote. A new block's **affixes are computed from
+its position rather than copied**, since a split's second half is never its
+item's first child and so takes the continuation indent where the original took
+the marker. And **an ordered item's number follows its own list** — read off the
+two items before it, so a document written all-`1.` stays that way — with
+**siblings never renumbered**, which is refused on D1's own grounds: renumbering
+what follows would re-emit every sibling of an edited block, which is the one
+thing slice 1b exists to prevent, and CommonMark numbers a rendered list off its
+first marker anyway.
+
+**What Enter splits is the slice's real question**, and the answer is the block
+and then every ancestor up to and including the nearest item. So Enter in a
+top-level paragraph makes a paragraph, Enter in a quoted paragraph makes a
+second quoted paragraph — a quote is not an item, and the walk stops — and Enter
+in a bullet makes a bullet rather than a second paragraph inside one. At the end
+of a heading it opens a paragraph; anywhere else in a heading it splits into two
+headings of the same level, because the text after the caret is still heading
+text and the alternative silently demotes it.
+
+It also settles the question `modelRender` deferred: **deleting everything
+leaves the model holding one empty paragraph block**, so there is always a block
+for the next keystroke to land in and the filler paragraph belonging to no block
+stops being reachable from the app.
+
+**A source-edited leaf keeps a `source`, and it is the new bytes.** That is
+`modelTouch` read inverted, and it is the honest shape rather than an exception:
+the contract is that a block whose content changed must not re-emit its old
+bytes, and for a leaf whose content *is* source the new bytes satisfy it
+directly. Its ancestors are cleared exactly as any other edit clears them.
+Scoped to the fence and the indented code block, which are the two leaves whose
+rendering is a `<pre><code>` a caret can enter — a gap renders to nothing, an
+`html_block`'s text is not its source, and a table row refuses.
+
+**Tab is the first thing the input layer binds that is not an `inputType`**, and
+it has to be, since a keydown is where Tab arrives. That is also the shape
+slice 7's format shortcuts take, measured in stage 0 as arriving in all three
+engines.
+
+No code changed, so nothing ran — the rule in CLAUDE.md is that a change
+touching no code proves nothing by running the suites. `npm test` was green at
+1,354 checks before it, which is the tree this was written against.
