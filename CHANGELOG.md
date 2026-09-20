@@ -6093,7 +6093,7 @@ equation or the image", which is not an instruction anybody can follow — it no
 says where to click, what to type and what the log should say, with the equation
 split into the two cases whose difference is the whole of the bug above.
 
-## 2026-09-20 — Plan stage 2's slice 4, the structural input layer
+## 2026-09-20 — `8b7ee61` — Plan stage 2's slice 4, the structural input layer
 
 Slice 4 had a design and no build order. Stage 1's slices 1b and 3 each carried
 six numbered steps written before any of them was built, and this is the slice
@@ -6153,7 +6153,7 @@ No code changed, so nothing ran — the rule in CLAUDE.md is that a change
 touching no code proves nothing by running the suites. `npm test` was green at
 1,354 checks before it, which is the tree this was written against.
 
-## 2026-09-20 — Stage 2, slice 4: the model takes structure
+## 2026-09-20 — `7ff2d8b` — Stage 2, slice 4: the model takes structure
 
 The edits that change how many blocks there are, and the ones that act on a
 block with no inline tree. Stage 1 built the tree and only ever read it; slice 3
