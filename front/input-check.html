@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  THE INPUT CHECK — TODO 3.1, stage 2. docs/REWRITE.md's slice 3.
+  THE INPUT CHECK — TODO 3.1, stage 2. docs/REWRITE.md's slices 3 and 4.
 
   This is a check page rather than a harness, and the difference is what it
   measures: **the browser**. Does an engine send a `beforeinput` for each thing
@@ -56,13 +56,21 @@
   <li><b>Select</b> a word and type over it. One <code>insertText</code> whose target range is the selection.</li>
   <li><b>Backspace</b> mid-word, then <b>Delete</b> (fn+Delete on a Mac). <code>deleteContentBackward</code> / <code>deleteContentForward</code>, each with a target range one character wide.</li>
   <li><b>Delete a word</b> — Option+Backspace on a Mac, Ctrl+Backspace elsewhere. One <code>deleteWordBackward</code> whose range covers the whole word: the engine decides what a word is, and we do not.</li>
-  <li><b>Backspace at the very start of a paragraph.</b> The range should span <i>two</i> blocks. It is refused for now — nothing happens, no divergence — because a merge is slice 4's.</li>
+  <li><b>Backspace at the very start of a paragraph.</b> The range spans <i>two</i> blocks — the log says so — and the two join, with the caret landing exactly where they meet. Slice 4 turned this from a refusal into the handling, and it fell out of <code>getTargetRanges()</code> rather than being worked out from the keystroke.</li>
   <li><b>Type an accented character</b> — hold <kbd>e</kbd> on a Mac, or use a dead key. <code>compositionstart</code>, then the engine writes while we wait, then <code>compositionend</code> applies it as one edit.</li>
   <li><b>Type into the bold run, at its very end, and at its very start.</b> The end continues bold; the start does not.</li>
   <li><b>Click on the equation itself and type a letter.</b> The letter appears <i>beside</i> it and the equation survives — the range in the log is collapsed, <code>n–n</code>. This is the one Gecko found on 2026-09-20: a caret inside the span used to report <code>12–13</code> and the letter ate the equation.</li>
   <li><b>Drag across the whole equation to select it, then type.</b> Now it <i>is</i> replaced, and the range in the log spans it, <code>n–n+1</code>. The pair is the point: one position is not a range.</li>
   <li><b>Click just after the image and type.</b> The letter lands after it; the image survives. Then <b>select the image</b> — drag across it, or click it and use Shift+Arrow — and type: it is replaced. It is one character, the same as the equation.</li>
-  <li><b>Press Enter</b>, and <b>Ctrl/Cmd+Z</b>. Both are cancelled and do nothing — structure is slice 4, undo is slice 6. Nothing should move.</li>
+  <li><b>Press Ctrl/Cmd+Z.</b> Cancelled, and nothing moves: undo is slice 6.</li>
+
+  <li><b>Press Enter mid-paragraph.</b> It splits into two, the caret is at the start of the second, and the divergence line stays quiet. Then <b>Enter at the end of the heading</b>: what opens is a <i>paragraph</i>, not a second heading.</li>
+  <li><b>Press Enter in the middle of a list item.</b> You get a second <i>bullet</i>, not two paragraphs inside one — Enter splits the block and then the item above it. Then <b>Enter at the end of the last bullet</b> to get an empty one, and <b>Enter again</b>: the empty item leaves the list for a paragraph.</li>
+  <li><b>Press Tab and Shift+Tab inside a bullet.</b> The item nests under the one above it and comes back out, with its followers along. This is the move <code>tests/list-indent-check.html</code> watches three engines make on the old core; here there is no engine in it.</li>
+  <li><b>Press Shift+Enter mid-line.</b> A hard break: the line wraps and the caret is on the second half.</li>
+  <li><b>Click inside the fenced code block and type.</b> Its body is edited as <i>source</i> — the second text space — and Enter inside it is a newline in the body rather than a new block.</li>
+  <li><b>Try to click inside the table.</b> The caret will not go in: a table is rendered <code>contenteditable="false"</code> until stage 3, so a keystroke is a closed door rather than one that silently does nothing. Selecting <i>across</i> it still works.</li>
+  <li><b>The table is the last thing in the document — click below it and type.</b> There is somewhere to go, because an empty paragraph is kept after it. This is the <code>contenteditable="false"</code> caret trap, and it is the one thing in slice 4 that could make a document un-appendable.</li>
   <li><b>Use the toolbar's formats — there is no toolbar here, so skip this one.</b> In the app with <code>?core=model</code>, the format bar does nothing on purpose: <code>execCommand</code> fires <code>input</code> but never <code>beforeinput</code>, measured in Chrome 152, so it cannot be intercepted and is refused rather than allowed to change the DOM behind the model's back. Formats arrive as model commands in slice 7.</li>
 </ol>
 <p class="note">Fail is any of: a character that does not appear, a caret that jumps, a divergence line that lights up, or an <code>inputType</code> reported as not cancelable.</p>
@@ -97,8 +105,17 @@
     "",
     "- a list item",
     "- another one",
+    "- a third, to nest under the one above",
     "",
     "A second paragraph, for Backspace at the start of.",
+    "",
+    "```js",
+    "const body = \"edited as source\";",
+    "```",
+    "",
+    "| a | b |",
+    "| - | - |",
+    "| c | d |",
     "",
   ].join("\n");
 

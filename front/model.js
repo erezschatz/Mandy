@@ -154,27 +154,26 @@ function modelSpansAtLevel(tokens, level) {
 
 const modelIsBlankLine = (line) => line.trim() === "";
 
-// A block, before its source, separator and children are attached. `inline` is
-// the token a paragraph or heading carries its content in — the editable
-// structure once stage 2 converts it. Every other kind keeps its token slice
-// and is edited as a whole for now.
-function modelBlockFromSpan(span, md, id) {
-  const kind = MODEL_BLOCK_KINDS[span.open.type] || "unknown";
-  const inline = span.tokens.find((t) => t.type === "inline") || null;
-  const block = {
+/**
+ * Every field a block has, in one place.
+ *
+ * Three things build blocks — the tiler, the gap, and (since slice 4) the
+ * editor itself — and a field one of them forgot is a field that reads
+ * `undefined` where the emitter expects a `null`. The list lives here so there
+ * is one of it, and so the comments describing what each field means sit beside
+ * the field rather than in whichever copy happened to be written first.
+ */
+function modelBlockShape(id, kind) {
+  return {
     id,                  // minted, never reused: see modelParse
     kind,
-    level: kind === "heading" ? Number(span.open.tag.slice(1)) : 0,
-    inline: kind === "paragraph" || kind === "heading" ? inline : null,
-    tokens: span.tokens,
-    // The token immediately before this block's own in the parser's stream,
-    // but only when it is a hidden one — which markdown-it's renderer looks
-    // back at, and which a block rendered from its own slice cannot see. See
-    // the rendering section at the bottom of this file.
-    hiddenBefore: span.before && span.before.hidden ? span.before : null,
-    inlines: null,       // filled below, from `inline`
-    source: null,        // set by the caller, from the span
-    separator: "",
+    level: 0,            // a heading only: 1 to 6
+    inline: null,        // the parser's inline token, for a leaf that has one
+    tokens: [],          // the parser's own tokens, which the renderer walks
+    hiddenBefore: null,  // see modelRenderBlock
+    inlines: null,       // the inline tree, folded out of `inline` by modelInlines
+    source: null,        // the block's exact bytes, or null once it is edited
+    separator: "",       // the bytes between this block and the next
     children: null,      // a container's sub-blocks, tiling its own source
     leading: "",         // the container's bytes before its first child
     parent: null,        // set by the tiler; what makes modelTouch able to walk up
@@ -184,6 +183,24 @@ function modelBlockFromSpan(span, md, id) {
     headingShape: null,   // a heading only: see modelHeadingShape
     leadingAffix: null,   // everything markdown-it took off the first line: see below
   };
+}
+
+// A block, before its source, separator and children are attached. `inline` is
+// the token a paragraph or heading carries its content in — the editable
+// structure once stage 2 converts it. Every other kind keeps its token slice
+// and is edited as a whole for now.
+function modelBlockFromSpan(span, md, id) {
+  const kind = MODEL_BLOCK_KINDS[span.open.type] || "unknown";
+  const inline = span.tokens.find((t) => t.type === "inline") || null;
+  const block = modelBlockShape(id, kind);
+  block.level = kind === "heading" ? Number(span.open.tag.slice(1)) : 0;
+  block.inline = kind === "paragraph" || kind === "heading" ? inline : null;
+  block.tokens = span.tokens;
+  // The token immediately before this block's own in the parser's stream, but
+  // only when it is a hidden one — which markdown-it's renderer looks back at,
+  // and which a block rendered from its own slice cannot see. See the rendering
+  // section at the bottom of this file.
+  block.hiddenBefore = span.before && span.before.hidden ? span.before : null;
   // Eagerly rather than on first edit: the fold is a walk over tokens the
   // parser has already produced — 980 blocks and ~11,000 tokens across the
   // files the suite drives — and a field that is filled at exactly one moment
@@ -195,25 +212,7 @@ function modelBlockFromSpan(span, md, id) {
 // A line no token claimed. Same shape as any other block, with nothing to parse
 // and nothing to render — see `modelParse` for what lives here and why.
 function modelGapBlock(id) {
-  return {
-    id,
-    kind: "gap",
-    level: 0,
-    inline: null,
-    tokens: [],
-    hiddenBefore: null,  // it renders to nothing, so it looks back at nothing
-    inlines: null,
-    source: null,
-    separator: "",
-    children: null,
-    leading: "",
-    parent: null,
-    marker: null,
-    contentIndent: null,
-    quotePrefixes: null,  // inside a quote only: see modelQuotePrefix
-    headingShape: null,   // a heading only: see modelHeadingShape
-    leadingAffix: null,   // everything markdown-it took off the first line: see below
-  };
+  return modelBlockShape(id, "gap");
 }
 
 /**
@@ -1615,7 +1614,14 @@ function modelEmitLeaf(block, md, doc, width = 0) {
   for (let i = 0; i < lines.length; i += 1) {
     const quote = chain ? chain[i] ?? last : "";
     const first = quote + (i === 0 ? opener + extra : indent);
-    const composed = first + lines[i];
+    // **An affix with nothing behind it loses its trailing whitespace**, which
+    // is the heading rule two paragraphs up read one level out: a spelling is
+    // put back when content needs it and taken off when the content goes. An
+    // empty item is `-` and not `- `, an empty quoted line is `>` and not
+    // `> `, and a continuation indent on an empty line is nothing at all —
+    // because the alternative is writing trailing whitespace into the user's
+    // file, which is the one thing every rule in markdown-style.js agrees on.
+    const composed = lines[i] === "" ? first.replace(/[ \t]+$/, "") : first + lines[i];
 
     // Slice 3's step 5, and everything it does not do is the point. **A
     // heading is never re-wrapped**, because a wrap turns its tail into a
@@ -1675,9 +1681,7 @@ function modelEmitLeaf(block, md, doc, width = 0) {
  */
 function modelEmitBlock(block, emit) {
   if (block.source !== null) return block.source;
-  if (block.children) {
-    return block.leading + block.children.map((child) => modelEmitBlock(child, emit) + child.separator).join("");
-  }
+  if (block.children) return modelJoinBlocks(block.children, emit, block.leading);
   if (typeof emit !== "function") {
     throw new Error(`edited ${block.kind} block with no serialiser`);
   }
@@ -1692,11 +1696,47 @@ function modelEmitBlock(block, emit) {
  * document is its blocks in order, and nothing else.
  */
 function modelSerialise(doc, emit) {
-  let out = doc.prefix;
-  for (const block of doc.blocks) {
-    out += modelEmitBlock(block, emit) + block.separator;
+  return modelJoinBlocks(doc.blocks, emit, doc.prefix);
+}
+
+/**
+ * A run of blocks and the separators between them, which is both what a
+ * document is and what a container is — the tiling invariant read backwards, in
+ * the one place that does the reading.
+ *
+ * **A block that emits nothing takes the separator before it with it**, and
+ * that is slice 4's, because slice 4 is what first produces one. Markdown has
+ * no empty paragraph: the user presses Enter at the end of a line, the model
+ * holds a block for the caret to be in, and the file has nothing to say about
+ * it. Emitting its separator anyway would put a blank line into the document
+ * for every Enter that has not been typed into yet — diff noise in a file
+ * nobody edited, which is the thing this whole layer exists to prevent.
+ *
+ * Handing *its* separator on rather than keeping the one before it is what
+ * makes an Enter at the end of a document cost nothing at all: the bytes that
+ * followed the block it split are the bytes that still follow it. An empty
+ * block at the very start keeps no separator, since there is nothing in front
+ * of it for one to sit between.
+ *
+ * Nothing the parser produces emits empty — every block spans at least one
+ * non-blank line — so this is exactly as it was for a document that was opened
+ * and saved.
+ */
+function modelJoinBlocks(blocks, emit, leading) {
+  let out = leading;
+  let separator = "";
+  let started = leading !== "";
+  for (const block of blocks) {
+    const bytes = modelEmitBlock(block, emit);
+    if (bytes === "") {
+      if (started) separator = block.separator;
+      continue;
+    }
+    out += separator + bytes;
+    separator = block.separator;
+    started = true;
   }
-  return out;
+  return out + separator;
 }
 
 /**
@@ -1867,6 +1907,12 @@ function modelRenderDocument(doc, md, env = {}) {
  * and a gap have none, and their content is source rather than text.
  */
 function modelNeedsFiller(block) {
+  // An empty item is a childless leaf holding nothing but its own marker
+  // (slice 1b), so it renders as a bare `<li></li>` with no height and no
+  // caret — the same problem an empty paragraph has, one kind along. Slice 4
+  // gives it a filler for the same reason, and `modelFillItem` turns it into a
+  // container the moment somebody types in it.
+  if (block.kind === "item" && !block.children && !block.inlines) return true;
   if (!block.inlines) return false;
   if (!block.inlines.length) return true;
   return block.inlines[block.inlines.length - 1].kind === "hardbreak";
@@ -1951,6 +1997,14 @@ function modelBuildBlock(parent, block, md, env) {
   const nodes = Array.prototype.slice.call(parent.childNodes, from);
   const el = modelOwnedElement(parent, from);
   if (el) el.setAttribute(MODEL_BLOCK_ATTR, String(block.id));
+  // **A table refuses edits, and the rendering is how it says so** (slice 4's
+  // step 7). The refusal itself is an absence — the input layer cancels every
+  // `beforeinput` whether it handles it or not, so a table needs no code there
+  // at all — but a keystroke that silently does nothing reads as a broken
+  // editor rather than as a closed door. `contenteditable="false"` means the
+  // engine will not put a caret inside it, so nobody is ever in the position of
+  // typing into something that ignores them. Lifted at stage 3, as TODO 1.1.8.
+  if (el && block.kind === "table") el.setAttribute("contenteditable", "false");
 
   if (block.children) {
     for (const child of block.children) modelBuildBlock(el || parent, child, md, env);
@@ -2144,6 +2198,11 @@ function modelCurrentDocument() {
 
 function modelLoad(root, markdown, md) {
   modelDocument = modelParse(markdown, md);
+  // Every document ends somewhere the caret can go — see modelEnsureBlock. It
+  // is here rather than in `modelParse` because it is about editing rather than
+  // about the file: a document parsed to be serialised has no caret in it, and
+  // the `model` suite's oracle must come back exactly as it went in.
+  modelEnsureBlock(modelDocument, md);
   modelRender(root, modelDocument, md);
   return modelDocument;
 }
@@ -2635,4 +2694,1175 @@ function modelInlineSplice(block, from, to, text) {
 
   modelTouch(block);
   return start + typed.length;
+}
+
+// ── Structure ────────────────────────────────────────────────────────────────
+//
+// Stage 2's slice 4. Stage 1 built the tree and only ever read it; slice 3's
+// `modelInlineSplice` changes what is *inside* a block and cannot change how
+// many blocks there are. What is here is the other half — put a block in, take
+// one out, split one in two, join two into one — with the tiling invariant left
+// true on both sides of every one of them.
+//
+// **Everything here is a pure function over the model**, which is what lets the
+// suite drive it against the oracle with no browser anywhere. The input layer
+// decides *when*; this decides *what*.
+
+/**
+ * The array a block lives in: its container's children, or the document's own
+ * list.
+ *
+ * One function rather than the ternary at each site, because every structural
+ * edit needs it and a site that reached for `doc.blocks` on a nested block
+ * would splice the wrong list — silently, since both are arrays of blocks.
+ */
+function modelSiblings(doc, block) {
+  return block.parent ? block.parent.children : doc.blocks;
+}
+
+/**
+ * A blank line in a block's own quote chain: `"\n\n"` at top level and
+ * `"\n>\n"` inside a quote.
+ *
+ * A separator is bytes, and inside a quote those bytes carry the chain or the
+ * block after it stops being quoted. The chain's trailing whitespace is
+ * trimmed, because `"> "` on an otherwise blank line is a trailing space nobody
+ * wrote — the same thing D3's rules already refuse to put into a file.
+ */
+function modelBlankSeparator(block) {
+  const chain = block.quotePrefixes;
+  const last = chain && chain.length ? chain[chain.length - 1] : "";
+  return "\n" + last.replace(/[ \t]+$/, "") + "\n";
+}
+
+/**
+ * The separator this block's own list already uses between its members, or
+ * null when the list has only this one and has therefore said nothing.
+ *
+ * **This is what keeps a tight list tight.** Two paragraphs inside one item
+ * must be separated by a blank line or they are one paragraph; two *items* may
+ * be separated by one or not, and which it is decides whether CommonMark calls
+ * the list loose. So a split that promotes to the item level cannot reuse the
+ * blank line the paragraph split needed — it has to ask the list what the
+ * author already does, which is the same per-document convention
+ * `sniffMarkdownStyle` reads for markers and this model reads one level finer.
+ */
+function modelSiblingSeparator(doc, block) {
+  const list = modelSiblings(doc, block);
+  const at = list.indexOf(block);
+  if (at < 0) return null;
+  if (at + 1 < list.length) return block.separator;
+  if (at > 0) return list[at - 1].separator;
+  return null;
+}
+
+/**
+ * What a block's `leadingAffix` holds beyond the opener its position gives it.
+ *
+ * `modelEmitLeaf` composes a line as the quote chain, then the item's marker or
+ * continuation indent, then the rest of `leadingAffix` — a paragraph's own one-
+ * to-three-space indent, usually nothing. For a block the parser produced those
+ * two agree by construction. For one the editor moves they cannot: a split's
+ * second half is never its item's first child, so it takes the continuation
+ * indent where the block it came from took the marker, and copying the affix
+ * across would write a second bullet into the file.
+ *
+ * So the opener is recomputed from where the block now sits and this is the
+ * part that travels. It is `modelEmitLeaf`'s one subtraction read backwards, in
+ * the one place that needs it — and it must be read **before** the move, since
+ * afterwards the block's position no longer describes the bytes it recorded.
+ */
+function modelBlockExtra(block) {
+  if (block.kind === "heading" || block.leadingAffix === null) return "";
+  const item = modelItemAffix(block);
+  const opener = (item ? (item.first ? item.marker : item.contentIndent) : "") ?? "";
+  return block.leadingAffix.startsWith(opener) ? block.leadingAffix.slice(opener.length) : "";
+}
+
+// The other end of the same subtraction: the affix a block's *current* position
+// gives it, plus whatever `modelBlockExtra` carried across. A heading records
+// none — its `open` runs from the chain-stripped column 0 and carries the
+// indent already, which is why `modelEmitLeaf` never asks one for a
+// `leadingAffix` at all.
+function modelSetLeadingAffix(block, extra) {
+  if (block.kind === "heading") {
+    block.leadingAffix = null;
+    return block;
+  }
+  const item = modelItemAffix(block);
+  const opener = (item ? (item.first ? item.marker : item.contentIndent) : "") ?? "";
+  block.leadingAffix = opener + extra;
+  return block;
+}
+
+/**
+ * A copy of one of the parser's tokens that this file may write to.
+ *
+ * Only the `inline` token is ever cloned, and it has to be: `modelInlineSplice`
+ * and everything below assign `inline.children`, so two blocks sharing one
+ * inline token would each render the other's content. Block-level tokens are
+ * read-only to everything here and are shared deliberately — that is also what
+ * keeps a split's two halves agreeing about their own tag.
+ *
+ * The prototype comes across rather than being flattened to a plain object,
+ * because markdown-it's own renderer rules call methods on a Token — `attrGet`
+ * above all — and a flattened copy would throw inside the renderer, which is
+ * the worst place to find out.
+ */
+function modelCloneToken(token) {
+  const copy = Object.assign(Object.create(Object.getPrototypeOf(token)), token);
+  if (Array.isArray(token.attrs)) copy.attrs = token.attrs.map((pair) => pair.slice());
+  return copy;
+}
+
+/**
+ * A new leaf of the same kind as `like`, holding `inlines`.
+ *
+ * Cloned rather than built, because the tokens are already there: a split's two
+ * halves are the same kind of block with the same tag, the same heading shape
+ * and the same quote chain, and the only thing that differs is the content.
+ * **Its `source` is null from birth**, which is the whole point — a block the
+ * editor created has no bytes in the file to hand back, so it goes through the
+ * emitter and is written in the conventions its affixes record.
+ *
+ * `inline.content` is left holding the original's, and deliberately: slice 3
+ * settled that it is the parser's record of what it was handed, read at parse
+ * time and by nothing afterwards, and the emitter composes from the tree. A
+ * copy that zeroed it would be inventing a second meaning for the field.
+ */
+function modelLeafLike(doc, like, inlines) {
+  const block = modelBlockShape(modelMintId(doc), like.kind);
+  block.level = like.level;
+  block.tokens = like.tokens.map((token) => (token.type === "inline" ? modelCloneToken(token) : token));
+  block.inline = block.tokens.find((token) => token.type === "inline") || null;
+  block.hiddenBefore = like.hiddenBefore;
+  block.inlines = inlines;
+  block.quotePrefixes = like.quotePrefixes ? like.quotePrefixes.slice() : null;
+  block.headingShape = like.headingShape ? Object.assign({}, like.headingShape) : null;
+  if (block.inline) block.inline.children = modelInlineTokens(inlines);
+  return block;
+}
+
+/**
+ * A new, empty container of the same kind as `like`.
+ *
+ * Its tokens are shared, because a container renders only its own open and
+ * close and neither is ever written to. Its marker is the next one its list
+ * uses — see `modelNextMarker` — and its children start empty for the caller to
+ * fill.
+ */
+function modelContainerLike(doc, like) {
+  const block = modelBlockShape(modelMintId(doc), like.kind);
+  block.level = like.level;
+  block.tokens = like.tokens;
+  block.hiddenBefore = like.hiddenBefore;
+  block.children = [];
+  block.quotePrefixes = like.quotePrefixes ? like.quotePrefixes.slice() : null;
+  block.marker = like.marker;
+  block.contentIndent = like.contentIndent;
+  return block;
+}
+
+/**
+ * A fresh, empty paragraph, whose tokens come from the parser.
+ *
+ * **Never hand-built**, which is the exact twin of the rule that keeps
+ * `modelRenderBlock` honest: a block renders through markdown-it's own renderer
+ * over its own tokens, so a token this file invented would be this file
+ * deciding what markdown-it produces — a second renderer wearing a different
+ * hat. `md.parse` of a one-character document gives the three tokens a
+ * paragraph is, and the content is then emptied.
+ *
+ * It is the one block kind the editor creates out of nothing. Everything else
+ * is cloned off a block that already exists, which is where the tokens are.
+ */
+function modelParagraphBlock(doc, md) {
+  const tokens = md.parse("x", {}).map((token) => modelCloneToken(token));
+  const block = modelBlockShape(modelMintId(doc), "paragraph");
+  block.tokens = tokens;
+  block.inline = tokens.find((token) => token.type === "inline") || null;
+  if (block.inline) {
+    block.inline.content = "";
+    block.inline.children = [];
+  }
+  block.inlines = [];
+  block.leadingAffix = "";
+  return block;
+}
+
+const MODEL_ORDERED_MARKER = /^([ \t]*)(\d{1,9})([.)][ \t]*)$/;
+
+/**
+ * The marker a new item takes, read off its own list rather than off a
+ * document-wide sniff.
+ *
+ * A bullet is copied outright. An ordered marker asks the item before this one:
+ * **two items in a row carrying the same number is a document written all-`1.`**
+ * and the new one copies it, and anything else takes the next number. That is
+ * the list's own convention, which is strictly better than
+ * `sniffMarkdownStyle`'s one answer per document — the same argument slice 2
+ * made for recording a mark's delimiter per node.
+ *
+ * **Siblings are never renumbered**, and that is refused on D1's own grounds
+ * rather than left undone: renumbering what follows would re-emit every sibling
+ * of an edited block, which is exactly what slice 1b exists to prevent, and
+ * CommonMark numbers a rendered list off its first marker regardless. The bytes
+ * after an insert are untidy; the document is not wrong, and nobody's diff is
+ * the length of the list.
+ *
+ * The content indent follows the marker's width when it was the marker's width
+ * to begin with — `9. ` becoming `10. ` moves the column its continuation lines
+ * have to reach, and an indent left one short stops being a continuation at
+ * all.
+ */
+function modelNextMarker(doc, item) {
+  if (item.marker === null) return { marker: null, contentIndent: item.contentIndent };
+  const digits = MODEL_ORDERED_MARKER.exec(item.marker);
+  if (!digits) return { marker: item.marker, contentIndent: item.contentIndent };
+
+  const list = modelSiblings(doc, item);
+  const at = list.indexOf(item);
+  const before = at > 0 ? list[at - 1] : null;
+  const prior = before && before.marker ? MODEL_ORDERED_MARKER.exec(before.marker) : null;
+  const marker = prior && prior[2] === digits[2]
+    ? item.marker
+    : digits[1] + String(Number(digits[2]) + 1) + digits[3];
+
+  let contentIndent = item.contentIndent;
+  if (contentIndent !== null && contentIndent.length === item.marker.length && marker.length !== item.marker.length) {
+    contentIndent = marker.length > contentIndent.length
+      ? contentIndent + " ".repeat(marker.length - contentIndent.length)
+      : contentIndent.slice(0, marker.length);
+  }
+  return { marker, contentIndent };
+}
+
+/**
+ * Put `fresh` into the tree immediately after `after`, as its sibling.
+ *
+ * The separator that followed `after` now follows `fresh`, because it is what
+ * followed the bytes that are now on the far side of both — and `after` takes a
+ * blank line in its own quote chain, which is the only separator two leaves can
+ * have and still parse as two.
+ *
+ * **The parent link is set before the affix**, because `modelItemAffix` walks
+ * it, and **the container is touched** rather than the blocks: `after`'s own
+ * bytes may not have changed at all (Enter at the end of a heading), but its
+ * container's description of its children has, and a container still holding
+ * its own `source` re-emits from those bytes and never asks. Whoever changed a
+ * block's content touches that block; this touches what the *shape* change
+ * invalidated.
+ */
+function modelInsertBlockAfter(doc, after, fresh, extra = "") {
+  const list = modelSiblings(doc, after);
+  const at = list.indexOf(after);
+  if (at < 0) return null;
+  fresh.parent = after.parent;
+  fresh.separator = after.separator;
+  after.separator = modelBlankSeparator(after);
+  list.splice(at + 1, 0, fresh);
+  modelSetLeadingAffix(fresh, extra);
+  if (after.parent) modelTouch(after.parent);
+  return fresh;
+}
+
+/**
+ * Take a block out of the tree.
+ *
+ * Its separator goes to the sibling before it, because those are the bytes that
+ * followed the block and something has to carry them or a removal at the end of
+ * a container eats the blank line after it. Removing the **first** child is the
+ * case with teeth: the next one becomes the container's first, so it now takes
+ * the item's marker where it took the continuation indent, and its affix has to
+ * be recomputed before it re-emits — which is a byte change, so it is touched.
+ */
+function modelRemoveBlock(doc, block) {
+  const list = modelSiblings(doc, block);
+  const at = list.indexOf(block);
+  if (at < 0) return false;
+
+  const heir = at === 0 && list.length > 1 ? list[1] : null;
+  const extra = heir ? modelBlockExtra(heir) : "";
+  list.splice(at, 1);
+  if (at > 0) list[at - 1].separator = block.separator;
+  // **A container's last child always has an empty separator**, which is the
+  // tiler's own shape — a container's `map` runs into the blank line after it,
+  // so the trailing blanks were handed back to the container's separator at
+  // parse. A removal that left a stale one behind would emit that blank line
+  // twice: once inside the container and once after it.
+  if (block.parent && list.length) list[list.length - 1].separator = "";
+  if (heir) {
+    modelSetLeadingAffix(heir, extra);
+    modelTouch(heir);
+  }
+  if (block.parent) modelTouch(block.parent);
+  block.parent = null;
+  return true;
+}
+
+/**
+ * Take a block out, and take every container the removal emptied with it.
+ *
+ * **The unwinding is the point.** A list holding no items serialises to nothing
+ * and renders to an empty `<ul>` the caret can sit inside — a document that
+ * looks broken rather than one that is — so an item whose last child left goes,
+ * and then the list whose last item left, all the way up. It recurses rather
+ * than stopping at one level for `modelTouch`'s reason: there is no case where
+ * an empty container should survive, so a stop condition would be a second rule
+ * with nothing behind it.
+ */
+function modelPruneBlock(doc, block) {
+  const parent = block.parent;
+  if (!modelRemoveBlock(doc, block)) return false;
+  if (parent && parent.children && parent.children.length === 0) modelPruneBlock(doc, parent);
+  return true;
+}
+
+/**
+ * Split an inline tree at `offset` into the part before and the part after,
+ * with every mark the split landed inside reopened on the far side.
+ *
+ * `**one two**` cut between the words is `**one **` and `**two**` — the mark is
+ * a node, so reopening it is copying the node rather than anything to do with
+ * delimiters. The same goes for a link, which keeps its href on both halves,
+ * and for a code span.
+ *
+ * An atom and a break are one character each, so neither can straddle: the
+ * offset is an integer and the two branches above catch every case. The third
+ * branch is there because a leaf that somehow reached it should go whole to one
+ * side rather than be torn in half.
+ */
+function modelInlineSplit(nodes, offset) {
+  const head = [];
+  const tail = [];
+  let seen = 0;
+  for (const node of nodes || []) {
+    const length = modelInlineText([node]).length;
+    if (seen >= offset) {
+      tail.push(node);
+    } else if (seen + length <= offset) {
+      head.push(node);
+    } else if (node.children) {
+      const inner = modelInlineSplit(node.children, offset - seen);
+      node.children = inner.head;
+      head.push(node);
+      tail.push(Object.assign({}, node, { children: inner.tail }));
+    } else if (node.kind === "text" || node.kind === "code-span") {
+      const rest = node.content.slice(offset - seen);
+      node.content = node.content.slice(0, offset - seen);
+      node.raw = null;
+      head.push(node);
+      tail.push(Object.assign({}, node, { content: rest, raw: null }));
+    } else {
+      tail.push(node);
+    }
+    seen += length;
+  }
+  return { head, tail };
+}
+
+/**
+ * Trim the whitespace a markdown block cannot carry off one edge of an inline
+ * tree — the front when `side` is negative, the back when it is positive.
+ *
+ * **This is not tidying, it is the difference between a document and a broken
+ * one.** markdown-it strips a block's leading and trailing whitespace before
+ * inline parsing ever runs, so a split that left it there would put bytes in
+ * the file that the next parse throws away, and the model and the file would
+ * disagree the moment the document was reloaded. Three of those disagreements
+ * are worse than invisible: four leading spaces make the tail an **indented
+ * code block**, a space before a closing `**` stops it being emphasis at all,
+ * and a paragraph indented three spaces plus one from the split is the first of
+ * those again.
+ *
+ * It reaches into marks, because that is where the space is — cutting
+ * `**one two**` after the space leaves `**one **`, whose closing delimiter is
+ * no longer right-flanking. A mark emptied by the trim goes with it.
+ *
+ * Only `text` leaves are trimmed. A code span's own spaces are content that
+ * survives a round trip, and an atom and a break have no whitespace to lose.
+ */
+function modelInlineTrimEdge(nodes, side) {
+  while (nodes && nodes.length) {
+    const index = side < 0 ? 0 : nodes.length - 1;
+    const node = nodes[index];
+    if (node.children) {
+      modelInlineTrimEdge(node.children, side);
+      if (node.children.length) return nodes;
+      nodes.splice(index, 1);
+      continue;
+    }
+    if (node.kind !== "text") return nodes;
+    const trimmed = side < 0
+      ? node.content.replace(/^[ \t]+/, "")
+      : node.content.replace(/[ \t]+$/, "");
+    if (trimmed === node.content) return nodes;
+    node.content = trimmed;
+    node.raw = null;
+    if (trimmed !== "") return nodes;
+    nodes.splice(index, 1);
+  }
+  return nodes;
+}
+
+/**
+ * Split a leaf in two at `offset`, and hand back the new second half.
+ *
+ * Both halves are edited by definition — the first lost its tail and the second
+ * has no bytes at all — so both are touched, which clears the containers above
+ * them on the way. Returns null for a block with no inline tree, the way
+ * `modelInlineSplice` does and for the same reason: their content is source,
+ * and a caller that gets a null has to refuse rather than fall through.
+ */
+function modelSplitLeaf(doc, block, offset) {
+  if (!block.inlines) return null;
+  const extra = modelBlockExtra(block);
+  const cut = modelInlineSplit(block.inlines, offset);
+  block.inlines = modelInlineTrimEdge(cut.head, 1);
+  if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
+  const fresh = modelLeafLike(doc, block, modelInlineTrimEdge(cut.tail, -1));
+  modelInsertBlockAfter(doc, block, fresh, extra);
+  modelTouch(block);
+  modelTouch(fresh);
+  return fresh;
+}
+
+/**
+ * Split a container after one of its children: that child and everything before
+ * it stay, everything after it moves into a new container beside this one.
+ *
+ * **The separator between the two halves is the list's own**, not the one the
+ * child split needed — `modelSiblingSeparator` above is the whole argument. A
+ * tight list stays tight, a loose one loose, and an only-child list with no
+ * convention recorded gets `"\n"`, which is the tight spelling and the one a
+ * new bullet reads as.
+ *
+ * The first moved child becomes its new container's first, so it takes the
+ * marker where it took the continuation indent — the same recomputation
+ * `modelRemoveBlock` does, for the same reason.
+ */
+function modelSplitContainer(doc, container, after) {
+  const kids = container.children;
+  if (!kids) return null;
+  const at = kids.indexOf(after);
+  if (at < 0) return null;
+
+  const list = modelSiblings(doc, container);
+  const index = list.indexOf(container);
+  if (index < 0) return null;
+  const between = modelSiblingSeparator(doc, container) ?? "\n";
+
+  const moved = kids.splice(at + 1);
+  const fresh = modelContainerLike(doc, container);
+  const next = modelNextMarker(doc, container);
+  fresh.marker = next.marker;
+  fresh.contentIndent = next.contentIndent;
+  fresh.children = moved;
+
+  const extras = moved.map((child) => modelBlockExtra(child));
+  for (const child of moved) child.parent = fresh;
+  if (moved.length) {
+    modelSetLeadingAffix(moved[0], extras[0]);
+    modelTouch(moved[0]);
+  }
+
+  fresh.parent = container.parent;
+  fresh.separator = container.separator;
+  container.separator = between;
+  after.separator = "";
+  list.splice(index + 1, 0, fresh);
+
+  modelTouch(container);
+  modelTouch(fresh);
+  if (container.parent) modelTouch(container.parent);
+  return fresh;
+}
+
+/**
+ * Enter. Slice 4's step 2.
+ *
+ * **What splits is the block, and then its container when that container is an
+ * item.** Enter in a top-level paragraph makes a paragraph; Enter in a quoted
+ * paragraph makes a second quoted paragraph, because a quote is not an item and
+ * the walk stops there; Enter in a bullet makes a bullet, because splitting the
+ * paragraph alone would put two paragraphs inside one bullet — a thing to be
+ * able to do, and not what Enter means.
+ *
+ * **Enter at the end of a heading opens a paragraph**, which is the one place
+ * the new block's kind is not the old one's. Anywhere else in a heading it
+ * splits into two headings of the same level: the text after the caret is still
+ * heading text, and the alternative silently demotes it.
+ *
+ * Hands back the model position the caret lands on, or null when the block
+ * cannot be split at all.
+ */
+function modelInsertParagraph(doc, block, offset, md) {
+  if (!block.inlines) return null;
+
+  let fresh;
+  if (block.kind === "heading" && offset >= modelInlineText(block.inlines).length) {
+    fresh = modelParagraphBlock(doc, md);
+    modelInsertBlockAfter(doc, block, fresh);
+    if (block.parent) modelTouch(block.parent);
+  } else {
+    fresh = modelSplitLeaf(doc, block, offset);
+  }
+  if (!fresh) return null;
+
+  if (fresh.parent && fresh.parent.kind === "item") {
+    modelSplitContainer(doc, fresh.parent, block);
+  }
+  return { block: fresh, offset: 0 };
+}
+
+/**
+ * Shift+Enter. Slice 4's step 4.
+ *
+ * **A new break has no recorded spelling**, so it takes the one the caller was
+ * handed — `sniffMarkdownStyle`'s `hardBreak`, read in `model-input.js` and
+ * passed in rather than reached for here, which is the same boundary the parser
+ * injection draws. That is the residue TODO 2.3 left behind, answered from two
+ * directions at once: an existing break keeps the spelling its own node
+ * recorded, and only a new one asks the document.
+ *
+ * The node carries `raw`, because for a break `raw` *is* the spelling and the
+ * node now has one. It is written rather than left null so the round trip says
+ * what the file says, instead of defaulting to two spaces in a document that
+ * writes backslashes.
+ */
+function modelInsertBreak(block, offset, spelling = "  ") {
+  if (!block.inlines) return null;
+  const cut = modelInlineSplit(block.inlines, offset);
+  const node = {
+    kind: "hardbreak",
+    content: "",
+    raw: (spelling === "\\" ? "\\" : "  ") + "\n",
+    markup: "",
+    children: null,
+    token: null,
+    closeToken: null,
+  };
+  block.inlines = modelInlineTrimEdge(cut.head, 1).concat([node], modelInlineTrimEdge(cut.tail, -1));
+  if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
+  modelTouch(block);
+  return offset + 1;
+}
+
+/**
+ * Join `second` onto the end of `first`, and take `second` out of the tree.
+ * Slice 4's step 3.
+ *
+ * This is what a deletion whose target range spans two blocks means, and it
+ * falls out of `getTargetRanges()` rather than being special-cased — slice 3
+ * already refuses exactly this case, in exactly this place, so what lands here
+ * is the handling behind a refusal that was already correctly located.
+ *
+ * **Two leaves with no common text space cannot merge.** A paragraph and a
+ * fence have none — one is an inline tree, the other is source — so this
+ * refuses rather than approximating, the way every other refusal in this file
+ * does. Hands back the offset the caret lands on: the join.
+ */
+function modelMergeBlocks(doc, first, second) {
+  if (!first.inlines || !second.inlines) return null;
+  const at = modelInlineText(first.inlines).length;
+  for (const node of second.inlines) first.inlines.push(node);
+  if (first.inline) first.inline.children = modelInlineTokens(first.inlines);
+  modelTouch(first);
+  modelPruneBlock(doc, second);
+  return at;
+}
+
+/**
+ * The document's blocks in reading order, containers and all.
+ *
+ * The order a caret moves through, which is what a merge needs to know: the
+ * block before the one Backspace is at the start of is the one it joins onto,
+ * and that block may be three containers away in the tree and next door on the
+ * screen.
+ */
+function modelFlatten(doc) {
+  const out = [];
+  (function walk(blocks) {
+    for (const block of blocks) {
+      out.push(block);
+      if (block.children) walk(block.children);
+    }
+  })(doc.blocks);
+  return out;
+}
+
+// The leaf before or after this one in reading order, skipping the containers
+// and the gaps — a gap renders to nothing, so it is not a place a caret can be
+// and not a block anything can merge with.
+function modelLeafBeside(doc, block, step) {
+  const flat = modelFlatten(doc).filter((b) => !b.children && b.kind !== "gap");
+  const at = flat.indexOf(block);
+  if (at < 0) return null;
+  return flat[at + step] || null;
+}
+
+
+// ── Structure: lists ─────────────────────────────────────────────────────────
+//
+// Slice 4's step 5. The two hand-rolled clusters move here and stop depending
+// on an engine: `app.js`'s keydown handler for Enter and Backspace on an empty
+// `<li>`, which exists because contenteditable splits the list and strands
+// `<p><br></p>` blocks, and `outdentListItem`, which exists because Firefox
+// merges a bullet into the item above and that markup is indistinguishable from
+// a deliberate hard break.
+//
+// **As model rules they are one implementation with no engine in it**, which is
+// what retires tests/list-indent-check.html and tests/list-empty-item-check.html
+// as open questions — what those pages watch is three engines doing our surgery
+// to their DOM, and there is no surgery left to watch.
+
+/**
+ * Whether a block holds no text at all.
+ *
+ * A container is empty when all of its children are; a leaf with an inline tree
+ * is empty when that tree renders to nothing. **A leaf with no inline tree is
+ * never empty**, because its content is source — a fence with an empty body is
+ * still three lines of markdown, and deleting it is deleting a block rather
+ * than emptying one.
+ */
+function modelIsEmptyBlock(block) {
+  if (block.children) return block.children.every(modelIsEmptyBlock);
+  if (!block.inlines) return false;
+  return modelInlineText(block.inlines).length === 0;
+}
+
+// An indent, moved by a number of columns, in units of whatever it is made of.
+// A tab-indented file keeps its tabs, which is 1b's step 5 arriving in the one
+// other place that writes an indent: the same column in different bytes is a
+// file the author did not write.
+function modelShiftIndent(indent, columns) {
+  if (!columns) return indent;
+  if (columns > 0) {
+    const tabbed = indent.includes("\t");
+    const unit = tabbed ? "\t" : " ";
+    const width = tabbed ? 4 : 1;
+    return unit.repeat(Math.max(1, Math.round(columns / width))) + indent;
+  }
+  let out = indent;
+  let left = -columns;
+  while (left > 0 && out.length) {
+    const width = out[0] === "\t" ? 4 : 1;
+    if (width > left) break;
+    out = out.slice(1);
+    left -= width;
+  }
+  return out;
+}
+
+// An item's marker with its indent replaced, keeping the marker itself and its
+// pad exactly as the author wrote them. `"  - "` moved out two columns is
+// `"- "`, and the bullet character, the pad and a tab's worth of anything else
+// are untouched.
+function modelReindentMarker(marker, columns) {
+  if (marker === null) return null;
+  const lead = /^[ \t]*/.exec(marker)[0];
+  return modelShiftIndent(lead, columns) + marker.slice(lead.length);
+}
+
+/**
+ * Move an item into another list, and take everything under it along.
+ *
+ * **The indent is absolute in this model**, which is what makes this the whole
+ * of an indent or an outdent: `modelItemPrefix` records `"    - "` with its
+ * columns in it, and `modelEmitLeaf` notes that only the nearest item ancestor
+ * contributes because a nested item's marker already carries every outer one.
+ * So moving an item means shifting every marker and continuation indent beneath
+ * it by the same number of columns, and there is no relative form to recompute
+ * from.
+ *
+ * Every leaf under the item is re-affixed and touched, because every one of
+ * their lines genuinely changes. That is the one operation in this file that
+ * re-emits a subtree rather than a block, and it is not a slip: an outdented
+ * bullet's bytes all move.
+ */
+function modelMoveItem(doc, item, list, index, marker, contentIndent) {
+  const leaves = modelFlatten({ blocks: [item] }).filter((block) => !block.children);
+  const extras = leaves.map((leaf) => modelBlockExtra(leaf));
+  const source = new Map(leaves.filter((leaf) => !leaf.inlines).map((leaf) => [leaf, leaf.source]));
+  const columns = modelMarkerColumn(marker) - modelMarkerColumn(item.marker);
+  const between = (list.children.length ? modelSiblingSeparator(doc, list.children[0]) : null) ?? "\n";
+
+  modelPruneBlock(doc, item);
+  item.marker = marker;
+  item.contentIndent = contentIndent;
+
+  // **The indent is absolute**, so every marker beneath this one moves with it.
+  for (const block of columns ? modelFlatten({ blocks: [item] }) : []) {
+    if (block === item || block.kind !== "item") continue;
+    block.marker = modelReindentMarker(block.marker, columns);
+    if (block.contentIndent !== null) block.contentIndent = modelShiftIndent(block.contentIndent, columns);
+  }
+
+  const before = index > 0 ? list.children[index - 1] : null;
+  item.parent = list;
+  item.separator = before ? before.separator : (list.children.length ? between : "");
+  if (before) before.separator = between;
+  list.children.splice(index, 0, item);
+
+  // Before the loop below, not after it: the loop *writes* a source for every
+  // leaf that has no inline tree, and a touch afterwards would clear exactly
+  // those bytes again.
+  modelTouch(item);
+  modelTouch(list);
+
+  leaves.forEach((leaf, at) => {
+    // **A leaf with no inline tree has its bytes rewritten rather than
+    // composed**, which is step 6's inversion reaching back into step 5. Two
+    // kinds get here: an *empty item*, which 1b records as a childless leaf
+    // holding nothing but its own marker, and a fence or an indented code
+    // block inside the item being moved, every line of which has just changed
+    // column. The emitter refuses both — correctly, since it has nothing to
+    // compose from — so the move writes the source itself.
+    if (!leaf.inlines) {
+      modelTouch(leaf);
+      leaf.source = leaf === item
+        ? ((leaf.quotePrefixes && leaf.quotePrefixes[0]) || "") + (marker ?? "")
+        : modelShiftSource(source.get(leaf), columns);
+      if (leaf === item) leaf.source = leaf.source.replace(/[ \t]+$/, "");
+      return;
+    }
+    modelSetLeadingAffix(leaf, extras[at]);
+    modelTouch(leaf);
+  });
+  return item;
+}
+
+// Every line of a block's source, moved by a number of columns. What an indent
+// or an outdent does to a fence: its body is source, so nothing composes it
+// back and the bytes have to be moved directly.
+function modelShiftSource(text, columns) {
+  if (!text || !columns) return text ?? "";
+  return text.split("\n").map((line) => {
+    const lead = /^[ \t]*/.exec(line)[0];
+    return modelShiftIndent(lead, columns) + line.slice(lead.length);
+  }).join("\n");
+}
+
+// The column an item's own marker starts at, which is the only part of it that
+// an indent or an outdent moves.
+function modelMarkerColumn(marker) {
+  return modelIndentColumn(/^[ \t]*/.exec(marker || "")[0]);
+}
+
+/**
+ * Shift+Tab, and a nested empty item's Enter. Move an item out one level, to
+ * sit after the item it was nested under.
+ *
+ * **Its followers come with it, nested under it**, which is the shape
+ * `outdentListItem` settled on in a real browser: they were below it on screen
+ * and they stay below it, and appending them in document order is what that
+ * function had to learn the hard way — prepending each in turn reversed the run,
+ * which needs two followers to be visible at all and so had no test until an
+ * engine showed it.
+ *
+ * Refuses an item that is not nested inside another item, which is the same
+ * guard `canOutdentListItem` makes today: markdown has no way to write a first
+ * item nested under nothing.
+ */
+function modelOutdentItem(doc, item) {
+  const inner = item.parent;
+  if (!inner || inner.kind !== "list") return null;
+  const owner = inner.parent;
+  if (!owner || owner.kind !== "item") return null;
+  const outer = owner.parent;
+  if (!outer || outer.kind !== "list") return null;
+
+  const at = inner.children.indexOf(item);
+  const followers = inner.children.splice(at + 1);
+
+  const next = modelNextMarker(doc, owner);
+  modelMoveItem(doc, item, outer, outer.children.indexOf(owner) + 1, next.marker, next.contentIndent);
+
+  // **After the move, never before it.** The followers were the item's
+  // siblings at one column and become its children at the column its content
+  // now starts at, which on an ordinary outdent is the same column — so they
+  // do not move at all. Attached first, `modelMoveItem`'s shift would have
+  // caught them in the item's subtree and moved them twice.
+  if (followers.length) modelAdoptItems(doc, item, followers);
+  return item;
+}
+
+/**
+ * Take a run of items in under `item`, into its own sublist.
+ *
+ * They are shifted to the column the item's content starts at rather than by
+ * the item's own delta, which is the difference between where they were and
+ * where they now are — and on an outdent that difference is zero, because a
+ * follower goes out one level and down one level at the same time.
+ */
+function modelAdoptItems(doc, item, items) {
+  if (!items.length) return null;
+  let sub = item.children && item.children.length
+    ? item.children[item.children.length - 1]
+    : null;
+  if (!sub || sub.kind !== "list") {
+    sub = modelContainerLike(doc, items[0].parent || item);
+    sub.marker = null;
+    sub.contentIndent = null;
+    // `"\n"` rather than a blank line: a sublist follows its item's own
+    // paragraph on the very next line, and a blank one between them is what
+    // makes a tight list loose.
+    modelAppendChild(doc, item, sub, "\n");
+  }
+
+  const columns = modelIndentColumn(item.contentIndent ?? "") - modelMarkerColumn(items[0].marker);
+  const last = sub.children.length ? sub.children[sub.children.length - 1] : null;
+  if (last) last.separator = modelSiblingSeparator(doc, last) ?? "\n";
+  for (const follower of items) {
+    follower.parent = sub;
+    sub.children.push(follower);
+    if (!columns) continue;
+    for (const block of modelFlatten({ blocks: [follower] })) {
+      if (block.kind !== "item") continue;
+      block.marker = modelReindentMarker(block.marker, columns);
+      if (block.contentIndent !== null) block.contentIndent = modelShiftIndent(block.contentIndent, columns);
+    }
+  }
+  sub.children[sub.children.length - 1].separator = "";
+  modelTouch(sub);
+  return sub;
+}
+
+/**
+ * Tab. Nest an item under the one before it.
+ *
+ * **A first item cannot be indented**, and that is markdown's rule rather than
+ * a preference: there is nothing for it to nest under, and an indent written
+ * anyway reparses as a continuation of whatever came before the list. The same
+ * guard `canIndentListItem` makes today.
+ *
+ * It joins the previous item's existing sublist when there is one, so two Tabs
+ * on two consecutive items give one nested list rather than two — and it takes
+ * that list's own marker, which is the document's convention read from the
+ * place it is written.
+ */
+function modelIndentItem(doc, item) {
+  const list = item.parent;
+  if (!list || list.kind !== "list") return null;
+  const at = list.children.indexOf(item);
+  if (at <= 0) return null;
+  const owner = list.children[at - 1];
+
+  let sub = owner.children && owner.children.length
+    ? owner.children[owner.children.length - 1]
+    : null;
+  if (!sub || sub.kind !== "list") {
+    sub = modelContainerLike(doc, list);
+    sub.marker = null;
+    sub.contentIndent = null;
+    modelAppendChild(doc, owner, sub, "\n");
+  }
+
+  const model = sub.children.length ? sub.children[sub.children.length - 1] : null;
+  let marker = null;
+  let contentIndent = null;
+  if (model) {
+    const next = modelNextMarker(doc, model);
+    marker = next.marker;
+    contentIndent = next.contentIndent;
+  } else {
+    // A sublist with nothing in it yet has no convention of its own, so the
+    // item's own marker moves right — **except for its number**, which starts
+    // again at one. An ordered list opening at `2.` is legal CommonMark and is
+    // not what anybody writing one means; the digits belong to the list, and
+    // this is a new list.
+    const columns = modelIndentColumn(owner.contentIndent ?? "") - modelMarkerColumn(item.marker);
+    marker = modelReindentMarker(item.marker, columns);
+    const digits = MODEL_ORDERED_MARKER.exec(marker || "");
+    if (digits) marker = digits[1] + "1" + digits[3];
+    contentIndent = item.contentIndent === null ? null : modelShiftIndent(item.contentIndent, columns);
+    if (contentIndent !== null && marker !== null && contentIndent.length !== marker.length &&
+        item.contentIndent.length === item.marker.length) {
+      contentIndent = marker.length > contentIndent.length
+        ? contentIndent + " ".repeat(marker.length - contentIndent.length)
+        : contentIndent.slice(0, marker.length);
+    }
+  }
+  return modelMoveItem(doc, item, sub, sub.children.length, marker, contentIndent);
+}
+
+/**
+ * Append a block as a container's last child.
+ *
+ * The separator goes on the child it displaces from that position, because a
+ * separator describes what follows a block rather than what precedes it, and
+ * the new last child has nothing after it.
+ */
+function modelAppendChild(doc, container, child, separator) {
+  if (!container.children) container.children = [];
+  const extra = modelBlockExtra(child);
+  const kids = container.children;
+  if (kids.length) kids[kids.length - 1].separator = separator ?? modelBlankSeparator(container);
+  child.parent = container;
+  child.separator = "";
+  kids.push(child);
+  modelSetLeadingAffix(child, extra);
+  modelTouch(container);
+  return child;
+}
+
+/**
+ * Lift an item out of its list altogether, as a paragraph after it.
+ *
+ * The top-level half of the empty-item rules: Enter splits the list at the item
+ * — what was above stays, what was below becomes a fresh list after the new
+ * paragraph — and Backspace, which only reaches this on a first item, puts the
+ * paragraph before the list and leaves the rest of it intact. Both are
+ * `app.js`'s handler, which is the specification because it is what users have.
+ */
+function modelLiftItem(doc, item, md, before = false) {
+  const list = item.parent;
+  if (!list || list.kind !== "list") return null;
+  const at = list.children.indexOf(item);
+  const paragraph = modelParagraphBlock(doc, md);
+  paragraph.quotePrefixes = item.quotePrefixes ? item.quotePrefixes.slice() : null;
+
+  if (before) {
+    modelRemoveBlock(doc, item);
+    const outer = modelSiblings(doc, list);
+    paragraph.parent = list.parent;
+    paragraph.separator = modelBlankSeparator(list);
+    outer.splice(outer.indexOf(list), 0, paragraph);
+    modelSetLeadingAffix(paragraph, "");
+    if (list.parent) modelTouch(list.parent);
+    if (!list.children.length) modelPruneBlock(doc, list);
+    return paragraph;
+  }
+
+  const followers = list.children.slice(at + 1);
+  for (const child of followers) list.children.splice(list.children.indexOf(child), 1);
+  if (list.children.length) list.children[list.children.length - 1].separator = "";
+  const extras = followers.map((child) => modelBlockExtra(child));
+  modelRemoveBlock(doc, item);
+  modelInsertBlockAfter(doc, list, paragraph);
+
+  if (followers.length) {
+    const rest = modelContainerLike(doc, list);
+    rest.children = followers;
+    for (const child of followers) child.parent = rest;
+    followers[followers.length - 1].separator = "";
+    modelSetLeadingAffix(followers[0], extras[0]);
+    modelTouch(followers[0]);
+    modelInsertBlockAfter(doc, paragraph, rest);
+    modelTouch(rest);
+  }
+  if (!list.children.length) modelPruneBlock(doc, list);
+  return paragraph;
+}
+
+/**
+ * Enter or Backspace on an empty item. Slice 4's step 5, and it is `app.js`'s
+ * keydown handler with the engine taken out.
+ *
+ * Four behaviours, in the order that handler tests them: Backspace with a
+ * bullet directly above removes the item and puts the caret at the end of that
+ * bullet — where the user expected it, and where contenteditable would not have
+ * put it; a nested empty item outdents one level rather than leaving the list
+ * outright, for Enter and a first-item Backspace alike; and a top-level one
+ * leaves the list for a paragraph.
+ */
+function modelEmptyItemKey(doc, item, md, backspace) {
+  const list = item.parent;
+  if (!list || list.kind !== "list") return null;
+  const at = list.children.indexOf(item);
+
+  if (backspace && at > 0) {
+    const above = list.children[at - 1];
+    const tail = modelLeafBeside(doc, modelFlatten({ blocks: [item] }).find((b) => !b.children), -1);
+    modelPruneBlock(doc, item);
+    const target = tail && modelFlatten({ blocks: [above] }).includes(tail) ? tail : null;
+    return target ? { block: target, offset: modelInlineText(target.inlines || []).length } : null;
+  }
+
+  const outdented = modelOutdentItem(doc, item);
+  if (outdented) {
+    const first = modelFlatten({ blocks: [outdented] }).find((block) => !block.children);
+    return first ? { block: first, offset: 0 } : null;
+  }
+
+  const paragraph = modelLiftItem(doc, item, md, backspace);
+  return paragraph ? { block: paragraph, offset: 0 } : null;
+}
+
+// ── Structure: leaves edited as source ───────────────────────────────────────
+//
+// Slice 4's step 6. A fence and an indented code block are the two leaves whose
+// rendering is a `<pre><code>` a caret can enter, so they are the two that need
+// a second text space: offsets into the block's own body rather than into an
+// inline tree. A gap renders to nothing and has no DOM to be edited through, an
+// `html_block`'s text is not its source, and a table row refuses — step 7.
+
+// Whether this block is edited as source rather than as an inline tree.
+function modelBearsSource(block) {
+  return !block.children && !block.inlines && (block.kind === "fence" || block.kind === "code");
+}
+
+// The body a fence or an indented code block renders, which is also what the
+// parser recorded. markdown-it's own `content` for both is the body with every
+// line's prefix already taken off, which is exactly the text the `<pre>` holds.
+function modelSourceText(block) {
+  const token = block.tokens.find((candidate) => candidate.type === "fence" || candidate.type === "code_block");
+  return token ? token.content : "";
+}
+
+/**
+ * What the file put in front of each of a source-bearing block's body lines.
+ *
+ * Read off the block's own bytes rather than recomposed from the affixes it
+ * recorded, because for these kinds there is nothing recorded: `leadingAffix`
+ * is only ever set for a block with an inline token, and a fence has none. The
+ * subtraction is the same one the tiler makes — a source line ends with its own
+ * content line, and everything before that is the prefix.
+ *
+ * A line the edit added past the end takes the last prefix recorded, which is
+ * `modelEmitLeaf`'s rule for a quote chain one construct along.
+ */
+function modelSourcePrefixes(block) {
+  const lines = block.source === null ? [] : block.source.split("\n");
+  const body = modelSourceText(block).split("\n");
+  if (body.length && body[body.length - 1] === "") body.pop();
+  const first = block.kind === "fence" ? 1 : 0;
+  const out = [];
+  for (let i = 0; i < body.length; i += 1) {
+    const line = lines[first + i];
+    out.push(line !== undefined && line.endsWith(body[i]) ? line.slice(0, line.length - body[i].length) : "");
+  }
+  return out;
+}
+
+/**
+ * Replace `[from, to)` in a source-bearing block's body, and hand back the
+ * offset the caret lands on.
+ *
+ * **The block keeps a `source`, and it is the new bytes.** That is `modelTouch`
+ * read inverted, and it is the honest shape rather than an exception carved out
+ * of it: the contract is that a block whose content changed must not re-emit
+ * its old bytes, and for a leaf whose content *is* source the new bytes satisfy
+ * it directly. Its ancestors are cleared exactly as any other edit clears them,
+ * so the recursion still reaches it — `modelEmitBlock`'s first case then hands
+ * back bytes that are true.
+ *
+ * The parser's own `content` is updated alongside, because that is what
+ * markdown-it's fence rule renders from. Updating the token the parser produced
+ * is not the same thing as inventing one.
+ */
+function modelSourceSplice(block, from, to, text, md) {
+  if (!modelBearsSource(block)) return null;
+  const body = modelSourceText(block);
+  const start = Math.max(0, Math.min(from, body.length));
+  const end = Math.max(start, Math.min(to, body.length));
+  const typed = modelNormaliseTyped(text);
+  const next = body.slice(0, start) + typed + body.slice(end);
+
+  const prefixes = modelSourcePrefixes(block);
+  const last = prefixes.length ? prefixes[prefixes.length - 1] : "";
+  const lines = block.source === null ? [] : block.source.split("\n");
+  const head = block.kind === "fence" ? lines.slice(0, 1) : [];
+  const foot = block.kind === "fence" && lines.length > 1 ? lines.slice(-1) : [];
+
+  const bodyLines = next.split("\n");
+  if (bodyLines.length && bodyLines[bodyLines.length - 1] === "") bodyLines.pop();
+  const composed = bodyLines.map((line, i) => (line === "" ? (prefixes[i] ?? last).replace(/[ \t]+$/, "") : (prefixes[i] ?? last) + line));
+
+  const token = block.tokens.find((candidate) => candidate.type === "fence" || candidate.type === "code_block");
+  if (token) token.content = next;
+  modelTouch(block);
+  block.source = head.concat(composed, foot).join("\n");
+  return start + typed.length;
+}
+
+/**
+ * The document always has a block the caret can be in, and it is never a table.
+ *
+ * Two rules in one function because they are one question. `modelRender` draws
+ * a filler paragraph belonging to no block when a document has none, which was
+ * slice 1's placeholder for the first: deleting everything leaves **one empty
+ * paragraph block**, so the caret is always inside something the model knows
+ * the name of.
+ *
+ * The second is the `contenteditable="false"` trap slice 4 was warned about
+ * before it was built. A table's subtree refuses the caret, so a table as the
+ * last block leaves nowhere to go and the document becomes un-appendable — new
+ * here, because today everything is editable. An empty paragraph after it is
+ * the answer, and it is **free**: an empty block emits nothing and takes the
+ * separator before it, so the file is byte for byte what it was.
+ */
+function modelEnsureBlock(doc, md) {
+  const last = doc.blocks.length ? doc.blocks[doc.blocks.length - 1] : null;
+  if (last && last.kind !== "table") return null;
+  const block = modelParagraphBlock(doc, md);
+  if (last) {
+    modelInsertBlockAfter(doc, last, block);
+    last.separator = modelBlankSeparator(last);
+  } else {
+    doc.blocks.push(block);
+  }
+  return block;
+}
+
+// The nearest item a block sits in, or null. What Tab, Shift+Tab and the
+// empty-item rules all ask first.
+function modelItemAncestor(block) {
+  for (let node = block; node; node = node.parent) {
+    if (node.kind === "item") return node;
+  }
+  return null;
+}
+
+/**
+ * Give an empty item somewhere to type.
+ *
+ * 1b records an empty item as a **leaf** holding nothing but its own marker,
+ * which is right for the file — there is no paragraph there for a span to be
+ * taken from — and useless for a caret, which has to be inside a block that can
+ * hold text. So the first keystroke in one turns it into the container it is
+ * about to be.
+ *
+ * The paragraph's tokens are hidden when a sibling item's are, which is what
+ * keeps a tight list tight: markdown-it hides a tight item's paragraph, so a
+ * visible one would render `<p>` inside the `<li>` and the list would go loose
+ * on screen without a byte of the file changing.
+ *
+ * The bytes do not change either way — an empty item emitted from an empty
+ * paragraph is the same trimmed marker it was — so this costs nothing until
+ * something is typed.
+ */
+function modelFillItem(doc, item, md) {
+  if (item.children || item.inlines) return null;
+  const paragraph = modelParagraphBlock(doc, md);
+  paragraph.quotePrefixes = item.quotePrefixes ? item.quotePrefixes.slice() : null;
+
+  const list = item.parent;
+  const sibling = list && list.children
+    ? list.children.find((child) => child !== item && child.children && child.children[0])
+    : null;
+  const model = sibling ? sibling.children[0] : null;
+  if (model && model.tokens[0] && model.tokens[0].hidden) {
+    paragraph.tokens[0].hidden = true;
+    paragraph.tokens[paragraph.tokens.length - 1].hidden = true;
+  }
+
+  // **An empty item's marker has no pad**, because there was nothing after it
+  // to pad from — `modelItemPrefix` records `-` where a written item records
+  // `- `. So an item that has just been given somewhere to type needs the
+  // separator its own bytes never had, which is the empty-heading rule in
+  // `modelEmitLeaf` one construct along and fails the same way without it: the
+  // file stops holding a list and the document looks right on screen.
+  if (item.marker !== null && !/[ \t]$/.test(item.marker)) {
+    item.marker += " ";
+    item.contentIndent = " ".repeat(item.marker.length);
+  }
+
+  item.children = [paragraph];
+  item.leading = "";
+  paragraph.parent = item;
+  paragraph.separator = "";
+  modelSetLeadingAffix(paragraph, "");
+  modelTouch(paragraph);
+  return paragraph;
 }

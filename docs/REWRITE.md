@@ -1844,7 +1844,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the second thing, and slice 2 opens by moving two rules out of `app.js` on
     the strength of it.
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
-    Slices 1, 2 and 3 of seven are done and tested. Not a merge point,
+    Slices 1, 2 and 3 of seven are done and tested; slice 4 is done and
+    measured as far as a machine reaches. Not a merge point,
     and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
@@ -2430,9 +2431,18 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         app's state on the same origin. The untracked scratch harness stays for
         what a machine *can* drive.
 
-    *   **4. Input: structure — planned 2026-09-20, not started.** The edits
-        that change how many blocks there are, and the ones that act on a block
-        with no inline tree.
+    *   **4. Input: structure — done 2026-09-20; tested as far as a machine
+        reaches, and the three-engine protocol is not run.** All seven steps
+        below are in, the model half of every one of them is covered by the
+        `model` suite against the oracle, and the input layer's routing is
+        covered by `model-input`. What is **not** measured is the half only a
+        human at a keyboard can reach — the recipe is
+        [front/input-check.html](../front/input-check.html)'s numbered
+        protocol, which this slice grew by eight steps, in Blink, Gecko and
+        WebKit. Until somebody drives it, the merge and every real keystroke
+        here are untested in the only place that can test them. The edits that
+        change how many blocks there are, and the ones that act on a block with
+        no inline tree.
 
         `insertParagraph` splits the block at the caret; `insertLineBreak`
         inserts a hard break node. A **new** break has no recorded spelling, so
@@ -2518,17 +2528,101 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           editable, so it is new, and it is the first thing to check on the
           input check page rather than something to reason about here.
 
+        **What it found, and none of it was in the plan.**
+
+        **A markdown block cannot carry the whitespace a split leaves at the
+        cut.** markdown-it strips a block's leading and trailing whitespace
+        before inline parsing runs, so bytes left there are bytes the next parse
+        throws away — and three of those are worse than invisible: four leading
+        spaces make the tail an **indented code block**, a space before a
+        closing `**` stops it being emphasis at all, and a paragraph already
+        indented three spaces needs only the split's one to join them.
+        `modelInlineTrimEdge` reaches into marks, because that is where the
+        space is.
+
+        **Markdown has no empty paragraph, and the separators around one
+        doubled.** Enter at the end of a line gives the model a block for the
+        caret and gives the file nothing to say about it — but the block still
+        sat between two separators, so every Enter not yet typed into put a
+        blank line into a document nobody had edited. `modelJoinBlocks` is the
+        fold that fixes it: **a block that emits nothing hands on its own
+        separator and takes the one before it with it**, which makes Enter at
+        either end of a block cost exactly zero bytes. Nothing the parser
+        produces emits empty, so an opened-and-saved file is untouched.
+
+        **A container's last child always has an empty separator**, which is the
+        tiler's own shape read as an invariant rather than as an accident — a
+        container's `map` runs into the blank line after it, so the trailing
+        blanks were handed to the container's separator at parse. Every removal
+        has to restore it, or the blank line is emitted twice: once inside the
+        container and once after it.
+
+        **An empty item's marker has no pad**, because there was nothing after
+        it to pad from: `modelItemPrefix` records `-` where a written item
+        records `- `. So typing into one produced `-two`, which is a paragraph
+        and not a list — the empty-heading bug of slice 3's step 3, one
+        construct along and failing the same silent way.
+
+        **An outdent moves every marker beneath it, and a follower does not
+        move at all.** The indent is absolute in this model, so a nested
+        bullet's marker carries every outer column and an outdent has to shift
+        the whole subtree. The followers that come across with an outdented item
+        are the exception and it took a wrong answer to see it: they go out one
+        level and down one level at the same moment, so they end at the column
+        they started at — attached before the move rather than after it, they
+        were caught in the subtree and shifted twice.
+
+        **`modelIndentAtCaret` must not ask whether the flag is on.** It did,
+        and Tab therefore did nothing on `front/input-check.html` — the one page
+        built to measure it, which installs the input layer deliberately without
+        flipping the flag for the app on the same origin. The flag belongs at
+        the boundary, with the caller that has a fallback to protect; the layer
+        does its job once it is installed.
+
+        **The caret trap cost nothing to close.** A table as the last block
+        leaves nowhere for the caret to go, so `modelEnsureBlock` keeps an empty
+        paragraph after it — and that paragraph is free, because the empty-block
+        fold above means it emits no bytes and takes no separator. The same
+        function answers the other half, which slice 1 deferred here: deleting
+        everything leaves one empty paragraph block rather than a filler
+        belonging to none.
+
+        **How it was verified.** 49 new checks in `model` and 22 in
+        `model-input`, 1,430 in all. The sharpest is the sweep: **every
+        inline-bearing block in the oracle, split in half, rewrites only
+        itself** — 861 of them, five of which are a single atom and cannot
+        move — which is D1 one step further out, since stage 1 only ever proved
+        that an edited block rewrites itself. Its instrument had to be fixed
+        before it meant anything: `indexOf` finds the wrong copy of a paragraph
+        whose bytes occur twice, and both `claude.md` and `corpus/todo.md` have
+        one, so the containment test was quietly about a block nobody had
+        edited. The block's position is measured with the sentinel sweep
+        instead. Every nested item in the oracle is also outdented — 80 of them
+        — and what is asserted there is not the bytes, which an outdent is meant
+        to change, but that what it wrote re-parses to itself.
+
+        **And driven in a real browser**, on `front/input-check.html` in Blink,
+        as far as automation reaches: the split, Enter at the end of a heading,
+        Tab and Shift+Tab with the nested `<ul>` appearing and going again, the
+        empty-item rules, typing into a fence's body, the table refusing the
+        caret, and the guard paragraph after it — all with the divergence line
+        quiet throughout. The **merge is not among them**, and cannot be: a
+        constructed `InputEvent` carries no target ranges, so a synthetic
+        Backspace at a block's start is a zero-width deletion where a real one
+        hands over a range spanning two blocks. That is the same gap stage 0
+        hit, and it is what the page's numbered protocol is for.
+
         **Seven steps, in this order**, planned 2026-09-20 before any of it was
         built. The first is a primitive with no keystroke behind it and the
         other six are each one behaviour; every one of them needs the one before
         it, which is the same forcing the slices themselves have.
 
-        1.  **The block splice — not started.** The mutation the block list has
-            never had. Stage 1 built the tree and only ever read it; slice 3
-            added `modelInlineSplice`, which changes a block's *contents* and
-            cannot change how many blocks there are. What is missing is the
-            other half: put a block into the tree, take one out, and leave the
-            tiling invariant true on both sides.
+        1.  **The block splice — done and tested.** The mutation the block
+            list never had. Stage 1 built the tree and only ever read it;
+            slice 3 added `modelInlineSplice`, which changes a block's
+            *contents* and cannot change how many blocks there are. What was
+            missing is the other half: put a block into the tree, take one out,
+            and leave the tiling invariant true on both sides.
 
             Four things, and each is a decision the steps above it inherit.
 
@@ -2569,8 +2663,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             first marker anyway — so the bytes are untidy and the document is
             not wrong.
 
-        2.  **`insertParagraph` — not started.** The split, and the question it
-            turns on is *what* splits.
+        2.  **`insertParagraph` — done and tested.** The split, and the
+            question it turns on is *what* splits.
 
             **The block, and then every ancestor up to and including the
             nearest `item`.** Enter in a top-level paragraph makes a paragraph;
@@ -2595,11 +2689,11 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             to put the next keystroke and the no-block case in `modelRender`
             stops being reachable from the app.
 
-        3.  **The merge — not started.** A deletion whose target range spans two
-            blocks, which falls out of `getTargetRanges()` rather than being
-            special-cased — the spike confirmed that and slice 3 already refuses
-            exactly this case, so what lands here is the handling behind a
-            refusal that is already in the right place.
+        3.  **The merge — done and tested.** A deletion whose target range
+            spans two blocks, which falls out of `getTargetRanges()` rather
+            than being special-cased — the spike confirmed that and slice 3
+            already refuses exactly this case, so what lands here is the
+            handling behind a refusal that is already in the right place.
 
             The second block's inline tree is appended to the first's, the
             second is removed, and **every container the removal emptied goes
@@ -2614,8 +2708,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             common text space. Refused, the way slice 3 refuses, rather than
             approximated.
 
-        4.  **`insertLineBreak` — not started.** A hardbreak node at the caret.
-            **A new break has no recorded spelling**, so it takes
+        4.  **`insertLineBreak` — done and tested.** A hardbreak node at the
+            caret. **A new break has no recorded spelling**, so it takes
             `sniffMarkdownStyle`'s `hardBreak` — which is the residue TODO 2.3
             left behind, answered here from two directions at once: an existing
             break keeps the spelling its own node recorded, and only a new one
@@ -2623,8 +2717,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `model-input.js` and handed over, never reached for in `model.js`,
             which is the same boundary the parser injection draws.
 
-        5.  **The list rules — not started.** The two hand-rolled clusters move
-            here and stop depending on an engine. What they do today is the
+        5.  **The list rules — done and tested.** The two hand-rolled clusters
+            move here and stop depending on an engine. What they do today is the
             spec: `app.js`'s keydown handler for Enter and Backspace on an empty
             `<li>`, and `outdentListItem` for Shift+Tab.
 
@@ -2646,7 +2740,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             take — measured in stage 0, where the key arrives in all three
             engines.
 
-        6.  **Leaves edited as source — not started.** A second text space:
+        6.  **Leaves edited as source — done and tested.** A second text space:
             offsets into the block's own source rather than into an inline
             tree. **Scoped to the fence and the indented code block**, which
             are the two leaves whose rendering is a `<pre><code>` holding text
@@ -2670,12 +2764,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             it should go on refusing, because there is nothing for it to
             compose from.
 
-        7.  **A table refuses edits — not started.** Decided 2026-09-19, above.
-            The refusal itself is an absence: the handler already cancels every
-            `beforeinput` whether it handles it or not. What lands here is the
-            *saying so* — a table's subtree renders `contenteditable="false"`,
-            so the engine never puts a caret inside it and nobody is left
-            typing into something that ignores them.
+        7.  **A table refuses edits — done and tested.** Decided 2026-09-19,
+            above. The refusal itself is an absence: the handler already
+            cancels every `beforeinput` whether it handles it or not. What lands
+            here is the *saying so* — a table's subtree renders
+            `contenteditable="false"`, so the engine never puts a caret inside
+            it and nobody is left typing into something that ignores them.
 
             Its own three consequences are in the design above and the third is
             the one to watch: **a table as the last block must not trap the

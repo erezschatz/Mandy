@@ -1414,6 +1414,12 @@ function canOutdentListItem(item) {
 // user's only way out.
 editor.addEventListener("keydown", (e) => {
   if (e.key !== "Tab" || e.ctrlKey || e.metaKey || e.altKey) return;
+  // Under the model core this whole handler is model-input.js's, and the two
+  // must not both run: `outdentListItem` mutates the DOM directly, behind the
+  // model's back, which is the one thing the input layer exists to prevent.
+  // `runCommand` already refuses there; this is the half of the handler that
+  // does not go through it. Same rule as the empty-item handler below.
+  if (typeof modelCoreEnabled === "function" && modelCoreEnabled()) return;
 
   const item = listItemAtCaret();
   if (!item) return;
@@ -1435,12 +1441,20 @@ editor.addEventListener("keydown", (e) => {
 // control's handlers — same guards, same calls, just reached from the Format
 // menu instead of a keypress. A caret outside a list, or one a guard rejects,
 // is a silent no-op, the same as pressing Tab does in either of those cases.
+// Under the model core both of these are model-input.js's, and the fall-through
+// must not happen: `outdentListItem` mutates the DOM behind the model's back.
+// The flag is read here rather than inside `modelIndentAtCaret`, so that the
+// input check page can install the layer without flipping the flag for the app.
+const modelOwnsLists = () => typeof modelCoreEnabled === "function" && modelCoreEnabled();
+
 onToolbarAction("indent-list-item", () => {
+  if (modelOwnsLists()) return void modelIndentAtCaret(false);
   const item = listItemAtCaret();
   if (canIndentListItem(item)) runCommand("indent");
 });
 
 onToolbarAction("outdent-list-item", () => {
+  if (modelOwnsLists()) return void modelIndentAtCaret(true);
   const item = listItemAtCaret();
   if (canOutdentListItem(item)) outdentListItem(item);
 });
@@ -1501,6 +1515,10 @@ function caretToEndOf(target) {
 editor.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" && e.key !== "Backspace") return;
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing) return;
+  // model-input.js owns both of these under the model core, as model rules with
+  // no engine in them — see the Tab handler above for why the two cannot both
+  // run.
+  if (typeof modelCoreEnabled === "function" && modelCoreEnabled()) return;
 
   const item = listItemAtCaret();
   if (!item || !listItemIsEmpty(item)) return;

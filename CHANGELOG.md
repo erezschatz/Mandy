@@ -6152,3 +6152,146 @@ engines.
 No code changed, so nothing ran — the rule in CLAUDE.md is that a change
 touching no code proves nothing by running the suites. `npm test` was green at
 1,354 checks before it, which is the tree this was written against.
+
+## 2026-09-20 — Stage 2, slice 4: the model takes structure
+
+The edits that change how many blocks there are, and the ones that act on a
+block with no inline tree. Stage 1 built the tree and only ever read it; slice 3
+added `modelInlineSplice`, which changes what is *inside* a block and cannot
+change how many there are. This is the other half — put a block in, take one
+out, split one in two, join two into one — with the tiling invariant left true
+on both sides of every one of them.
+
+Seven steps, all in. The ones worth knowing from outside:
+
+**What Enter splits is the block, and then its container when that container is
+an item.** Enter in a top-level paragraph makes a paragraph; Enter in a quoted
+paragraph makes a second quoted paragraph, because a quote is not an item and
+the walk stops there; Enter in a bullet makes a bullet rather than two
+paragraphs inside one, which is a thing to be able to do and not what Enter
+means. At the end of a heading it opens a paragraph; anywhere else in a heading
+it splits into two headings of the same level, since the text after the caret is
+still heading text and the alternative silently demotes it.
+
+**A new block's tokens come from the parser, never hand-built** — the exact twin
+of the rule that keeps `modelRenderBlock` honest. A fresh paragraph is
+`md.parse` of a one-character template with its inline children replaced, and
+everything else is cloned off the block it came from, which is where the tokens
+already are. Its affixes are **computed from its position rather than copied**,
+because a split's second half is never its item's first child and so takes the
+continuation indent where the original took the marker; copying would write a
+second bullet into the file.
+
+**An ordered item's number follows its own list** — read off the two items
+before it, so a document written all-`1.` stays that way — and **siblings are
+never renumbered**, refused on D1's own grounds: renumbering what follows would
+re-emit every sibling of an edited block, which is what slice 1b exists to
+prevent, and CommonMark numbers a rendered list off its first marker anyway.
+
+**The two hand-rolled list clusters are model rules now, with no engine in
+them.** Enter and Backspace on an empty `<li>`, and `outdentListItem`. What
+`app.js`'s keydown handler does is the specification, because it is what users
+have; what changes is that there is no DOM surgery for three browsers to
+disagree about. `tests/list-indent-check.html` and
+`tests/list-empty-item-check.html` are therefore questions about the **old core
+only** from today, and they retire with it at stage 4 rather than now, because
+`main` still runs the code they watch. **Tab is the first thing the input layer
+binds that is not an `inputType`**, and it has to be: a keydown is where Tab
+arrives, and no engine reports it as an editing intention. That is also the
+shape slice 7's format shortcuts take.
+
+**A fence and an indented code block are edited as source**, which is the second
+text space the slice needed: offsets into the block's own body rather than into
+an inline tree, with the per-line prefix the file put in front of each body line
+read off the block's own bytes and put back. **Such a leaf keeps a `source`, and
+it is the new bytes** — `modelTouch` read inverted, and the honest shape rather
+than an exception carved out of it, since the contract is that a block whose
+content changed must not re-emit its *old* bytes. A gap renders to nothing, an
+`html_block`'s text is not its source, and a table refuses.
+
+**A table refuses edits until stage 3, and the rendering is how it says so.**
+Its subtree is `contenteditable="false"`, so the engine never puts a caret
+inside it and nobody is left typing into something that ignores them.
+
+**Four things it found, none of them in the plan.**
+
+**A markdown block cannot carry the whitespace a split leaves at the cut.**
+markdown-it strips a block's leading and trailing whitespace before inline
+parsing runs, so bytes left there are bytes the next parse throws away — and
+three of those are worse than invisible: four leading spaces make the tail an
+**indented code block**, a space before a closing `**` stops it being emphasis
+at all, and a paragraph already indented three spaces needs only the split's one
+to join them. The trim reaches into marks, because that is where the space is.
+
+**Markdown has no empty paragraph, and the separators around one doubled.**
+Enter at the end of a line gives the model a block for the caret and gives the
+file nothing to say about it — but the block still sat between two separators,
+so every Enter not yet typed into put a blank line into a document nobody had
+edited. `modelJoinBlocks` is the fold that fixes it, and it is now both the
+document's and a container's: **a block that emits nothing hands on its own
+separator and takes the one before it with it**, which makes Enter at either end
+of a block cost exactly zero bytes. Nothing the parser produces emits empty, so
+a file that was opened and saved is untouched.
+
+**An empty item's marker has no pad**, because there was nothing after it to pad
+from: `modelItemPrefix` records `-` where a written item records `- `. So typing
+into one produced `-two`, which is a paragraph and not a list — the empty-ATX-
+heading bug of slice 3's step 3, one construct along and failing the same silent
+way. An empty item is also a childless *leaf* in this model, which is right for
+the file and useless for a caret, so the first keystroke in one turns it into
+the container it is about to be — with its paragraph's tokens hidden when a
+sibling's are, or a tight list would go loose on screen without a byte changing.
+
+**A follower that comes across with an outdented item does not move at all.**
+The indent is absolute here, so an outdent shifts every marker and continuation
+indent beneath the item — but a follower goes out one level and down one level
+at the same moment, so it ends at the column it started at. Attached before the
+move rather than after it, the followers were caught in the item's subtree and
+shifted twice. And `modelIndentAtCaret` must **not** ask whether the core's flag
+is on: it did, and Tab therefore did nothing on `front/input-check.html`, the
+one page built to measure it, which installs the layer deliberately without
+flipping the flag for the app on the same origin. The flag belongs at the
+boundary, with the caller that has a fallback to protect.
+
+**The caret trap cost nothing to close.** A table as the last block leaves
+nowhere for the caret to go — the classic `contenteditable="false"` trap, new
+here because today everything is editable — so `modelEnsureBlock` keeps an empty
+paragraph after it, and that paragraph is **free**, because of the fold above.
+The same function answers the other half slice 1 deferred here: deleting
+everything leaves one empty paragraph block rather than a filler belonging to
+none.
+
+**How it was verified.** 49 new checks in `model` and 22 in `model-input`,
+1,430 in all. The sharpest is the sweep, and it is **D1 one step further out**:
+every inline-bearing block in the oracle, split in half, rewrites only itself —
+861 of them, five of which are a single atom and cannot move. Its instrument had
+to be fixed before it meant anything: `indexOf` finds the wrong copy of a
+paragraph whose bytes occur twice, and both `claude.md` and `corpus/todo.md`
+have one, so the containment test was quietly about a block nobody had edited.
+The block's position is measured with the sentinel sweep instead. Every nested
+item in the oracle is also outdented — 80 of them — and what is asserted there
+is not the bytes, which an outdent is meant to change, but that what it wrote
+re-parses to itself.
+
+**And driven in a real browser**, on `front/input-check.html` in Blink, as far
+as automation reaches: the split, Enter at the end of a heading, Tab and
+Shift+Tab with the nested `<ul>` appearing and going again, the empty-item
+rules, typing into a fence's body, the table refusing the caret, and the guard
+paragraph after it — all with the divergence line quiet throughout, and the
+document round-tripping byte-identical on load *including* the guard paragraph.
+The app itself boots on both cores: 252 blocks with `?core=model`, 432 blocks
+verified, divergence quiet.
+
+**The merge is not among those, and cannot be.** A constructed `InputEvent`
+carries no target ranges, so a synthetic Backspace at a block's start is a
+zero-width deletion where a real one hands over a range spanning two blocks.
+That is the same gap stage 0 hit and slice 3 measured again, and it is what the
+page's numbered protocol is for — which slice 4 grew by eight steps: the split,
+the merge across a block boundary, Tab and Shift+Tab, the empty-item rules, a
+fence edited as source, the table refusing the caret, and the trailing-table
+trap. **Nobody has driven those by hand yet**, in any engine, and until somebody
+does, the merge and every real keystroke in this slice are untested in the only
+place that can test them.
+
+`sw.js`'s `VERSION` goes to `v1.35`: `model.js`, `model-input.js` and `app.js`
+all changed, and all three are shell assets.

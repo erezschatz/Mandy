@@ -58,7 +58,7 @@ function modelInputComposing() {
 }
 
 /**
- * The range an event is about, in model coordinates, or null.
+ * The span an event is about, in model coordinates, or null.
  *
  * `getTargetRanges()` first, because it is the engine saying what it intends
  * rather than us guessing from the selection — for a collapsed caret and
@@ -66,10 +66,14 @@ function modelInputComposing() {
  * work out ourselves and would get wrong at a mark boundary. The selection is
  * the fallback for the types that carry no target range.
  *
- * Returns `{ block, from, to }` only when both ends land in the **same** block.
- * Two blocks is a merge, which is slice 4's, and null is how this says so.
+ * **Both ends are named even when they are in different blocks**, which is
+ * slice 4's change to this function. Slice 3 returned null there and called it
+ * a merge it could not do; the merge is now `modelInputDelete`'s, and "a
+ * deletion whose target range spans two blocks is a merge" falls out of the
+ * engine's own answer rather than being worked out from a keystroke — which is
+ * what the spike said it would.
  */
-function modelInputRange(event, doc) {
+function modelInputSpan(event, doc) {
   let range = null;
   const targets = typeof event.getTargetRanges === "function" ? event.getTargetRanges() : [];
   if (targets && targets.length) {
@@ -99,31 +103,273 @@ function modelInputRange(event, doc) {
   const to = collapsed
     ? from
     : modelDomBlockAt(editor, doc, range.endContainer, range.endOffset, 1);
-  if (!from || !to || from.block !== to.block) return null;
-  return { block: from.block, from: Math.min(from.offset, to.offset), to: Math.max(from.offset, to.offset) };
+  if (!from || !to) return null;
+  return { from, to, collapsed: collapsed || (from.block === to.block && from.offset === to.offset) };
+}
+
+// The same span, when both ends land in one block. Kept because most of this
+// file only ever wants that, and a caller reading `{ block, from, to }` says so.
+function modelInputRange(event, doc) {
+  const span = modelInputSpan(event, doc);
+  if (!span || span.from.block !== span.to.block) return null;
+  return {
+    block: span.from.block,
+    from: Math.min(span.from.offset, span.to.offset),
+    to: Math.max(span.from.offset, span.to.offset),
+  };
 }
 
 /**
- * Apply one edit and show it.
+ * Show what an edit did, and tell the app about it.
  *
  * The order is the design's: change the model, then render from it, and the
  * render applies the selection the edit asked for. Nothing holds a `Range`
  * across that, because every node the old one pointed at has just been thrown
  * away.
  */
-function modelInputApply(doc, target, text) {
-  if (!target) return false;
-  const offset = modelInlineSplice(target.block, target.from, target.to, text);
-  if (offset === null) return false;
-  const at = { block: target.block, offset };
-  if (!modelRerenderBlock(editor, target.block, md, at)) {
+function modelInputShow(doc, block, at, inputType) {
+  if (!modelRerenderBlock(editor, block, md, at)) {
     // The block owns no element and neither does anything above it, which is
     // the shape an html_block with two roots gets to. Falling back to the whole
     // document is heavy and correct; silently doing nothing is neither.
     modelRender(editor, doc, md, at);
   }
-  modelInputAnnounce(text ? "insertText" : "deleteContentBackward");
+  modelInputAnnounce(inputType);
   return true;
+}
+
+/**
+ * Show a **structural** edit, which is the whole document.
+ *
+ * A re-render of one block cannot express a block that was added or taken away,
+ * so this rebuilds `#editor`. Named rather than hidden: slice 1 measured a full
+ * render at 16.8ms on a 2,399-line document of 1,325 blocks, which is three
+ * times the size of anything in this repo, so an Enter there costs about a
+ * frame. The obvious optimisation — re-render the nearest container that owns
+ * an element, and only fall back to the document at top level — is available
+ * and is not taken, because a structural edit is rare next to a keystroke and a
+ * second render path is a second thing that can be subtly wrong about the
+ * block-to-element map.
+ */
+function modelInputRestructure(doc, at, inputType) {
+  modelEnsureBlock(doc, md);
+  modelRender(editor, doc, md, at);
+  modelInputAnnounce(inputType);
+  return true;
+}
+
+/**
+ * An empty item has no block to type into until something types into it.
+ *
+ * 1b records one as a childless leaf holding its own marker, so the caret is
+ * inside a block with no inline tree and every edit below would refuse. This is
+ * the one place a read turns into a write before the edit it was asked for.
+ */
+function modelInputRetarget(doc, span) {
+  const block = span.from.block;
+  if (!span.collapsed || block.kind !== "item" || block.children || block.inlines) return span;
+  const paragraph = modelFillItem(doc, block, md);
+  if (!paragraph) return span;
+  const at = { block: paragraph, offset: 0 };
+  return { from: at, to: at, collapsed: true };
+}
+
+/**
+ * Delete a span, without showing it. Hands back the position it collapsed to.
+ *
+ * One block is a splice — into the inline tree, or into the block's own source
+ * when it is a fence or an indented code block, which is slice 4's second text
+ * space. Two blocks is a **merge**: what is left of the first, what is left of
+ * the last, and every block strictly between them taken out — with the
+ * containers each removal emptied taken out too, which is `modelPruneBlock`'s
+ * job and the part that stops an empty `<ul>` being left behind.
+ *
+ * **A merge needs two blocks with a common text space.** A paragraph and a
+ * fence have none, so this refuses rather than approximating — the same refusal
+ * slice 3 made in the same place, now with one case fewer behind it.
+ */
+function modelInputDelete(doc, span) {
+  const from = span.from;
+  const to = span.to;
+
+  if (from.block === to.block) {
+    const start = Math.min(from.offset, to.offset);
+    const end = Math.max(from.offset, to.offset);
+    const offset = modelBearsSource(from.block)
+      ? modelSourceSplice(from.block, start, end, "", md)
+      : modelInlineSplice(from.block, start, end, "");
+    return offset === null ? null : { block: from.block, offset, structural: false };
+  }
+
+  if (!from.block.inlines || !to.block.inlines) return null;
+  const flat = modelFlatten(doc).filter((block) => !block.children && block.kind !== "gap");
+  const first = flat.indexOf(from.block);
+  const last = flat.indexOf(to.block);
+  if (first < 0 || last < 0 || last < first) return null;
+
+  if (modelInlineSplice(from.block, from.offset, Number.MAX_SAFE_INTEGER, "") === null) return null;
+  if (modelInlineSplice(to.block, 0, to.offset, "") === null) return null;
+  for (const between of flat.slice(first + 1, last)) modelPruneBlock(doc, between);
+  const offset = modelMergeBlocks(doc, from.block, to.block);
+  return offset === null ? null : { block: from.block, offset, structural: true };
+}
+
+/**
+ * Text typed, or a deletion. One block or two.
+ *
+ * A deletion spanning two blocks is a merge and changes the shape of the
+ * document, so it is shown as a restructure; anything inside one block is the
+ * block. **Text across two blocks is refused**: replacing a multi-block
+ * selection with typed characters is a paste in everything but name, and paste
+ * is slice 5's.
+ */
+function modelInputWrite(doc, span, text) {
+  if (!span) return false;
+  const target = modelInputRetarget(doc, span);
+
+  if (text) {
+    if (target.from.block !== target.to.block) return false;
+    const block = target.from.block;
+    const start = Math.min(target.from.offset, target.to.offset);
+    const end = Math.max(target.from.offset, target.to.offset);
+    const offset = modelBearsSource(block)
+      ? modelSourceSplice(block, start, end, text, md)
+      : modelInlineSplice(block, start, end, text);
+    if (offset === null) return false;
+    return modelInputShow(doc, block, { block, offset }, "insertText");
+  }
+
+  const landed = modelInputDelete(doc, target);
+  if (!landed) return false;
+  const at = { block: landed.block, offset: landed.offset };
+  return landed.structural
+    ? modelInputRestructure(doc, at, "deleteContentBackward")
+    : modelInputShow(doc, landed.block, at, "deleteContentBackward");
+}
+
+/**
+ * Enter and Backspace on an empty item, which are the two hand-rolled clusters
+ * arriving as model rules — see `modelEmptyItemKey`.
+ *
+ * Asked before the generic handling and answering for itself, because what the
+ * engine would report for either is a deletion or a split of a block that holds
+ * nothing: the shape is the same and the intent is not.
+ */
+function modelInputEmptyItem(doc, backspace) {
+  const at = modelReadSelection(editor, doc);
+  if (!at) return false;
+  const item = modelItemAncestor(at.block);
+  if (!item || !modelIsEmptyBlock(item)) return false;
+  if (backspace && at.offset !== 0) return false;
+  const landed = modelEmptyItemKey(doc, item, md, backspace);
+  return modelInputRestructure(doc, landed, backspace ? "deleteContentBackward" : "insertParagraph");
+}
+
+/**
+ * Enter. Slice 4's step 2.
+ *
+ * A selection is deleted first and the split happens where it collapsed, which
+ * is what every editor does and what the model already has the pieces for. In a
+ * fence there is no split to make — its content is source — so Enter is a
+ * newline in the body, which is also what it does today.
+ */
+function modelInputParagraph(doc, span) {
+  if (!span) return false;
+  const target = modelInputRetarget(doc, span);
+
+  let block = target.from.block;
+  let offset = target.from.offset;
+  if (!target.collapsed) {
+    const landed = modelInputDelete(doc, target);
+    if (!landed) return false;
+    block = landed.block;
+    offset = landed.offset;
+  }
+
+  if (modelBearsSource(block)) {
+    const at = modelSourceSplice(block, offset, offset, "\n", md);
+    if (at === null) return false;
+    return modelInputShow(doc, block, { block, offset: at }, "insertParagraph");
+  }
+
+  const landed = modelInsertParagraph(doc, block, offset, md);
+  if (!landed) return false;
+  return modelInputRestructure(doc, landed, "insertParagraph");
+}
+
+/**
+ * Shift+Enter. Slice 4's step 4.
+ *
+ * The spelling comes from `sniffMarkdownStyle`'s document-wide answer, read
+ * here and handed over rather than reached for in model.js — the same boundary
+ * the parser injection draws. `markdownStyle` is app.js's, which is why this
+ * file loads after it.
+ */
+function modelInputLineBreak(doc, span) {
+  if (!span) return false;
+  const target = modelInputRetarget(doc, span);
+  let block = target.from.block;
+  let offset = target.from.offset;
+  if (!target.collapsed) {
+    const landed = modelInputDelete(doc, target);
+    if (!landed) return false;
+    block = landed.block;
+    offset = landed.offset;
+  }
+  const spelling = typeof markdownStyle === "object" && markdownStyle ? markdownStyle.hardBreak : "  ";
+  const at = modelInsertBreak(block, offset, spelling);
+  if (at === null) return false;
+  return modelInputShow(doc, block, { block, offset: at }, "insertLineBreak");
+}
+
+/**
+ * Tab and Shift+Tab, and the Format menu's two items, which ask the identical
+ * question — the same arrangement `canIndentListItem` already has on the old
+ * core.
+ *
+ * Hands back whether it answered, so `app.js`'s toolbar handlers know not to
+ * fall through to `outdentListItem` — which mutates the DOM directly, behind
+ * the model's back, which is exactly what this layer exists to stop.
+ *
+ * **It does not ask whether the flag is on**, and that is the boundary this
+ * file keeps: the install block at the bottom is the one place the flag is
+ * read, and once the layer is installed it works. `front/input-check.html`
+ * installs it deliberately without flipping the flag for the app on the same
+ * origin, and a second guard in here made Tab do nothing on the one page built
+ * to measure it. The caller that has a fallback asks the flag; the layer does
+ * its job.
+ */
+function modelIndentAtCaret(outdent) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  const item = modelItemAncestor(at.block);
+  if (!item) return true;
+  const moved = outdent ? modelOutdentItem(doc, item) : modelIndentItem(doc, item);
+  if (!moved) return true;
+  modelRender(editor, doc, md, at);
+  modelInputAnnounce(outdent ? "formatOutdent" : "formatIndent");
+  return true;
+}
+
+/**
+ * Tab is the first thing this layer binds that is not an `inputType`, and it
+ * has to be: a keydown is where Tab arrives, and no engine reports it as an
+ * editing intention. It is also the shape slice 7's format shortcuts take.
+ *
+ * **Outside a list Tab keeps its default job of leaving the editor**, which is
+ * a keyboard user's only way out and is today's rule kept rather than
+ * re-decided.
+ */
+function modelInputKeydown(event) {
+  if (event.key !== "Tab" || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+  const doc = modelCurrentDocument();
+  if (!doc) return;
+  const at = modelReadSelection(editor, doc);
+  if (!at || !modelItemAncestor(at.block)) return;
+  event.preventDefault();
+  modelIndentAtCaret(event.shiftKey === true);
 }
 
 /**
@@ -170,11 +416,21 @@ function modelInputBeforeInput(event) {
   if (modelInputComposing()) return;
 
   if (MODEL_INPUT_TEXT_TYPES.has(event.inputType)) {
-    modelInputApply(doc, modelInputRange(event, doc), event.data || "");
+    modelInputWrite(doc, modelInputSpan(event, doc), event.data || "");
     return;
   }
   if (MODEL_INPUT_DELETE_TYPES.has(event.inputType)) {
-    modelInputApply(doc, modelInputRange(event, doc), "");
+    if (modelInputEmptyItem(doc, true)) return;
+    modelInputWrite(doc, modelInputSpan(event, doc), "");
+    return;
+  }
+  if (event.inputType === "insertParagraph") {
+    if (modelInputEmptyItem(doc, false)) return;
+    modelInputParagraph(doc, modelInputSpan(event, doc));
+    return;
+  }
+  if (event.inputType === "insertLineBreak") {
+    modelInputLineBreak(doc, modelInputSpan(event, doc));
   }
 }
 
@@ -242,6 +498,7 @@ function modelInputInstall(root) {
   root.addEventListener("beforeinput", modelInputBeforeInput);
   root.addEventListener("compositionstart", modelInputCompositionStart);
   root.addEventListener("compositionend", modelInputCompositionEnd);
+  root.addEventListener("keydown", modelInputKeydown);
 }
 
 if (typeof editor !== "undefined" && editor && modelCoreEnabled()) {

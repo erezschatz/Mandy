@@ -232,6 +232,35 @@ They cover the invariants that fail *silently* rather than loudly:
   `torture.md`, and on ten hand-written cases either side of the line — in a
   list item, in a quote, two quotes deep, two in one block, wrapped, and the
   four places a definition-shaped line is not one.
+
+  Stage 2's slice 4 adds the structural edits, and its sharpest check is the
+  one that is **D1 one step further out**: stage 1 only ever proved that an
+  edited block rewrites itself, so every inline-bearing block in the oracle is
+  now **split in half** and the file that comes back has to be the file that
+  went in everywhere outside that block. Its instrument had to be fixed before
+  it meant anything — `indexOf` finds the wrong copy of a paragraph whose bytes
+  occur twice, and both `claude.md` and `corpus/todo.md` have one — so the
+  block's position is measured with the sentinel sweep instead of searched for.
+  Every nested item is also outdented, where what is asserted is not the bytes
+  (an outdent is meant to change those) but that what it wrote re-parses to
+  itself. The hand-written cases beside them are one per decision in the slice.
+- **model-input** — `front/model-input.js`: the input layer's **routing**, and
+  the one suite here whose stubs are the model rather than the DOM. That is
+  deliberate and is the opposite of the usual arrangement: `beforeinput` is
+  unreachable from `tests/dom.mjs`, which has no editing engine, so a stub could
+  only deliver what it was told and would agree with any handler at all — but
+  which `inputType` goes where, what is cancelled, and what happens during a
+  composition are pure functions of the event, which a hand-built one answers
+  honestly. `modelInlineSplice` and the render are covered against the real
+  thing in `model`, so stubbing them is what lets this assert routing rather
+  than re-assert those. What it pins: that **every** inputType is cancelled
+  whether handled or not, that a cross-block deletion merges and a cross-block
+  *replacement* is refused, that a source-bearing block is routed to the source
+  space and not the inline one, that the empty-item rules are asked before the
+  generic edit, and that Tab is taken from the browser inside a list and left to
+  it outside one. The half neither suite can reach — does an engine actually
+  send these, is it actually cancelable, what does a real IME do — is
+  `front/input-check.html`.
 - **tabs** — the per-tab state boundaries and the swap between documents: that
   park and adopt are lossless and adopting nothing is a blank document rather
   than a half-cleared one; the migration off the flat keys and both ways a
@@ -320,6 +349,11 @@ page reads app internals straight out of its window. `CHECK_PAGES` in
 `server.ts` is the literal set of names that route serves; a new check page has
 to be added there.
 
+**Both of the next two are questions about the old core only, as of stage 2's
+slice 4** (2026-09-20), which made Enter, Backspace and Tab in a list model
+rules with no engine in them. They are not retired yet, because `main` still
+runs the code they watch — they retire with it, at stage 4.
+
 [tests/list-indent-check.html](tests/list-indent-check.html) is for the path
 `outdentListItem` opened when it stopped calling execCommand. It ends with a
 control, raw `execCommand("outdent")` on the same list, so a green run is
@@ -329,8 +363,9 @@ through Shift+Tab.
 
 [tests/list-empty-item-check.html](tests/list-empty-item-check.html) is for the
 keydown handler in `app.js` that does Enter and Backspace on an empty `<li>` by
-hand — contenteditable's own handling splits the list and strands `<p><br></p>`
-blocks, which the Deno suite cannot see and only a real engine can confirm gone.
+hand — the handler that returns early under `modelCoreEnabled()` since slice 4.
+Contenteditable's own handling splits the list and strands `<p><br></p>` blocks,
+which the Deno suite cannot see and only a real engine can confirm gone.
 It reports the resulting shape, the blank-paragraph count and where the caret
 landed. Same run recipe as its sibling; if the app has not booted in the frame
 after ten seconds it says so instead of hanging.
@@ -396,7 +431,10 @@ Backspace and the engine performs no editing command for it, which is the same
 gap stage 0's spike hit — so it carries a numbered protocol and needs a human at
 a keyboard, the way `paste-check` does. It reports every event the engine sent
 and, after each one, whether any block's DOM text has come adrift from its
-model's. It lives in `front/` so the static handler already serves it
+model's. Slice 4 added eight steps to its protocol — the split, the merge across
+a block boundary, Tab and Shift+Tab, the empty-item rules, a fence edited as
+source, the table refusing the caret, and the guard paragraph that stops a
+trailing table trapping it. It lives in `front/` so the static handler already serves it
 same-origin with `/model.js`, which is the only thing the `/tests/` route was
 ever buying — so it needs no `CHECK_PAGES` entry and no server change — and it
 installs the input layer itself rather than flipping the model core's flag, so
@@ -924,12 +962,12 @@ treatment reversed, and it is the one line the whole design rests on: an
 `inputType` nobody has heard of is a keystroke that does nothing, rather than
 one the engine gets to act on behind the model's back.
 
-What it handles is text: `insertText`, `insertReplacementText`, and the five
-delete types. The four delete-word and delete-content types are **one
+What slice 3 handles is text: `insertText`, `insertReplacementText`, and the
+five delete types. The four delete-word and delete-content types are **one
 implementation**, because the engine has already decided what a word is and
 says so in `getTargetRanges()` — which is also why "a deletion whose target
 range spans two blocks is a merge" falls out rather than being special-cased.
-Such a deletion is refused for now; merging is slice 4's.
+Slice 4, below, is what does the merging.
 
 `modelInlineSplice` is the mutation the tree never had. Stage 1 only ever read
 it, and the contract a mutation keeps was already written down in
@@ -951,10 +989,14 @@ meaning the same thing. Four things about it:
 - **`runCommand` refuses under the model core**, and that is a measurement
   rather than tidiness: Chrome 152, `execCommand` fires `input` but **never
   `beforeinput`**, so it cannot be intercepted at all. Every call site would be
-  a DOM mutation the model can neither cancel nor hear about. The formats, Tab
-  and Clear therefore do nothing while the flag is on — slices 4, 5 and 7 bring
-  them back as model commands, and `execcommand.js` is deleted at the end of
-  them.
+  a DOM mutation the model can neither cancel nor hear about. The formats and
+  Clear therefore do nothing while the flag is on — slices 5 and 7 bring them
+  back as model commands, and `execcommand.js` is deleted at the end of them.
+  Tab came back in slice 4. `runCommand` is not the only door that had to be
+  shut: `app.js`'s Tab handler and its empty-`<li>` keydown handler both do DOM
+  surgery **without** going through it, so both return early under the flag,
+  and the two Format-menu items call `modelIndentAtCaret` instead of falling
+  through to `outdentListItem`.
 - **`modelInlineTokens` puts the tokens back in step with the tree**, and
   without it an edited block does not render at all — the renderer goes through
   markdown-it over the block's *tokens* and an edit changes the *tree*. The
@@ -975,8 +1017,70 @@ Every edit ends by dispatching a synthetic `input`, because `preventDefault()`
 means the engine will not — and autosave, the dirty flag, the outline and the
 undo stack all hang off exactly that.
 
-What the model still does *not* do is change how many blocks there are, or run
-a format command: those are the rest of stage 2 and stage 3.
+**Slice 4 gave it structure**, 2026-09-20, in the same two files: the edits that
+change how many blocks there are, and the ones that act on a block with no
+inline tree. **Its three-engine protocol has not been driven by hand yet** — the
+suites and Blink automation cover everything they can reach, and the merge and
+every real keystroke in it wait on somebody running
+[front/input-check.html](front/input-check.html). Seven steps, and the ones
+worth knowing from outside:
+
+- **What Enter splits is the block, and then its container when that container
+  is an item.** So Enter in a top-level paragraph makes a paragraph, Enter in a
+  quoted paragraph makes a second quoted paragraph — a quote is not an item, and
+  the walk stops — and Enter in a bullet makes a bullet rather than two
+  paragraphs inside one. At the end of a heading it opens a paragraph; anywhere
+  else in a heading it splits into two headings of the same level, because the
+  text after the caret is still heading text.
+- **A new block's tokens come from the parser, never hand-built.** That is the
+  exact twin of the rule that keeps `modelRenderBlock` honest — a fresh
+  paragraph is `md.parse` of a one-character template with its inline children
+  replaced, and everything else is cloned from the block it came from. Its
+  affixes are **computed from its position rather than copied**, because a
+  split's second half is never its item's first child and so takes the
+  continuation indent where the original took the marker.
+- **A block that emits nothing takes the separator before it with it.**
+  `modelJoinBlocks` is both the document's fold and a container's, and this
+  clause is what makes markdown's lack of an empty paragraph survivable: the
+  model holds a block for the caret, the file has nothing to say about it, and
+  an Enter nobody has typed into yet costs **zero bytes**. Nothing the parser
+  produces emits empty, so an opened-and-saved file is untouched.
+- **The two hand-rolled list clusters are model rules now**, with no engine in
+  them — Enter and Backspace on an empty `<li>`, and `outdentListItem`. What
+  `app.js`'s handler does is the specification, because it is what users have;
+  what changes is that there is no DOM surgery to watch in three browsers.
+  **Tab is the first thing the input layer binds that is not an `inputType`**,
+  and it has to be, since a keydown is where Tab arrives.
+- **The indent is absolute**, so an outdent shifts every marker and continuation
+  indent beneath the item it moves — and a follower that comes across with it
+  does not move at all, because it goes out one level and down one level at the
+  same moment. Tabs stay tabs, which is 1b's step 5 in the one other place that
+  writes an indent.
+- **A fence and an indented code block are edited as source**, which is the
+  second text space: offsets into the block's own body rather than into an
+  inline tree. **Such a leaf keeps a `source`, and it is the new bytes** —
+  `modelTouch` read inverted, and the honest shape rather than an exception,
+  since the contract is that a block whose content changed must not re-emit its
+  *old* bytes. A gap renders to nothing, an `html_block`'s text is not its
+  source, and a table refuses.
+- **A table refuses edits until stage 3**, and the rendering is how it says so:
+  its subtree is `contenteditable="false"`, so the engine never puts a caret
+  inside it. `modelEnsureBlock` closes the trap that comes with that — a table
+  as the last block would leave nowhere for the caret to go — by keeping an
+  empty paragraph after it, which is free, because of the fold above. The same
+  function answers the other half: **deleting everything leaves one empty
+  paragraph block**, so the filler paragraph belonging to no block is no longer
+  reachable from the app.
+- **A split trims the whitespace a markdown block cannot carry**, at the cut, on
+  both sides and into marks. Not tidying: four leading spaces make the tail an
+  **indented code block**, and a space before a closing `**` stops it being
+  emphasis at all.
+- **A structural edit re-renders the whole document.** One block's re-render
+  cannot express a block that was added or removed. Named rather than hidden —
+  16.8ms on a 1,325-block document, about a frame, and rare next to a keystroke.
+
+What the model still does *not* do is paste, undo, or run a format command:
+those are slices 5, 6 and 7.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.

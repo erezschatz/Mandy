@@ -1,4 +1,4 @@
-// The input layer's routing. TODO 3.1, stage 2, slice 3.
+// The input layer's routing. TODO 3.1, stage 2, slices 3 and 4.
 //
 // **What this suite can see, and what it deliberately cannot.** `beforeinput`
 // itself is unreachable from here: tests/dom.mjs has no editing engine, so a
@@ -21,8 +21,14 @@ import { loadSource, makeEl } from "./dom.mjs";
 export default function run(check) {
   // One rig per case: the handler keeps composition state across events, so a
   // shared one would let an earlier check decide a later one.
-  const rig = ({ coreOn = true, doc = { blocks: [] }, range = null, splice = 7 } = {}) => {
-    const calls = { splice: [], rerender: [], render: [], announced: [] };
+  const rig = ({
+    coreOn = true, doc = { blocks: [] }, range = null, splice = 7,
+    source = false, at = null, item = null, empty = false, hardBreak = "  ",
+  } = {}) => {
+    const calls = {
+      splice: [], rerender: [], render: [], announced: [], sourceSplice: [],
+      merged: [], pruned: [], split: [], broke: [], emptyItem: [], moved: [], filled: [],
+    };
     const editor = makeEl("div");
     const block = { kind: "paragraph", inlines: [], source: "x" };
     editor.dispatchEvent = (event) => calls.announced.push(event.inputType ?? event.type);
@@ -32,19 +38,52 @@ export default function run(check) {
       {
         editor,
         md: {},
+        markdownStyle: { hardBreak },
         modelCoreEnabled: () => coreOn,
         modelCurrentDocument: () => doc,
         modelInlineSplice: (b, from, to, text) => {
           calls.splice.push({ block: b, from, to, text });
           return splice;
         },
+        // Slice 4's second text space. The stub answers for whichever kind the
+        // case asked for, so the routing question -- inline tree or source --
+        // is the only thing under test here.
+        modelBearsSource: () => source,
+        modelSourceSplice: (b, from, to, text) => {
+          calls.sourceSplice.push({ block: b, from, to, text });
+          return splice;
+        },
+        modelFlatten: () => doc.blocks || [],
+        modelPruneBlock: (d, b) => calls.pruned.push(b),
+        modelMergeBlocks: (d, first, second) => {
+          calls.merged.push({ first, second });
+          return 3;
+        },
+        modelInsertParagraph: (d, b, offset) => {
+          calls.split.push({ block: b, offset });
+          return { block: b, offset: 0 };
+        },
+        modelInsertBreak: (b, offset, spelling) => {
+          calls.broke.push({ block: b, offset, spelling });
+          return offset + 1;
+        },
+        modelItemAncestor: () => item,
+        modelIsEmptyBlock: () => empty,
+        modelEmptyItemKey: (d, i, parser, backspace) => {
+          calls.emptyItem.push({ item: i, backspace });
+          return { block, offset: 0 };
+        },
+        modelIndentItem: (d, i) => { calls.moved.push({ item: i, outdent: false }); return i; },
+        modelOutdentItem: (d, i) => { calls.moved.push({ item: i, outdent: true }); return i; },
+        modelFillItem: (d, i) => { calls.filled.push(i); return null; },
+        modelEnsureBlock: () => null,
         modelRerenderBlock: (root, b, parser, sel) => {
           calls.rerender.push({ block: b, selection: sel });
           return editor;
         },
         modelRender: (root, d, parser, sel) => calls.render.push({ doc: d, selection: sel }),
         modelDomBlockAt: () => range && range.shift(),
-        modelReadSelection: () => ({ block, offset: 0 }),
+        modelReadSelection: () => at || { block, offset: 0 },
         modelElementFor: () => editor,
         modelDomText: () => "abX",
         modelBlockText: () => "ab",
@@ -58,7 +97,8 @@ export default function run(check) {
         console,
       },
       "; return { modelInputBeforeInput, modelInputCompositionStart," +
-        " modelInputCompositionEnd, modelInputComposing, modelInputInstall };",
+        " modelInputCompositionEnd, modelInputComposing, modelInputInstall," +
+        " modelInputKeydown, modelIndentAtCaret };",
     );
     return { api, calls, editor, block };
   };
@@ -149,15 +189,164 @@ export default function run(check) {
   }
 
   {
-    // Two blocks is a merge, which is slice 4's. Refusing is the honest answer
-    // until then -- the alternative is deleting inside one of them and leaving
-    // the other, which is a wrong edit rather than a missing one.
-    const r = rig({ range: [here({ id: 3 }, 0), here({ id: 4 }, 0)] });
+    // **Two blocks is a merge**, which slice 4 turned from a refusal into the
+    // handling. The shape is what matters: what is left of the first block,
+    // what is left of the last, and then the join -- so a Backspace at a
+    // block's start deletes nothing at either end and merges, which is the
+    // commonest case there is.
+    const first = { id: 3, inlines: [] };
+    const second = { id: 4, inlines: [] };
+    const doc = { blocks: [first, second] };
+    const r = rig({ doc, range: [here(first, 4), here(second, 0)] });
     const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 4 }] });
     r.api.modelInputBeforeInput(e);
-    check("a deletion spanning two blocks is refused rather than half-applied",
-      r.calls.splice.length === 0 && r.calls.rerender.length === 0);
-    check("and it is still cancelled, so the engine does not do it either", e.prevented === 1);
+    check("a deletion spanning two blocks merges them",
+      r.calls.merged.length === 1 && r.calls.merged[0].first === first && r.calls.merged[0].second === second);
+    check("clearing what the range covered at each end first",
+      r.calls.splice.length === 2 && r.calls.splice[0].from === 4 && r.calls.splice[1].to === 0);
+    check("and rendering the whole document, since a block has gone",
+      r.calls.render.length === 1 && r.calls.rerender.length === 0);
+    check("and it is still cancelled, so the engine does not do it too", e.prevented === 1);
+  }
+
+  {
+    // A merge needs two blocks with a common text space. A paragraph and a
+    // fence have none -- one is an inline tree, the other is source -- so this
+    // refuses, which is the same refusal slice 3 made with one case fewer
+    // behind it.
+    const first = { id: 11, inlines: [] };
+    const fence = { id: 12, inlines: null };
+    const r = rig({ doc: { blocks: [first, fence] }, range: [here(first, 4), here(fence, 0)] });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check("a merge into a block with no inline tree is refused rather than approximated",
+      r.calls.merged.length === 0 && r.calls.splice.length === 0 && r.calls.render.length === 0);
+  }
+
+  // --- slice 4: the structural types ---------------------------------------
+
+  {
+    const target = { id: 20, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, range: [here(target, 4), here(target, 4)] });
+    const e = event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 4, endContainer: 1, endOffset: 4 }] });
+    r.api.modelInputBeforeInput(e);
+    check(`insertParagraph splits at the caret (${r.calls.split[0] && r.calls.split[0].offset})`,
+      r.calls.split.length === 1 && r.calls.split[0].block === target && r.calls.split[0].offset === 4);
+    check("and renders the document rather than the block, since the count changed",
+      r.calls.render.length === 1 && r.calls.rerender.length === 0);
+    check("announced as its own inputType, so undo does not coalesce it with typing",
+      r.calls.announced.length === 1 && r.calls.announced[0] === "insertParagraph");
+  }
+
+  {
+    // A selection is deleted first and the split happens where it collapsed.
+    const target = { id: 21, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, range: [here(target, 2), here(target, 6)] });
+    const e = event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 4 }] });
+    r.api.modelInputBeforeInput(e);
+    check("Enter over a selection deletes it first, then splits where it collapsed",
+      r.calls.splice.length === 1 && r.calls.splice[0].text === "" && r.calls.split.length === 1 &&
+        r.calls.split[0].offset === 7);
+  }
+
+  {
+    // Enter inside a fence is a newline in its body: its content is source, so
+    // there is no block to split.
+    const target = { id: 22, inlines: null };
+    const r = rig({ doc: { blocks: [target] }, source: true, range: [here(target, 3), here(target, 3)] });
+    const e = event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 3, endContainer: 1, endOffset: 3 }] });
+    r.api.modelInputBeforeInput(e);
+    check("Enter in a source-bearing block writes a newline into its body instead",
+      r.calls.sourceSplice.length === 1 && r.calls.sourceSplice[0].text === "\n" && r.calls.split.length === 0);
+    check("and re-renders that block alone, because nothing was added or removed",
+      r.calls.rerender.length === 1 && r.calls.render.length === 0);
+  }
+
+  {
+    const target = { id: 23, inlines: null };
+    const r = rig({ doc: { blocks: [target] }, source: true, range: [here(target, 1), here(target, 1)] });
+    const e = event("insertText", { data: "z", targets: [{ startContainer: 1, startOffset: 1, endContainer: 1, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check("typing in a source-bearing block goes to the source space, not the inline one",
+      r.calls.sourceSplice.length === 1 && r.calls.sourceSplice[0].text === "z" && r.calls.splice.length === 0);
+  }
+
+  {
+    for (const [spelling, label] of [["  ", "two spaces"], ["\\", "a backslash"]]) {
+      const target = { id: 24, inlines: [] };
+      const r = rig({ doc: { blocks: [target] }, hardBreak: spelling, range: [here(target, 2), here(target, 2)] });
+      const e = event("insertLineBreak", { targets: [{ startContainer: 1, startOffset: 2, endContainer: 1, endOffset: 2 }] });
+      r.api.modelInputBeforeInput(e);
+      check(`a new hard break takes the document's own spelling (${label})`,
+        r.calls.broke.length === 1 && r.calls.broke[0].spelling === spelling);
+    }
+  }
+
+  {
+    // The two hand-rolled clusters, asked before the generic handling: what the
+    // engine reports for either is a split or a deletion of a block holding
+    // nothing, and the shape says nothing about the intent.
+    for (const [type, backspace] of [["insertParagraph", false], ["deleteContentBackward", true]]) {
+      const target = { id: 25, inlines: [] };
+      const r = rig({ doc: { blocks: [target] }, item: { kind: "item" }, empty: true, at: { block: target, offset: 0 } });
+      const e = event(type, { targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] });
+      r.api.modelInputBeforeInput(e);
+      check(`${type} on an empty item is the list rule, not the generic edit`,
+        r.calls.emptyItem.length === 1 && r.calls.emptyItem[0].backspace === backspace &&
+          r.calls.split.length === 0 && r.calls.splice.length === 0);
+    }
+  }
+
+  {
+    // ...and only at the start of it, for Backspace: mid-item it is an ordinary
+    // deletion of whatever the engine named.
+    const target = { id: 26, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, item: { kind: "item" }, empty: true, at: { block: target, offset: 3 },
+      range: [here(target, 2), here(target, 3)] });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 2, endContainer: 1, endOffset: 3 }] });
+    r.api.modelInputBeforeInput(e);
+    check("Backspace away from an item's start is an ordinary deletion",
+      r.calls.emptyItem.length === 0 && r.calls.splice.length === 1);
+  }
+
+  // --- slice 4: Tab, which is not an inputType -----------------------------
+
+  {
+    const target = { id: 27, inlines: [] };
+    const listItem = { kind: "item" };
+    for (const shift of [false, true]) {
+      const r = rig({ doc: { blocks: [target] }, item: listItem, at: { block: target, offset: 0 } });
+      const e = { key: "Tab", shiftKey: shift, prevented: 0, preventDefault() { this.prevented += 1; } };
+      r.api.modelInputKeydown(e);
+      check(`${shift ? "Shift+Tab outdents" : "Tab indents"} the item the caret is in`,
+        r.calls.moved.length === 1 && r.calls.moved[0].outdent === shift && e.prevented === 1);
+      check("announced as its own inputType so it is one undo step",
+        r.calls.announced.length === 1 && r.calls.announced[0] === (shift ? "formatOutdent" : "formatIndent"));
+    }
+  }
+
+  {
+    // Outside a list Tab keeps its default job of leaving the editor, which is
+    // a keyboard user's only way out -- today's rule kept rather than re-decided.
+    const target = { id: 28, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, item: null, at: { block: target, offset: 0 } });
+    const e = { key: "Tab", shiftKey: false, prevented: 0, preventDefault() { this.prevented += 1; } };
+    r.api.modelInputKeydown(e);
+    check("Tab outside a list is not taken from the browser",
+      e.prevented === 0 && r.calls.moved.length === 0);
+  }
+
+  {
+    // The Format menu's two items ask the identical question. The flag is read
+    // by app.js rather than in here, so that front/input-check.html can install
+    // the layer without flipping the flag for the app on the same origin — a
+    // guard in here made Tab do nothing on the one page built to measure it.
+    const target = { id: 29, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, item: { kind: "item" }, at: { block: target, offset: 0 } });
+    check("the toolbar path moves the item the caret is in", r.api.modelIndentAtCaret(false) === true &&
+      r.calls.moved.length === 1);
+    const none = rig({ doc: null });
+    check("and answers no with no document open", none.api.modelIndentAtCaret(false) === false);
   }
 
   {
@@ -242,8 +431,9 @@ export default function run(check) {
     const { api } = rig();
     api.modelInputInstall(root);
     check(
-      `all three listeners are bound (${Object.keys(root.listeners).sort().join(", ")})`,
-      !!root.listeners.beforeinput && !!root.listeners.compositionstart && !!root.listeners.compositionend,
+      `all four listeners are bound (${Object.keys(root.listeners).sort().join(", ")})`,
+      !!root.listeners.beforeinput && !!root.listeners.compositionstart &&
+        !!root.listeners.compositionend && !!root.listeners.keydown,
     );
   }
 }
