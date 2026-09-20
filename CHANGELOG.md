@@ -6480,3 +6480,58 @@ edits go through the model in Blink, Gecko and WebKit alike.
 Slice 4 is *done and tested* rather than *done and measured as far as a machine
 reaches*, and stage 2 stands at four slices of seven. No code changed, so
 nothing ran; `npm test` was green at 1,443 checks before it.
+
+## 2026-09-21 — Plan stage 2's slice 5, paste and drop
+
+Five steps, written before any of it was built: splicing foreign blocks, the
+HTML pipeline, plain text, the paste event and the menu items, and drop.
+
+**The first step is the one with teeth, and it is about a second document.**
+`modelParse` of the pasted markdown produces one, and nothing in it is safe to
+put into the target as it stands. Its **ids collide**, since `modelParse` mints
+from 1 and `modelElementFor` is a `querySelector` — so every adopted block takes
+a fresh id from the target's own counter, which is what that counter is for. And
+its **bytes are unprefixed**: a pasted block's `source` is markdown written
+flush left, so dropping it into a quote or a list item would write lines
+carrying no `> ` and no indent, and the file would stop holding what the screen
+shows. Adoption therefore clears `source` on every pasted block and lets the
+emitter compose it, which is the one thing the emitter is for — the quote chain
+from the block it lands beside, the leading affix from its new position, and an
+item's own marker shifted to the column its new container starts at.
+
+**Pasted blocks land as siblings of the block the caret was in**, which is the
+conservative call rather than the obvious one. Enter promotes to the nearest
+item; a paste does not, so pasting three paragraphs into a bullet gives one
+bullet holding three paragraphs rather than three bullets. Nothing is lifted out
+of the container the caret was in — a paste that moved content *out* of a list
+would be a structural edit nobody asked for, and that is the direction worth
+being cowardly in.
+
+**The pipeline needs a narrower call than `htmlToMarkdown`.** That one is a
+*document* function: it appends the reference definitions, re-wraps to the
+sniffed width and restores the opened file's own bytes, none of which a fragment
+from somebody else's clipboard has any business going through.
+`htmlFragmentToMarkdown` will be the Turndown half alone, extracted so the two
+cannot drift.
+
+**Plain text is never parsed, and that has teeth in the model it does not have
+today.** A pasted `*foo*` becomes a text node with `raw` null, so `modelEmitLeaf`
+escapes it on the way out and it stays literal in the file.
+
+**The paste event rather than `beforeinput`.** It fires first, carries
+`clipboardData` by specification, and cancelling it stops the insertion before
+an `insertFromPaste` is ever raised. `beforeinput` goes on cancelling that type
+anyway, which costs nothing.
+
+**Drop is the one with a second half.** A drag that started inside the editor is
+a *move*: the engine raises `deleteByDrag` and `insertFromDrop` as a pair, both
+are cancelled, and doing only the insert would duplicate the text and leave the
+original standing. The source range is recorded at `dragstart` in model
+coordinates, the deletion runs first, and the drop offset is adjusted when the
+two are in the same block. Drop is also the one place in the slice fixing a
+regression the flag already has rather than porting a behaviour — contenteditable
+handles it natively today and nothing in `front/` touches it, so under the model
+core it does nothing at all.
+
+No code changed, so nothing ran. `npm test` was green at 1,443 checks before it,
+which is the tree this was written against.

@@ -2879,12 +2879,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         is per browser and per version, and in Blink a machine cannot drive
         them.
 
-    *   **5. Input: paste and drop — not started.** `insertFromPaste` and
-        `insertFromDrop` read `text/html`, run it through `sanitisePastedHtml`
-        and `normaliseNbsp` exactly as today, then **Turndown to markdown and
-        `modelParse` into blocks**, spliced in at the selection. Turndown stays
-        in the bundle for this one path and leaves the save path at stage 4;
-        this is the last thing it does.
+    *   **5. Input: paste and drop — planned 2026-09-21, not started.**
+        `insertFromPaste` and `insertFromDrop` read `text/html`, run it through
+        `sanitisePastedHtml` and `normaliseNbsp` exactly as today, then
+        **Turndown to markdown and `modelParse` into blocks**, spliced in at the
+        selection. Turndown stays in the bundle for this one path and leaves the
+        save path at stage 4; this is the last thing it does.
 
         `text/plain` inserts as text rather than being parsed as markdown,
         which is today's behaviour and the reason Insert → *Paste markdown* is
@@ -2898,6 +2898,120 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         because it is where pasting feels wrong when it is wrong: pasting into
         the middle of a paragraph splits it, the first pasted block merges into
         the head and the last into the tail, and whole blocks land between.
+
+        **Five steps, in this order**, planned 2026-09-21 before any of it was
+        built. The first is the primitive the other four call; the last two are
+        the two ways content arrives from outside.
+
+        1.  **Splicing foreign blocks — not started.** `modelParse` of the
+            pasted markdown produces a **second document**, and nothing about
+            it is safe to put into the first as it stands. Three things have to
+            be fixed up, and every one of them is a silent corruption if it is
+            not.
+
+            **Ids collide.** `modelParse` mints from 1, so a pasted block
+            carries an id the target document is already using, and
+            `modelElementFor`'s `querySelector` would then answer with whichever
+            element it met first. Every adopted block takes a fresh id from the
+            target's own counter, which is what that counter is for.
+
+            **Their bytes are unprefixed.** A pasted block's `source` is the
+            markdown Turndown produced, written flush left — so dropping it
+            into a quote or a list item writes lines that carry no `> ` and no
+            indent, and the file stops holding what the screen shows. Adoption
+            therefore **clears `source` on every pasted block** and lets the
+            emitter compose it, which is the one thing the emitter is for:
+            `quotePrefixes` comes from the block it lands beside,
+            `leadingAffix` from its new position, and an item's own marker is
+            shifted to the column its new container starts at, with slice 4's
+            `modelShiftIndent` doing the work.
+
+            **They land as siblings of the block the caret was in**, and that is
+            the conservative call rather than the obvious one. Enter promotes to
+            the nearest item; a paste does not, so pasting three paragraphs into
+            a bullet gives one bullet holding three paragraphs rather than three
+            bullets. Nothing is lifted out of the container the caret was in,
+            which is the rule that cannot surprise anyone in the destructive
+            direction — a paste that moved content *out* of a list would be a
+            structural edit nobody asked for.
+
+        2.  **The pipeline — not started.** `text/html` through
+            `sanitisePastedHtml` and `normaliseNbsp` exactly as today, then
+            **Turndown to markdown and `modelParse` into blocks**. Turndown
+            stays in the bundle for this one path and leaves the save path at
+            stage 4; this is the last thing it does.
+
+            It needs a narrower call than `htmlToMarkdown`, which is a
+            *document* function: it appends the reference definitions, re-wraps
+            to the sniffed width and restores the opened file's own bytes, none
+            of which a fragment from somebody else's clipboard has any business
+            going through. `htmlFragmentToMarkdown` is the Turndown half alone,
+            extracted in `app.js` so the two cannot drift.
+
+            **The splice rule is the conventional one** and is written down
+            because it is where pasting feels wrong when it is wrong: pasting
+            into the middle of a paragraph splits it, the first pasted block
+            merges into the head and the last into the tail, and whole blocks
+            land between. A one-block paste is that rule with nothing in the
+            middle, which is the common case and reduces to an inline splice.
+
+        3.  **Plain text is inserted as text, never parsed — not started.**
+            Today's behaviour, and the reason Insert → *Paste markdown* is a
+            separate action: that one is the same pipeline without the Turndown
+            step. `paste-check.html` measured all three engines offering
+            `text/plain` alone on their plain-text binding, so the branch that
+            fires does not change and the page stays the regression check it
+            became.
+
+            **Never parsed** has teeth in the model that it does not have
+            today: a pasted `*foo*` becomes a text node with `raw` null, so
+            `modelEmitLeaf` escapes it on the way out and it stays literal in
+            the file. One line falls through to `modelInlineSplice`; several
+            become paragraphs, with the line structure inside each kept as
+            softbreaks rather than flattened.
+
+        4.  **The paste event, and the three menu items — not started.** The
+            `paste` event rather than `beforeinput`: it fires first, carries
+            `clipboardData` by specification, and cancelling it stops the
+            insertion before an `insertFromPaste` is ever raised. `beforeinput`
+            goes on cancelling that type anyway, which costs nothing and is what
+            the design says to do with a type nobody has claimed.
+
+            Edit → *Paste*, Edit → *Paste without formatting* and Insert →
+            *Paste markdown* all route through the model under the flag, the
+            way the two list items already do: they reach `runCommand` today,
+            which refuses, so they would silently do nothing.
+
+        5.  **Drop — not started, and it is the one with a second half.**
+            `dataTransfer` reads the same two types and goes through the same
+            pipeline, at the position the pointer was over —
+            `caretPositionFromPoint` or `caretRangeFromPoint`, which is per
+            engine and so is a thing for the check page to report rather than
+            for this file to assume.
+
+            **A drag that started inside the editor is a move, not a copy.**
+            The engine would raise `deleteByDrag` and `insertFromDrop` as a
+            pair; both are cancelled, so doing only the insert duplicates the
+            text and leaves the original standing. The source range is recorded
+            at `dragstart` in model coordinates, the deletion runs before the
+            insertion, and the drop offset is adjusted when the two are in the
+            same block and the source came first. A drag spanning two blocks is
+            refused rather than approximated, which is the same refusal the
+            merge made before slice 4 gave it an implementation.
+
+            **Drop is a no-op under the flag today**, since every `beforeinput`
+            is cancelled and nothing else handles it — so this is the one place
+            in the slice that is fixing a regression the flag already has rather
+            than porting a behaviour.
+
+        **Verification is the same two halves as slice 4.** The `model` suite
+        takes the splice against the real tree and the oracle, because adopting
+        a foreign document's blocks is a pure function over two models and the
+        thing that can go wrong — a pasted block re-emitted without the quote
+        chain it landed in — is a byte question. `model-input` takes the
+        routing, with the clipboard stubbed. And `front/input-check.html` grows
+        the steps neither can reach: a real clipboard, a real drag, and whether
+        an engine hands over `text/html` at all.
 
     *   **6. Undo — not started.** A stack of model states with the caret as a
         model position, replacing the whole-document `innerHTML` snapshots.
