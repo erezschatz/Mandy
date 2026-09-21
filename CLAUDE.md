@@ -435,7 +435,11 @@ model's. Slice 4 added eight steps to its protocol — the split, the merge acro
 a block boundary, Tab and Shift+Tab, the empty-item rules, a fence edited as
 source, the table refusing the caret, and the guard paragraph that stops a
 trailing table trapping it, and slice 5 added seven more for paste and drop.
-**Driven in Gecko on 2026-09-21, and it earned its
+**It reports a drag that never begins**, added 2026-09-21: pressing inside a
+selection is the gesture that should start one, so the page logs that and then
+whether a `dragstart` followed — a drag that does not happen logs nothing
+otherwise, and a page that says nothing reads as having no opinion. The same
+lesson the divergence banner learnt. **Driven in Gecko on 2026-09-21, and it earned its
 keep twice over.** Two real bugs, both of which the whole suite passed over
 because the emitted markdown was right in each: a hard break the renderer
 dropped, and a bullet's trailing space the DOM builder's `trim()` ate. One

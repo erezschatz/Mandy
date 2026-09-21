@@ -6753,3 +6753,35 @@ document open the drop is **not** claimed — saying otherwise would take it awa
 from whatever else might have wanted it. Confirmed in the pane that the editor
 now cancels both events; the drag itself still needs a human, which is what the
 new logging is for. `sw.js`'s `VERSION` goes to `v1.38`.
+
+## 2026-09-21 — A drag that never begins now says so
+
+Yesterday's `dragover` fix got drag and drop working in Blink and WebKit, and
+then only for a single word: a multi-word selection still could not be dragged,
+while one word could.
+
+**The model is not what fails.** Driven end to end in the pane — a fifteen-
+character, multi-word source dropped into another paragraph — the source loses
+exactly those characters, the target gains them at the drop point, and the
+divergence line stays quiet. So whatever is happening is upstream of anything
+the model ever sees: the engine is not entering drag mode.
+
+That is a thing the check page could not report, because **a drag that never
+starts fires no events at all** — the log stayed empty and read as having no
+opinion, which is the same silent failure the divergence banner had before it
+learnt to keep a count. Pressing *inside* an existing selection is the gesture
+that should begin a drag, so that is what the page reports now, and then whether
+a `dragstart` followed it. A red line when none did says "the engine did not
+enter drag mode, so the pointer only moved the selection" — which distinguishes
+that from "you never pressed on the selection", and those are the only two
+things it can be.
+
+Step 22 also now says to try one word and then several, and — if they differ —
+to try the same pair in the app at `/?core=legacy`. That control is what tells a
+model-core regression apart from something an engine does to every
+`contenteditable`, and it is cheap enough that guessing instead is not worth
+anybody's time.
+
+Only the check page changed, so no shell asset moved and `sw.js`'s `VERSION`
+stays at `v1.38`. No suite reads that page; `npm test` was green at 1,485 checks
+before it.
