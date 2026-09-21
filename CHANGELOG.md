@@ -7355,3 +7355,57 @@ far back an undo goes, which reads exactly like the bug being tested for. That
 cost a detour here.
 
 No code changed, so nothing ran; `npm test` is green at 1,567.
+
+## 2026-09-21 — The undo stack is capped by bytes, not by count
+
+Step 6 measured a model state at fifteen to sixteen times the markdown's bytes,
+so `UNDO_LIMIT = 100` is 73MB for a 48KB document and 157MB for a 105KB one,
+per tab. That constant's own comment asks for two things — deep enough that
+nobody reaches the end of it in normal editing, small enough that a large
+document cannot run the tab out of memory — and they stopped being satisfiable
+by one number the moment a state stopped being an innerHTML string.
+
+**So the count is a ceiling and a budget is the cap.** `UNDO_BUDGET` is 64MB per
+tab, because a parked bundle is per tab and they add up. `UNDO_STATE_PER_BYTE`
+is 16: measured at 15.5 and 15.3 on two documents differing by more than twice
+in size, which is why one coefficient is honest, and **rounded up** so the
+budget is a ceiling the estimate approaches from below rather than a target it
+straddles. `UNDO_FLOOR` is 10, which bites above about 400KB of markdown — four
+times the largest file here — on the reasoning that an undo stack too shallow to
+undo is worse than the memory it saves, at a size where memory is already the
+smaller problem.
+
+| Document | Per state | Steps kept |
+| --- | --- | --- |
+| up to ~40KB | under 640KB | **100**, unchanged |
+| `corpus/todo.md`, 48KB | 743KB | 85 |
+| `corpus/claude.md`, 105KB | 1,610KB | 39 |
+| above ~400KB | — | 10, the floor |
+
+**This is the original intent in the units that turned out to matter, not a new
+policy** — and it is why the answer is not simply a smaller `UNDO_LIMIT`, which
+would take depth away from the documents that were never the problem. A small
+document loses nothing, which is the property worth holding on to.
+
+`modelParse` records `doc.bytes`, at the parse rather than by serialising later,
+because a cap needs an order of magnitude and a serialise is an expensive way to
+ask for one. Two things it deliberately does not do: it **does not track a
+document growing under the keyboard**, which is fine because this bounds memory
+rather than allocating it and a document that has doubled since it was opened is
+still in the right band; and the undo and redo stacks need no budget between
+them, because their sum only grows on a fresh edit and a fresh edit clears the
+redo branch.
+
+The trim is a `while` rather than an `if`, because the limit is computed from
+the open document and can be lower than it was last time — one shift would leave
+the stack over budget until something else pushed.
+
+Ten new checks, 1,577 in all: seven in `undo` — that the old core keeps the
+count it always had, that a document with no byte count does too, that a small
+document keeps every step, the two measured sizes with their depths in the check
+labels, the floor, and that a stack already over a tightened budget is cut to it
+in one go — and three in `model`, that a document records the bytes it was
+parsed from, that every oracle file agrees, and that a clone carries it. Each
+property was broken on purpose first; dropping `doc.bytes` from `modelParse`
+passed every check in the repo until those three existed, which is why they do.
+`sw.js`'s `VERSION` goes to `v1.44`.

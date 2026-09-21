@@ -1358,12 +1358,22 @@ of state per KB of markdown, which means `UNDO_LIMIT = 100` is 73MB and 157MB
 **per tab**. That constant's own comment says it is sized so "a large document
 cannot run the tab out of memory", and that was calibrated against strings.
 Where it goes, on `corpus/claude.md`: tokens 62%, inline nodes 32%, blocks 5% —
-the inline layer is 94% of a state. **The fix is not chosen here**: it trades
-undo depth against memory, the candidates are a smaller limit under the flag,
-sharing the tokens nothing mutates, and the copy-on-write the 2026-09-19
-decision kept available for exactly this measurement, and picking between them
-is not a slice's last step's business. REWRITE.md's step 6 has the table and the
-argument.
+the inline layer is 94% of a state.
+
+**So the count became a ceiling and a byte budget became the cap**, which is
+`UNDO_LIMIT`'s own comment in the units that turned out to matter rather than a
+new policy: it already asked for deep enough that nobody reaches the end in
+normal editing *and* small enough that a large document cannot run the tab out
+of memory, and those stopped being satisfiable by one number when a state
+stopped being a string. `UNDO_BUDGET` is 64MB per tab, `UNDO_STATE_PER_BYTE` is
+16 (the measured 15.5 and 15.3, rounded up so the budget is approached from
+below), `UNDO_FLOOR` is 10 because a stack too shallow to undo is worse than the
+memory it saves, and `modelParse` records `doc.bytes` for it. A document up to
+about 40KB keeps all hundred steps, `corpus/todo.md` keeps 85, `corpus/claude.md`
+keeps 39. **Not a smaller `UNDO_LIMIT`**, which would have taken depth from the
+documents that were never the problem. Whether states should share structure at
+all — copy-on-write — is untouched by this and stays open on its own merits, now
+as a way to buy *depth* back rather than as a way to bound memory.
 
 What the model still does *not* do is run a format command, which is slice 7.
 

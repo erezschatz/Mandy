@@ -3095,8 +3095,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         cancelling the event stop the insertion, where does a drop land.
 
     *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 to 5
-        are done and tested; step 6 is measured, its protocol written and not yet
-        run, and it raised one decision that is open — see step 6.** A stack of model states with the caret as a model position,
+        are done and tested; step 6 is measured and acted on, and its protocol
+        is written and not yet run.** A stack of model states with the caret as a model position,
         replacing the whole-document `innerHTML` snapshots.
         Coalescing carries over unchanged — same `inputType`, inside 600 ms,
         merges; everything else starts a step — because the commands now name
@@ -3511,18 +3511,47 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `corpus/claude.md`: **tokens 62%**, **inline nodes 32%**, blocks 5%.
             The inline layer is 94% of a state.
 
-            That re-opens step 1 honestly rather than settling it: step 1 chose
-            to clone every token on a **time** measurement, where the saving was
-            0.23ms and the cost was a rule about mutation. The memory
-            measurement changes those inputs, and the three ways out are
-            different sizes — a smaller `UNDO_LIMIT` under the flag (one
-            constant, trades undo depth for memory), sharing the tokens nothing
-            mutates (62%, and reinstates the rule step 1 refused), or
-            copy-on-write, which the 2026-09-19 decision explicitly kept
-            available "on a measurement". **This is that measurement. The choice
-            is not made here**, because it trades a user-visible amount of undo
-            against memory, which is not a decision to take inside a slice's
-            last step.
+            **What follows from it is one change and one question, and they are
+            not alternatives.** The change is how deep the stack is allowed to
+            be, which is settled below. The question is whether states should
+            share structure at all — copy-on-write, which the 2026-09-19
+            decision kept available "on a measurement" — and it stays open on
+            its own merits rather than as an answer to this, because the cap
+            below already bounds the memory and copy-on-write would buy back
+            *depth* instead. Nothing here reopens cloning versus sharing: that
+            was settled in step 1 on correctness, and a memory number is not the
+            kind of argument that unsettles it.
+
+            **So: the count becomes a ceiling and a byte budget becomes the
+            cap.** `UNDO_BUDGET` is 64MB per tab, `UNDO_STATE_PER_BYTE` is 16 —
+            the measured 15.5 and 15.3, rounded up so the budget is approached
+            from below — and `UNDO_FLOOR` is 10, because an undo stack too
+            shallow to undo is worse than the memory it saves. `modelParse`
+            records `doc.bytes` for it, at the parse rather than by serialising
+            later, since this needs an order of magnitude rather than a number.
+
+            | Document | Per state | Steps kept |
+            | --- | --- | --- |
+            | up to ~40KB | under 640KB | **100**, unchanged |
+            | `corpus/todo.md`, 48KB | 743KB | 85 |
+            | `corpus/claude.md`, 105KB | 1,610KB | 39 |
+            | above ~400KB | — | 10, the floor |
+
+            **This is the constant's original intent in the units that turned
+            out to matter**, not a new policy: its comment already asked for
+            deep enough that nobody reaches the end in normal editing *and*
+            small enough that a large document cannot run the tab out of memory,
+            and those stopped being satisfiable by one number when a state
+            stopped being a string. It is also why the answer is not simply a
+            smaller `UNDO_LIMIT` — that would take depth away from the documents
+            that were never the problem.
+
+            Two things it does not do, both stated rather than discovered.
+            `doc.bytes` **does not track a document growing under the keyboard**,
+            which is fine because this bounds memory rather than allocating it
+            and a document that has doubled is still in the right band. And the
+            undo and redo stacks need no budget between them: their sum only
+            grows on a fresh edit, and a fresh edit clears the redo branch.
 
             **The protocol.** Not on `front/input-check.html` — see step 4 — but
             in the running app under `?core=model`, because undo is the

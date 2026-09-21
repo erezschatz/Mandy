@@ -3536,5 +3536,14 @@ export default function run(check) {
     check("the id counter comes across with the clone",
       modelCloneDocument(doc).nextId === doc.nextId);
     check("and so does the prefix", modelCloneDocument(doc).prefix === doc.prefix);
+
+    // What the document arrived as, which undo.js's depth budget is measured
+    // per byte of. Recorded at the parse because a serialise is an expensive
+    // way to ask a question a cap only needs the order of magnitude of.
+    check("a document records the bytes it was parsed from",
+      parse(src).bytes === src.length);
+    check("and every oracle file agrees",
+      ORACLE_FILES.every((f) => parse(repoFile(f)).bytes === repoFile(f).length));
+    check("and a clone carries it", modelCloneDocument(doc).bytes === doc.bytes);
   }
 }

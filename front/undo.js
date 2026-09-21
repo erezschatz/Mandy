@@ -41,9 +41,43 @@
 // tab from ever reaching another tab's content.
 
 // Deep enough that nobody reaches the end of it in normal editing, small enough
-// that a large document cannot run the tab out of memory: each snapshot is a
-// full copy of the document, so this is the cap that matters.
+// that a large document cannot run the tab out of memory: each state is a full
+// copy of the document, so this is the cap that matters.
+//
+// **Both halves of that sentence, and they stopped being satisfiable by one
+// number.** It was written for the old core, where a state is an innerHTML
+// string — around the size of the document, so 100 of them is a few megabytes
+// whatever you are editing. A model state is measured at **fifteen to sixteen
+// times the markdown's bytes** (slice 6's step 6: 743KB for a 48KB file, 1,610KB
+// for a 105KB one), so 100 of those is 73MB and 157MB, *per tab*, and the
+// second half of the sentence stopped being true while the first half went on
+// being met far more generously than it needs to be.
+//
+// So the count is a ceiling and the **budget** is the cap that matters now. A
+// small document keeps all hundred steps, because a hundred of them is cheap; a
+// large one keeps as many as fit. That is the original intent in the units that
+// turned out to matter, rather than a new policy — and it is why the answer is
+// not a smaller `UNDO_LIMIT`, which would take depth away from the documents
+// that were never the problem.
 const UNDO_LIMIT = 100;
+
+// Per tab, because a parked bundle is per tab and they add up. 64MB is a
+// judgement rather than a measurement: it leaves this repo's largest document
+// about forty steps, which is a working undo, and four such tabs a quarter of a
+// gigabyte, which is a lot and not a crash.
+const UNDO_BUDGET = 64 * 1024 * 1024;
+
+// Bytes of state per byte of markdown. Measured at 15.5 and 15.3 on two
+// documents differing by more than twice in size, which is why one coefficient
+// is honest; **rounded up**, so the budget is a ceiling the estimate approaches
+// from below rather than a target it straddles.
+const UNDO_STATE_PER_BYTE = 16;
+
+// Never fewer than this, however large the document. It bites above about
+// 400KB of markdown — four times the largest file in this repo — and the
+// reasoning is that an undo stack too shallow to undo is worse than the memory
+// it saves, at a size where memory is already the smaller of your problems.
+const UNDO_FLOOR = 10;
 
 // Consecutive edits of the same kind, close together in time, collapse into one
 // step — otherwise every keystroke is its own undo and getting back to where
@@ -280,6 +314,36 @@ function undoApplyState(snapshot) {
 
 // ── The stack ────────────────────────────────────────────────────────────────
 
+/**
+ * How many states this document is allowed, which is a question about what a
+ * state costs and so belongs beside the two functions that know.
+ *
+ * The old core gets the count it always had: a state there is an innerHTML
+ * string, about the size of the document, and a hundred of those is a few
+ * megabytes for anything anyone edits here.
+ *
+ * The model core gets whichever is smaller, the count or the budget.
+ * `doc.bytes` is what the document arrived as — recorded at the parse, since a
+ * serialise is an expensive way to ask a question this only needs the order of
+ * magnitude of. It does not track a document growing under the keyboard, and
+ * does not need to: this bounds memory rather than allocating it, and a
+ * document that has doubled since it was opened is still in the right band.
+ *
+ * A document with no byte count is one built rather than parsed — a blank one,
+ * which is as small as a document gets — so it takes the full count.
+ *
+ * The undo and redo stacks need no separate budget between them: their sum only
+ * ever grows on a fresh edit, and a fresh edit clears the redo branch.
+ */
+function undoDepthLimit() {
+  if (!undoModelCore()) return UNDO_LIMIT;
+  const doc = modelCurrentDocument();
+  const bytes = doc && doc.bytes ? doc.bytes : 0;
+  if (!bytes) return UNDO_LIMIT;
+  const afforded = Math.floor(UNDO_BUDGET / (bytes * UNDO_STATE_PER_BYTE));
+  return Math.max(UNDO_FLOOR, Math.min(UNDO_LIMIT, afforded));
+}
+
 function undoSnapshot() {
   return { ...undoCaptureState(), id: history.nextId++ };
 }
@@ -421,7 +485,11 @@ editor.addEventListener("input", (event) => {
 
   if (!coalesce) {
     history.undoStack.push(history.current);
-    if (history.undoStack.length > UNDO_LIMIT) history.undoStack.shift();
+    // `while`, not `if`: the limit is computed from the open document, so it
+    // can be lower than it was the last time this ran and one shift would leave
+    // the stack over budget for as long as nothing else pushed.
+    const limit = undoDepthLimit();
+    while (history.undoStack.length > limit) history.undoStack.shift();
   }
 
   // Any fresh edit invalidates the redo branch, coalesced or not.
