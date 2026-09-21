@@ -6907,3 +6907,46 @@ protocol steps, including TODO 1.6's exact reported case, which that item says
 it stays open until the new undo is watched doing correctly.
 
 No code changed, so nothing ran.
+
+## 2026-09-21 — Slice 6 clones tokens rather than sharing them
+
+Step 1 of yesterday's plan left the token policy to step 6's measurement. The
+measurement is in, and it settles it the other way round from how these usually
+go: the cheaper option loses on a fact rather than on the timing.
+
+**Sharing dies on shipped code.** The scheme was to clone the block structure
+and the inline tree but let two states point at the same `Token` objects. The
+inline tokens were never really in question — `modelInlineTokens` reassigns
+`inline.children` wholesale after every edit, at nine call sites, so two states
+sharing one inline token share one edit — which is why the scheme would have
+carved those out and shared only the block-level tokens. But `modelSourceSplice`
+mutates a block-level token in place, `token.content = next` on the `fence` or
+`code_block` token, because slice 4's source space edits a fence's body as its
+own text. Share that and an undo inside a fence hands back a block whose
+`source` holds the old bytes and whose token holds the new ones: the screen
+renders from the token and shows the code the undo was meant to take back, and a
+save writes `source` and files the old code. The screen and the file disagree,
+with the file right and looking wrong.
+
+**And it is the one case nothing watches.** `modelVerifyRender` skips blocks
+with no inline tree — a fence, indented code, a rule, a gap, a table — so the
+single construct sharing breaks is the one the permanent assertion cannot see.
+
+**The saving was a quarter of a millisecond.** A prototype-preserving copy over
+every token the model reaches, 50 runs after warm-up: `docs/TODO.md` (1,063
+lines, 222 blocks, 1,980 block and 3,172 inline tokens) copies every token in
+0.48ms against 0.29ms for the inline ones alone; `CLAUDE.md` (2,410 lines, 512
+blocks, 2,504 and 7,505) 0.93ms against 0.70ms. So 0.19ms and 0.23ms per
+coalesced step, against a full render already measured at 16.8ms and against
+today's undo serialising the whole document to an HTML string on the same
+cadence. What that buys is a **rule** — "a command may not mutate a token in
+place" — which every future command would have to remember, which the shipped
+code has already broken once, and whose symptom is the silent disagreement
+above. Cloning all of them makes the question not arise.
+
+Step 6 keeps the half that is still owed: the whole clone's cost on
+`docs/TODO.md`, which is the blocks, the inline nodes and the `parent` rebuild
+around the tokens, and which is what the 2026-09-19 decision to clone at all is
+measured against.
+
+No code changed, so nothing ran.

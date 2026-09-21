@@ -3179,17 +3179,51 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             half-works, since a stale parent only shows up when `modelTouch`
             walks up from an edited block and clears somebody else's ancestors.
 
-            **Tokens are cloned, not shared**, unless the measurement in step 6
-            says otherwise. `modelLeafLike` already shares a block's non-inline
-            tokens by reference and clones only the inline one, and that is
-            correct for two blocks in one live document — but sharing across
-            *states* makes "may a command mutate a token in place" a question
-            every future command has to remember the answer to, and
-            `modelFillItem` already mutates `tokens[0].hidden` on a paragraph it
-            has just built. Cloning all of them makes the question not arise.
-            The inline tokens have to be cloned either way:
-            `modelInlineTokens` reassigns `inline.children` wholesale on every
-            edit, so two states sharing one inline token share one edit.
+            **Tokens are cloned, not shared. Settled 2026-09-21, measured
+            rather than argued.** `modelLeafLike` already shares a block's
+            non-inline tokens by reference and clones only the inline one, which
+            is correct for two blocks in one live document — any later mutation
+            applies to both, and that is the point of it. Sharing across
+            *states* is the opposite: a state exists precisely to be immune to
+            what happens next.
+
+            The inline tokens were never really in question.
+            `modelInlineTokens` reassigns `inline.children` wholesale after
+            every edit, at nine call sites, so two states sharing one inline
+            token share one edit — which is why a sharing scheme would have
+            carved them out and shared only the block-level tokens.
+
+            **That is where it dies, and on shipped code rather than on a
+            hypothetical.** `modelSourceSplice` mutates a block-level token in
+            place — `token.content = next` on the `fence` or `code_block` token
+            — because slice 4's source space edits a fence's body as its own
+            text. Share that token and an undo inside a fence gives back a block
+            whose `source` holds the old bytes and whose token holds the new
+            ones: the screen renders from the token and shows the code the undo
+            was supposed to take back, and a save writes `source` and files the
+            old code. The screen and the file disagree, with the file right and
+            looking wrong. **And `modelVerifyRender` cannot see it** — it skips
+            exactly the blocks with no inline tree, which is a fence, indented
+            code, a rule, a gap and a table — so the one construct sharing
+            breaks is the one the permanent assertion is blind to.
+
+            **The saving it was buying is a quarter of a millisecond.** A
+            prototype-preserving copy over every token the model reaches, 50
+            runs after warm-up, 2026-09-21:
+
+            | File | Lines | Blocks | Block tokens | Inline tokens | Every token | Inline only |
+            | --- | --- | --- | --- | --- | --- | --- |
+            | `docs/TODO.md` | 1,063 | 222 | 1,980 | 3,172 | 0.48ms | 0.29ms |
+            | `CLAUDE.md` | 2,410 | 512 | 2,504 | 7,505 | 0.93ms | 0.70ms |
+
+            So 0.19ms and 0.23ms, per coalesced step, against a full render
+            already measured at 16.8ms and against today's undo serialising the
+            whole document to an HTML string on the same cadence. What the
+            saving costs is a **rule** — "a command may not mutate a token in
+            place" — which every future command would have to remember, which
+            the code that ships has already broken once, and whose symptom is
+            that silent disagreement in a construct nothing watches. Cloning all
+            of them makes the question not arise.
 
         2.  **Two seams in `undo.js`, and nothing else moves.** The stack
             machinery is core-independent — coalescing, `UNDO_LIMIT`, the redo
@@ -3245,11 +3279,13 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             every paste announces `insertFromPaste`, which does not coalesce, so
             the break is unnecessary on this path and stays for the other core.
 
-        6.  **The measurement, and the protocol.** The clone's cost on
+        6.  **The measurement, and the protocol.** The whole clone's cost on
             `docs/TODO.md` — the document the estimate has been taken on all
             along — because the 2026-09-19 decision was made against today's
             HTML-string snapshots and is only worth keeping while that
-            comparison holds. It is the arbiter of step 1's token question too.
+            comparison holds. Step 1's token half is already measured and
+            settled; what is left is the blocks, the inline nodes and the
+            `parent` rebuild around them.
 
             And the steps `front/input-check.html` grows, which is the half no
             suite can reach: that an undo puts the caret back where the edit
