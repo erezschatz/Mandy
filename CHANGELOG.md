@@ -6647,3 +6647,48 @@ steps: the two pastes, rich HTML, the drag that moves, the two drags that do
 nothing, and a drop from another window.
 
 `sw.js`'s `VERSION` goes to `v1.36`.
+
+## 2026-09-21 — The model core says so, and the menus stop giving way to the path
+
+**You could not tell which core was drawing the document.** The flag's whole
+purpose is a hand A/B — it is the only way a rendering divergence gets *seen*
+rather than inferred — and with no marker you could compare two documents and
+not know you had been on the same core both times. That is worse than having no
+comparison. It went unnoticed because slice 1's rule is that the model renders
+*identically* to `markdownToHtml`, so "it looks the same" is the expected answer
+and not evidence of anything; what actually differs is a list of things that do
+**not** work yet — the thirteen formats and Ctrl+Z do nothing, a table refuses
+the caret.
+
+So the toolbar carries a `model core` marker under the flag, and it is a link
+back to `?core=legacy`: one click is what makes the comparison worth doing, and
+the autosave carries unsaved edits across the reload, so the switch costs
+nothing. Its `title` names what is missing rather than leaving the reader to
+find out by pressing Bold. It sits before the theme toggle rather than at the
+head of the right group, so its place is the same whatever the open file's path
+is — a marker that moved with the directory would be a marker you have to look
+for. One function in `model.js`, one call site and one CSS rule, because it goes
+at stage 4 along with the flag and the second core.
+
+**And it turned up a layout bug that was already there.** `.toolbar-left` and
+`.toolbar-right` were both shrinkable, so a deep directory took width from the
+*menubar*: at 1024px with a 60-character path, *Insert* read *Inser*. The menus
+are controls and the directory is information, and `.toolbar-path` already knew
+how to ellipsise — it could not, because its parent was not allowed to shrink
+below its content. Both halves are needed: `min-width: 0` on the right group so
+the path can give way, and `flex-shrink: 0` on the left so the menubar does not.
+Measured on both cores; it is not a marker bug, the marker only made it 75px
+worse.
+
+**Which then needed the marker to get out of the way at phone width.** Six
+menus, the marker and the theme toggle do not fit 375px together — measured:
+without the marker the row ends at 361px of 375, and the marker's 75px put the
+toggle off the end of a sticky bar that cannot be scrolled back into view.
+Below 480px it keeps its colour and its title and loses its words. A dot is a
+weaker signal than two words and a much better one than an unreachable toggle,
+and this is the only place the marker competes with a control for room.
+
+Verified on both cores at 1024px and 375px, light and dark: menus unclipped, no
+row overflow, the toggle on screen, and no marker at all under `?core=legacy`.
+1,481 checks unchanged — this is CSS and one DOM insert, and no suite reads
+either. `sw.js`'s `VERSION` goes to `v1.37`.

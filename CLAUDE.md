@@ -1199,6 +1199,16 @@ slices 6 and 7.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.
+**With it on the toolbar carries a `model core` marker**, which is a link back
+to `?core=legacy` — added 2026-09-21, because the flag's whole purpose is a hand
+A/B and there was no way to tell which half of it you were looking at. That is
+worse than having no comparison: slice 1's rule is that the model renders
+*identically* to `markdownToHtml`, so "it looks the same" is the expected answer
+and not evidence of anything, and the differences are all things that stop
+working — the formats and Ctrl+Z do nothing, a table refuses the caret. The
+marker's `title` says so rather than making the reader look it up. One function
+in `model.js`, one call site and one CSS rule, because it goes at stage 4 with
+the flag.
 It is not for `main` — no merge is planned before stage 4 — it is so the branch
 stays usable while the input layer is half-built, and so an A/B of the same
 document by hand is possible, which is the only way a rendering divergence gets
@@ -1835,6 +1845,15 @@ exception, and it is a browser restriction rather than a choice:**
 reimplementing the sanitise-and-insert path. Reading the clipboard is a
 permission the app may not have, so both report failure by pointing at the
 keyboard, which never needed it.
+
+**The menus never give way to the path.** `.toolbar-left` does not shrink and
+`.toolbar-right` may shrink below its content, which between them decide who
+loses width when the open file's directory is long. Before 2026-09-21 both
+groups shrank and a 60-character path clipped the menubar until *Insert* read
+*Inser* — measured at 1024px. The menus are controls and the directory is
+information, and `.toolbar-path` already knows how to ellipsise; it could not,
+because its parent was not allowed to. Six words plus the theme toggle fit
+375px, which is what makes the left group's refusal safe.
 
 **`.toolbar` is one row now, in both the app and an exported document** — it
 was two rows in the app until the chrome redesign (`docs/redesign/`, closed

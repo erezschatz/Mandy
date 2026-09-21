@@ -2239,6 +2239,53 @@ function modelCoreEnabled() {
 // preamble decided and what keeps tabs.js out of this stage. Stage 4 is where
 // that becomes per-tab, along with the autosave it shares a lifecycle with.
 
+/**
+ * Say, on screen, which core drew the document.
+ *
+ * **The flag's whole purpose is a hand A/B**, and without this you cannot tell
+ * which half of it you are looking at — which is worse than not having the
+ * comparison, because it invites reporting a difference between two runs of the
+ * same core. Slice 1's rule is that the model renders *identically* to
+ * `markdownToHtml`, so "it looks the same" is the expected answer and not
+ * evidence of anything.
+ *
+ * It is a link back to `?core=legacy`, because one click is what makes the
+ * comparison worth doing and the autosave carries unsaved edits across the
+ * reload — so the switch costs nothing. Its `title` names what is missing
+ * rather than making the reader look it up: under the flag the formats and undo
+ * do nothing, and those are slices 6 and 7.
+ *
+ * **It goes at stage 4 with the flag**, which is why it is one function, one
+ * call site and one CSS rule rather than a spec entry in `toolbar.js`. It is
+ * not an action and has no handler; it is a status, like the open file's
+ * directory beside it.
+ */
+function modelCoreMarkRender(document) {
+  const toolbar = document.querySelector(".toolbar-right") || document.querySelector(".toolbar");
+  if (!toolbar || toolbar.querySelector(".model-core-mark")) return null;
+  const mark = document.createElement("a");
+  mark.className = "model-core-mark";
+  mark.textContent = "model core";
+  mark.href = "?core=legacy";  // relative: the current page, other core
+  mark.title = "TODO 3.1's editing core is drawing this document. " +
+    "The formats and Ctrl+Z do nothing here — they are slices 6 and 7. " +
+    "Click to switch back to the running core.";
+  // Before the theme toggle rather than at the head of the group, so its place
+  // is the same whatever the open file's path is — the directory beside it is
+  // as wide as the path is deep, and a marker that moved with it would be a
+  // marker you have to look for. The toggle stays last, where every variant has
+  // always had it.
+  toolbar.insertBefore(mark, toolbar.querySelector("#themeToggle"));
+  return mark;
+}
+
+// At load, because `toolbar.js` fills the bar at load and comes first in both
+// bundles. Wrapped because the suites load this file with no `document` at all,
+// which is the property that lets them drive the model with no browser.
+if (typeof document !== "undefined" && document.querySelector && modelCoreEnabled()) {
+  modelCoreMarkRender(document);
+}
+
 let modelDocument = null;
 
 function modelCurrentDocument() {

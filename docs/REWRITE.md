@@ -1901,7 +1901,16 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     promises.
 
     **The new core sits behind a flag, default off, until the stage 4 merge.**
-    Decided 2026-09-19. Slice 3's real verification is driving the running app
+    Decided 2026-09-19. **And it says so on screen from 2026-09-21**: the
+    toolbar carries a `model core` marker, a link back to `?core=legacy`. That
+    was not in the plan and should have been, because the flag's whole purpose
+    is the hand A/B below and there was no way to tell which half of it you were
+    looking at — which is worse than having no comparison, since it invites
+    reporting a difference between two runs of the same core. Slice 1's rule is
+    that the model renders *identically*, so "it looks the same" is the expected
+    answer; what differs is what does not work yet, and the marker's title names
+    it. One function, one call site, one CSS rule: it goes at stage 4 with the
+    flag. Slice 3's real verification is driving the running app
     — the way `list-indent-check` and `list-empty-item-check` already do it in
     an `<iframe src="/">` — and a flag is also what makes an A/B of the same
     document by hand possible, which is the only way a rendering divergence

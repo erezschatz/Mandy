@@ -317,12 +317,69 @@
         align-items: center;
         gap: 10px;
         min-width: 0;
+        /* The menus never give way. They are the controls; the directory beside
+           them is information, and with both groups shrinkable a deep path took
+           width from the menubar until "Insert" read "Inser" — measured at
+           1024px with a 60-character path. `.toolbar-right`'s own `min-width:
+           0` is the other half: without it the path could not ellipsise, and
+           with it alone the menubar still lost, because flex shares shrinkage
+           between the two rather than spending it all on the one that can
+           afford it. */
+        flex-shrink: 0;
       }
 
       .toolbar-right {
         display: flex;
         align-items: center;
         gap: 12px;
+        /* Without this the group keeps its content's full width and the *menus*
+           are what a deep path squeezes — measured with a 60-character
+           directory, which clipped "Insert" to "Inser". `.toolbar-path` already
+           knows how to shrink and ellipsise; it could not, because its parent
+           was not allowed to. The menus are controls and the directory is
+           information, so the information gives way. */
+        min-width: 0;
+      }
+
+      /* TODO 3.1's flag made visible. It is diagnostic rather than a feature —
+         deliberately not the toolbar's own teal, so it reads as "you are in a
+         special mode" rather than as a control that belongs there — and it goes
+         at stage 4 along with the flag and the two cores. */
+      .model-core-mark {
+        flex: none;
+        font-size: 11px;
+        line-height: 1;
+        letter-spacing: 0.02em;
+        padding: 3px 7px;
+        border-radius: 9px;
+        background: #f0b429;
+        color: #2a1e00;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .model-core-mark:hover,
+      .model-core-mark:focus-visible {
+        background: #ffd166;
+      }
+
+      /* Six menus, the marker and the theme toggle do not fit 375px together —
+         measured: without the marker the row ends at 361px of 375, and the
+         marker's 75px puts the toggle off the end of a sticky bar it cannot be
+         scrolled back into. So below this width it keeps the colour and the
+         title and loses the words. A dot is a weaker signal than two words and
+         a far better one than an unreachable toggle, and it is the only place
+         the marker competes with a control for room. */
+      @media (max-width: 480px) {
+        .model-core-mark {
+          width: 10px;
+          height: 10px;
+          padding: 0;
+          border-radius: 50%;
+          overflow: hidden;
+          text-indent: 110%;
+          white-space: nowrap;
+        }
       }
 
       .app-mark {
