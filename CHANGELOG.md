@@ -7493,7 +7493,7 @@ underneath the input layer has moved.
 
 No code changed, so nothing ran.
 
-## 2026-09-21 — Slice 6, step 7: a state shares what the edit did not touch
+## 2026-09-21 — `5ad3fd3` — Slice 6, step 7: a state shares what the edit did not touch
 
 An undo state stops being a copy of the document. `modelForkDocument` copies the
 **outline** — which blocks exist, nested in what, and every affix each one
