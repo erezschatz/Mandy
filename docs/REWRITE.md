@@ -1844,8 +1844,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the second thing, and slice 2 opens by moving two rules out of `app.js` on
     the strength of it.
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
-    Slices 1 to 5 of seven are done and tested, slice 4 in all three engines
-    at a real keyboard and slice 5 awaiting the same. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    Slices 1 to 5 of seven are done and tested, slices 4 and 5 driven by hand
+    in all three engines. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -2888,8 +2888,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         is per browser and per version, and in Blink a machine cannot drive
         them.
 
-    *   **5. Input: paste and drop — done 2026-09-21; the suites pass and the
-        three-engine protocol is not run.**
+    *   **5. Input: paste and drop — done and tested, 2026-09-21; driven clean
+        by hand in all three engines.**
         `insertFromPaste` and `insertFromDrop` read `text/html`, run it through
         `sanitisePastedHtml` and `normaliseNbsp` exactly as today, then
         **Turndown to markdown and `modelParse` into blocks**, spliced in at the
@@ -3014,24 +3014,33 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             in the slice that is fixing a regression the flag already has rather
             than porting a behaviour.
 
-        **What the first hand run found, and it was one thing in two costumes.**
-        Drag and drop did nothing in Blink and WebKit while working in Gecko:
-        dragging a selection only extended it, and a drag from another window
-        landed nowhere. **There was no `dragover` handler.** An element accepts
-        a drop only if something cancels `dragover` over it — the spec, not a
-        quirk — and the old core never had to, because a `contenteditable` is a
-        drop target the engine handles *natively*. The model core suppresses
-        exactly that native handling, so the editor becomes an ordinary
-        **scripted** drop target and has to say it accepts one. The engines
-        disagree about how much they will still do for a `contenteditable` that
-        has stopped behaving like one, and Gecko is the generous one.
+        **What the hand runs found was one real bug and one gesture.** Drag and
+        drop did nothing in Blink and WebKit while working in Gecko: a drag from
+        another window landed nowhere, and dragging a selection only extended
+        it. The first of those was ours. **There was no `dragover` handler.** An
+        element accepts a drop only if something cancels `dragover` over it —
+        the spec, not a quirk — and the old core never had to, because a
+        `contenteditable` is a drop target the engine handles *natively*. The
+        model core suppresses exactly that native handling, so the editor
+        becomes an ordinary **scripted** drop target and has to say it accepts
+        one. The engines disagree about how much they will still do for a
+        `contenteditable` that has stopped behaving like one, and Gecko is the generous one.
 
         `dragenter` is cancelled with it, since an engine that reads the first
         as a refusal never sends the second; and `dropEffect` is set there,
         because the cursor has to promise what will actually happen — a move for
         a drag that started here, a copy for anything from outside.
 
-        **The check page now logs the whole drag sequence**, because the
+        **The second was the gesture, and it is worth writing down because it
+        cost a round trip.** You have to release the button after selecting and
+        then press and hold on the highlight; a drag begun without letting go
+        goes on extending the selection. That is every engine's behaviour and
+        nothing to do with this editor — the model was driven end to end with a
+        multi-word source and moved it exactly, divergence quiet, while the
+        engine was still declining to start the drag. Step 22 says the gesture
+        now, which is the fix for the next person to read it.
+
+        **The check page logs the whole drag sequence**, because the
         interesting failures are all *missing* events and neither the suite nor
         automation can reach a native drag: no `dragstart` means the engine
         never entered drag mode and the pointer was only extending the

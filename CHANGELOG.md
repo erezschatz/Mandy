@@ -6785,3 +6785,30 @@ anybody's time.
 Only the check page changed, so no shell asset moved and `sw.js`'s `VERSION`
 stays at `v1.38`. No suite reads that page; `npm test` was green at 1,485 checks
 before it.
+
+## 2026-09-21 — Slice 5 passes in all three engines; the drag was a gesture
+
+Drag and drop works everywhere. What remained after the `dragover` fix was not a
+bug: a drag needs the button **released** after selecting, and then a fresh
+press and hold on the highlight. Begun without letting go, the pointer goes on
+extending the selection — which is every engine's behaviour and nothing to do
+with this editor.
+
+Worth writing down because it cost a round trip, and because the page now says
+it: step 22 spells the gesture out rather than assuming it. The instrumentation
+added to chase it stays, and it earned its keep on the way — "the engine did not
+enter drag mode" is exactly the line that would have ended this in one reading,
+and it is still the line that tells a future engine change apart from a missing
+`dragover`.
+
+**And a note on proportion, since it was raised and it is right.** Drag and drop
+is a feature hardly anybody uses. It got this attention because it was
+*broken* — silently, and in two engines out of three — not because it is
+important, and the residue is one handler in `model-input.js` and some logging
+on a page that exists to log things. Slices 6 and 7 are undo and the formats,
+which is where the traffic actually is.
+
+Slice 5 is *done and tested* rather than *done, protocol not run*, and stage 2
+stands at five slices of seven with both of the hand-driven ones clean in Blink,
+Gecko and WebKit. No code changed, so nothing ran; `npm test` was green at 1,485
+checks.

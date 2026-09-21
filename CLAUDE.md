@@ -1140,8 +1140,11 @@ cleared everywhere. Seven steps, and the ones worth knowing from outside:
 **Slice 5 gave it paste and drop**, 2026-09-21 — the one thing the model cannot
 produce for itself, and so the one place Turndown survives into the new core,
 converting somebody else's HTML on the way in. It leaves the save path at stage
-4; this is the last thing it does. **Its three-engine protocol has not been
-driven by hand yet.** What is worth knowing:
+4; this is the last thing it does. **Driven clean by hand in all three engines
+on 2026-09-21**, after one real bug — no `dragover` handler, below — and one
+gesture: a drag needs the button released after selecting and then a fresh press
+on the highlight, which is every engine's behaviour and not this editor's.
+What is worth knowing:
 
 - **A paste parses to a second document, and nothing in it is safe as it
   stands.** `modelParse` mints ids from 1, so every pasted block wears an id the
