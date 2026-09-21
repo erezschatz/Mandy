@@ -7008,3 +7008,70 @@ fails the disjointness sweep and both fence checks, a `parent` left pointing at
 the original fails the parent sweep, and a flattened `inline` alias fails the
 alias sweep and the disjointness one with it. `sw.js`'s `VERSION` goes to
 `v1.40`.
+
+## 2026-09-21 — Slice 6, step 2: Ctrl+Z works on the model
+
+The two seams. `undoCaptureState` says what the document is right now in
+whichever shape this core keeps it, `undoApplyState` puts one back, and
+**everything else in `undo.js` is untouched** — coalescing, `UNDO_LIMIT`, the
+redo branch, the ids `file-api.js` reads, `breakOnce`, park and adopt are all
+core-independent and stay one implementation. A second history in a second file
+was the other candidate and is worse for the reason `app.js` has three doors
+rather than a branch at seven call sites.
+
+**The flag is asked once, in capture, and applying reads the state's own shape.**
+Not in the plan, and the stronger property: a state carries exactly one of
+`html` and `model`, so it says which core took it and can only be put back the
+way it was taken. Asking the flag again would make a state's meaning depend on
+when it is applied rather than on what it is.
+
+**Applying installs a clone of the stored state**, never the entry itself. The
+next edit mutates what it installs, so handing over the entry edits the history
+— and the way that shows is undo, redo, undo, where the second visit finds what
+the first one left behind.
+
+`modelRestoreDocument` is the model's half of it, in `model.js` because
+`modelDocument` is that file's variable and reaching in from outside would make
+"which document is open" a question with two answers. It deliberately does not
+call `modelEnsureBlock`: every state came from a document that had already been
+through it, so calling it again could only append a block the state never had —
+a document the user never saw and cannot undo back out of.
+
+**The refusal landed earlier today is gone**, replaced by the branch it was
+standing in for. Its reason is kept in the source, because the failure it
+describes — an undo writing an earlier *rendering* over a model that had not
+moved — is exactly what the two seams exist to prevent.
+
+Twenty new checks in `undo`, 1,531 in all, and the suite **stubs the model
+here**, which is the opposite of this file's usual arrangement and the same call
+`model-input` makes: what is under test is the stack, the clone itself is
+covered against the real tree and the real oracle in `model`, and a stub is what
+lets these assert the seams rather than re-assert that. They pin both seams,
+capture-is-a-clone and apply-is-a-clone in both directions, the undo-redo-undo
+case by name, and then a re-run of the stack's own rules — coalescing, the
+pause, Enter as its own step, the redo branch, the id a round trip returns to,
+park and adopt — with a model state in place of an HTML one, because "nothing
+else moves" is a claim about this file and not a plan. Each of the three new
+properties was broken on purpose first.
+
+**And it was driven in the running app, which is the half no suite can reach.**
+On a second origin via `MANDY_PORT`, so nothing touched the session already
+open: typing three characters and pressing Ctrl+Z brings the model and the DOM
+back together and the whole document re-serialises byte-identical; redo returns
+them; undo-redo-undo returns to the same bytes. `modelVerifyRender` reports 36
+blocks compared and no problems after all of it. And `documentIsDirty()` goes
+false → true → **false** across type-then-undo with `undoPosition()` back at the
+id `markClean` recorded, which is the savepoint contract working on model states
+— TODO 1.6's dot half on the new core.
+
+**What that run could not reach is Enter**: automation's synthetic keydown
+raises no `insertParagraph`, the same gap stage 0 hit, which is why
+`front/input-check.html` has a human protocol. The structural path through an
+undo is step 6's and is not verified here.
+
+**The caret lands at the top of the document after an undo**, measured rather
+than assumed — the editor keeps focus, the selection has one range, and it is
+offset 0. The document is right and the place in it is not. That is step 3, and
+it is the *shape* of TODO 1.6's caret half rather than a return of it: there is
+no whole-document offset walk left to miscount, there is simply no selection in
+the state yet. `sw.js`'s `VERSION` goes to `v1.41`.

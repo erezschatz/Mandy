@@ -4328,3 +4328,27 @@ function modelCloneDocument(doc) {
     blocks: doc.blocks.map((block) => modelCloneBlockInto(block, null, seen)),
   };
 }
+
+/**
+ * Put a state back: install a document and draw it.
+ *
+ * The other half of `modelCloneDocument`, and it is here rather than in
+ * `undo.js` because `modelDocument` is this file's variable and reaching into
+ * it from outside would make "which document is open" a question with two
+ * answers. What `undo.js` owns is the stack; what it asks for is this.
+ *
+ * `modelEnsureBlock` is deliberately **not** called. Every state was taken from
+ * a document that had already been through it — `modelLoad` ensures before it
+ * renders and `undoReset` runs after that — so calling it again could only
+ * append a block the state never had, which is a document the user never saw
+ * and cannot undo back out of.
+ *
+ * The caller passes a clone rather than the state it is holding, for the
+ * reason the whole slice exists: the next keystroke mutates what this installs,
+ * and a history entry that can be edited in place is not a history entry.
+ */
+function modelRestoreDocument(root, doc, md, selection = null) {
+  modelDocument = doc;
+  modelRender(root, doc, md, selection);
+  return doc;
+}

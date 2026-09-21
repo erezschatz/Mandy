@@ -208,14 +208,71 @@ function undoRestoreSelection(saved) {
   }
 }
 
+// ── The two seams ────────────────────────────────────────────────────────────
+//
+// Everything else in this file is core-independent — coalescing, UNDO_LIMIT,
+// the redo branch, the ids file-api.js reads, breakOnce, park and adopt — and
+// only two operations know what a state actually *is*. So the branch between
+// the two cores is exactly these two functions, and the stack machinery the
+// `tabs` suite guards stays one implementation rather than two.
+//
+// A second history in a second file was the other candidate and is worse here,
+// for the same reason app.js has three doors instead of a branch at every call
+// site: undoReset, undoPark, undoAdopt and undoPosition have seven callers
+// across app.js, file-api.js and tabs.js, and a second owner would make every
+// one of them ask which core is running.
+
+/**
+ * What the document is right now, in whichever shape this core keeps it.
+ *
+ * Exactly one of `html` and `model` is ever set. The model one is a **clone**,
+ * because the live document is about to be edited and a state that moves with
+ * it is not a state — which is the whole of slice 6's step 1.
+ *
+ * The selection is the old core's character offset, and under the model core it
+ * is null until step 3, which is the caret as a `(blockId, offset)` resolved
+ * against the state's own blocks. So an undo restores the document and not yet
+ * the place you were in it, which is a gap with a name rather than a bug.
+ */
+function undoCaptureState() {
+  if (!undoModelCore()) {
+    return { html: editor.innerHTML, model: null, selection: undoCaptureSelection() };
+  }
+  const doc = modelCurrentDocument();
+  return { html: null, model: doc ? modelCloneDocument(doc) : null, selection: null };
+}
+
+/**
+ * Put a state on screen. Content, focus, then the caret, in that order, which
+ * is the order the old core has always used: the selection has to be restored
+ * after the nodes it points at exist.
+ *
+ * **The model branch installs a clone of the stored state**, never the stored
+ * object. The next edit mutates what it installs, so handing over the entry
+ * itself would edit the history — and the way that shows is undo, redo, undo,
+ * where the second visit finds the state the first one left behind.
+ *
+ * A state with neither shape is one taken before a document existed. Nothing
+ * is put on screen for it, which is the honest answer: there was nothing.
+ */
+function undoApplyState(snapshot) {
+  if (snapshot.model) {
+    modelRestoreDocument(editor, modelCloneDocument(snapshot.model), md, snapshot.selection);
+  } else if (snapshot.html !== null) {
+    editor.innerHTML = snapshot.html;
+  }
+  if (editor.focus) editor.focus();
+  // The old core's caret, restored once the nodes it points at exist. The model
+  // core's went in above, inside the render and in the render's own
+  // coordinates, because nothing may hold a Range across one — so the two
+  // selections are different shapes and only ever one of them is set.
+  if (!snapshot.model) undoRestoreSelection(snapshot.selection);
+}
+
 // ── The stack ────────────────────────────────────────────────────────────────
 
 function undoSnapshot() {
-  return {
-    html: editor.innerHTML,
-    selection: undoCaptureSelection(),
-    id: history.nextId++,
-  };
+  return { ...undoCaptureState(), id: history.nextId++ };
 }
 
 // The id of the document's current state. Undo and redo hand back a snapshot
@@ -228,9 +285,7 @@ function undoPosition() {
 
 function applyUndoSnapshot(snapshot) {
   undoApplying = true;
-  editor.innerHTML = snapshot.html;
-  if (editor.focus) editor.focus();
-  undoRestoreSelection(snapshot.selection);
+  undoApplyState(snapshot);
 
   // Before the event, not after it. file-api.js's own input listener asks
   // undoPosition() where the document now is, and answering with the state we
@@ -314,38 +369,22 @@ function undoAdopt(bundle) {
   undoReset();
 }
 
-// ── The model core refuses ───────────────────────────────────────────────────
-//
-// Under TODO 3.1's flag the document is the model and the DOM is drawn from it,
-// so applying a snapshot here would write an earlier *rendering* over a model
-// that has not moved. That is a divergence rather than a no-op, and it is worse
-// than a refusal because it looks like it worked: the next inline edit patches
-// one block out of the unreverted model into the reverted DOM, and
-// modelReadSelection maps the caret through DOM text that no longer describes
-// the document, so a keystroke after an undo lands at an offset measured in
-// content the model never had.
-//
-// So undo and redo refuse while the flag is on — which is what the `model core`
-// marker's own title already promises the reader. The keydown below goes on
-// calling preventDefault either way: falling through would hand the key to the
-// native stack, which mutates the DOM behind the model's back, and that is the
-// one thing the whole design forbids.
-//
-// **The stack itself goes on recording**, deliberately. file-api.js reads
-// undoPosition() to know whether the document has come back to the last save,
-// so a history that stopped advancing would report every model edit as clean —
-// which takes the unsaved-work guard and the beforeunload warning down
-// together. Slice 6 replaces the snapshots with model states and this guard
-// goes with them.
+// Which shape a state takes, asked at the two seams above and nowhere else.
 //
 // Guarded on `typeof` because the suites load this file with no model.js in the
 // scope, the same shape execcommand.js's own refusal takes.
+//
+// It was a **refusal** between 2026-09-21 and this slice, and the reason is
+// worth keeping: with the flag on and no model branch, an undo assigned an
+// earlier *rendering* over a model that had not moved — a divergence rather
+// than a no-op, and worse than one, because the document visibly went back and
+// the next edit then patched one block out of the unreverted model into the
+// reverted DOM. The branch is what the refusal was standing in for.
 function undoModelCore() {
   return typeof modelCoreEnabled === "function" && modelCoreEnabled();
 }
 
 function undo() {
-  if (undoModelCore()) return false;
   if (!history.undoStack.length) return false;
   history.redoStack.push(history.current || undoSnapshot());
   applyUndoSnapshot(history.undoStack.pop());
@@ -353,7 +392,6 @@ function undo() {
 }
 
 function redo() {
-  if (undoModelCore()) return false;
   if (!history.redoStack.length) return false;
   history.undoStack.push(history.current || undoSnapshot());
   applyUndoSnapshot(history.redoStack.pop());

@@ -3094,8 +3094,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         are untouched by it: does the engine hand over `text/html` at all, does
         cancelling the event stop the insertion, where does a drop land.
 
-    *   **6. Undo — in progress; planned and started 2026-09-21. Step 1 of
-        six is done and tested.** A stack of model states with the caret as a model position,
+    *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 and 2
+        of six are done and tested.** A stack of model states with the caret as a model position,
         replacing the whole-document `innerHTML` snapshots.
         Coalescing carries over unchanged — same `inputType`, inside 600 ms,
         merges; everything else starts a step — because the commands now name
@@ -3246,7 +3246,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             that silent disagreement in a construct nothing watches. Cloning all
             of them makes the question not arise.
 
-        2.  **Two seams in `undo.js`, and nothing else moves.** The stack
+        2.  **Two seams in `undo.js`, and nothing else moves — done and
+            tested.** The stack
             machinery is core-independent — coalescing, `UNDO_LIMIT`, the redo
             branch, `nextId`, `breakOnce`, park and adopt — and only two
             operations know what a state is: capture one, and apply one. So the
@@ -3264,6 +3265,41 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             installs, and a history entry that can be edited in place is not a
             history entry. The way that fails is undo, redo, undo: the second
             visit finds the state the first one left behind.
+
+            **The flag is asked once, in capture, and applying reads the
+            state's own shape instead.** That was not in the plan and is the
+            stronger property: a state says which core took it, so it can only
+            be put back the way it was taken, where asking the flag again would
+            make a state's meaning depend on when it is applied rather than on
+            what it is. `undoApplyState` therefore branches on `snapshot.model`,
+            and the `undo` suite pins both halves — one call site, and the
+            branch being on the state.
+
+            **Driven in the running app, on a second origin.** The suite stubs
+            the model here on purpose, so what it proves is the seams and not
+            the restore; the restore was measured by hand in Blink against a
+            real document. Typing three characters and pressing Ctrl+Z brings
+            the model and the DOM back together and the whole document
+            re-serialises byte-identical; redo returns them; undo-redo-undo
+            returns to the same bytes, which is the clone-on-apply rule in the
+            real thing. `modelVerifyRender` reports 36 blocks compared and no
+            problems after all of it. And `documentIsDirty()` goes false → true
+            → **false** across type-then-undo, with `undoPosition()` back at the
+            id `markClean` recorded — the savepoint contract working on model
+            states, which is TODO 1.6's dot half on the new core.
+
+            **What that run could not reach**: Enter. Automation's synthetic
+            keydown raises no `insertParagraph`, the same gap stage 0 hit and
+            the reason `front/input-check.html` has a human protocol — so the
+            structural path through an undo is step 6's, not verified here.
+
+            **After this step the caret lands at the top of the document**,
+            measured rather than assumed: the editor keeps focus, the selection
+            has one range, and it is offset 0. The document is right and the
+            place in it is not. That is step 3 and it is the shape of TODO
+            1.6's caret half rather than a return of it — there is no
+            whole-document offset walk left to miscount, there is simply no
+            selection in the state yet.
 
         3.  **The caret, which is a `(blockId, offset)` rather than a block.**
             `modelReadSelection` hands back a block *reference*, and a state's

@@ -1021,7 +1021,8 @@ meaning the same thing. Four things about it:
   surgery **without** going through it, so both return early under the flag,
   and the two Format-menu items call `modelIndentAtCaret` instead of falling
   through to `outdentListItem`.
-- **`undo.js` refuses too, and it was the door nobody shut.** Found 2026-09-21,
+- **`undo.js` refused too, between 2026-09-21 and slice 6's step 2, and it was
+  the door nobody shut.** Found 2026-09-21,
   after the marker above had been claiming for a day that Ctrl+Z does nothing
   here. It did something: the keydown handler is on `document` and was never
   gated, and the stack is fed by the synthetic `input` every model edit raises —
@@ -1036,8 +1037,10 @@ meaning the same thing. Four things about it:
   half that is not optional: `file-api.js` reads `undoPosition()` to know
   whether the document is back at the last save, and a history that stood still
   would report every model edit as clean — taking the unsaved-work guard and the
-  `beforeunload` warning down together. Slice 6 replaces the snapshots with
-  model states and the guard goes with them.
+  `beforeunload` warning down together. **Step 2 replaced the refusal with the
+  branch it was standing in for**, so this is history rather than current
+  behaviour — kept because the failure it describes is what the two seams exist
+  to prevent.
 - **`modelInlineTokens` puts the tokens back in step with the tree**, and
   without it an edited block does not render at all — the renderer goes through
   markdown-it over the block's *tokens* and an edit changes the *tree*. The
@@ -1262,9 +1265,35 @@ What is worth knowing:
   walks up from an edited block, and then the edit clears the ancestors of a
   document nobody is showing while the one on screen re-emits its stale bytes.
 
-What the model still does *not* do is undo — the stack, the two seams in
-`undo.js` and the caret are the rest of slice 6 — or run a format command, which
-is slice 7. `undo.js` refuses under the flag until then; see the bullet above.
+**Step 2 gave `undo.js` the two seams**, same day, and with it Ctrl+Z works
+under the flag. The branch between the two cores is exactly two functions —
+`undoCaptureState` and `undoApplyState` — and everything else in that file is
+core-independent and stays one implementation: coalescing, `UNDO_LIMIT`, the
+redo branch, the ids `file-api.js` reads, `breakOnce`, park and adopt. A second
+history in a second file was the other candidate and is worse for the reason
+`app.js` has three doors: `undoReset`/`undoPark`/`undoAdopt`/`undoPosition` have
+seven callers, and a second owner would make each of them ask which core is
+running. Three things in it:
+
+- **A state carries exactly one of `html` and `model`**, and **applying reads
+  that rather than the flag**. So a state says which core took it and can only
+  be put back the way it was taken; asking the flag again would make a state's
+  meaning depend on when it is applied. The flag is asked once, in capture.
+- **Applying installs a clone of the stored state**, never the entry itself —
+  the next edit mutates what it installs, and the way that fails is undo, redo,
+  undo, where the second visit finds what the first one left behind.
+- **`modelRestoreDocument` is the model's half**, in `model.js` because
+  `modelDocument` is that file's variable. It deliberately does not call
+  `modelEnsureBlock`: every state came from a document that had already been
+  through it, so calling it again could only append a block the state never had
+  — a document the user never saw and cannot undo back out of.
+
+**The caret is not restored yet** — measured, the editor keeps focus and the
+selection lands at offset 0, the top of the document. That is step 3, which
+makes a state's selection a `(blockId, offset)` resolved against the state's own
+blocks.
+
+What the model still does *not* do is run a format command, which is slice 7.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.

@@ -29,9 +29,31 @@ const REPLACEMENT_SITES = {
   "tabs.js": 0, // the tab swap goes through loadDocumentHtml
 };
 
+// A fake model core. `live` is the document on screen; `clone` counts as a
+// generation so a check can tell one copy from another, which is how "applying
+// installs a clone of the stored state" is asked at all.
+function fakeModel() {
+  let live = { text: "start", clones: 0 };
+  const restored = [];
+  const clone = (doc) => ({ ...doc, clones: doc.clones + 1 });
+  return {
+    get live() { return live; },
+    restored,
+    edit: (text) => { live.text = text; },
+    scope: {
+      modelCoreEnabled: () => true,
+      modelCurrentDocument: () => live,
+      modelCloneDocument: clone,
+      modelRestoreDocument: (root, doc) => { live = doc; restored.push(doc); return doc; },
+      md: {},
+    },
+  };
+}
+
 function harness({ html = "<p>start</p>", modelCore = false } = {}) {
   const editor = makeEl("div");
   editor.innerHTML = html;
+  const model = fakeModel();
 
   const actions = new Map();
   const keydowns = [];
@@ -62,11 +84,17 @@ function harness({ html = "<p>start</p>", modelCore = false } = {}) {
     Event,
     onToolbarAction: (action, fn) => actions.set(action, fn),
     runToolbarAction: (action) => actions.get(action)?.(),
-    // model.js's flag. Absent by default, because that is how this file is
-    // loaded by every other check here and by an exported document's bundle --
-    // the `typeof` in undoModelCore is what makes that a plain no rather than a
+    // The model layer, stubbed -- which is the opposite of this file's usual
+    // arrangement and is the same call model-input.test.mjs makes. What is
+    // under test here is the *stack*: that a state is captured and applied at
+    // the two seams and that nothing else in the file learned about the model.
+    // The clone itself is covered against the real tree and the real oracle in
+    // `model`, so stubbing it is what lets this assert the seams rather than
+    // re-assert that. Absent by default, because that is how this file loads
+    // for every other check here and in an exported document's bundle -- the
+    // `typeof` in undoModelCore is what makes that a plain no rather than a
     // throw.
-    ...(modelCore ? { modelCoreEnabled: () => true } : {}),
+    ...(modelCore ? model.scope : {}),
     console,
   }, "; return { undo, redo, undoReset, undoBreak, undoPark, undoAdopt," +
      " undoTextOffset, undoLocateOffset," +
@@ -76,7 +104,7 @@ function harness({ html = "<p>start</p>", modelCore = false } = {}) {
   editor.addEventListener("input", () => positions.push(api.undoPosition()));
 
   return {
-    ...api, editor, actions, heard, positions,
+    ...api, editor, actions, heard, positions, model,
     advance: (ms) => { now += ms; },
     // What the browser raises for a real edit: mutate, then announce it.
     type: (text, inputType = "insertText") => {
@@ -413,46 +441,119 @@ export default function run(check) {
   h.key({ ctrlKey: true, key: "b", preventDefault: () => ignored.push("b") });
   check("and nothing else is intercepted", ignored.length === 0);
 
-  // --- the model core refuses -----------------------------------------------
+  // --- the model core: the two seams ---------------------------------------
   //
-  // Under TODO 3.1's flag the DOM is drawn from the model, so restoring an HTML
-  // snapshot would put an earlier *rendering* over a model that has not moved.
-  // That reads as working and then comes apart on the next keystroke, which is
-  // why the refusal is here rather than left to slice 6 to notice. What it must
-  // not do is stop *recording*: file-api.js reads undoPosition() to decide
-  // whether the document is back at the last save, and a history that stood
-  // still would report every model edit as clean.
+  // Slice 6's step 2. Everything above this line is core-independent and is
+  // meant to stay that way: what a state *is* changes at exactly two functions,
+  // and the stack machinery around them -- coalescing, the limit, the redo
+  // branch, the ids file-api.js reads, park and adopt -- is the same code
+  // either way. So the checks here are the two seams and then a re-run of the
+  // stack's own rules with a model state in place of an HTML one, because
+  // "nothing else moves" is a claim about this file and not a plan.
+  //
+  // The caret is step 3's: a state's selection is null under the flag today, so
+  // an undo restores the document and not yet the place you were in it.
 
   h = harness({ modelCore: true });
   h.undoReset();
+  h.model.edit("start a");
   h.type("a");
-  check("under the model core the stack still records", h.undoDepth() === 1);
-  const heldPosition = h.undoPosition();
-  check("and still reports a position", heldPosition !== null);
+  check("under the model core a state holds a model", h.undoDepth() === 1);
 
-  check("but undo refuses", h.undo() === false);
-  check("and leaves the document alone", h.editor.innerHTML === "<p>starta</p>");
-  check("and the stack where it was", h.undoDepth() === 1 && h.redoDepth() === 0);
-  check("and the position where it was", h.undoPosition() === heldPosition);
+  h.undo();
+  check("and undo restores it", h.model.live.text === "start");
+  check("without touching innerHTML", h.editor.innerHTML === "<p>starta</p>");
+  check("and it is a clone rather than the entry itself", h.model.live.clones === 2);
 
-  check("redo refuses too", h.redo() === false);
-
-  // Falling through would hand the key to the native stack, which mutates the
-  // DOM behind the model's back -- the one thing the design forbids. So the
-  // shortcut is still taken, it just does nothing with it.
-  const refused = [];
-  h.key({ ctrlKey: true, key: "z", preventDefault: () => refused.push("z") });
-  h.key({ ctrlKey: true, shiftKey: true, key: "Z", preventDefault: () => refused.push("Z") });
-  check("and both keys are still taken from the browser", refused.length === 2);
-  check("with the document untouched", h.editor.innerHTML === "<p>starta</p>");
-
-  // The refusal is the flag's, not a new rule about the stack: the same
-  // harness without it undoes exactly as everything above expects.
-  h = harness();
+  // The one the plan names: applying has to install a copy, or the next edit
+  // rewrites the history it came from. Undo, redo, undo -- the second visit
+  // must find what the first one did, not what was done to it afterwards.
+  h = harness({ modelCore: true });
   h.undoReset();
+  h.model.edit("one");
   h.type("a");
-  check("and with the flag off undo works as it always did",
-    h.undo() === true && h.editor.innerHTML === "<p>start</p>");
+  h.undo();
+  h.model.edit("vandalised");
+  h.redo();
+  h.undo();
+  check("a state survives the document it was restored into being edited",
+    h.model.live.text === "start");
+
+  // And capture is a clone too, for the same reason from the other end: the
+  // live document is mutated in place by every edit.
+  h = harness({ modelCore: true });
+  h.undoReset();
+  const captured = h.model.live;
+  h.model.edit("moved on");
+  h.type("a");
+  h.undo();
+  check("and the state a reset took is not the live document",
+    h.model.live !== captured && h.model.live.text === "start");
+
+  // The stack's own rules, unchanged, with model states in them. These are the
+  // coalescing checks from the top of this file run through the other seam.
+  h = harness({ modelCore: true });
+  h.undoReset();
+  h.type("a"); h.type("b"); h.type("c");
+  check("a run of typing is still one step under the model core", h.undoDepth() === 1);
+  h.advance(700);
+  h.type("d");
+  check("and a pause still starts a new one", h.undoDepth() === 2);
+  h.type("", "insertParagraph");
+  check("and Enter is still its own", h.undoDepth() === 3);
+
+  h = harness({ modelCore: true });
+  h.undoReset();
+  h.model.edit("one"); h.type("a");
+  h.model.edit("two"); h.type("", "insertParagraph");
+  const middle = h.undoPosition();
+  h.undo();
+  check("redo is still a branch", h.redoDepth() === 1);
+  h.redo();
+  check("and redoing returns the state it left", h.model.live.text === "two");
+  check("with the id it was minted with", h.undoPosition() === middle);
+
+  // file-api.js reads undoPosition() from inside its own input listener, so
+  // this is what decides whether the toolbar says "(edited)" under the flag.
+  check("and every input reported a position", h.positions.every((p) => p !== null));
+
+  // Park and adopt move the bundle whole, and never learned what is in it.
+  h = harness({ modelCore: true });
+  h.undoReset();
+  h.model.edit("first tab"); h.type("a");
+  const parked = h.undoPark();
+  check("parking leaves a fresh history", h.undoDepth() === 0);
+  h.undoAdopt(parked);
+  h.undo();
+  check("and adopting it back restores that tab's model", h.model.live.text === "start");
+
+  // Nothing here may reach the native stack: the shortcut is still taken, and
+  // now it has something to do with it.
+  h = harness({ modelCore: true });
+  h.undoReset();
+  h.model.edit("typed"); h.type("a");
+  const taken = [];
+  h.key({ ctrlKey: true, key: "z", preventDefault: () => taken.push("z") });
+  check("Ctrl+Z still takes the key from the browser", taken.length === 1);
+  check("and now undoes through the model", h.model.live.text === "start");
+
+  // The refusal this replaces is gone, and the source says so rather than
+  // leaving a reader to wonder whether it was forgotten.
+  const undoSrc = readFront("undo.js");
+  check("undo() no longer refuses under the flag",
+    !/function undo\(\) \{\s*\n\s*if \(undoModelCore\(\)\) return false;/.test(undoSrc));
+  // The claim the whole step rests on: the branch is at the seams and nowhere
+  // else in the file. One call and the definition -- capture asks the flag
+  // once, and apply does not ask it at all.
+  check("and the core is asked once, in capture",
+    (undoSrc.match(/undoModelCore\(\)/g) || []).length === 2);
+  // Apply reads the *state's* own shape instead, which is the stronger
+  // property and worth pinning as one: a state says which core took it, so it
+  // can only ever be put back the way it was taken. Asking the flag again
+  // would make a state's meaning depend on when it is applied rather than on
+  // what it is.
+  check("while applying one branches on the state rather than the flag",
+    /function undoApplyState\(snapshot\) \{\s*\n\s*if \(snapshot\.model\)/.test(undoSrc));
 
   // --- the caret ------------------------------------------------------------
   //
