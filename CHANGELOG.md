@@ -6858,7 +6858,7 @@ undo works as it always did. The harness grew a `modelCore` option to inject the
 flag, absent by default so every other check here loads the file the way an
 exported document's bundle does. `sw.js`'s `VERSION` goes to `v1.39`.
 
-## 2026-09-21 — Plan stage 2's slice 6, undo on the model
+## 2026-09-21 — `761ba3d` — Plan stage 2's slice 6, undo on the model
 
 Written before any of it is built, which is this repo's rule and not the order
 these things usually happen in. The slice's entry in
