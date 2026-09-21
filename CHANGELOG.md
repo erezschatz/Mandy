@@ -6813,7 +6813,7 @@ stands at five slices of seven with both of the hand-driven ones clean in Blink,
 Gecko and WebKit. No code changed, so nothing ran; `npm test` was green at 1,485
 checks.
 
-## 2026-09-21 — Ctrl+Z under the model core was not doing nothing
+## 2026-09-21 — `e99a928` — Ctrl+Z under the model core was not doing nothing
 
 The `model core` marker's title has said since yesterday that the formats and
 Ctrl+Z do nothing under the flag. The formats do nothing — `runCommand` refuses,
