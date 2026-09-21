@@ -7076,7 +7076,7 @@ it is the *shape* of TODO 1.6's caret half rather than a return of it: there is
 no whole-document offset walk left to miscount, there is simply no selection in
 the state yet. `sw.js`'s `VERSION` goes to `v1.41`.
 
-## 2026-09-21 — Slice 6, step 3: the caret travels as an id
+## 2026-09-21 — `5bc54c0` — Slice 6, step 3: the caret travels as an id
 
 An undo now puts the caret back where it was, which step 2 left at the top of
 the document. A state's selection is a `(blockId, offset)` rather than a block,
