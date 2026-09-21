@@ -3366,17 +3366,41 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             the rest of the protocol down with it, which is what breaking it on
             purpose produces.
 
-            **The double-fire is named and left to be measured rather than
-            pre-empted.** `undo.js` binds the keyboard itself and calls
-            `preventDefault`, which should stop the engine running the default
-            action these types are raised as part of — so a Ctrl+Z should never
-            arrive here as well. *Should* is per engine, and slice 4's table
-            mitigation is the reason not to take an unmeasured *should* as
-            settled: it was assumed to hold everywhere and turned out to be
-            Blink's alone. So the instrument goes in and the suppression does
-            not, because the shape of any suppression depends on which engine
-            needs one. The symptom if it happens is two steps back for one
-            press — confusing, and recoverable with a redo.
+            **The double-fire was named and left to be measured rather than
+            pre-empted, and the measurement came back the same day.** `undo.js`
+            binds the keyboard itself and calls `preventDefault`, which should
+            stop the engine running the default action these types are raised as
+            part of — so a Ctrl+Z should never arrive here as well. *Should* is
+            per engine, and slice 4's table mitigation is the reason not to take
+            an unmeasured *should* as settled: it was assumed to hold everywhere
+            and turned out to be Blink's alone. So the instrument went in and
+            the suppression did not.
+
+            **The answer is that no engine raises `historyUndo` at all** — not
+            from its own gesture, not after a Ctrl+Z — in Chrome, Firefox and
+            Safari, 2026-09-21. **Safari says why, and the reason generalises**:
+            its *Edit → Undo* is **disabled**. Every `beforeinput` is cancelled,
+            so the engine never edited anything, so its own undo stack is empty
+            and there is nothing for it to raise. That is a consequence of this
+            design rather than a quirk, which is why all three agree rather than
+            disagreeing the way they usually do.
+
+            So there is no suppression to build, and the route is **correct and,
+            on the desktop, never taken**. It stays: it costs two lines, it is
+            the right handling if one ever arrives, and the plan's other named
+            sources — a mobile keyboard's own undo button, an IME — are exactly
+            the ones this repo has never measured. That is the same shape
+            `paste-check.html` produced, where three engines answered "there was
+            never anything to build", and the step becomes a regression check
+            for the same reason: the answer is per browser and per version, and
+            the way it comes back is a browser release.
+
+            **One user-visible consequence, recorded rather than fixed.** Under
+            the model core the browser's own *Edit → Undo* is dead — visibly so
+            in Safari. Ctrl+Z is the only route, since `undo.js` binds the key
+            itself. Whether the old core's menu item is enabled-but-wrong rather
+            than honestly disabled is not measured here, and the honest version
+            is arguably the better of the two.
 
             **Undo's own protocol is an app recipe, not a check-page step**,
             which corrects what this plan said in step 6 and in the stage's

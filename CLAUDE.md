@@ -1317,10 +1317,20 @@ pair meaning exactly what Ctrl+Z means. They now reach `undo()` / `redo()`,
 `front/input-check.html` ships no `undo.js`, because undo is the application
 around the input layer rather than the layer, so there the route finds nothing
 and does nothing rather than throwing and taking the protocol with it. The
-keyboard stays the mechanism and this is a bonus entry point — whether an engine
-raises one of these at all, and whether a Ctrl+Z raises one *as well*, are
-per-engine facts the check page's own Ctrl+Z step now asks rather than this file
-assuming them.
+keyboard stays the mechanism and this is a bonus entry point.
+
+**And the bonus is never collected, on the desktop.** Measured in Chrome,
+Firefox and Safari on 2026-09-21: **no engine raises `historyUndo` at all**,
+from its own gesture or after a Ctrl+Z. Safari says why and the reason
+generalises — its *Edit → Undo* is **disabled**, because every `beforeinput` is
+cancelled, so the engine never edited anything, so its own stack is empty and it
+has nothing to raise. A consequence of the design rather than a quirk, which is
+why all three agree. So no suppression for a double-fire was needed, the route
+stays for a mobile keyboard's own undo button and for an engine that changes its
+mind, and the check page's step is a regression check rather than an open
+question — the same shape `paste-check.html` reached. The consequence worth
+knowing: under the model core Ctrl+Z is the only undo, since the browser's own
+menu item is dead.
 
 What the model still does *not* do is run a format command, which is slice 7.
 

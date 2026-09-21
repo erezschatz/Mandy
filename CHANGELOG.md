@@ -7190,3 +7190,41 @@ nothing and still cancels, and that a gesture arriving mid-composition is
 ignored, because the engine owns the caret's text node until `compositionend`
 and an undo would pull it out from under the IME. Each property was broken on
 purpose first. `sw.js`'s `VERSION` goes to `v1.43`.
+
+## 2026-09-21 — No engine raises `historyUndo`, and Safari says why
+
+Step 4 built the instrument and refused to build the suppression, on the grounds
+that an unmeasured "should" is what slice 4's table mitigation turned out to be.
+Driven the same day in Chrome, Firefox and Safari, and the answer is cleaner
+than the question: **no engine raises `historyUndo` at all** — not from its own
+undo gesture, not after a Ctrl/Cmd+Z.
+
+**Safari supplies the mechanism, and it generalises.** Its *Edit → Undo* is
+**disabled**. Every `beforeinput` under the model core is cancelled, so the
+engine never edited anything, so its own undo stack is empty and there is
+nothing for it to raise. That is a consequence of the design rather than a
+quirk, which is why all three agree here where they usually disagree — and it is
+the sort of reason worth having, because it says what would have to change for
+the answer to change.
+
+So there is no double-fire and no suppression to build. **The route stays**: it
+is two lines, it is the correct handling if one ever arrives, and the plan's
+other named sources — a mobile keyboard's own undo button, an IME — are exactly
+the ones this project has never measured and explicitly accepted as unmeasured.
+Correct and never taken is a fine state for a branch to be in when the
+alternative is dropping an intention on the floor.
+
+**That is the second time a check page has answered "there was never anything to
+build"**, after `paste-check.html` found all three engines offering `text/plain`
+alone on their plain-text binding. The step turns into a regression check for
+the same reason: the answer is per browser and per version, and the way it comes
+back is a browser release, not a change here.
+
+**One user-visible consequence, recorded rather than fixed.** Under the model
+core the browser's own *Edit → Undo* is dead — visibly so in Safari, where it is
+greyed out — and Ctrl/Cmd+Z is the only route to undo, since `undo.js` binds the
+key itself. Whether the old core leaves that menu item enabled-but-pointing-at-a
+-discarded-stack rather than honestly disabled is not measured, and honest is
+arguably the better of the two.
+
+No code changed, so nothing ran.
