@@ -6693,7 +6693,7 @@ row overflow, the toggle on screen, and no marker at all under `?core=legacy`.
 1,481 checks unchanged — this is CSS and one DOM insert, and no suite reads
 either. `sw.js`'s `VERSION` goes to `v1.37`.
 
-## 2026-09-21 — The input check says it is always the model core
+## 2026-09-21 — `6b25efc` — The input check says it is always the model core
 
 Somebody went looking for yesterday's `model core` marker on
 [front/input-check.html](front/input-check.html) and did not find one, which is
