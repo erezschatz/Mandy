@@ -7229,7 +7229,7 @@ arguably the better of the two.
 
 No code changed, so nothing ran.
 
-## 2026-09-21 — Slice 6, step 5: the switch, and it needed no code
+## 2026-09-21 — `2194d76` — Slice 6, step 5: the switch, and it needed no code
 
 A parked history bundle used to hold whole-innerHTML strings and now holds model
 clones, and `tabs.js` did not have to change a line — because it never looks
