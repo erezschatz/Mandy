@@ -431,6 +431,33 @@ function modelInputBeforeInput(event) {
   }
   if (event.inputType === "insertLineBreak") {
     modelInputLineBreak(doc, modelInputSpan(event, doc));
+    return;
+  }
+  // The engine's own undo gesture — the macOS trackpad swipe, a context menu,
+  // a mobile keyboard's own button — which means exactly what Ctrl+Z means and
+  // so goes to exactly the same place. Cancelled like everything else either
+  // way; what this adds is that the intention is now carried out rather than
+  // dropped, which is the right default for a type nobody has claimed and the
+  // wrong one for this pair.
+  //
+  // **A bonus entry point rather than the mechanism.** `undo.js` binds the
+  // keyboard itself, on `document`, and calls `preventDefault` — which should
+  // stop the engine running the default action these types are raised as part
+  // of, so a Ctrl+Z should never arrive here as well. *Should*: that is a
+  // per-engine fact and it is asked on the check page rather than assumed
+  // here, because the shape of any suppression depends on which engine needs
+  // one. If a Ctrl+Z ever does raise one of these, the symptom is two steps
+  // back for one press — confusing, and recoverable with a redo.
+  //
+  // Feature-tested because `front/input-check.html` deliberately ships no
+  // `undo.js`: it measures this layer against a real engine, not the
+  // application around it, so there the event is logged and nothing happens.
+  if (event.inputType === "historyUndo") {
+    if (typeof undo === "function") undo();
+    return;
+  }
+  if (event.inputType === "historyRedo") {
+    if (typeof redo === "function") redo();
   }
 }
 

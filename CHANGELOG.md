@@ -7138,3 +7138,55 @@ watched doing its reported case correctly, and that case is Enter at the end of
 a bullet, which automation cannot raise: a synthetic keydown produces no
 `insertParagraph`. It belongs to step 6's protocol, with a human at the
 keyboard. `sw.js`'s `VERSION` goes to `v1.42`.
+
+## 2026-09-21 — Slice 6, step 4: the engine's own undo gesture
+
+`historyUndo` and `historyRedo` are what an engine raises for the macOS
+trackpad swipe, a context menu's Undo, or a mobile keyboard's own button. They
+were cancelled and routed nowhere — the right default for a type nobody has
+claimed, and the wrong one for a pair that means exactly what Ctrl+Z means.
+They now reach `undo()` and `redo()`.
+
+**Feature-tested, and that is not defensive coding**, which is the same answer
+slice 5's converters got. `front/input-check.html` deliberately ships no
+`undo.js`: undo is the application around the input layer rather than the layer,
+and loading it would drag in `toolbar.js` for `onToolbarAction` and most of what
+that page exists to exclude. So there the route has to find nothing and do
+nothing. Taking the test out is one of the breaks below, and it throws — which
+would take the rest of the protocol down with it.
+
+**The double-fire is named and left to be measured rather than pre-empted.**
+`undo.js` binds Ctrl+Z itself, on `document`, and calls `preventDefault` — which
+should stop the engine running the default action these types are raised as part
+of, so a Ctrl+Z should never arrive here as well. *Should* is a per-engine fact,
+and slice 4's table mitigation is the reason not to bank an unmeasured one: it
+was assumed to hold everywhere and turned out to be Blink's alone. So the
+instrument goes in and the suppression does not, because the shape of any
+suppression depends on which engine needs one. If it happens the symptom is two
+steps back for one press — confusing, and recoverable with a redo.
+
+**`front/input-check.html`'s Ctrl+Z step is now the instrument.** It used to
+read "Cancelled, and nothing moves: undo is slice 6", which is still what
+happens on that page and is no longer the interesting part. It now asks for the
+engine's own undo gesture as well as the keystroke, and says what to look for in
+the log: whether a `historyUndo` arrives **at all** — every `beforeinput` there
+is cancelled, so the engine's own stack should be empty and it may well raise
+nothing — and whether one arrives **after a Ctrl+Z**, which is the finding that
+would buy the suppression. It stayed one step rather than becoming two, so no
+later step's number moved.
+
+**And it corrects where undo's own protocol lives.** The plan said the steps
+would go on the check page; they cannot, for the reason above. What the page can
+answer is the engine question, and everything else about undo is watched in the
+running app under `?core=model` — which is where steps 2 and 3 were already
+driven. REWRITE.md's step 6 and the stage's verification paragraph now say so.
+
+Seven new checks in `model-input`, 1,555 in all, and the stub here is `undo.js`
+rather than the model: that `historyUndo` undoes and `historyRedo` redoes, that
+both are cancelled like everything else, that neither reaches the model's edit
+paths — a history operation that spliced would put a step on the stack it is
+walking back through — that with no `undo.js` in the bundle the route does
+nothing and still cancels, and that a gesture arriving mid-composition is
+ignored, because the engine owns the caret's text node until `compositionend`
+and an undo would pull it out from under the IME. Each property was broken on
+purpose first. `sw.js`'s `VERSION` goes to `v1.43`.

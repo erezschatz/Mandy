@@ -24,12 +24,13 @@ export default function run(check) {
   const rig = ({
     coreOn = true, doc = { blocks: [] }, range = null, splice = 7,
     source = false, at = null, item = null, empty = false, hardBreak = "  ",
-    html = "", point = null, selection = false,
+    html = "", point = null, selection = false, history = true,
   } = {}) => {
     const calls = {
       splice: [], rerender: [], render: [], announced: [], sourceSplice: [],
       merged: [], pruned: [], split: [], broke: [], emptyItem: [], moved: [], filled: [],
       parsed: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
+      history: [],
     };
     const editor = makeEl("div");
     // The two halves of a drop position, which are the two spellings the
@@ -126,6 +127,13 @@ export default function run(check) {
         Event: class {
           constructor(type) { this.type = type; }
         },
+        // undo.js's two. Absent when `history` is false, which is
+        // front/input-check.html's situation exactly: it ships no undo.js, so
+        // the route has to find nothing and do nothing rather than throw.
+        ...(history ? {
+          undo: () => { calls.history.push("undo"); return true; },
+          redo: () => { calls.history.push("redo"); return true; },
+        } : {}),
         console,
       },
       "; return { modelInputBeforeInput, modelInputCompositionStart," +
@@ -619,6 +627,61 @@ export default function run(check) {
     r.api.modelInputDrop({ clientX: 1, clientY: 1, preventDefault() {}, dataTransfer: { getData: () => "x" } });
     check("a drag spanning two blocks is refused",
       r.calls.splice.length === 0 && r.calls.inserted.length === 0);
+  }
+
+  // --- slice 6: the engine's own undo gesture -------------------------------
+  //
+  // `historyUndo` and `historyRedo` are what an engine raises for the macOS
+  // trackpad swipe, a context menu's Undo, or a mobile keyboard's own button.
+  // They were cancelled and routed nowhere, which is the right default for a
+  // type nobody has claimed and the wrong one for a pair that means exactly
+  // what Ctrl+Z means.
+  //
+  // What a stub can see is the routing, which is all this file ever claims:
+  // whether an engine sends them at all is the check page's question, and it
+  // cannot be answered here or by any suite in this repo.
+
+  {
+    const r = rig();
+    const e = event("historyUndo");
+    r.api.modelInputBeforeInput(e);
+    check("historyUndo undoes", r.calls.history.join() === "undo");
+    check("and is cancelled like everything else", e.prevented === 1);
+    // It is a history operation, not an edit: it must not reach the model's
+    // own edit paths, which would put a second step on the stack it is
+    // walking back through.
+    check("and never reaches the inline edit",
+      r.calls.splice.length === 0 && r.calls.rerender.length === 0);
+  }
+
+  {
+    const r = rig();
+    r.api.modelInputBeforeInput(event("historyRedo"));
+    check("historyRedo redoes", r.calls.history.join() === "redo");
+  }
+
+  // The page that measures this layer against a real engine ships no undo.js
+  // on purpose -- it is the application around the layer, not the layer. So
+  // the route has to find nothing and do nothing, rather than throw and take
+  // the rest of the protocol with it.
+  {
+    const r = rig({ history: false });
+    const e = event("historyUndo");
+    r.api.modelInputBeforeInput(e);
+    check("with no undo.js in the bundle the route does nothing",
+      r.calls.history.length === 0 && r.calls.splice.length === 0);
+    check("and still cancels", e.prevented === 1);
+  }
+
+  // Composition owns the caret's text node until it ends, so an undo in the
+  // middle of one would pull that node out from under the IME.
+  {
+    const r = rig();
+    r.api.modelInputCompositionStart();
+    const e = event("historyUndo");
+    r.api.modelInputBeforeInput(e);
+    check("and a history gesture mid-composition is cancelled and ignored",
+      r.calls.history.length === 0 && e.prevented === 1);
   }
 
   // --- installation ---------------------------------------------------------

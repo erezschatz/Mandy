@@ -3094,7 +3094,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         are untouched by it: does the engine hand over `text/html` at all, does
         cancelling the event stop the insertion, where does a drop land.
 
-    *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 to 3
+    *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 to 4
         of six are done and tested.** A stack of model states with the caret as a model position,
         replacing the whole-document `innerHTML` snapshots.
         Coalescing carries over unchanged — same `inputType`, inside 600 ms,
@@ -3349,13 +3349,44 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             between two undos reads as wrong until you know which of the two it
             is watching.
 
-        4.  **The engine's own undo gesture.** `historyUndo` and `historyRedo`
+        4.  **The engine's own undo gesture — done and tested.**
+            `historyUndo` and `historyRedo`
             arrive as `beforeinput` — the macOS trackpad gesture, a context
             menu, a mobile keyboard — and are cancelled and routed nowhere
             today, which is the right default for a type nobody has claimed and
             the wrong one for a type that means exactly what Ctrl+Z means. They
             route to the same two commands. Whether an engine sends them at all
             is a question for the check page rather than for this file.
+
+            **Feature-tested, and that is not defensive coding** — the same
+            answer slice 5's converters got. `front/input-check.html`
+            deliberately ships no `undo.js`, because undo is the application
+            around this layer rather than the layer, so there the route has to
+            find nothing and do nothing. Without the test it throws and takes
+            the rest of the protocol down with it, which is what breaking it on
+            purpose produces.
+
+            **The double-fire is named and left to be measured rather than
+            pre-empted.** `undo.js` binds the keyboard itself and calls
+            `preventDefault`, which should stop the engine running the default
+            action these types are raised as part of — so a Ctrl+Z should never
+            arrive here as well. *Should* is per engine, and slice 4's table
+            mitigation is the reason not to take an unmeasured *should* as
+            settled: it was assumed to hold everywhere and turned out to be
+            Blink's alone. So the instrument goes in and the suppression does
+            not, because the shape of any suppression depends on which engine
+            needs one. The symptom if it happens is two steps back for one
+            press — confusing, and recoverable with a redo.
+
+            **Undo's own protocol is an app recipe, not a check-page step**,
+            which corrects what this plan said in step 6 and in the stage's
+            verification paragraph. The page ships no `undo.js` and should not:
+            loading it would drag in `toolbar.js` for `onToolbarAction` and
+            most of what the page exists to exclude. What the page *can* answer
+            is the one thing that is about the engine rather than about us, and
+            its Ctrl+Z step now asks exactly that — does a `historyUndo` arrive
+            at all, and does one arrive after a Ctrl+Z. Everything else about
+            undo is watched in the running app under `?core=model`.
 
         5.  **The tab switch, where the model history meets a re-parsed
             document.** This stage re-parses on adopt — the incoming tab's
@@ -3382,13 +3413,18 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             settled; what is left is the blocks, the inline nodes and the
             `parent` rebuild around them.
 
-            And the steps `front/input-check.html` grows, which is the half no
-            suite can reach: that an undo puts the caret back where the edit
-            was, that a run of typing is one step and Enter is its own, that an
-            undo after a paste takes the whole paste, and **TODO 1.6's exact
-            reported case** — open a file, Enter at the end of a bullet, Ctrl+Z
-            — which that item says it stays open until the new undo is watched
-            doing correctly.
+            And the protocol, which is the half no suite can reach — **in the
+            running app under `?core=model` rather than on the check page**, as
+            step 4 records: that page ships no `undo.js` on purpose, and what it
+            asks instead is whether an engine raises a `historyUndo` at all.
+            What an app run has to show: that an undo puts the caret back where
+            the edit was, that a run of typing is one step and Enter is its own,
+            that an undo after a paste takes the whole paste, and **TODO 1.6's
+            exact reported case** — open a file, Enter at the end of a bullet,
+            Ctrl+Z — which that item says it stays open until the new undo is
+            watched doing correctly. Steps 2 and 3 already took the first of
+            those in Blink; Enter is what automation cannot raise, so the rest
+            needs a human at a keyboard in all three engines.
 
         TODO 1.6's caret half — Ctrl+Z after Enter at the end of a bullet
         putting the caret at the top — goes by construction: it is a

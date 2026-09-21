@@ -580,7 +580,11 @@ direction: **after `markdown-style.js`**, whose `wrapMarkdownLine` and
 `hasMathSpan` it calls rather than carrying a second copy of either.
 
 [model-input.js](front/model-input.js) joined all three with slice 3, and sits
-**after `app.js`**, whose `editor` and `md` it reads at its own load time.
+**after `app.js`**, whose `editor` and `md` it reads at its own load time. It
+sits *before* `undo.js` and calls `undo` / `redo` anyway, which is the same rule
+`runCommand` follows: the call is at event time, so the function only has to be
+**present** in the bundle rather than defined by then — and since slice 6's step
+4 it is feature-tested besides, because one bundle deliberately lacks it.
 
 **Loading them is not running them.** `modelCoreEnabled()` is off until the
 stage 4 merge, so the editor still draws through `markdownToHtml`, the input
@@ -1303,6 +1307,20 @@ has gone leaves the caret that has not.
 old core's rule kept rather than re-decided. In the ordinary type-then-undo that
 is where the edit was; after a caret move with no edit between, it is where the
 caret was when that state was current.
+
+**Step 4 routed the engine's own undo gesture.** `historyUndo` and
+`historyRedo` arrive as `beforeinput` — the macOS trackpad swipe, a context
+menu, a mobile keyboard's own button — and were cancelled and routed nowhere,
+which is the right default for a type nobody has claimed and the wrong one for a
+pair meaning exactly what Ctrl+Z means. They now reach `undo()` / `redo()`,
+**feature-tested** for the same reason slice 5's converters are:
+`front/input-check.html` ships no `undo.js`, because undo is the application
+around the input layer rather than the layer, so there the route finds nothing
+and does nothing rather than throwing and taking the protocol with it. The
+keyboard stays the mechanism and this is a bonus entry point — whether an engine
+raises one of these at all, and whether a Ctrl+Z raises one *as well*, are
+per-engine facts the check page's own Ctrl+Z step now asks rather than this file
+assuming them.
 
 What the model still does *not* do is run a format command, which is slice 7.
 
