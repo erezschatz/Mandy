@@ -6786,7 +6786,7 @@ Only the check page changed, so no shell asset moved and `sw.js`'s `VERSION`
 stays at `v1.38`. No suite reads that page; `npm test` was green at 1,485 checks
 before it.
 
-## 2026-09-21 — Slice 5 passes in all three engines; the drag was a gesture
+## 2026-09-21 — `5da7b60` — Slice 5 passes in all three engines; the drag was a gesture
 
 Drag and drop works everywhere. What remained after the `dragover` fix was not a
 bug: a drag needs the button **released** after selecting, and then a fresh

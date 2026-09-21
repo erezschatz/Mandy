@@ -3024,7 +3024,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         model core suppresses exactly that native handling, so the editor
         becomes an ordinary **scripted** drop target and has to say it accepts
         one. The engines disagree about how much they will still do for a
-        `contenteditable` that has stopped behaving like one, and Gecko is the generous one.
+        `contenteditable` that has stopped behaving like one, and Gecko is the
+        generous one.
 
         `dragenter` is cancelled with it, since an engine that reads the first
         as a refusal never sends the second; and `dropEffect` is set there,
