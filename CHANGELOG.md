@@ -6711,3 +6711,45 @@ The flag is also per browser, since it lives in `localStorage`, which is worth
 saying out loud: setting it in one browser says nothing about another.
 
 No code changed, so nothing ran. `npm test` was green at 1,481 checks before it.
+
+## 2026-09-21 — Drag and drop needed a `dragover` handler, and nobody wrote one
+
+Slice 5's step 22 did nothing in Blink and WebKit while working in Gecko:
+dragging a selection only extended the highlight, and a drag from another window
+landed nowhere. Reported as "feels like an engine thing", and it is — but the
+engines were disagreeing about something we got wrong rather than about drag and
+drop.
+
+**There was no `dragover` handler.** An element accepts a drop only if something
+cancels `dragover` over it. That is the specification, not a quirk, and the old
+core never had to obey it, because a `contenteditable` is a drop target the
+engine handles **natively** — no script involved. The model core suppresses
+exactly that native handling, so the editor becomes an ordinary *scripted* drop
+target, and a scripted drop target that never says it accepts anything gets no
+`drop` event at all. Gecko is the generous one here: it keeps doing more for a
+`contenteditable` that has stopped behaving like one than the other two will.
+
+`dragenter` is cancelled alongside it, because an engine that reads the first as
+the refusal never sends the second. And `dropEffect` is set there rather than
+left at its default, because the cursor has to promise what will actually
+happen: a **move** for a drag that started in this editor — the source range is
+deleted before the insert — and a **copy** for anything from outside, which we
+cannot remove from wherever it came from.
+
+**The check page now logs the whole drag sequence**, which is the part worth
+keeping. The interesting failures here are all *missing* events, and neither the
+suite nor automation can reach a native drag — so the page names each of
+`dragstart`, `dragenter`, `dragleave`, `drop` and `dragend`, counts the
+`dragover`s between them, and reports the `dataTransfer` types each carried. No
+`dragstart` means the engine never entered drag mode and the pointer was only
+extending the selection; a run of `dragover` with no `drop` means nothing told
+the engine the drop was welcome. Step 22 says so in its own text now: a step
+that fails with "it feels like an engine thing" is a step that needs a log
+rather than a theory.
+
+Four new checks in `model-input`, 1,485 in all: that `dragover` is cancelled,
+that the effect reads copy from outside and move from inside, and that with no
+document open the drop is **not** claimed — saying otherwise would take it away
+from whatever else might have wanted it. Confirmed in the pane that the editor
+now cancels both events; the drag itself still needs a human, which is what the
+new logging is for. `sw.js`'s `VERSION` goes to `v1.38`.

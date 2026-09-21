@@ -131,7 +131,8 @@ export default function run(check) {
       "; return { modelInputBeforeInput, modelInputCompositionStart," +
         " modelInputCompositionEnd, modelInputComposing, modelInputInstall," +
         " modelInputKeydown, modelIndentAtCaret, modelInputPasteEvent," +
-        " modelInputDrop, modelInputDragStart, modelPastePlain, modelPasteMarkdown };",
+        " modelInputDrop, modelInputDragStart, modelInputDragOver," +
+        " modelPastePlain, modelPasteMarkdown };",
     );
     return { api, calls, editor, block };
   };
@@ -564,6 +565,38 @@ export default function run(check) {
   }
 
   {
+    // **Without a cancelled `dragover` there is no `drop` at all**, and that is
+    // the spec rather than a quirk: an element accepts a drop only if something
+    // cancels `dragover` over it. The old core never had to, because a
+    // `contenteditable` is a drop target the engine handles natively — and the
+    // model core suppresses exactly that, so the editor becomes an ordinary
+    // scripted target and has to say so. Missing from slice 5, and drag and
+    // drop did nothing in Blink and WebKit while working in Gecko.
+    const target = { id: 51, inlines: [] };
+    const over = { prevented: 0, preventDefault() { this.prevented += 1; }, dataTransfer: { dropEffect: "none" } };
+    const r = rig({ doc: { blocks: [target] } });
+    r.api.modelInputDragOver(over);
+    check("dragover is cancelled, or nothing can ever be dropped here", over.prevented === 1);
+    check(`and a drag from outside reads as a copy (${over.dataTransfer.dropEffect})`,
+      over.dataTransfer.dropEffect === "copy");
+
+    // The cursor has to promise what will actually happen, and a drag that
+    // started in this editor is a move.
+    const inside = { prevented: 0, preventDefault() { this.prevented += 1; }, dataTransfer: { dropEffect: "none" } };
+    const s = rig({ doc: { blocks: [target] }, selection: true, range: [here(target, 1), here(target, 4)] });
+    s.api.modelInputDragStart();
+    s.api.modelInputDragOver(inside);
+    check(`while one that started here reads as a move (${inside.dataTransfer.dropEffect})`,
+      inside.dataTransfer.dropEffect === "move");
+
+    // With no document there is nothing to drop into, and saying otherwise
+    // would take the drop away from whatever else might have wanted it.
+    const none = { prevented: 0, preventDefault() { this.prevented += 1; }, dataTransfer: { dropEffect: "none" } };
+    rig({ doc: null }).api.modelInputDragOver(none);
+    check("with no document open the drop is not claimed", none.prevented === 0);
+  }
+
+  {
     // Dropping a selection onto itself is a no-op rather than a delete.
     const block = { id: 48, inlines: [] };
     const r = rig({ doc: { blocks: [block] }, point: {}, selection: true,
@@ -599,7 +632,8 @@ export default function run(check) {
       !!root.listeners.beforeinput && !!root.listeners.compositionstart &&
         !!root.listeners.compositionend && !!root.listeners.keydown &&
         !!root.listeners.paste && !!root.listeners.drop &&
-        !!root.listeners.dragstart && !!root.listeners.dragend,
+        !!root.listeners.dragstart && !!root.listeners.dragend &&
+        !!root.listeners.dragover && !!root.listeners.dragenter,
     );
   }
 }

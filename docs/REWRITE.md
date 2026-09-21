@@ -3014,6 +3014,31 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             in the slice that is fixing a regression the flag already has rather
             than porting a behaviour.
 
+        **What the first hand run found, and it was one thing in two costumes.**
+        Drag and drop did nothing in Blink and WebKit while working in Gecko:
+        dragging a selection only extended it, and a drag from another window
+        landed nowhere. **There was no `dragover` handler.** An element accepts
+        a drop only if something cancels `dragover` over it — the spec, not a
+        quirk — and the old core never had to, because a `contenteditable` is a
+        drop target the engine handles *natively*. The model core suppresses
+        exactly that native handling, so the editor becomes an ordinary
+        **scripted** drop target and has to say it accepts one. The engines
+        disagree about how much they will still do for a `contenteditable` that
+        has stopped behaving like one, and Gecko is the generous one.
+
+        `dragenter` is cancelled with it, since an engine that reads the first
+        as a refusal never sends the second; and `dropEffect` is set there,
+        because the cursor has to promise what will actually happen — a move for
+        a drag that started here, a copy for anything from outside.
+
+        **The check page now logs the whole drag sequence**, because the
+        interesting failures are all *missing* events and neither the suite nor
+        automation can reach a native drag: no `dragstart` means the engine
+        never entered drag mode and the pointer was only extending the
+        selection, and a run of `dragover` with no `drop` means nothing told the
+        engine the drop was welcome. A step that fails with "it feels like an
+        engine thing" is a step that needs a log rather than a theory.
+
         **Verification is the same two halves as slice 4.** The `model` suite
         takes the splice against the real tree and the oracle, because adopting
         a foreign document's blocks is a pure function over two models and the

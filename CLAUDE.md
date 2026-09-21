@@ -1187,6 +1187,18 @@ driven by hand yet.** What is worth knowing:
   model coordinates, the deletion runs first, and the drop offset moves back by
   what was taken out when the two are in the same block. A drag spanning two
   blocks, or dropped inside itself, does nothing.
+- **`dragover` has to be cancelled or there is no `drop` at all**, and that is
+  the spec rather than a quirk: an element accepts a drop only if something
+  cancels `dragover` over it. The old core never had to, because a
+  `contenteditable` is a drop target the engine handles **natively** — and the
+  model core suppresses exactly that, so the editor becomes an ordinary scripted
+  target and has to say so. Missing from slice 5 as first written, and found by
+  hand on 2026-09-21: drag and drop did nothing in Blink and WebKit while
+  working in Gecko, which is the engines disagreeing about how much they will
+  still do for a `contenteditable` that has stopped behaving like one.
+  `dropEffect` is set alongside it, because the cursor has to promise what will
+  actually happen — a move for a drag that started here, a copy for anything
+  from outside, which we cannot remove from wherever it came from.
 - **`htmlFragmentToMarkdown` is the Turndown half alone.** `htmlToMarkdown` is a
   *document* function — it appends the reference definitions, re-wraps to the
   sniffed width and restores the opened file's bytes — and none of that means

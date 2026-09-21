@@ -598,6 +598,35 @@ function modelInputDragEnd() {
 }
 
 /**
+ * Say that a drop is welcome here, on every `dragover`.
+ *
+ * **Without this there is no `drop` event at all**, and that is the spec rather
+ * than a quirk: an element accepts a drop only if something cancels `dragover`
+ * over it. On the old core nobody had to, because the browser performs the drop
+ * *itself* — a `contenteditable` is a drop target the engine handles natively.
+ * Under the model core that native drop is exactly what is suppressed, so the
+ * editor becomes an ordinary **scripted** drop target and has to say so.
+ *
+ * Missing from slice 5 and found by hand on 2026-09-21: drag-and-drop did
+ * nothing in Blink and WebKit while working in Gecko, which is the engines
+ * disagreeing about how much they will do for a `contenteditable` that has
+ * stopped behaving like one — not about drag and drop.
+ *
+ * `dragenter` as well as `dragover`, because the two are one answer: an engine
+ * that reads the first as the refusal never sends the second.
+ *
+ * **`dropEffect` is what the cursor shows**, and it has to match what will
+ * actually happen or the pointer promises the wrong thing: a drag that started
+ * in this editor is a *move* — see `modelInputDrop` — and anything from outside
+ * is a copy, because we cannot remove it from wherever it came from.
+ */
+function modelInputDragOver(event) {
+  if (!modelCurrentDocument()) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = modelDragSource ? "move" : "copy";
+}
+
+/**
  * The model position under the pointer.
  *
  * Two spellings, because this is one of the places the engines never agreed:
@@ -721,6 +750,8 @@ function modelInputInstall(root) {
   root.addEventListener("paste", modelInputPasteEvent);
   root.addEventListener("dragstart", modelInputDragStart);
   root.addEventListener("dragend", modelInputDragEnd);
+  root.addEventListener("dragenter", modelInputDragOver);
+  root.addEventListener("dragover", modelInputDragOver);
   root.addEventListener("drop", modelInputDrop);
 }
 

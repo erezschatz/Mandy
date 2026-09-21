@@ -104,7 +104,7 @@ where it tells you which of the two cores drew the document.</p>
   <li><b>Paste some plain text mid-sentence</b> — copy a line from anywhere and press Ctrl/Cmd+V. It lands at the caret, the sentence stays one sentence, and the log shows a cancelled <code>paste</code> rather than an <code>insertFromPaste</code>. <b>Then paste something markdown-shaped</b>, like <code>*not emphasis*</code>: it stays literal, because plain text is never parsed.</li>
   <li><b>Paste several paragraphs at once</b>, into the middle of one. The paragraph splits, the first pasted block joins the head, the last joins the tail, and whole blocks land between. The caret ends where the tail rejoins.</li>
   <li><b>Copy something formatted from a web page and paste it.</b> <b>On this page the HTML branch cannot run</b> — it needs <code>app.js</code>'s Turndown, which this page deliberately does not load — so it falls through to the plain text. What is being measured here is the engine: check the log says the paste was cancelled, and that nothing diverges. The HTML pipeline itself is the <code>model</code> suite's. <b>To see it end to end</b>, open the app at <code>/?core=model</code> — the flag that makes the editor draw from the model — and paste the same thing there: the bold, the links and the lists should survive. Switch back with <code>/?core=legacy</code>, and note that under the flag the formats and Ctrl+Z do nothing, because they are slices 6 and 7.</li>
-  <li><b>Select a few words and drag them somewhere else in the document.</b> They <i>move</i>: the original goes and the text lands where you dropped it. This is the one that fails silently if it fails — the engine raises <code>deleteByDrag</code> and <code>insertFromDrop</code> as a pair, both are cancelled, and doing only the insert would duplicate the text and look like it worked.</li>
+  <li><b>Select a few words and drag them somewhere else in the document.</b> They <i>move</i>: the original goes and the text lands where you dropped it. This is the one that fails silently if it fails — the engine raises <code>deleteByDrag</code> and <code>insertFromDrop</code> as a pair, both are cancelled, and doing only the insert would duplicate the text and look like it worked. <b>The log names every drag event</b>, so read it when this misbehaves: no <code>dragstart</code> means the engine never entered drag mode and you were only extending the selection; a run of <code>dragover</code> with no <code>drop</code> means nothing told the engine the drop was welcome.</li>
   <li><b>Drag the same selection onto itself, then drag one spanning two blocks.</b> Both do nothing at all, on purpose. Report if either moves anything.</li>
   <li><b>Drag some text in from another window</b> and drop it. It lands where the pointer was, not where the caret was — which needs <code>caretPositionFromPoint</code> or <code>caretRangeFromPoint</code>, and <b>which of those answers is per engine</b>. Report if the drop lands in the wrong place.</li>
   <li><b>Use the toolbar's formats — there is no toolbar here, so skip this one.</b> In the app with <code>?core=model</code>, the format bar does nothing on purpose: <code>execCommand</code> fires <code>input</code> but never <code>beforeinput</code>, measured in Chrome 152, so it cannot be intercepted and is refused rather than allowed to change the DOM behind the model's back. Formats arrive as model commands in slice 7.</li>
@@ -229,6 +229,25 @@ where it tells you which of the two cores drew the document.</p>
       (e.cancelable ? "" : "  NOT CANCELABLE — the design does not hold here"),
       e.cancelable ? null : "fail");
   }, true);
+
+  // The drag sequence, logged before the real handlers for the same reason the
+  // rest is: what is reported is what the engine sent. A drag is five events
+  // and the interesting failures are all *missing* ones — no `dragstart` means
+  // the engine never entered drag mode, and no `drop` after a run of
+  // `dragover`s means nothing said the drop was welcome. `dragover` fires
+  // continuously, so it is counted rather than logged.
+  let dragOvers = 0;
+  for (const type of ["dragstart", "dragenter", "dragleave", "drop", "dragend"]) {
+    editor.addEventListener(type, (e) => {
+      const types = e.dataTransfer ? Array.from(e.dataTransfer.types || []).join(", ") || "none" : "no dataTransfer";
+      say(type + "  types=" + types +
+        (type === "drop" ? "  after " + dragOvers + " dragover" : "") +
+        (e.dataTransfer && e.dataTransfer.dropEffect ? "  dropEffect=" + e.dataTransfer.dropEffect : ""),
+        "note");
+      if (type === "dragstart") dragOvers = 0;
+    }, true);
+  }
+  editor.addEventListener("dragover", () => { dragOvers += 1; }, true);
 
   editor.addEventListener("compositionstart", () => say("compositionstart — the engine owns the node now", "note"), true);
   editor.addEventListener("compositionupdate", (e) => say("compositionupdate  " + JSON.stringify(e.data), "note"), true);
