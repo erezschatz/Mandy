@@ -7139,7 +7139,7 @@ a bullet, which automation cannot raise: a synthetic keydown produces no
 `insertParagraph`. It belongs to step 6's protocol, with a human at the
 keyboard. `sw.js`'s `VERSION` goes to `v1.42`.
 
-## 2026-09-21 — Slice 6, step 4: the engine's own undo gesture
+## 2026-09-21 — `a138703` — Slice 6, step 4: the engine's own undo gesture
 
 `historyUndo` and `historyRedo` are what an engine raises for the macOS
 trackpad swipe, a context menu's Undo, or a mobile keyboard's own button. They
