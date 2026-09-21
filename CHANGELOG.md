@@ -7295,3 +7295,63 @@ with this slice, and a trap for whoever drives the protocol next.
 **And one about driving it**: `switchToTab` is async, so two tab clicks in one
 statement race and the second can be lost. A run that does that reads as a
 switch that silently did nothing, which cost a round trip here.
+
+## 2026-09-21 — Slice 6, step 6: the measurement, and a claim that did not survive it
+
+The whole clone's cost, which the 2026-09-19 decision to clone at all is owed —
+it was made against today's HTML-string snapshots and is only worth keeping
+while that comparison holds. It half holds.
+
+**On time it holds comfortably.** A clone is about 40% of a parse of the same
+file and a fraction of a render: 0.57ms on `corpus/todo.md`, 1.22ms on
+`corpus/claude.md`, against the 16.8ms a full render already measured. Nothing
+about the per-keystroke cadence is in doubt.
+
+**On memory it does not, and "strictly cheaper than what ships" was wrong.**
+Measured with `--expose-gc`, three runs per file agreeing within a kilobyte: a
+state is **743KB** for `corpus/todo.md` (48KB of markdown, 51KB rendered) and
+**1,610KB** for `corpus/claude.md` (105KB, 119KB). That is **14 to 15 times**
+the HTML string it replaces, or roughly 15KB of state per KB of markdown — so
+`UNDO_LIMIT = 100` is **73MB and 157MB per tab**. The constant's own comment
+says it is sized so "a large document cannot run the tab out of memory", and
+that was calibrated against strings.
+
+**Where it goes**, so any fix aims at the right thing, on `corpus/claude.md`:
+tokens **62%**, inline nodes **32%**, blocks 5%. The inline layer is 94% of a
+state.
+
+**That re-opens step 1 honestly rather than settling it.** Step 1 chose to clone
+every token on a *time* measurement — the saving was 0.19ms and 0.23ms, and what
+it bought was the absence of a rule every future command would have to remember.
+Those inputs have changed. The three ways out are different sizes: a smaller
+`UNDO_LIMIT` under the flag (one constant, trades undo depth for memory),
+sharing the tokens nothing mutates (62%, and reinstates the rule step 1
+refused), or copy-on-write, which the 2026-09-19 decision explicitly kept
+available "on a measurement". **This is that measurement, and the choice is not
+made here** — it trades a user-visible amount of undo against memory, which is
+not a decision to take inside a slice's last step.
+
+**The protocol is written and not yet run.** Ten steps in REWRITE.md's step 6,
+in the running app under `?core=model` rather than on the check page, for the
+reason step 4 recorded: undo is the application around the input layer and that
+page ships none of it. Steps 1, 5, 8 and 9 were driven in Blink and are clean —
+a typing run undoing as one step with the caret returning to where typing
+started, **Tab's indent undoing and redoing whole with the file's bytes
+identical either way**, a fresh edit killing the redo branch, and two tabs
+reaching neither each other's content nor each other's stack, with the savepoint
+surviving the round trip. `modelVerifyRender` stayed quiet throughout.
+
+The indent case is the valuable one, because it is a **structural** undo — the
+block count goes 36, 37, 36 — and so it is the path Enter would take. Enter
+itself is what no machine can drive: a synthetic keydown raises no
+`insertParagraph`, which is why steps 3 and 4 need a human, and step 4 is
+**TODO 1.6's reported case**, which that item stays open until somebody watches.
+
+**One trap written into the protocol rather than left to be rediscovered**: step
+4 has to be run on an opened file or a document made with New. A document
+restored from autosave that was already dirty has no savepoint, because
+`initUndoBaseline` will not invent one for it — so its dot cannot clear however
+far back an undo goes, which reads exactly like the bug being tested for. That
+cost a detour here.
+
+No code changed, so nothing ran; `npm test` is green at 1,567.

@@ -3095,7 +3095,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         cancelling the event stop the insertion, where does a drop land.
 
     *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 to 5
-        of six are done and tested.** A stack of model states with the caret as a model position,
+        are done and tested; step 6 is measured, its protocol written and not yet
+        run, and it raised one decision that is open — see step 6.** A stack of model states with the caret as a model position,
         replacing the whole-document `innerHTML` snapshots.
         Coalescing carries over unchanged — same `inputType`, inside 600 ms,
         merges; everything else starts a step — because the commands now name
@@ -3480,26 +3481,94 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             clicks in one statement race and the second can be lost. A run that
             does that reads as a switch that silently did nothing.
 
-        6.  **The measurement, and the protocol.** The whole clone's cost on
-            `docs/TODO.md` — the document the estimate has been taken on all
-            along — because the 2026-09-19 decision was made against today's
-            HTML-string snapshots and is only worth keeping while that
-            comparison holds. Step 1's token half is already measured and
-            settled; what is left is the blocks, the inline nodes and the
-            `parent` rebuild around them.
+        6.  **The measurement, and the protocol — measured; protocol written,
+            not yet run.** The whole clone's cost, because the 2026-09-19
+            decision was made against today's HTML-string snapshots and is only
+            worth keeping while that comparison holds.
 
-            And the protocol, which is the half no suite can reach — **in the
-            running app under `?core=model` rather than on the check page**, as
-            step 4 records: that page ships no `undo.js` on purpose, and what it
-            asks instead is whether an engine raises a `historyUndo` at all.
-            What an app run has to show: that an undo puts the caret back where
-            the edit was, that a run of typing is one step and Enter is its own,
-            that an undo after a paste takes the whole paste, and **TODO 1.6's
-            exact reported case** — open a file, Enter at the end of a bullet,
-            Ctrl+Z — which that item says it stays open until the new undo is
-            watched doing correctly. Steps 2 and 3 already took the first of
-            those in Blink; Enter is what automation cannot raise, so the rest
-            needs a human at a keyboard in all three engines.
+            **On time it holds comfortably.** A clone is about 40% of a parse of
+            the same file and nowhere near a render: 0.57ms on
+            `corpus/todo.md`, 1.22ms on `corpus/claude.md`, against a 16.8ms
+            full render. Nothing about the per-keystroke cadence is in doubt.
+
+            **On memory it does not hold, and the plan's wording was wrong.**
+            "Strictly cheaper than what ships" is true of time and false of
+            space by an order of magnitude. Measured with `--expose-gc`, three
+            runs per file agreeing within a kilobyte:
+
+            | File | Markdown | Rendered HTML | Model state | ×100 states |
+            | --- | --- | --- | --- | --- |
+            | `corpus/todo.md` | 48KB | 51KB | **743KB** | 73MB |
+            | `corpus/claude.md` | 105KB | 119KB | **1,610KB** | 157MB |
+
+            So a model state is **14 to 15 times** the HTML string it replaces,
+            and roughly 15KB of state per KB of markdown. `UNDO_LIMIT`'s own
+            comment says the cap is there so "a large document cannot run the
+            tab out of memory" — that justification was calibrated against
+            strings, and at 100 deep **per tab** it no longer does that job.
+
+            **Where it goes, so that any fix aims at the right thing**, on
+            `corpus/claude.md`: **tokens 62%**, **inline nodes 32%**, blocks 5%.
+            The inline layer is 94% of a state.
+
+            That re-opens step 1 honestly rather than settling it: step 1 chose
+            to clone every token on a **time** measurement, where the saving was
+            0.23ms and the cost was a rule about mutation. The memory
+            measurement changes those inputs, and the three ways out are
+            different sizes — a smaller `UNDO_LIMIT` under the flag (one
+            constant, trades undo depth for memory), sharing the tokens nothing
+            mutates (62%, and reinstates the rule step 1 refused), or
+            copy-on-write, which the 2026-09-19 decision explicitly kept
+            available "on a measurement". **This is that measurement. The choice
+            is not made here**, because it trades a user-visible amount of undo
+            against memory, which is not a decision to take inside a slice's
+            last step.
+
+            **The protocol.** Not on `front/input-check.html` — see step 4 — but
+            in the running app under `?core=model`, because undo is the
+            application around the input layer and that page ships none of it.
+            Run it in Chrome, Firefox and Safari. What automation could already
+            reach is marked, and was clean in Blink on 2026-09-21.
+
+            1.  **A run of typing is one step.** Type a word mid-paragraph, then
+                one Ctrl/Cmd+Z: the whole word goes, and the caret is back where
+                you started typing. *(Blink: clean.)*
+            2.  **A pause splits the run.** Type, wait a second, type again. Two
+                Ctrl/Cmd+Z, one per burst.
+            3.  **Enter is its own step**, and this is the one no machine can
+                drive: automation's synthetic keydown raises no
+                `insertParagraph`. Type, Enter, type. Three Ctrl/Cmd+Z take back
+                three things, in order.
+            4.  **TODO 1.6's reported case**, which is why that item is open:
+                **open a file**, put the caret at the end of a bullet, press
+                Enter, then Ctrl/Cmd+Z. The caret comes back to the end of that
+                bullet rather than to the top of the document, and the tab's
+                edited dot clears. *(It has to be an opened file, or a document
+                made with New: one restored from autosave that was already dirty
+                has no savepoint — `initUndoBaseline` will not invent one — so
+                its dot cannot clear and the step would read as a failure.)*
+            5.  **Indent and outdent undo whole.** Tab inside a bullet, then
+                Ctrl/Cmd+Z: the item and its followers come back, and a redo
+                puts them out again. This is a *structural* undo — the block
+                count changes — and it is the path Enter would have taken.
+                *(Blink: clean, and the file's bytes are identical either way.)*
+            6.  **A paste is one step.** Paste several paragraphs into the
+                middle of one; a single Ctrl/Cmd+Z takes the whole paste,
+                including the rejoin.
+            7.  **A composed character is one step.** Hold a vowel for the macOS
+                popup, or use a dead key, then Ctrl/Cmd+Z once.
+            8.  **The redo branch dies on a fresh edit.** Undo, type something,
+                then Ctrl+Shift+Z: nothing comes back. *(Blink: clean.)*
+            9.  **Two tabs never reach each other.** Type in one, New, type in
+                the second, switch back and forth, undo in each: each takes back
+                its own edit only. *(Blink: clean, and the savepoint survives the
+                round trip.)*
+            10. **The engine's own gesture** is `front/input-check.html`'s
+                question rather than this one, and is already answered: no
+                engine raises `historyUndo` at all.
+
+            Throughout, `modelVerifyRender` must stay quiet — set
+            `modelVerifyEnabled` in the console before starting.
 
         TODO 1.6's caret half — Ctrl+Z after Enter at the end of a bullet
         putting the caret at the top — goes by construction: it is a

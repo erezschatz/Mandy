@@ -1349,6 +1349,22 @@ parked bundle's states describe, with its own ids — and a state's caret resolv
 inside the state's own clone, so that cannot matter. Resolved against the live
 document instead, the ids would be another parse's.
 
+**Step 6 measured what a state costs, and one of the plan's claims did not
+survive it.** A clone is cheap in *time* — 0.57ms on `corpus/todo.md`, 1.22ms on
+`corpus/claude.md`, about 40% of a parse and a fraction of a 16.8ms render — and
+expensive in *space*: **743KB and 1,610KB per state**, against the 51KB and
+119KB HTML strings it replaces. **Fourteen to fifteen times**, or roughly 15KB
+of state per KB of markdown, which means `UNDO_LIMIT = 100` is 73MB and 157MB
+**per tab**. That constant's own comment says it is sized so "a large document
+cannot run the tab out of memory", and that was calibrated against strings.
+Where it goes, on `corpus/claude.md`: tokens 62%, inline nodes 32%, blocks 5% —
+the inline layer is 94% of a state. **The fix is not chosen here**: it trades
+undo depth against memory, the candidates are a smaller limit under the flag,
+sharing the tokens nothing mutates, and the copy-on-write the 2026-09-19
+decision kept available for exactly this measurement, and picking between them
+is not a slice's last step's business. REWRITE.md's step 6 has the table and the
+argument.
+
 What the model still does *not* do is run a format command, which is slice 7.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
