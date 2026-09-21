@@ -3094,7 +3094,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         are untouched by it: does the engine hand over `text/html` at all, does
         cancelling the event stop the insertion, where does a drop land.
 
-    *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 and 2
+    *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 to 3
         of six are done and tested.** A stack of model states with the caret as a model position,
         replacing the whole-document `innerHTML` snapshots.
         Coalescing carries over unchanged — same `inputType`, inside 600 ms,
@@ -3301,7 +3301,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             whole-document offset walk left to miscount, there is simply no
             selection in the state yet.
 
-        3.  **The caret, which is a `(blockId, offset)` rather than a block.**
+        3.  **The caret, which is a `(blockId, offset)` rather than a block —
+            done and tested.**
             `modelReadSelection` hands back a block *reference*, and a state's
             reference has to resolve against that state's own blocks or it
             points into a document nobody is showing. Ids survive the clone, so
@@ -3310,6 +3311,43 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             the state, which is safe only because a fresh edit clears the redo
             branch — stated because it is the kind of thing that is true until
             somebody adds a command that mints an id without clearing it.
+
+            **Resolved against the document being installed, never against the
+            state.** `undoApplyState` clones the stored state and then resolves
+            into the clone, so the caret lands in the tree that is about to be
+            rendered; resolving against the state would put it in one nobody
+            renders. That is the whole reason for the detour through ids, and
+            the `undo` suite asks it directly — the resolved block has to be one
+            of the blocks now on screen.
+
+            **A block the document has not got gives null rather than a guess**,
+            and an end that has gone leaves the caret that has not, taking a
+            range down to a position rather than the whole selection down to
+            nothing. Neither can normally happen, since a state's selection is
+            read at the same moment its clone is taken; both are answered rather
+            than thrown because "cannot normally" is not "cannot". An offset
+            past the end of its block needs no such care: `modelDomLocate` has
+            clamped to the end since stage 1, which is `undo.js`'s own rule kept
+            on purpose.
+
+            **Measured in Blink, on the second origin again.** Caret at block 3
+            offset 5, type three characters, Ctrl+Z — the caret comes back to
+            block 3 offset 5, the document byte-identical and
+            `modelVerifyRender` clean. Then the case most of this repo's prose
+            actually is: a block two levels deep whose owning element is its
+            `<li>`, because markdown-it hides a tight item's paragraph. Typing
+            and undoing there restores the bytes, and a redo puts the caret back
+            inside that nested block after the inserted text. So the lookup
+            reaches through the recursion and through a block with no element of
+            its own.
+
+            **What an undo restores is the caret the restored state was taken
+            with**, which is the old core's rule kept rather than re-decided: in
+            the ordinary type-then-undo that is where the edit was, and after a
+            caret move with no edit between it is where the caret was when that
+            state was current. Worth stating because a run that moves the caret
+            between two undos reads as wrong until you know which of the two it
+            is watching.
 
         4.  **The engine's own undo gesture.** `historyUndo` and `historyRedo`
             arrive as `beforeinput` — the macOS trackpad gesture, a context

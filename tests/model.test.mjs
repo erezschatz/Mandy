@@ -87,7 +87,7 @@ export default function run(check) {
     modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource,
     modelInlineLeaves, modelTrimRendering,
     modelInsertBlocks, modelTextBlocks, modelAdoptBlocks,
-    modelCloneDocument,
+    modelCloneDocument, modelRecordSelection, modelResolveSelection, modelBlockById,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -110,7 +110,8 @@ export default function run(check) {
       " modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource," +
       " modelInlineLeaves, modelTrimRendering," +
       " modelInsertBlocks, modelTextBlocks, modelAdoptBlocks," +
-      " modelCloneDocument };",
+      " modelCloneDocument, modelRecordSelection, modelResolveSelection," +
+      " modelBlockById };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -3481,6 +3482,53 @@ export default function run(check) {
     check("and the clone still renders the code it had",
       modelRenderBlock(twin, md) === beforeHtml);
     check("while the document has the edit", modelSourceText(fence) !== beforeText);
+
+    // --- slice 6's step 3: the caret travels as an id --------------------
+    //
+    // A state cannot hold a block reference: it would point into the document
+    // the state is a copy of, which the restore is about to replace. So the
+    // caret is recorded as an id and resolved against the document being
+    // installed -- and that last clause is the property, because resolving
+    // against the state itself would put the caret in a tree nobody renders.
+
+    doc = parse(src);
+    const blocks = modelFlatten(doc).filter((b) => b.inlines && b.inlines.length);
+    const one = blocks[0], other = blocks[1];
+
+    check("a recorded selection holds an id rather than a block",
+      modelRecordSelection({ block: one, offset: 4 }).block === one.id);
+    check("and carries the other end when there is one",
+      modelRecordSelection({ block: one, offset: 0, to: { block: other, offset: 2 } }).to.block === other.id);
+    check("no selection records as none", modelRecordSelection(null) === null);
+    check("and so does one with no block", modelRecordSelection({ offset: 3 }) === null);
+
+    copy = modelCloneDocument(doc);
+    const record = modelRecordSelection({ block: one, offset: 4, to: { block: other, offset: 2 } });
+    const back = modelResolveSelection(copy, record);
+    check("resolving finds the block with that id", back.block.id === one.id);
+    // The one that matters: the same id, and a different object, because it is
+    // the clone's block rather than the one the record was taken from.
+    check("in the document it was resolved against, not the one it came from",
+      back.block !== one && modelFlatten(copy).includes(back.block));
+    check("and the same for the other end",
+      back.to.block.id === other.id && back.to.block !== other);
+    check("with the offsets untouched", back.offset === 4 && back.to.offset === 2);
+
+    check("a record naming a block this document has not got resolves to nothing",
+      modelResolveSelection(copy, { block: 999999, offset: 0 }) === null);
+    check("and no record resolves to none", modelResolveSelection(copy, null) === null);
+    // An end that has gone takes the range down to a caret rather than the
+    // whole selection down to nothing: the position that survived is still a
+    // place the document has.
+    check("an end that has gone leaves the caret that has not",
+      modelResolveSelection(copy, { block: one.id, offset: 1, to: { block: 999999, offset: 0 } }).to === undefined);
+
+    // The lookup reaches a nested block, which is most of this repo's prose.
+    const nested = modelFlatten(doc).find((b) => b.parent && b.parent.parent);
+    check("the lookup reaches a block that is not top level",
+      !!nested && modelBlockById(doc, nested.id) === nested);
+    check("and finds the clone's copy of it in the clone",
+      modelBlockById(copy, nested.id) !== nested && modelBlockById(copy, nested.id).id === nested.id);
 
     // The counter comes across, so a restored state mints the ids it would have
     // minted the first time rather than colliding with what is on screen.

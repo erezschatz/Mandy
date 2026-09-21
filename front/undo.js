@@ -229,17 +229,22 @@ function undoRestoreSelection(saved) {
  * because the live document is about to be edited and a state that moves with
  * it is not a state — which is the whole of slice 6's step 1.
  *
- * The selection is the old core's character offset, and under the model core it
- * is null until step 3, which is the caret as a `(blockId, offset)` resolved
- * against the state's own blocks. So an undo restores the document and not yet
- * the place you were in it, which is a gap with a name rather than a bug.
+ * The selection comes in two shapes for the same reason the content does. The
+ * old core's is a character offset over the whole editor; the model core's is a
+ * `(blockId, offset)`, which is a block *id* rather than a block precisely so
+ * that a state holds no reference into the document it is a copy of.
  */
 function undoCaptureState() {
   if (!undoModelCore()) {
     return { html: editor.innerHTML, model: null, selection: undoCaptureSelection() };
   }
   const doc = modelCurrentDocument();
-  return { html: null, model: doc ? modelCloneDocument(doc) : null, selection: null };
+  if (!doc) return { html: null, model: null, selection: null };
+  return {
+    html: null,
+    model: modelCloneDocument(doc),
+    selection: modelRecordSelection(modelReadSelection(editor, doc)),
+  };
 }
 
 /**
@@ -257,7 +262,11 @@ function undoCaptureState() {
  */
 function undoApplyState(snapshot) {
   if (snapshot.model) {
-    modelRestoreDocument(editor, modelCloneDocument(snapshot.model), md, snapshot.selection);
+    // Resolved against the clone being installed, never against the state:
+    // the caret has to land in the tree that is about to be rendered, which is
+    // the whole reason a state records ids rather than blocks.
+    const doc = modelCloneDocument(snapshot.model);
+    modelRestoreDocument(editor, doc, md, modelResolveSelection(doc, snapshot.selection));
   } else if (snapshot.html !== null) {
     editor.innerHTML = snapshot.html;
   }

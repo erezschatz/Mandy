@@ -1288,10 +1288,21 @@ running. Three things in it:
   through it, so calling it again could only append a block the state never had
   — a document the user never saw and cannot undo back out of.
 
-**The caret is not restored yet** — measured, the editor keeps focus and the
-selection lands at offset 0, the top of the document. That is step 3, which
-makes a state's selection a `(blockId, offset)` resolved against the state's own
-blocks.
+**Step 3 gave it the caret**, same day. A state's selection is a
+`(blockId, offset)` rather than a block, because a block reference would point
+into the document the state is a copy of — the one the restore is about to throw
+away. `modelRecordSelection` and `modelResolveSelection` are the two ends, and
+the second is **resolved against the document being installed**, never against
+the state: `undoApplyState` clones the state and resolves into the clone, so the
+caret lands in the tree that is about to be rendered. Ids survive the clone, so
+the way back is a lookup rather than a search for something that looks the same.
+A block the document has not got gives null rather than a guess, and an end that
+has gone leaves the caret that has not.
+
+**What an undo restores is the caret the restored state was taken with** — the
+old core's rule kept rather than re-decided. In the ordinary type-then-undo that
+is where the edit was; after a caret move with no edit between, it is where the
+caret was when that state was current.
 
 What the model still does *not* do is run a format command, which is slice 7.
 

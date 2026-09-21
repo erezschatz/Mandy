@@ -4352,3 +4352,64 @@ function modelRestoreDocument(root, doc, md, selection = null) {
   modelRender(root, doc, md, selection);
   return doc;
 }
+
+/**
+ * A selection with block *ids* where the block references were.
+ *
+ * A state holds one of these rather than what `modelReadSelection` hands back,
+ * because that carries references into the live document — the very document
+ * the state exists to be independent of. Keep them and the caret is pinned to
+ * blocks the restore is about to throw away, so the render would put it
+ * nowhere; and the state would hold the live tree alive besides.
+ *
+ * Ids survive the clone, so the way back is a lookup rather than a search for
+ * something that looks the same.
+ */
+function modelRecordSelection(selection) {
+  if (!selection || !selection.block) return null;
+  const at = { block: selection.block.id, offset: selection.offset };
+  if (selection.to && selection.to.block) {
+    at.to = { block: selection.to.block.id, offset: selection.to.offset };
+  }
+  return at;
+}
+
+// One block by id. A walk rather than `modelFlatten`, because this wants one
+// block and that builds an array of every block in the document to find it.
+function modelBlockById(doc, id) {
+  let found = null;
+  (function walk(blocks) {
+    for (const block of blocks) {
+      if (found) return;
+      if (block.id === id) { found = block; return; }
+      if (block.children) walk(block.children);
+    }
+  })(doc.blocks);
+  return found;
+}
+
+/**
+ * And the way back, **against the document being installed** rather than
+ * against the one the state was taken from. That is the whole point of the
+ * detour through ids: `undoApplyState` clones the stored state and resolves
+ * into the clone, so the caret lands in the tree that is about to be rendered.
+ *
+ * A block this document does not have gives null rather than a guess — better
+ * no caret than one in a place the document never had. It cannot normally
+ * happen, since a state's selection is read at the same moment its clone is
+ * taken, and it is answered rather than thrown because "cannot normally" is not
+ * "cannot". An offset past the end of a block needs no such care:
+ * `modelDomLocate` has clamped to the end since stage 1, which is `undo.js`'s
+ * own rule kept on purpose.
+ */
+function modelResolveSelection(doc, at) {
+  if (!at) return null;
+  const block = modelBlockById(doc, at.block);
+  if (!block) return null;
+  const out = { block, offset: at.offset };
+  if (at.to) {
+    const to = modelBlockById(doc, at.to.block);
+    if (to) out.to = { block: to, offset: at.to.offset };
+  }
+  return out;
+}

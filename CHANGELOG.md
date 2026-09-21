@@ -7075,3 +7075,66 @@ offset 0. The document is right and the place in it is not. That is step 3, and
 it is the *shape* of TODO 1.6's caret half rather than a return of it: there is
 no whole-document offset walk left to miscount, there is simply no selection in
 the state yet. `sw.js`'s `VERSION` goes to `v1.41`.
+
+## 2026-09-21 — Slice 6, step 3: the caret travels as an id
+
+An undo now puts the caret back where it was, which step 2 left at the top of
+the document. A state's selection is a `(blockId, offset)` rather than a block,
+because a block reference points into the document the state is a copy of — the
+one the restore is about to throw away — so keeping it would pin the caret to
+nodes nobody will render, and hold the live tree alive besides.
+
+`modelRecordSelection` and `modelResolveSelection` in `model.js` are the two
+ends, with `modelBlockById` between them — a walk rather than `modelFlatten`,
+which builds an array of every block in the document to find one.
+
+**Resolved against the document being installed, never against the state.**
+`undoApplyState` clones the stored state and then resolves into that clone, so
+the caret lands in the tree about to be rendered; resolving against the state
+would put it in one nobody renders. That is the whole reason for the detour
+through ids, and it is asked directly rather than inferred — the resolved block
+has to be one of the blocks now on screen.
+
+**A block the document has not got gives null rather than a guess**, and an end
+that has gone leaves the caret that has not, taking a range down to a position
+rather than the whole selection down to nothing. Neither can normally happen,
+since a state's selection is read at the same moment its clone is taken; both
+are answered rather than thrown because "cannot normally" is not "cannot". An
+offset past the end of its block needs no such care — `modelDomLocate` has
+clamped to the end since stage 1, which is `undo.js`'s own rule kept on purpose.
+
+Seventeen new checks, 1,548 in all: thirteen in `model`, where record and
+resolve are pure functions over a real tree and a real clone — the round trip,
+both ends of a range, the offsets untouched, a missing id, an end that has gone,
+and the lookup reaching a nested block and finding *the clone's* copy of it in
+the clone — and four in `undo`, where what a stub can see is the seam: that an
+undo asks for the caret the state was taken with, resolved against the document
+it installed, in an object that was not on screen before it, and that a state
+taken with no caret asks for none. Each property was broken on purpose first;
+resolving against the state instead of the clone fails exactly one check, and
+capture keeping the block reference fails one and throws on another.
+
+**And driven in Blink on the second origin.** Caret at block 3 offset 5, type
+three characters, Ctrl+Z — the caret comes back to block 3 offset 5, the
+document byte-identical, `modelVerifyRender` reporting 36 blocks compared and no
+problems. Then the case most of this repo's prose actually is: a block two
+levels deep whose *owning element is its `<li>`*, because markdown-it hides a
+tight item's paragraph. Typing and undoing there restores the bytes, the dirty
+flag clears, and a redo puts the caret back inside that nested block after the
+inserted text — so the lookup reaches through the recursion and through a block
+with no element of its own.
+
+**What an undo restores is the caret the restored state was taken with**, which
+is the old core's rule kept rather than re-decided: in the ordinary
+type-then-undo that is where the edit was, and after a caret move with no edit
+between it is where the caret was when that state was current. Written down
+because a run that moves the caret between two undos reads as wrong until you
+know which of the two it is watching.
+
+**TODO 1.6 is not closed by this.** Its caret half is the design that produced
+it being gone, and that much is now true — there is no whole-document offset
+walk left to miscount. But the item says it stays open until the new undo is
+watched doing its reported case correctly, and that case is Enter at the end of
+a bullet, which automation cannot raise: a synthetic keydown produces no
+`insertParagraph`. It belongs to step 6's protocol, with a human at the
+keyboard. `sw.js`'s `VERSION` goes to `v1.42`.

@@ -32,19 +32,41 @@ const REPLACEMENT_SITES = {
 // A fake model core. `live` is the document on screen; `clone` counts as a
 // generation so a check can tell one copy from another, which is how "applying
 // installs a clone of the stored state" is asked at all.
+// A fake model core. `live` is the document on screen; `clones` counts as a
+// generation so a check can tell one copy from another, which is how "applying
+// installs a clone of the stored state" is asked at all. Its blocks are copied
+// per generation for the same reason one level down: the caret's whole point is
+// that it resolves against the document being installed, and that is only
+// visible if each generation's blocks are distinct objects.
 function fakeModel() {
-  let live = { text: "start", clones: 0 };
+  let live = { text: "start", clones: 0, blocks: [{ id: 1 }, { id: 2 }] };
+  let caret = { block: live.blocks[0], offset: 0 };
   const restored = [];
-  const clone = (doc) => ({ ...doc, clones: doc.clones + 1 });
+  const applied = [];
+  const clone = (doc) => ({ ...doc, clones: doc.clones + 1, blocks: doc.blocks.map((b) => ({ ...b })) });
   return {
     get live() { return live; },
+    get applied() { return applied; },
     restored,
     edit: (text) => { live.text = text; },
+    // Where the browser's caret is, in model terms. Set by a check before an
+    // edit, exactly as a real one is set by the render the edit ends with.
+    look: (id, offset) => { caret = { block: live.blocks.find((b) => b.id === id), offset }; },
     scope: {
       modelCoreEnabled: () => true,
       modelCurrentDocument: () => live,
       modelCloneDocument: clone,
-      modelRestoreDocument: (root, doc) => { live = doc; restored.push(doc); return doc; },
+      modelRestoreDocument: (root, doc, md, selection) => {
+        live = doc; restored.push(doc); applied.push(selection); return doc;
+      },
+      modelReadSelection: () => caret,
+      modelRecordSelection: (sel) =>
+        (sel && sel.block ? { block: sel.block.id, offset: sel.offset } : null),
+      modelResolveSelection: (doc, at) => {
+        if (!at) return null;
+        const block = doc.blocks.find((b) => b.id === at.block);
+        return block ? { block, offset: at.offset } : null;
+      },
       md: {},
     },
   };
@@ -536,6 +558,43 @@ export default function run(check) {
   h.key({ ctrlKey: true, key: "z", preventDefault: () => taken.push("z") });
   check("Ctrl+Z still takes the key from the browser", taken.length === 1);
   check("and now undoes through the model", h.model.live.text === "start");
+
+  // --- the caret, which travels as an id ------------------------------------
+  //
+  // Slice 6's step 3. A state cannot hold a block reference -- it would point
+  // into the document the state is a copy of, and the restore replaces that.
+  // So capture records an id and apply resolves it **against the clone it is
+  // installing**, which is the half a stub can actually check: the resolved
+  // block has to be one of the blocks now on screen, not one of the state's.
+  //
+  // The caret an undo restores is the one the state was taken with, which is
+  // to say the one that was there *before* the edit being undone -- so these
+  // set the caret before the reset that mints the state they come back to.
+
+  h = harness({ modelCore: true });
+  h.model.look(2, 7);
+  h.undoReset();
+  h.model.look(1, 0);
+  h.type("a");
+  const wasLive = h.model.live.blocks;
+  h.undo();
+  const put = h.model.applied[h.model.applied.length - 1];
+  check("an undo restores the caret the state was taken with",
+    put && put.block.id === 2 && put.offset === 7);
+  check("resolved against the document it installed",
+    h.model.live.blocks.includes(put.block));
+  check("which is a different object from the one on screen before it",
+    !wasLive.includes(put.block));
+
+  // A state taken with no caret restores none, rather than a made-up one.
+  h = harness({ modelCore: true });
+  h.model.look(99, 0);          // no such block: modelReadSelection sees nothing
+  h.undoReset();
+  h.model.look(1, 0);
+  h.type("a");
+  h.undo();
+  check("and a state taken with no caret asks for none",
+    h.model.applied[h.model.applied.length - 1] === null);
 
   // The refusal this replaces is gone, and the source says so rather than
   // leaving a reader to wonder whether it was forgotten.
