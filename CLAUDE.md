@@ -455,7 +455,11 @@ same-origin with `/model.js`, which is the only thing the `/tests/` route was
 ever buying — so it needs no `CHECK_PAGES` entry and no server change — and it
 installs the input layer itself rather than flipping the model core's flag, so
 running it does not change the app's state on the same origin. It is in none of
-the three registries: it is a page, not a module.
+the three registries: it is a page, not a module. **It says on the page that it
+is always the model core and needs no flag**, added 2026-09-21 after somebody
+looked for the toolbar's `model core` marker on it: there is no toolbar here,
+and the marker is the app's answer to *which of two cores drew this*, which is
+not a question this page has.
 
 [tests/tab-shortcut-check.html](tests/tab-shortcut-check.html) is the same kind
 of page and the same kind of question, for the tab bar's keyboard: Ctrl+Tab,

@@ -6692,3 +6692,22 @@ Verified on both cores at 1024px and 375px, light and dark: menus unclipped, no
 row overflow, the toggle on screen, and no marker at all under `?core=legacy`.
 1,481 checks unchanged — this is CSS and one DOM insert, and no suite reads
 either. `sw.js`'s `VERSION` goes to `v1.37`.
+
+## 2026-09-21 — The input check says it is always the model core
+
+Somebody went looking for yesterday's `model core` marker on
+[front/input-check.html](front/input-check.html) and did not find one, which is
+correct and unhelpful in equal measure. The page has no toolbar, and it installs
+the input layer **itself** rather than reading `modelCoreEnabled()` — deliberately,
+so that running it does not flip the flag for the app on the same origin. So
+there is no marker there and there should not be: the marker answers *which of
+the two cores drew this document*, and on that page there is only one.
+
+Nothing on the page said so, though — only a comment in its source. It now says
+it in the first line of prose you read, with the marker drawn inline so it is
+recognisable, and points at `/?core=model` for the place the question is real.
+
+The flag is also per browser, since it lives in `localStorage`, which is worth
+saying out loud: setting it in one browser says nothing about another.
+
+No code changed, so nothing ran. `npm test` was green at 1,481 checks before it.
