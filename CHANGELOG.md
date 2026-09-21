@@ -7410,7 +7410,7 @@ property was broken on purpose first; dropping `doc.bytes` from `modelParse`
 passed every check in the repo until those three existed, which is why they do.
 `sw.js`'s `VERSION` goes to `v1.44`.
 
-## 2026-09-21 — The byte cap comes out again, and step 1's argument is qualified
+## 2026-09-21 — `327ea55` — The byte cap comes out again, and step 1's argument is qualified
 
 Built this morning, removed this afternoon, and recorded rather than quietly
 reverted because the reason is the useful part.
@@ -7446,7 +7446,7 @@ leaving a reader to find the contradiction.
 
 `sw.js`'s `VERSION` goes to `v1.45`, and the check count returns to 1,567.
 
-## 2026-09-21 — Plan slice 6's step 7: a state shares what the edit did not touch
+## 2026-09-21 — `327ea55` — Plan slice 6's step 7: a state shares what the edit did not touch
 
 A seventh step in a six-step slice, written before any of it is built. What a
 state is today is a full copy of the document, so typing one character copies
