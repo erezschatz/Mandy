@@ -6951,7 +6951,7 @@ measured against.
 
 No code changed, so nothing ran.
 
-## 2026-09-21 — Slice 6, step 1: an undo state is a clone of the document
+## 2026-09-21 — `2bda96e` — Slice 6, step 1: an undo state is a clone of the document
 
 `modelCloneDocument` in [front/model.js](front/model.js), and nothing else —
 the one piece of slice 6 that is pure model, with no DOM and no stack in it, so
