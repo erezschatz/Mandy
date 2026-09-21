@@ -29,7 +29,7 @@ const REPLACEMENT_SITES = {
   "tabs.js": 0, // the tab swap goes through loadDocumentHtml
 };
 
-function harness({ html = "<p>start</p>" } = {}) {
+function harness({ html = "<p>start</p>", modelCore = false } = {}) {
   const editor = makeEl("div");
   editor.innerHTML = html;
 
@@ -62,6 +62,11 @@ function harness({ html = "<p>start</p>" } = {}) {
     Event,
     onToolbarAction: (action, fn) => actions.set(action, fn),
     runToolbarAction: (action) => actions.get(action)?.(),
+    // model.js's flag. Absent by default, because that is how this file is
+    // loaded by every other check here and by an exported document's bundle --
+    // the `typeof` in undoModelCore is what makes that a plain no rather than a
+    // throw.
+    ...(modelCore ? { modelCoreEnabled: () => true } : {}),
     console,
   }, "; return { undo, redo, undoReset, undoBreak, undoPark, undoAdopt," +
      " undoTextOffset, undoLocateOffset," +
@@ -407,6 +412,47 @@ export default function run(check) {
   h.key({ key: "z", preventDefault: () => ignored.push("z") });
   h.key({ ctrlKey: true, key: "b", preventDefault: () => ignored.push("b") });
   check("and nothing else is intercepted", ignored.length === 0);
+
+  // --- the model core refuses -----------------------------------------------
+  //
+  // Under TODO 3.1's flag the DOM is drawn from the model, so restoring an HTML
+  // snapshot would put an earlier *rendering* over a model that has not moved.
+  // That reads as working and then comes apart on the next keystroke, which is
+  // why the refusal is here rather than left to slice 6 to notice. What it must
+  // not do is stop *recording*: file-api.js reads undoPosition() to decide
+  // whether the document is back at the last save, and a history that stood
+  // still would report every model edit as clean.
+
+  h = harness({ modelCore: true });
+  h.undoReset();
+  h.type("a");
+  check("under the model core the stack still records", h.undoDepth() === 1);
+  const heldPosition = h.undoPosition();
+  check("and still reports a position", heldPosition !== null);
+
+  check("but undo refuses", h.undo() === false);
+  check("and leaves the document alone", h.editor.innerHTML === "<p>starta</p>");
+  check("and the stack where it was", h.undoDepth() === 1 && h.redoDepth() === 0);
+  check("and the position where it was", h.undoPosition() === heldPosition);
+
+  check("redo refuses too", h.redo() === false);
+
+  // Falling through would hand the key to the native stack, which mutates the
+  // DOM behind the model's back -- the one thing the design forbids. So the
+  // shortcut is still taken, it just does nothing with it.
+  const refused = [];
+  h.key({ ctrlKey: true, key: "z", preventDefault: () => refused.push("z") });
+  h.key({ ctrlKey: true, shiftKey: true, key: "Z", preventDefault: () => refused.push("Z") });
+  check("and both keys are still taken from the browser", refused.length === 2);
+  check("with the document untouched", h.editor.innerHTML === "<p>starta</p>");
+
+  // The refusal is the flag's, not a new rule about the stack: the same
+  // harness without it undoes exactly as everything above expects.
+  h = harness();
+  h.undoReset();
+  h.type("a");
+  check("and with the flag off undo works as it always did",
+    h.undo() === true && h.editor.innerHTML === "<p>start</p>");
 
   // --- the caret ------------------------------------------------------------
   //

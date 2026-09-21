@@ -1021,6 +1021,23 @@ meaning the same thing. Four things about it:
   surgery **without** going through it, so both return early under the flag,
   and the two Format-menu items call `modelIndentAtCaret` instead of falling
   through to `outdentListItem`.
+- **`undo.js` refuses too, and it was the door nobody shut.** Found 2026-09-21,
+  after the marker above had been claiming for a day that Ctrl+Z does nothing
+  here. It did something: the keydown handler is on `document` and was never
+  gated, and the stack is fed by the synthetic `input` every model edit raises —
+  so an undo restored an earlier *rendering* over a model that had not moved.
+  That is a divergence rather than a no-op, and worse than one, because it looks
+  like it worked: the next inline edit patches one block out of the unreverted
+  model into the reverted DOM, and `modelReadSelection` maps the caret through
+  DOM text the document no longer has. `undo()` and `redo()` return false under
+  the flag; the keydown goes on calling `preventDefault`, because falling
+  through hands the key to the native stack, which is the same mutation behind
+  the model's back one layer down. **The stack goes on recording**, which is the
+  half that is not optional: `file-api.js` reads `undoPosition()` to know
+  whether the document is back at the last save, and a history that stood still
+  would report every model edit as clean — taking the unsaved-work guard and the
+  `beforeunload` warning down together. Slice 6 replaces the snapshots with
+  model states and the guard goes with them.
 - **`modelInlineTokens` puts the tokens back in step with the tree**, and
   without it an edited block does not render at all — the renderer goes through
   markdown-it over the block's *tokens* and an edit changes the *tree*. The

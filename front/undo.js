@@ -314,7 +314,38 @@ function undoAdopt(bundle) {
   undoReset();
 }
 
+// ── The model core refuses ───────────────────────────────────────────────────
+//
+// Under TODO 3.1's flag the document is the model and the DOM is drawn from it,
+// so applying a snapshot here would write an earlier *rendering* over a model
+// that has not moved. That is a divergence rather than a no-op, and it is worse
+// than a refusal because it looks like it worked: the next inline edit patches
+// one block out of the unreverted model into the reverted DOM, and
+// modelReadSelection maps the caret through DOM text that no longer describes
+// the document, so a keystroke after an undo lands at an offset measured in
+// content the model never had.
+//
+// So undo and redo refuse while the flag is on — which is what the `model core`
+// marker's own title already promises the reader. The keydown below goes on
+// calling preventDefault either way: falling through would hand the key to the
+// native stack, which mutates the DOM behind the model's back, and that is the
+// one thing the whole design forbids.
+//
+// **The stack itself goes on recording**, deliberately. file-api.js reads
+// undoPosition() to know whether the document has come back to the last save,
+// so a history that stopped advancing would report every model edit as clean —
+// which takes the unsaved-work guard and the beforeunload warning down
+// together. Slice 6 replaces the snapshots with model states and this guard
+// goes with them.
+//
+// Guarded on `typeof` because the suites load this file with no model.js in the
+// scope, the same shape execcommand.js's own refusal takes.
+function undoModelCore() {
+  return typeof modelCoreEnabled === "function" && modelCoreEnabled();
+}
+
 function undo() {
+  if (undoModelCore()) return false;
   if (!history.undoStack.length) return false;
   history.redoStack.push(history.current || undoSnapshot());
   applyUndoSnapshot(history.undoStack.pop());
@@ -322,6 +353,7 @@ function undo() {
 }
 
 function redo() {
+  if (undoModelCore()) return false;
   if (!history.redoStack.length) return false;
   history.undoStack.push(history.current || undoSnapshot());
   applyUndoSnapshot(history.redoStack.pop());

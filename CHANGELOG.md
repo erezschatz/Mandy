@@ -6812,3 +6812,48 @@ Slice 5 is *done and tested* rather than *done, protocol not run*, and stage 2
 stands at five slices of seven with both of the hand-driven ones clean in Blink,
 Gecko and WebKit. No code changed, so nothing ran; `npm test` was green at 1,485
 checks.
+
+## 2026-09-21 — Ctrl+Z under the model core was not doing nothing
+
+The `model core` marker's title has said since yesterday that the formats and
+Ctrl+Z do nothing under the flag. The formats do nothing — `runCommand` refuses,
+and that refusal was written down with the measurement behind it. **Ctrl+Z was
+doing something**, and it was the worst available something.
+
+`undo.js` binds its keydown on `document` and nothing ever gated it, and its
+stack is fed by the synthetic `input` every model edit raises — so under the
+flag the history was fully populated with snapshots of the *rendering*. Pressing
+Ctrl+Z assigned one of them back over `editor.innerHTML` while the model stood
+exactly where it was. The document visibly went back, which is the trouble: it
+reads as an undo that worked. What follows is a divergence rather than a
+recovery — the next inline edit patches one block out of the unreverted model
+into the reverted DOM, and `modelReadSelection` maps the caret through DOM text
+that no longer describes the document, so a keystroke after an undo lands at an
+offset measured in content the model never had.
+
+So `undo()` and `redo()` return false while `modelCoreEnabled()`, and the marker
+is telling the truth. Two things the guard deliberately does *not* do. The
+keydown still calls `preventDefault`: falling through would hand the key to the
+browser's native stack, which mutates the DOM behind the model's back, which is
+the one thing the whole design forbids — the refusal has to be a refusal, not a
+fall-through. And **the stack goes on recording**. `file-api.js` reads
+`undoPosition()` from inside its own `input` listener to decide whether the
+document has come back to the last save, so a history that stopped advancing
+would report every model edit as clean — which switches off the unsaved-work
+guard and the `beforeunload` warning together, and is a far larger bug than the
+one being fixed.
+
+It is a stopgap with a named end: slice 6 replaces the snapshots with a stack of
+model states and this guard goes with them. It lands now rather than there
+because it is a live divergence sitting on the branch, and because the thing the
+flag exists for is a hand A/B — a reviewer pressing Ctrl+Z to compare the two
+cores would have been reading a corrupted document and had no way to know.
+
+Ten new checks in `undo`, 1,495 in all: that the stack still records and still
+reports a position under the flag, that undo and redo refuse and leave the
+document, the stacks and the position exactly where they were, that both keys
+are still taken from the browser, and — because a refusal is only worth having
+if it is the flag's and not a new rule about the stack — that with the flag off
+undo works as it always did. The harness grew a `modelCore` option to inject the
+flag, absent by default so every other check here loads the file the way an
+exported document's bundle does. `sw.js`'s `VERSION` goes to `v1.39`.
