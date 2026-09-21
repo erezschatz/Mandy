@@ -6648,7 +6648,7 @@ nothing, and a drop from another window.
 
 `sw.js`'s `VERSION` goes to `v1.36`.
 
-## 2026-09-21 — The model core says so, and the menus stop giving way to the path
+## 2026-09-21 — `ba517a7` — The model core says so, and the menus stop giving way to the path
 
 **You could not tell which core was drawing the document.** The flag's whole
 purpose is a hand A/B — it is the only way a rendering divergence gets *seen*
