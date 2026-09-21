@@ -7009,7 +7009,7 @@ the original fails the parent sweep, and a flattened `inline` alias fails the
 alias sweep and the disjointness one with it. `sw.js`'s `VERSION` goes to
 `v1.40`.
 
-## 2026-09-21 — Slice 6, step 2: Ctrl+Z works on the model
+## 2026-09-21 — `1016e67` — Slice 6, step 2: Ctrl+Z works on the model
 
 The two seams. `undoCaptureState` says what the document is right now in
 whichever shape this core keeps it, `undoApplyState` puts one back, and
