@@ -7356,7 +7356,7 @@ cost a detour here.
 
 No code changed, so nothing ran; `npm test` is green at 1,567.
 
-## 2026-09-21 — The undo stack is capped by bytes, not by count
+## 2026-09-21 — `9a8c9f3` — The undo stack is capped by bytes, not by count
 
 Step 6 measured a model state at fifteen to sixteen times the markdown's bytes,
 so `UNDO_LIMIT = 100` is 73MB for a 48KB document and 157MB for a 105KB one,
