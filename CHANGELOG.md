@@ -7191,7 +7191,7 @@ ignored, because the engine owns the caret's text node until `compositionend`
 and an undo would pull it out from under the IME. Each property was broken on
 purpose first. `sw.js`'s `VERSION` goes to `v1.43`.
 
-## 2026-09-21 — No engine raises `historyUndo`, and Safari says why
+## 2026-09-21 — `ecf40ec` — No engine raises `historyUndo`, and Safari says why
 
 Step 4 built the instrument and refused to build the suppression, on the grounds
 that an unmeasured "should" is what slice 4's table mitigation turned out to be.
