@@ -3094,16 +3094,17 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         are untouched by it: does the engine hand over `text/html` at all, does
         cancelling the event stop the insertion, where does a drop land.
 
-    *   **6. Undo — not started.** A stack of model states with the caret as a
-        model position, replacing the whole-document `innerHTML` snapshots.
+    *   **6. Undo — not started; planned 2026-09-21 before any of it was
+        built.** A stack of model states with the caret as a model position,
+        replacing the whole-document `innerHTML` snapshots.
         Coalescing carries over unchanged — same `inputType`, inside 600 ms,
         merges; everything else starts a step — because the commands now name
-        their own `inputType` rather than it being read off an event.
+        their own `inputType` rather than it being read off an event. **That
+        half already works**: `modelInputAnnounce` carries the type on its
+        synthetic `input` and `undo.js` reads it, so every model edit since
+        slice 3 has been coalescing correctly into a stack nothing could apply.
         `undoReset` / `undoPark` / `undoAdopt` keep their contract and the
-        bundle gets smaller. `undoRefresh` goes: there is nothing to correct
-        after the fact when nothing else was allowed to write. The `undo`
-        suite's count of `editor.innerHTML` assignment sites — eight today,
-        five of them in `app.js` — changes target to *none outside render*.
+        bundle gets smaller.
 
         **A state is a clone of the document.** Decided 2026-09-19. Blocks are
         mutable and the tree is cyclic through `parent`, so a state had to be
@@ -3114,15 +3115,26 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         link that lets it walk up.
 
         **The clone wins because it is not a regression and it is
-        reversible.** `structuredClone` handles the cycle, everything else in
-        the model stays exactly as it is, and the cost is O(document) per
-        coalesced step — against today's undo, which snapshots the *entire
-        document as an HTML string* on the same cadence and has never been
-        complained about. So this is strictly cheaper than what ships, which
-        makes it the safe default rather than the lazy one. Measure it on
-        `docs/TODO.md` when the slice lands; copy-on-write stays available and
-        can be taken later on a measurement, where rebuilding `modelTouch` in
-        the middle of the input layer could not be taken back.
+        reversible.** Everything else in the model stays exactly as it is, and
+        the cost is O(document) per coalesced step — against today's undo, which
+        snapshots the *entire document as an HTML string* on the same cadence
+        and has never been complained about. So this is strictly cheaper than
+        what ships, which makes it the safe default rather than the lazy one.
+        Copy-on-write stays available and can be taken later on a measurement,
+        where rebuilding `modelTouch` in the middle of the input layer could not
+        be taken back.
+
+        **But not `structuredClone`, and the correction is the slice's first
+        step.** The decision as written on 2026-09-19 said "`structuredClone`
+        handles the cycle", which it does — the cycle was never the problem.
+        markdown-it's `Token` is a class instance, `structuredClone` returns own
+        enumerable properties on a bare object, and the renderer then throws
+        `token.attrIndex is not a function` on the first image or fence it
+        meets. Measured 2026-09-21 against the pinned markdown-it 13.0.1, not
+        argued. The repo already has the idiom the clone needs —
+        `modelCloneToken` copies through
+        `Object.create(Object.getPrototypeOf(token))` — so what changes is the
+        mechanism and not the decision.
 
         **The savepoint id stays document-scoped and parked with the bundle.**
         Decided 2026-09-19, which is to say: keep what ships. The Undo design
@@ -3136,11 +3148,123 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         catch. The `tabs` suite's mutation checks stay the oracle, and they now
         guard a property this stage is not allowed to quietly drop.
 
+        **Two claims this entry made that were wrong about their timing**, both
+        corrected here rather than discovered at the landing. `undoRefresh` does
+        **not** go in this slice: its only caller is `execcommand.js`, which
+        refuses under the flag already and is deleted in slice 7, so the
+        function outlives this slice by one. And the `undo` suite's count of
+        `editor.innerHTML` assignment sites does **not** retarget to *none
+        outside render* here: `app.js`'s three doors each keep a legacy branch
+        until stage 4 removes the flag, so the count stays at three and the
+        retarget is stage 4's. The property this slice owns is narrower and
+        should be asserted as itself — that nothing outside `undo.js` applies a
+        state, and that `undo.js` applies one two ways.
+
+        **Ctrl+Z was already doing something, and the stopgap landed first.**
+        `undo.js` binds its keydown on `document` and nothing gated it, so under
+        the flag an undo assigned an earlier *rendering* back over a model that
+        had not moved — a divergence rather than a no-op, and worse than one,
+        because it looks like it worked. `undo()` and `redo()` refuse under the
+        flag as of 2026-09-21; the guard is written to be deleted by step 2
+        below, which replaces the refusal with the branch it stands in for.
+
+        **Six steps, in this order.** The first is the primitive every other one
+        calls; the last is the only one a machine cannot run.
+
+        1.  **`modelCloneDocument`, in `model.js`.** Pure, no DOM, and so
+            measurable in the `model` suite against the oracle: a clone
+            serialises to the same bytes, mutating it leaves the original
+            alone, and every `parent` link points inside the clone rather than
+            back at the document it came from — which is the one that silently
+            half-works, since a stale parent only shows up when `modelTouch`
+            walks up from an edited block and clears somebody else's ancestors.
+
+            **Tokens are cloned, not shared**, unless the measurement in step 6
+            says otherwise. `modelLeafLike` already shares a block's non-inline
+            tokens by reference and clones only the inline one, and that is
+            correct for two blocks in one live document — but sharing across
+            *states* makes "may a command mutate a token in place" a question
+            every future command has to remember the answer to, and
+            `modelFillItem` already mutates `tokens[0].hidden` on a paragraph it
+            has just built. Cloning all of them makes the question not arise.
+            The inline tokens have to be cloned either way:
+            `modelInlineTokens` reassigns `inline.children` wholesale on every
+            edit, so two states sharing one inline token share one edit.
+
+        2.  **Two seams in `undo.js`, and nothing else moves.** The stack
+            machinery is core-independent — coalescing, `UNDO_LIMIT`, the redo
+            branch, `nextId`, `breakOnce`, park and adopt — and only two
+            operations know what a state is: capture one, and apply one. So the
+            file keeps one implementation of the part the `tabs` suite guards
+            and grows a branch at exactly those two points, rather than a second
+            history living in a second file. **A second file was the other
+            candidate and it is worse here**, for the reason the three doors in
+            `app.js` exist: `undoReset`, `undoPark`, `undoAdopt` and
+            `undoPosition` have seven call sites across `app.js`, `file-api.js`
+            and `tabs.js`, and a second owner would make every one of them ask
+            which core is running.
+
+            Applying a model state installs a **clone of the stored state**,
+            never the stored object itself — the next edit mutates what it
+            installs, and a history entry that can be edited in place is not a
+            history entry. The way that fails is undo, redo, undo: the second
+            visit finds the state the first one left behind.
+
+        3.  **The caret, which is a `(blockId, offset)` rather than a block.**
+            `modelReadSelection` hands back a block *reference*, and a state's
+            reference has to resolve against that state's own blocks or it
+            points into a document nobody is showing. Ids survive the clone, so
+            the resolution is a lookup; `modelRender` already takes a selection
+            to apply, so the restore is a render with one. `nextId` travels with
+            the state, which is safe only because a fresh edit clears the redo
+            branch — stated because it is the kind of thing that is true until
+            somebody adds a command that mints an id without clearing it.
+
+        4.  **The engine's own undo gesture.** `historyUndo` and `historyRedo`
+            arrive as `beforeinput` — the macOS trackpad gesture, a context
+            menu, a mobile keyboard — and are cancelled and routed nowhere
+            today, which is the right default for a type nobody has claimed and
+            the wrong one for a type that means exactly what Ctrl+Z means. They
+            route to the same two commands. Whether an engine sends them at all
+            is a question for the check page rather than for this file.
+
+        5.  **The tab switch, where the model history meets a re-parsed
+            document.** This stage re-parses on adopt — the incoming tab's
+            `content` key is HTML, converted through `htmlToMarkdown` — so the
+            document on screen after a switch is a *different object* from the
+            one the parked history's states describe, with different ids. That
+            is survivable because a restore re-renders wholesale and never
+            compares a state's blocks against the live ones, and it is written
+            down because "adopt trusts the bundle to describe what is on screen"
+            means something weaker under the model core than it does today. The
+            `tabs` suite is where that gets asserted rather than assumed.
+
+            `undoBreak` has one caller, `app.js`'s plain-text paste, and it is
+            there because that path goes in through `execCommand("insertText")`
+            and so reports the same type a keystroke does. Under the model core
+            every paste announces `insertFromPaste`, which does not coalesce, so
+            the break is unnecessary on this path and stays for the other core.
+
+        6.  **The measurement, and the protocol.** The clone's cost on
+            `docs/TODO.md` — the document the estimate has been taken on all
+            along — because the 2026-09-19 decision was made against today's
+            HTML-string snapshots and is only worth keeping while that
+            comparison holds. It is the arbiter of step 1's token question too.
+
+            And the steps `front/input-check.html` grows, which is the half no
+            suite can reach: that an undo puts the caret back where the edit
+            was, that a run of typing is one step and Enter is its own, that an
+            undo after a paste takes the whole paste, and **TODO 1.6's exact
+            reported case** — open a file, Enter at the end of a bullet, Ctrl+Z
+            — which that item says it stays open until the new undo is watched
+            doing correctly.
+
         TODO 1.6's caret half — Ctrl+Z after Enter at the end of a bullet
         putting the caret at the top — goes by construction: it is a
         whole-document offset miscount on a snapshot restore and there is no
         snapshot restore left. The dot half was already fixed in the tabbed
-        view's stage 4 and stays unverified against the reported case.
+        view's stage 4 and stays unverified against the reported case, which is
+        why step 6 runs it rather than assuming it.
 
     *   **7. Formats and the keyboard — not started.** Every control in
         `TOOLBAR_MENUS` and on the format bar becomes a model command.
@@ -3198,9 +3322,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     **What no suite in this repo can see is `beforeinput`**: `dom.mjs` has no
     editing engine and no HTML parser, so a stub can only agree with whatever
     it was told. The input layer's instrument is therefore
-    `tests/input-check.html` — the stage 0 spike grown into a real check page,
-    added to `CHECK_PAGES` in `server.ts` — and it is **stood up in slice 3
-    rather than at the end**, because until it exists there is nothing
+    `front/input-check.html` — the stage 0 spike grown into a real check page,
+    and in `front/` rather than the `tests/` this line used to name, because the
+    static handler already serves it same-origin with `model.js` and that
+    same-origin is the only thing the `/tests/` route was ever buying, so it
+    needs no `CHECK_PAGES` entry and no server change — and it is **stood up in
+    slice 3 rather than at the end**, because until it exists there is nothing
     measuring the part of the stage that can blow the estimate. It runs in
     Chrome, Firefox and Safari, and it carries the verify assertion from slice
     1. `browser-check`, `list-indent-check` and `list-empty-item-check` stop
@@ -3234,7 +3361,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
       that replaces the document.
     - **An undo state is a clone of the document** (slice 6) rather than
       copy-on-write, on the ground that it is cheaper than the HTML-string
-      snapshots that ship today and can be changed later on a measurement.
+      snapshots that ship today and can be changed later on a measurement. Its
+      *mechanism* was corrected on 2026-09-21 — `structuredClone` strips
+      markdown-it's `Token` prototype and the renderer throws on the first
+      image — which changed how the clone is built and nothing about why.
     - **The savepoint id stays document-scoped and parked** (slice 6) rather
       than going globally unique, keeping `adoptActive`'s undo-before-file
       ordering load-bearing.

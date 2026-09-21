@@ -6857,3 +6857,53 @@ if it is the flag's and not a new rule about the stack — that with the flag of
 undo works as it always did. The harness grew a `modelCore` option to inject the
 flag, absent by default so every other check here loads the file the way an
 exported document's bundle does. `sw.js`'s `VERSION` goes to `v1.39`.
+
+## 2026-09-21 — Plan stage 2's slice 6, undo on the model
+
+Written before any of it is built, which is this repo's rule and not the order
+these things usually happen in. The slice's entry in
+[docs/REWRITE.md](docs/REWRITE.md) grows six steps, and four corrections to what
+it said before.
+
+**`structuredClone` does not do what the decision said it does.** A state is a
+clone of the document — decided 2026-09-19, against copy-on-write, on the ground
+that it is strictly cheaper than the whole-document HTML strings that ship today
+and can be revisited on a measurement. That reasoning stands. The sentence
+"`structuredClone` handles the cycle" does not: it handles the cycle perfectly
+well, and then returns markdown-it's `Token` as a bare object with no prototype,
+after which the renderer throws `token.attrIndex is not a function` on the first
+image or fence in the document. Measured against the pinned markdown-it 13.0.1
+rather than argued. The repo already has the idiom — `modelCloneToken` copies
+through `Object.create(Object.getPrototypeOf(token))` — so the mechanism changes
+and the decision does not.
+
+**Two of the slice's claims were wrong about their timing**, and both are
+corrected in the plan rather than at the landing. `undoRefresh` does not go
+here: its only caller is `execcommand.js`, which refuses under the flag already
+and is deleted in slice 7, so the function outlives this slice by one. And the
+`undo` suite's count of `editor.innerHTML` assignment sites does not retarget to
+*none outside render* here either — `app.js`'s three doors each keep a legacy
+branch until stage 4 removes the flag, so the count stays at three. The property
+this slice actually owns is narrower and is asserted as itself: nothing outside
+`undo.js` applies a state, and `undo.js` applies one two ways.
+
+**And the check page has not been in `tests/` since slice 3.** The stage's
+verification paragraph still said `tests/input-check.html`, "added to
+`CHECK_PAGES` in `server.ts`" — a sentence written before the page existed. It
+lives in `front/`, where the static handler already serves it same-origin with
+`model.js`, which is the only thing the `/tests/` route was ever buying.
+
+The six steps, in the order they have to happen: the clone, as a pure function
+in `model.js` measurable against the oracle; two seams in `undo.js` — capture a
+state and apply one — with everything else in that file left alone, because the
+stack machinery is core-independent and a second history in a second file would
+make all seven callers of `undoReset` / `undoPark` / `undoAdopt` /
+`undoPosition` ask which core is running; the caret as a `(blockId, offset)`
+resolved against the state's own blocks; routing `historyUndo` and `historyRedo`,
+which are cancelled and routed nowhere today; the tab switch, where a parked
+model history meets a document this stage re-parses on adopt and so describes
+different block objects than the ones on screen; and the measurement plus the
+protocol steps, including TODO 1.6's exact reported case, which that item says
+it stays open until the new undo is watched doing correctly.
+
+No code changed, so nothing ran.
