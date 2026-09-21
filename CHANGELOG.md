@@ -7296,7 +7296,7 @@ with this slice, and a trap for whoever drives the protocol next.
 statement race and the second can be lost. A run that does that reads as a
 switch that silently did nothing, which cost a round trip here.
 
-## 2026-09-21 — Slice 6, step 6: the measurement, and a claim that did not survive it
+## 2026-09-21 — `0cd8616` — Slice 6, step 6: the measurement, and a claim that did not survive it
 
 The whole clone's cost, which the 2026-09-19 decision to clone at all is owed —
 it was made against today's HTML-string snapshots and is only worth keeping
