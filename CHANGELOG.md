@@ -6754,7 +6754,7 @@ from whatever else might have wanted it. Confirmed in the pane that the editor
 now cancels both events; the drag itself still needs a human, which is what the
 new logging is for. `sw.js`'s `VERSION` goes to `v1.38`.
 
-## 2026-09-21 — A drag that never begins now says so
+## 2026-09-21 — `bb87dc2` — A drag that never begins now says so
 
 Yesterday's `dragover` fix got drag and drop working in Blink and WebKit, and
 then only for a single word: a multi-word selection still could not be dragged,
