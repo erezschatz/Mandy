@@ -2942,11 +2942,19 @@ function modelSetLeadingAffix(block, extra) {
 /**
  * A copy of one of the parser's tokens that this file may write to.
  *
- * Only the `inline` token is ever cloned, and it has to be: `modelInlineSplice`
- * and everything below assign `inline.children`, so two blocks sharing one
- * inline token would each render the other's content. Block-level tokens are
- * read-only to everything here and are shared deliberately — that is also what
- * keeps a split's two halves agreeing about their own tag.
+ * Only the `inline` token is ever cloned *here*, and it has to be:
+ * `modelInlineSplice` and everything below assign `inline.children`, so two
+ * blocks sharing one inline token would each render the other's content. The
+ * block-level tokens are shared deliberately — that is what keeps a split's two
+ * halves agreeing about their own tag.
+ *
+ * **Shared, not read-only**, which this comment used to claim and which slice 4
+ * stopped being true: `modelSourceSplice` writes `token.content` on a fence.
+ * The sharing is still right, because the callers here only ever share between
+ * blocks of one live document, where a later write is meant to reach both — and
+ * no caller hands a fence to one of them, since a fence is never split. What
+ * cannot share those tokens is a *state*, which is why `modelCloneDocument`
+ * copies every one of them and does not reuse this function alone.
  *
  * The prototype comes across rather than being flattened to a plain object,
  * because markdown-it's own renderer rules call methods on a Token — `attrGet`
@@ -4194,4 +4202,129 @@ function modelTextBlocks(doc, md, text) {
     out.push(block);
   }
   return out;
+}
+
+// ── History ──────────────────────────────────────────────────────────────────
+//
+// Stage 2's slice 6, step 1. An undo state is a **clone of the document**,
+// decided against copy-on-write on 2026-09-19: blocks are mutable and the tree
+// is cyclic through `parent`, so a state had to be either a clone or a sharing
+// scheme, and the clone leaves `modelTouch` and the `parent` link it walks up
+// exactly as they are. It is also strictly cheaper than what ships, which
+// snapshots the entire document as an HTML string on the same cadence and has
+// never been complained about.
+//
+// **Not `structuredClone`, and the cycle was never why.** It handles the cycle
+// perfectly well, and then hands back markdown-it's `Token` as a bare object —
+// which is what the structured clone algorithm does with a class instance — so
+// the renderer throws `token.attrIndex is not a function` on the first image or
+// fence in the document. Measured against the pinned markdown-it 13.0.1 rather
+// than assumed, which is how the decision came to be written down wrong.
+//
+// **Every token is cloned and none is shared. Settled 2026-09-21, measured.**
+// The inline tokens were never in question — `modelInlineTokens` reassigns
+// `inline.children` after every edit, so two states sharing one inline token
+// share one edit. The block-level ones look shareable and are not:
+// `modelSourceSplice` writes `token.content` on a fence, so a shared fence
+// token would give back an undo whose `source` holds the old bytes and whose
+// token holds the new ones — the screen rendering the code the undo was meant
+// to take back while a save files the code it did. **And nothing would report
+// it**: `modelVerifyRender` skips exactly the blocks with no inline tree. The
+// saving was 0.19ms on `docs/TODO.md` and 0.23ms on `CLAUDE.md` per step,
+// against a full render at 16.8ms — so what sharing bought was a rule ("no
+// command may mutate a token in place") that every future command would have to
+// remember and that the shipped code has already broken once.
+//
+// **Aliases are preserved rather than flattened**, which is what `seen` is for.
+// A block's `inline` *is* one of its own `tokens` — all 861 inline-bearing
+// leaves in the oracle — and a `hiddenBefore` is a token out of the block
+// before it, all 12 of them. Copy those twice and the two copies can disagree:
+// `modelFillItem` sets `hidden` on a token one block reads through `tokens` and
+// another through `hiddenBefore`. A map keyed on the original token makes the
+// clone's token graph isomorphic to the original's instead of merely
+// equivalent, which is a stronger property and costs one `Map`.
+
+/**
+ * One token, and everything under it, copied once per clone.
+ *
+ * `children` is followed because the `inline` token's are the block's inline
+ * tokens, and a state that shared that array would share every edit made
+ * through it. `map` is copied for the same reason nothing else here is shared:
+ * a state has no business holding a reference into a document that is still
+ * being edited, and it is two numbers.
+ *
+ * `meta` is the one thing carried by reference. markdown-it leaves it null and
+ * no rule this project configures writes one — asserted in the `model` suite
+ * across all 17,946 tokens of the oracle, so a parser upgrade that starts using
+ * it fails a check rather than quietly sharing whatever it holds.
+ */
+function modelCloneTokenInto(token, seen) {
+  const already = seen.get(token);
+  if (already) return already;
+  const copy = modelCloneToken(token);
+  seen.set(token, copy);
+  if (Array.isArray(token.map)) copy.map = token.map.slice();
+  if (Array.isArray(token.children)) {
+    copy.children = token.children.map((child) => modelCloneTokenInto(child, seen));
+  }
+  return copy;
+}
+
+// An inline node holds two token references, its children, and otherwise
+// strings — `kind`, `markup`, `content`, `raw`, `tail`. So the copy is the
+// object plus those three fields, the same shape modelCloneBlockInto takes one
+// level up.
+function modelCloneInlinesInto(nodes, seen) {
+  return nodes.map((node) => {
+    const copy = Object.assign({}, node);
+    if (node.token) copy.token = modelCloneTokenInto(node.token, seen);
+    if (node.closeToken) copy.closeToken = modelCloneTokenInto(node.closeToken, seen);
+    if (node.children) copy.children = modelCloneInlinesInto(node.children, seen);
+    return copy;
+  });
+}
+
+/**
+ * One block and its subtree, with `parent` rebuilt to point inside the clone.
+ *
+ * Copied wholesale and then corrected, rather than named field by field out of
+ * `modelBlockShape`: a scalar added to a block later comes across for free, and
+ * only the fields holding a reference have to be listed — which is the same
+ * shape `modelCloneToken` itself takes.
+ *
+ * A `parent` left pointing at the original is the one that half-works, and it
+ * would half-work for a long time: nothing reads it until `modelTouch` walks up
+ * from an edited block, at which point the edit clears the ancestors of a
+ * document nobody is showing and the one on screen re-emits its stale bytes.
+ */
+function modelCloneBlockInto(block, parent, seen) {
+  const copy = Object.assign({}, block);
+  copy.parent = parent;
+  copy.tokens = block.tokens.map((token) => modelCloneTokenInto(token, seen));
+  copy.inline = block.inline ? modelCloneTokenInto(block.inline, seen) : null;
+  copy.hiddenBefore = block.hiddenBefore ? modelCloneTokenInto(block.hiddenBefore, seen) : null;
+  copy.inlines = block.inlines ? modelCloneInlinesInto(block.inlines, seen) : null;
+  copy.quotePrefixes = block.quotePrefixes ? block.quotePrefixes.slice() : null;
+  copy.headingShape = block.headingShape ? Object.assign({}, block.headingShape) : null;
+  copy.children = block.children
+    ? block.children.map((child) => modelCloneBlockInto(child, copy, seen))
+    : null;
+  return copy;
+}
+
+/**
+ * A document that shares nothing mutable with the one it was taken from.
+ *
+ * `nextId` comes across, so a state restored and then edited mints the ids it
+ * would have minted the first time. That is safe only because a fresh edit
+ * clears the redo branch — the blocks carrying the higher ids are discarded in
+ * the same breath — and it is written down because it stops being true the
+ * moment something mints an id without clearing it.
+ */
+function modelCloneDocument(doc) {
+  const seen = new Map();
+  return {
+    ...doc,
+    blocks: doc.blocks.map((block) => modelCloneBlockInto(block, null, seen)),
+  };
 }

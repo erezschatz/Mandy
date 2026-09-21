@@ -1845,7 +1845,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the strength of it.
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
     Slices 1 to 5 of seven are done and tested, slices 4 and 5 driven by hand
-    in all three engines. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    in all three engines; slice 6 is a step in. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3094,8 +3094,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         are untouched by it: does the engine hand over `text/html` at all, does
         cancelling the event stop the insertion, where does a drop land.
 
-    *   **6. Undo — not started; planned 2026-09-21 before any of it was
-        built.** A stack of model states with the caret as a model position,
+    *   **6. Undo — in progress; planned and started 2026-09-21. Step 1 of
+        six is done and tested.** A stack of model states with the caret as a model position,
         replacing the whole-document `innerHTML` snapshots.
         Coalescing carries over unchanged — same `inputType`, inside 600 ms,
         merges; everything else starts a step — because the commands now name
@@ -3171,13 +3171,34 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         **Six steps, in this order.** The first is the primitive every other one
         calls; the last is the only one a machine cannot run.
 
-        1.  **`modelCloneDocument`, in `model.js`.** Pure, no DOM, and so
-            measurable in the `model` suite against the oracle: a clone
-            serialises to the same bytes, mutating it leaves the original
+        1.  **`modelCloneDocument`, in `model.js` — done and tested.** Pure,
+            no DOM, and so measurable in the `model` suite against the oracle: a
+            clone serialises to the same bytes, mutating it leaves the original
             alone, and every `parent` link points inside the clone rather than
             back at the document it came from — which is the one that silently
             half-works, since a stale parent only shows up when `modelTouch`
             walks up from an edited block and clears somebody else's ancestors.
+
+            **Aliases are preserved rather than flattened**, which was not in
+            the plan and is what the clone's `Map` turned out to be for. A
+            block's `inline` *is* one of its own `tokens` — all 861
+            inline-bearing leaves in the oracle — and a `hiddenBefore` is a
+            token belonging to the block before it, all 12 of them. Copy either
+            of those twice and the two copies can disagree about the `hidden`
+            flag `modelFillItem` sets through one of them, so the map keyed on
+            the original token makes the clone's token graph *isomorphic* to the
+            original's rather than merely equivalent. Cheaper than reasoning
+            about which aliases exist, and it does not have to be revisited when
+            a later slice adds one.
+
+            **Every property was broken on purpose to confirm its check
+            fails**, which is the discipline slice 3's affix rules established:
+            `structuredClone` in place of the clone throws
+            `token.attrIndex is not a function` inside markdown-it's own `fence`
+            renderer, sharing the tokens fails the disjointness sweep and both
+            fence checks, leaving `parent` pointing at the original fails the
+            parent sweep, and flattening the `inline` alias fails the alias
+            sweep and the disjointness one with it.
 
             **Tokens are cloned, not shared. Settled 2026-09-21, measured
             rather than argued.** `modelLeafLike` already shares a block's

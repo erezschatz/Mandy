@@ -1234,8 +1234,37 @@ What is worth knowing:
   that page exists to ask are untouched: does the engine hand over `text/html`,
   does cancelling stop the insertion, where does a drop land.
 
-What the model still does *not* do is undo, or run a format command: those are
-slices 6 and 7.
+**Slice 6 has begun**, 2026-09-21, with the one piece of it that is pure model:
+`modelCloneDocument`, which is what an undo state is. Four things in it.
+
+- **Not `structuredClone`**, which was the plan's word for it. It handles the
+  cycle `parent` makes perfectly well and then hands back markdown-it's `Token`
+  as a bare object — the structured clone algorithm's own rule for a class
+  instance — so the renderer throws `token.attrIndex is not a function` on the
+  first image or fence. Measured against the pinned 13.0.1, and reproduced
+  through the suite by putting it back.
+- **Every token is cloned and none is shared**, which the cheaper option loses
+  on a fact rather than on taste: `modelSourceSplice` writes `token.content` on
+  a fence, so a shared fence token would give back an undo whose `source` holds
+  the old bytes and whose token holds the new — rendering the code the undo was
+  meant to take back while a save files the code it did — and
+  `modelVerifyRender` skips exactly the blocks with no inline tree, so nothing
+  would report it. The saving was 0.19ms on `docs/TODO.md` and 0.23ms on this
+  file, per step, against a 16.8ms render.
+- **Aliases are preserved rather than flattened.** A block's `inline` is one of
+  its own `tokens`, and a `hiddenBefore` is a token out of the block before it;
+  copied twice they can disagree about the `hidden` flag `modelFillItem` sets.
+  A `Map` keyed on the original token makes the clone's token graph isomorphic
+  rather than merely equivalent, which is one allocation and a property that
+  survives a later slice adding an alias.
+- **`parent` is rebuilt to point inside the clone**, and that is the one that
+  half-works for a long time if it is wrong: nothing reads it until `modelTouch`
+  walks up from an edited block, and then the edit clears the ancestors of a
+  document nobody is showing while the one on screen re-emits its stale bytes.
+
+What the model still does *not* do is undo — the stack, the two seams in
+`undo.js` and the caret are the rest of slice 6 — or run a format command, which
+is slice 7. `undo.js` refuses under the flag until then; see the bullet above.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.

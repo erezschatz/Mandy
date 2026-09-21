@@ -87,6 +87,7 @@ export default function run(check) {
     modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource,
     modelInlineLeaves, modelTrimRendering,
     modelInsertBlocks, modelTextBlocks, modelAdoptBlocks,
+    modelCloneDocument,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -108,7 +109,8 @@ export default function run(check) {
       " modelSourceText, modelEnsureBlock, modelFlatten, modelIsEmptyBlock," +
       " modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource," +
       " modelInlineLeaves, modelTrimRendering," +
-      " modelInsertBlocks, modelTextBlocks, modelAdoptBlocks };",
+      " modelInsertBlocks, modelTextBlocks, modelAdoptBlocks," +
+      " modelCloneDocument };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -3358,5 +3360,133 @@ export default function run(check) {
         (unstable.length ? ` — ${unstable.length} did not: ${unstable.slice(0, 3).join(", ")}` : ""),
       moved > 50 && unstable.length === 0,
     );
+  }
+
+  {
+    // --- slice 6's step 1: a state is a clone of the document ---------------
+    //
+    // The whole of undo rests on this one function, and every way it can be
+    // wrong is silent. A shared token gives back an undo that renders the edit
+    // it was meant to take back; a `parent` left pointing at the original means
+    // `modelTouch` clears the ancestors of a document nobody is showing, and
+    // the one on screen re-emits its stale bytes. Neither shows up until some
+    // later keystroke, and neither looks like a clone bug when it does.
+    //
+    // So the sweep is over the whole oracle rather than a hand-written case:
+    // what is asserted is D1 through the clone (it serialises to the same
+    // bytes), the renderer (markdown-it's own rules call methods on a Token, so
+    // a clone that flattened the prototype throws here and nowhere earlier),
+    // and then the three structural properties a byte comparison cannot see.
+
+    let disjoint = 0, shared = 0, aliasOk = 0, aliasBad = 0, strayParent = 0, metas = 0;
+
+    const tokensOf = (doc) => {
+      const out = new Set();
+      const token = (t) => { if (!t || out.has(t)) return; out.add(t); for (const c of t.children || []) token(c); };
+      const inlines = (ns) => { for (const n of ns || []) { token(n.token); token(n.closeToken); inlines(n.children); } };
+      for (const b of modelFlatten(doc)) {
+        for (const t of b.tokens) token(t);
+        token(b.inline); token(b.hiddenBefore);
+        inlines(b.inlines);
+      }
+      return out;
+    };
+
+    for (const path of ORACLE_FILES) {
+      const src = repoFile(path);
+      const doc = parse(src);
+      const copy = modelCloneDocument(doc);
+
+      check(`${path}: its clone round-trips byte-identical`, modelSerialise(copy) === src);
+      check(`${path}: and renders identically`,
+        modelRenderDocument(copy, md) === modelRenderDocument(doc, md));
+
+      // Nothing mutable in common. This is the check that would have caught the
+      // token-sharing scheme, and it is a set intersection rather than a
+      // spot-check because the one token that matters is whichever one the next
+      // edit happens to touch.
+      const mine = tokensOf(doc), theirs = tokensOf(copy);
+      for (const t of theirs) { if (mine.has(t)) shared += 1; else disjoint += 1; }
+
+      // ...but the *aliases* inside each document are identical. A block's
+      // `inline` is one of its own `tokens`, and a `hiddenBefore` is a token out
+      // of the block before it; copy either twice and the two copies can
+      // disagree about a `hidden` flag modelFillItem sets through one of them.
+      const flat = modelFlatten(doc), flatCopy = modelFlatten(copy);
+      for (let i = 0; i < flat.length; i += 1) {
+        const at = flat[i].tokens.indexOf(flat[i].inline);
+        if (flat[i].inline) (flatCopy[i].inline === flatCopy[i].tokens[at] ? aliasOk++ : aliasBad++);
+        if (!flat[i].hiddenBefore) continue;
+        const owner = flat.findIndex((b) => b.tokens.indexOf(flat[i].hiddenBefore) >= 0);
+        const where = owner < 0 ? -1 : flat[owner].tokens.indexOf(flat[i].hiddenBefore);
+        (owner >= 0 && flatCopy[i].hiddenBefore === flatCopy[owner].tokens[where] ? aliasOk++ : aliasBad++);
+      }
+
+      // Every parent link points inside the clone. Checked against the
+      // original's blocks rather than by walking down, because the failure is a
+      // reference *out* and a downward walk cannot see one.
+      for (const b of flatCopy) if (b.parent && !flatCopy.includes(b.parent)) strayParent += 1;
+
+      for (const t of mine) if (t.meta !== null && t.meta !== undefined) metas += 1;
+    }
+
+    check(`no token is shared between a document and its clone (${disjoint} cloned, ${shared} shared)`,
+      shared === 0 && disjoint > 10000);
+    check(`and every alias inside it is preserved (${aliasOk} of them)`,
+      aliasBad === 0 && aliasOk > 800);
+    check("every parent link in a clone points inside the clone", strayParent === 0);
+    // The one field carried by reference, and the check that keeps that honest:
+    // markdown-it leaves `meta` null and no rule this project configures writes
+    // one, so a parser upgrade that starts using it fails here rather than
+    // quietly sharing whatever it holds.
+    check(`no token in the oracle carries a meta (${metas} do)`, metas === 0);
+
+    // --- and the two directions of independence ----------------------------
+
+    // The emitter, because an edited block has no source to hand back: the same
+    // call the sweeps above make, and the reason those can use the bare
+    // modelSerialise is that an unedited clone still has every byte.
+    const write = (d) => modelSerialise(d, (block) => modelEmitLeaf(block, md, d, 0));
+
+    const src = repoFile(CORPUS.todo);
+    let doc = parse(src);
+    let copy = modelCloneDocument(doc);
+    let leaf = modelFlatten(doc).find((b) => b.inlines && b.inlines.length);
+    modelInlineSplice(leaf, 0, 0, "EDITED ");
+    check("editing the document leaves its clone alone", write(copy) === src);
+    check("and the edit is in the document", write(doc) !== src);
+
+    doc = parse(src);
+    copy = modelCloneDocument(doc);
+    leaf = modelFlatten(copy).find((b) => b.inlines && b.inlines.length);
+    modelInlineSplice(leaf, 0, 0, "EDITED ");
+    check("editing the clone leaves the document alone", write(doc) === src);
+    check("and the edit is in the clone", write(copy) !== src);
+
+    // The fence is the case the decision to clone every token was made on:
+    // modelSourceSplice writes `token.content` in place, so a shared token
+    // would leave the clone's own fence rendering the edit it never had, with
+    // modelVerifyRender unable to see it -- it skips blocks with no inline
+    // tree, which is exactly this one.
+    doc = parse(repoFile("tests/fixtures/torture.md"));
+    copy = modelCloneDocument(doc);
+    const fence = modelFlatten(doc).find((b) => b.kind === "fence");
+    const twin = modelFlatten(copy)[modelFlatten(doc).indexOf(fence)];
+    const beforeText = modelSourceText(twin);
+    const beforeHtml = modelRenderBlock(twin, md);
+    check("the oracle has a fence to try this on", !!fence && modelBearsSource(fence));
+    modelSourceSplice(fence, 0, 0, "EDITED\n", md);
+    check("editing a fence as source leaves the clone's own text alone",
+      modelSourceText(twin) === beforeText);
+    check("and the clone still renders the code it had",
+      modelRenderBlock(twin, md) === beforeHtml);
+    check("while the document has the edit", modelSourceText(fence) !== beforeText);
+
+    // The counter comes across, so a restored state mints the ids it would have
+    // minted the first time rather than colliding with what is on screen.
+    doc = parse(src);
+    check("the id counter comes across with the clone",
+      modelCloneDocument(doc).nextId === doc.nextId);
+    check("and so does the prefix", modelCloneDocument(doc).prefix === doc.prefix);
   }
 }

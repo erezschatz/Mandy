@@ -6950,3 +6950,61 @@ around the tokens, and which is what the 2026-09-19 decision to clone at all is
 measured against.
 
 No code changed, so nothing ran.
+
+## 2026-09-21 — Slice 6, step 1: an undo state is a clone of the document
+
+`modelCloneDocument` in [front/model.js](front/model.js), and nothing else —
+the one piece of slice 6 that is pure model, with no DOM and no stack in it, so
+the `model` suite can drive it against the whole oracle. The undo state itself
+is the next step.
+
+**Not `structuredClone`**, which is what the decision of 2026-09-19 said and
+what step 1 of yesterday's plan corrected. It handles the cycle `parent` makes
+perfectly well; what it does not handle is markdown-it's `Token`, a class
+instance the structured clone algorithm returns as a bare object. Putting it
+back in place of the clone throws `token.attrIndex is not a function` inside
+markdown-it's own `fence` renderer — reproduced rather than reasoned about.
+
+**Every token is cloned and none is shared**, settled yesterday on the
+measurement. The block-level tokens look shareable and are not:
+`modelSourceSplice` writes `token.content` on a fence, so a shared fence token
+hands back an undo whose `source` holds the old bytes and whose token holds the
+new ones — the screen rendering the code the undo was meant to take back while a
+save files the code it did — and `modelVerifyRender` skips exactly the blocks
+with no inline tree, so nothing would report it.
+
+**Aliases are preserved rather than flattened, and that was not in the plan.**
+It is what the clone's `Map` turned out to be for. A block's `inline` *is* one of
+its own `tokens` — all 861 inline-bearing leaves in the oracle — and a
+`hiddenBefore` is a token belonging to the block before it, all 12 of them.
+Copy either twice and the two copies can disagree about the `hidden` flag
+`modelFillItem` sets through one of them. Keying on the original token makes the
+clone's token graph *isomorphic* to the original's rather than merely
+equivalent, which is one allocation, is cheaper than reasoning about which
+aliases exist, and does not have to be revisited when a later slice adds one.
+
+**`modelCloneToken`'s own comment was wrong and is fixed.** It claimed
+block-level tokens are "read-only to everything here", which slice 4 stopped
+being true. The sharing it does is still right — its callers only ever share
+between blocks of one live document, where a later write is meant to reach both,
+and none of them hands it a fence, since a fence is never split — but the reason
+is the caller rather than the token, and now says so.
+
+Twenty-six new checks in `model`, 1,521 in all. The sweep runs over the whole
+oracle rather than a hand-written case, because every way this can be wrong is
+silent and the token that matters is whichever one the next edit happens to
+touch: each file's clone round-trips byte-identical and renders identically,
+no token is shared between a document and its clone (17,946 cloned, 0 shared),
+every alias inside it is preserved, every `parent` points inside the clone, and
+no token in the oracle carries a `meta` — which is the check that keeps the one
+field carried by reference honest, so a parser upgrade that starts using it
+fails here rather than quietly sharing whatever it holds. Then both directions
+of independence, the fence case specifically, and that `nextId` and the prefix
+come across.
+
+**Every one of those properties was broken on purpose first**, the way slice 3's
+affix rules were: `structuredClone` throws in the renderer, sharing the tokens
+fails the disjointness sweep and both fence checks, a `parent` left pointing at
+the original fails the parent sweep, and a flattened `inline` alias fails the
+alias sweep and the disjointness one with it. `sw.js`'s `VERSION` goes to
+`v1.40`.
