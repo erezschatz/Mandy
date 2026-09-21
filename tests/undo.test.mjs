@@ -39,7 +39,7 @@ const REPLACEMENT_SITES = {
 // that it resolves against the document being installed, and that is only
 // visible if each generation's blocks are distinct objects.
 function fakeModel() {
-  let live = { text: "start", clones: 0, bytes: 0, blocks: [{ id: 1 }, { id: 2 }] };
+  let live = { text: "start", clones: 0, blocks: [{ id: 1 }, { id: 2 }] };
   let caret = { block: live.blocks[0], offset: 0 };
   const restored = [];
   const applied = [];
@@ -57,12 +57,9 @@ function fakeModel() {
     // *different object* from the one the parked bundle's states describe --
     // same content, new blocks. Nothing in this file may care.
     reparse: (text) => {
-      live = { text, clones: 0, bytes: 0, blocks: [{ id: 1 }, { id: 2 }] };
+      live = { text, clones: 0, blocks: [{ id: 1 }, { id: 2 }] };
       caret = { block: live.blocks[0], offset: 0 };
     },
-    // How big the document arrived, which is what the depth budget is measured
-    // against. Set by a check to stand in for opening a large file.
-    weigh: (bytes) => { live.bytes = bytes; },
     scope: {
       modelCoreEnabled: () => true,
       modelCurrentDocument: () => live,
@@ -664,77 +661,16 @@ export default function run(check) {
   check("whose own stack is empty at that point", h.undoDepth() === 0);
   check("while the parked bundle still has its step", parkedFirst.undoStack.length === 1);
 
-  // --- how deep the stack is allowed to be --------------------------------
-  //
-  // The old core's state is an innerHTML string, about the size of the
-  // document, so a hundred of them is a few megabytes and the count is the
-  // whole cap. A model state is fifteen to sixteen times the markdown's bytes,
-  // so a hundred of *those* is 157MB for this repo's largest file -- and
-  // UNDO_LIMIT's own comment says it exists so a large document cannot run the
-  // tab out of memory. The count became a ceiling and the budget became the cap.
-  //
-  // The property to keep hold of: a small document loses nothing. The documents
-  // that were never the problem are the ones a smaller count would have taken
-  // depth away from, which is why the cap is bytes rather than a lower number.
-
-  const deep = (h, n) => {
-    h.undoReset();
-    for (let i = 0; i < n; i += 1) { h.advance(1000); h.type("x"); }
-    return h.undoDepth();
-  };
-
-  check("with the flag off the stack is the count it always was",
-    deep(harness(), 120) === 100);
-
-  h = harness({ modelCore: true });
-  check("and a document with no byte count takes the same",
-    deep(h, 120) === 100);
-
-  // 64MB / (40KB x 16) = 100, so anything up to about this size is unaffected.
-  h = harness({ modelCore: true });
-  h.model.weigh(40 * 1024);
-  check("a small document keeps every step", deep(h, 120) === 100);
-
-  // This repo's own two, measured: 48KB and 105KB of markdown.
-  h = harness({ modelCore: true });
-  h.model.weigh(48 * 1024);
-  const medium = deep(h, 120);
-  check(`a 48KB document keeps ${medium} (fewer than the count, more than half of it)`,
-    medium < 100 && medium > 50);
-
-  h = harness({ modelCore: true });
-  h.model.weigh(105 * 1024);
-  const large = deep(h, 120);
-  check(`a 105KB document keeps ${large} (a working undo, not a hundred)`,
-    large < medium && large >= 30);
-
-  // The floor. A document this size is four times the largest here, and an
-  // undo stack too shallow to undo is worse than the memory it saves.
-  h = harness({ modelCore: true });
-  h.model.weigh(8 * 1024 * 1024);
-  check("an enormous document still gets a floor", deep(h, 40) === 10);
-
-  // The limit is read per push, so a document that grew tightens it -- and the
-  // trim has to be a loop, or the stack sits over budget until the next edit.
-  h = harness({ modelCore: true });
-  deep(h, 60);
-  const wideOpen = h.undoDepth();
-  h.model.weigh(105 * 1024);
-  h.advance(1000); h.type("x");
-  check("and a stack already over a tightened budget is cut to it in one go",
-    wideOpen > large && h.undoDepth() === large);
-
   // The refusal this replaces is gone, and the source says so rather than
   // leaving a reader to wonder whether it was forgotten.
   const undoSrc = readFront("undo.js");
   check("undo() no longer refuses under the flag",
     !/function undo\(\) \{\s*\n\s*if \(undoModelCore\(\)\) return false;/.test(undoSrc));
-  // The claim the whole step rests on: the branch is where a state's *shape* or
-  // *cost* is decided, and nowhere else in the file. Two calls and the
-  // definition -- capture, which builds one, and the depth budget, which is the
-  // same question asked about size. Apply does not ask it at all.
-  check("and the core is asked at the two places a state costs something",
-    (undoSrc.match(/undoModelCore\(\)/g) || []).length === 3);
+  // The claim the whole step rests on: the branch is at the seams and nowhere
+  // else in the file. One call and the definition -- capture asks the flag
+  // once, and apply does not ask it at all.
+  check("and the core is asked once, in capture",
+    (undoSrc.match(/undoModelCore\(\)/g) || []).length === 2);
   // Apply reads the *state's* own shape instead, which is the stronger
   // property and worth pinning as one: a state says which core took it, so it
   // can only ever be put back the way it was taken. Asking the flag again

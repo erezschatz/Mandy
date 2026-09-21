@@ -1258,6 +1258,10 @@ What is worth knowing:
   `modelVerifyRender` skips exactly the blocks with no inline tree, so nothing
   would report it. The saving was 0.19ms on `docs/TODO.md` and 0.23ms on this
   file, per step, against a 16.8ms render.
+  **Superseded in scope by step 7**: that argument holds against sharing with
+  nothing protecting it, which is what was on the table here. It does not hold
+  against sharing with a copy-before-write barrier, and the saving it weighed
+  was time rather than space.
 - **Aliases are preserved rather than flattened.** A block's `inline` is one of
   its own `tokens`, and a `hiddenBefore` is a token out of the block before it;
   copied twice they can disagree about the `hidden` flag `modelFillItem` sets.
@@ -1360,20 +1364,25 @@ cannot run the tab out of memory", and that was calibrated against strings.
 Where it goes, on `corpus/claude.md`: tokens 62%, inline nodes 32%, blocks 5% —
 the inline layer is 94% of a state.
 
-**So the count became a ceiling and a byte budget became the cap**, which is
-`UNDO_LIMIT`'s own comment in the units that turned out to matter rather than a
-new policy: it already asked for deep enough that nobody reaches the end in
-normal editing *and* small enough that a large document cannot run the tab out
-of memory, and those stopped being satisfiable by one number when a state
-stopped being a string. `UNDO_BUDGET` is 64MB per tab, `UNDO_STATE_PER_BYTE` is
-16 (the measured 15.5 and 15.3, rounded up so the budget is approached from
-below), `UNDO_FLOOR` is 10 because a stack too shallow to undo is worse than the
-memory it saves, and `modelParse` records `doc.bytes` for it. A document up to
-about 40KB keeps all hundred steps, `corpus/todo.md` keeps 85, `corpus/claude.md`
-keeps 39. **Not a smaller `UNDO_LIMIT`**, which would have taken depth from the
-documents that were never the problem. Whether states should share structure at
-all — copy-on-write — is untouched by this and stays open on its own merits, now
-as a way to buy *depth* back rather than as a way to bound memory.
+**What that turned into is slice 6's step 7, and no cap.** A byte budget was
+built and taken out again the same day: it bounded the memory by taking undo
+depth away from large documents, where step 7 removes the memory instead. A
+state becomes a copy of the document's **outline** with each paragraph's
+**contents shared** with the state before it, copied only when something is
+about to write to that paragraph — 84KB rather than 1,610KB, and smaller than
+the HTML string the old core keeps. The outline is still copied, because sharing
+it means removing the link every block uses to record which container it sits in
+— one block cannot be the third bullet in one state and a top-level paragraph in
+another — and that is the expensive half for 5% of the memory.
+
+**And it re-opens what step 1 recorded as settled.** Step 1 chose to clone
+rather than share on a correctness argument — `modelSourceSplice` writes into a
+token in place, so a shared token lets a later edit reach backwards into an
+older state — and on a *time* measurement. Both were true, and neither covered
+the option step 7 takes: share, **and copy a paragraph's contents before
+anything writes to it**. A write barrier is exactly what removes the hazard step
+1 named, and the saving step 1 weighed was the wrong axis, because nobody had
+measured the space.
 
 What the model still does *not* do is run a format command, which is slice 7.
 

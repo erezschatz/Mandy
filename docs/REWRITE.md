@@ -3095,8 +3095,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         cancelling the event stop the insertion, where does a drop land.
 
     *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 to 5
-        are done and tested; step 6 is measured and acted on, and its protocol
-        is written and not yet run.** A stack of model states with the caret as a model position,
+        are done and tested; step 6 is measured, and its protocol is written and
+        not yet run. Step 7 is what the measurement turned into, and is planned
+        rather than built.** A stack of model states with the caret as a model position,
         replacing the whole-document `innerHTML` snapshots.
         Coalescing carries over unchanged — same `inputType`, inside 600 ms,
         merges; everything else starts a step — because the commands now name
@@ -3511,47 +3512,26 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `corpus/claude.md`: **tokens 62%**, **inline nodes 32%**, blocks 5%.
             The inline layer is 94% of a state.
 
-            **What follows from it is one change and one question, and they are
-            not alternatives.** The change is how deep the stack is allowed to
-            be, which is settled below. The question is whether states should
-            share structure at all — copy-on-write, which the 2026-09-19
-            decision kept available "on a measurement" — and it stays open on
-            its own merits rather than as an answer to this, because the cap
-            below already bounds the memory and copy-on-write would buy back
-            *depth* instead. Nothing here reopens cloning versus sharing: that
-            was settled in step 1 on correctness, and a memory number is not the
-            kind of argument that unsettles it.
+            **What follows is step 7, and no cap.** A byte budget was built
+            here on 2026-09-21 and taken out again the same day, which is worth
+            recording rather than hiding: it bounded the memory at the cost of
+            undo depth on large documents, and step 7 removes the memory instead,
+            so a budget would have been a ceiling nothing could reach. The
+            decision is **not to carry a guard sized for a case nobody has met**
+            — if states get heavy again, that is the moment to measure against
+            whatever made them heavy.
 
-            **So: the count becomes a ceiling and a byte budget becomes the
-            cap.** `UNDO_BUDGET` is 64MB per tab, `UNDO_STATE_PER_BYTE` is 16 —
-            the measured 15.5 and 15.3, rounded up so the budget is approached
-            from below — and `UNDO_FLOOR` is 10, because an undo stack too
-            shallow to undo is worse than the memory it saves. `modelParse`
-            records `doc.bytes` for it, at the parse rather than by serialising
-            later, since this needs an order of magnitude rather than a number.
-
-            | Document | Per state | Steps kept |
-            | --- | --- | --- |
-            | up to ~40KB | under 640KB | **100**, unchanged |
-            | `corpus/todo.md`, 48KB | 743KB | 85 |
-            | `corpus/claude.md`, 105KB | 1,610KB | 39 |
-            | above ~400KB | — | 10, the floor |
-
-            **This is the constant's original intent in the units that turned
-            out to matter**, not a new policy: its comment already asked for
-            deep enough that nobody reaches the end in normal editing *and*
-            small enough that a large document cannot run the tab out of memory,
-            and those stopped being satisfiable by one number when a state
-            stopped being a string. It is also why the answer is not simply a
-            smaller `UNDO_LIMIT` — that would take depth away from the documents
-            that were never the problem.
-
-            Two things it does not do, both stated rather than discovered.
-            `doc.bytes` **does not track a document growing under the keyboard**,
-            which is fine because this bounds memory rather than allocating it
-            and a document that has doubled is still in the right band. And the
-            undo and redo stacks need no budget between them: their sum only
-            grows on a fresh edit, and a fresh edit clears the redo branch.
+            **And it re-opens step 1, which this plan had recorded as settled
+            further than it was.** Step 1 chose to clone rather than share on a
+            correctness argument — one piece of code writes into a token in
+            place, so a shared token lets a later edit reach backwards into an
+            older state — and on a **time** measurement, where the saving from
+            sharing was two tenths of a millisecond. Both were true. What
+            neither covered is the option step 7 takes: share, *and copy a
+            paragraph's contents before anything writes to it*. The hazard step
+            1 named is exactly what a write barrier removes, and the saving it
+            weighed was the wrong axis, because nobody had measured the space
+            until here.
 
             **The protocol.** Not on `front/input-check.html` — see step 4 — but
             in the running app under `?core=model`, because undo is the
@@ -3598,6 +3578,61 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
             Throughout, `modelVerifyRender` must stay quiet — set
             `modelVerifyEnabled` in the console before starting.
+
+
+        7.  **A state shares what the edit did not touch — planned 2026-09-21,
+            not started.** The seventh step of a six-step slice, added because
+            step 6's measurement said the second thing it was asked and nobody
+            had asked the first.
+
+            **What a state is today**: a full copy of the document, so typing
+            one character copies four hundred paragraphs. What it becomes: a
+            copy of the **outline** — which paragraphs exist, in what order,
+            nested in what — with each paragraph's **contents** shared with the
+            state before it, and copied only when something is about to write to
+            that paragraph. Measured: 84KB where the full copy is 1,610KB, and
+            0.07ms where it is 1.22ms. A hundred states of this repo's largest
+            file go from 157MB to 8.2MB, which is **smaller than the 11.6MB of
+            HTML strings the old core keeps** — the thing the 2026-09-19
+            decision claimed and, until now, was not.
+
+            **The outline is deliberately still copied**, and that is the
+            step's one real boundary. Sharing it too would take a state to
+            almost nothing, but the outline is where each block records the
+            container it sits in, and one block shared between two states cannot
+            answer that for both — it is the third bullet in one and a top-level
+            paragraph in the other. Sharing it therefore means removing `parent`
+            and rewriting the 42 places that ask it, plus most of the 98 in-place
+            mutations. **That is the expensive half, and it buys 5%**: the
+            contents are 94% of a state and the outline 5%. The first change
+            takes this from a problem to not a problem; the second from not a
+            problem to not a problem. It stays available and wants its own
+            argument, not this one.
+
+            **The barrier goes where the door already is.** `modelTouch` is
+            already the single door every content change passes through — that
+            is D1's contract, since a path that changes a block's content
+            without it leaves the file's old bytes under new content — so it
+            gains one job: if this block's contents are shared, give it a
+            private copy first. Capture marks them shared on the way past, which
+            is free, because it is already walking the outline to copy it.
+
+            **The ordering at the 27 `modelTouch` call sites has to be checked
+            rather than assumed**, and at least one is already wrong for this:
+            `modelSourceSplice` writes `token.content` and calls `modelTouch`
+            *after*, so a barrier inside `modelTouch` would fire too late. Every
+            site needs to touch before it writes, and that is the part of this
+            step most likely to be larger than it looks.
+
+            **Verification, and it is the reason this is safe to do at all.**
+            The suite can ask the whole property directly: take a state, edit
+            the document, and the state must still serialise to exactly what it
+            did before — over every file in the oracle, and for every kind of
+            edit slices 3 to 5 built. A write that escapes the barrier changes
+            an older state, and nothing else in the repo would notice; this
+            notices all of them at once. The by-hand protocol in step 6 is
+            re-run afterwards, because the layer under the input layer has
+            moved.
 
         TODO 1.6's caret half — Ctrl+Z after Enter at the end of a bullet
         putting the caret at the top — goes by construction: it is a

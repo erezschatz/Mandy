@@ -7409,3 +7409,86 @@ parsed from, that every oracle file agrees, and that a clone carries it. Each
 property was broken on purpose first; dropping `doc.bytes` from `modelParse`
 passed every check in the repo until those three existed, which is why they do.
 `sw.js`'s `VERSION` goes to `v1.44`.
+
+## 2026-09-21 — The byte cap comes out again, and step 1's argument is qualified
+
+Built this morning, removed this afternoon, and recorded rather than quietly
+reverted because the reason is the useful part.
+
+The cap bounded memory by taking undo depth away from large documents —
+`corpus/claude.md` dropped from 100 steps to 39. Slice 6's step 7, planned
+below, removes the *memory* instead: a state becomes a copy of the document's
+outline with each paragraph's contents shared, at 84KB rather than 1,610KB. A
+64MB budget against 84KB states is a ceiling nothing can reach, so it would be
+code that never runs.
+
+**The decision is not to carry a guard sized for a case nobody has met.** If
+states get heavy again, that is the moment to measure against whatever made them
+heavy — a guard chosen now would be sized for today's shape of the problem and
+would most likely be wrong for the next one. `doc.bytes` goes with it, since the
+cap was its only consumer, and `UNDO_LIMIT`'s comment now says where the
+reasoning went.
+
+**And step 1's write-up is qualified**, because it claimed more than it
+established. It chose to clone rather than share on two grounds. The first was
+correctness: `modelSourceSplice` writes into a token in place, so a shared token
+lets a later edit reach backwards into an older state — and `modelVerifyRender`
+skips exactly the blocks where that shows. The second was a **time**
+measurement: sharing saved two tenths of a millisecond.
+
+Both were true. Neither covered the option step 7 takes — share, **and copy a
+paragraph's contents before anything writes to it**. A write barrier is exactly
+what removes the hazard the first ground named, and the second ground weighed
+the wrong axis, because nobody had measured space until step 6. The entry read
+as settled ("measured rather than argued") on a measurement that covered one of
+the two costs. Step 7's plan says so where step 1 is recorded, rather than
+leaving a reader to find the contradiction.
+
+`sw.js`'s `VERSION` goes to `v1.45`, and the check count returns to 1,567.
+
+## 2026-09-21 — Plan slice 6's step 7: a state shares what the edit did not touch
+
+A seventh step in a six-step slice, written before any of it is built. What a
+state is today is a full copy of the document, so typing one character copies
+four hundred paragraphs. What it becomes is a copy of the **outline** — which
+paragraphs exist, in what order, nested in what — with each paragraph's
+**contents** shared with the state before it and copied only when something is
+about to write to that paragraph.
+
+Measured on `corpus/claude.md`: **84KB per state against 1,610KB**, and 0.07ms
+against 1.22ms. A hundred states go from 157MB to 8.2MB, which is smaller than
+the 11.6MB of HTML strings the old core keeps — the thing the 2026-09-19
+decision claimed and, until now, was not.
+
+**The outline is deliberately still copied.** Sharing it too would take a state
+to almost nothing, but the outline is where each block records the container it
+sits in, and one block shared between two states cannot answer that for both: it
+is the third bullet in one and a top-level paragraph in the other. Sharing it
+means removing `parent` and rewriting the 42 places that ask it, plus most of
+the 98 in-place mutations. **That is the expensive half, and it buys 5%** — the
+contents are 94% of a state. The first change takes this from a problem to not a
+problem; the second from not a problem to not a problem. It stays available and
+wants its own argument rather than this one.
+
+**The barrier goes where the door already is.** `modelTouch` is already the
+single door every content change passes through — D1's contract, since a path
+that changes a block's content without it leaves the file's old bytes under new
+content — so it gains one job: if this block's contents are shared, give it a
+private copy first. Capture marks them shared on the way past, which is free,
+because it is already walking the outline to copy it.
+
+**The ordering at the 27 `modelTouch` call sites has to be checked rather than
+assumed**, and at least one is already wrong for this: `modelSourceSplice`
+writes `token.content` and calls `modelTouch` *after*, so a barrier inside
+`modelTouch` would fire too late. Every site has to touch before it writes, and
+that is the part most likely to be larger than it looks.
+
+**Verification is why this is safe to do at all.** The suite can ask the whole
+property directly: take a state, edit the document, and that state must still
+serialise to exactly what it did before — over every file in the oracle, for
+every kind of edit slices 3 to 5 built. A write that escapes the barrier changes
+an older state, and nothing else in the repo would notice; this notices all of
+them at once. Step 6's by-hand protocol is re-run afterwards, because the layer
+underneath the input layer has moved.
+
+No code changed, so nothing ran.

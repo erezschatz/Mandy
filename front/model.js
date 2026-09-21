@@ -1374,13 +1374,7 @@ function modelParse(markdown, md) {
     lines.length,
   );
 
-  // `bytes` is what the document arrived as, and it is here because the undo
-  // stack's size cap is measured per byte of markdown — see UNDO_BUDGET in
-  // undo.js. Recorded at the parse rather than derived later because a
-  // serialise is the expensive way to ask a question a cap only needs the order
-  // of magnitude of, and it deliberately does not track a document growing
-  // under the keyboard: it bounds memory, it does not allocate it.
-  return { prefix: tiled.leading, blocks: tiled.blocks, nextId, bytes: markdown.length };
+  return { prefix: tiled.leading, blocks: tiled.blocks, nextId };
 }
 
 // The next free id on a document, for a block the editor creates rather than
