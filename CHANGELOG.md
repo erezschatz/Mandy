@@ -7195,7 +7195,11 @@ purpose first. `sw.js`'s `VERSION` goes to `v1.43`.
 
 Step 4 built the instrument and refused to build the suppression, on the grounds
 that an unmeasured "should" is what slice 4's table mitigation turned out to be.
-Driven the same day in Chrome, Firefox and Safari, and the answer is cleaner
+Driven the same day in Chrome, Firefox and Safari — **on
+`front/input-check.html`**, which is named because the mechanism below depends
+on it: that page installs the input layer itself and is always the model core,
+flag or no flag, so what it reports is the new core's behaviour and not the old
+one's. The answer is cleaner
 than the question: **no engine raises `historyUndo` at all** — not from its own
 undo gesture, not after a Ctrl/Cmd+Z.
 

@@ -3378,7 +3378,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
             **The answer is that no engine raises `historyUndo` at all** — not
             from its own gesture, not after a Ctrl+Z — in Chrome, Firefox and
-            Safari, 2026-09-21. **Safari says why, and the reason generalises**:
+            Safari, 2026-09-21, **on `front/input-check.html`**. The page is
+            named because the mechanism depends on it: it installs the input
+            layer itself and is always the model core, flag or no flag, so what
+            it reports is this core's behaviour rather than the running one's. **Safari says why, and the reason generalises**:
             its *Edit → Undo* is **disabled**. Every `beforeinput` is cancelled,
             so the engine never edited anything, so its own undo stack is empty
             and there is nothing for it to raise. That is a consequence of this

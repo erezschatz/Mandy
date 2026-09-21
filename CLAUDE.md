@@ -1319,8 +1319,9 @@ around the input layer rather than the layer, so there the route finds nothing
 and does nothing rather than throwing and taking the protocol with it. The
 keyboard stays the mechanism and this is a bonus entry point.
 
-**And the bonus is never collected, on the desktop.** Measured in Chrome,
-Firefox and Safari on 2026-09-21: **no engine raises `historyUndo` at all**,
+**And the bonus is never collected, on the desktop.** Measured on
+`front/input-check.html` — always the model core, flag or no flag, which is what
+makes the reading this core's — in Chrome, Firefox and Safari on 2026-09-21: **no engine raises `historyUndo` at all**,
 from its own gesture or after a Ctrl+Z. Safari says why and the reason
 generalises — its *Edit → Undo* is **disabled**, because every `beforeinput` is
 cancelled, so the engine never edited anything, so its own stack is empty and it
