@@ -1258,10 +1258,10 @@ What is worth knowing:
   `modelVerifyRender` skips exactly the blocks with no inline tree, so nothing
   would report it. The saving was 0.19ms on `docs/TODO.md` and 0.23ms on this
   file, per step, against a 16.8ms render.
-  **Superseded in scope by step 7**: that argument holds against sharing with
-  nothing protecting it, which is what was on the table here. It does not hold
-  against sharing with a copy-before-write barrier, and the saving it weighed
-  was time rather than space.
+  **Superseded by step 7**: that argument holds against sharing with nothing
+  protecting it, which is what was on the table here. It does not hold against
+  sharing with a copy-before-write barrier, and the saving it weighed was time
+  rather than space. A state shares its contents now and copies them on write.
 - **Aliases are preserved rather than flattened.** A block's `inline` is one of
   its own `tokens`, and a `hiddenBefore` is a token out of the block before it;
   copied twice they can disagree about the `hidden` flag `modelFillItem` sets.
@@ -1364,25 +1364,41 @@ cannot run the tab out of memory", and that was calibrated against strings.
 Where it goes, on `corpus/claude.md`: tokens 62%, inline nodes 32%, blocks 5% —
 the inline layer is 94% of a state.
 
-**What that turned into is slice 6's step 7, and no cap.** A byte budget was
-built and taken out again the same day: it bounded the memory by taking undo
-depth away from large documents, where step 7 removes the memory instead. A
-state becomes a copy of the document's **outline** with each paragraph's
-**contents shared** with the state before it, copied only when something is
-about to write to that paragraph — 84KB rather than 1,610KB, and smaller than
-the HTML string the old core keeps. The outline is still copied, because sharing
-it means removing the link every block uses to record which container it sits in
-— one block cannot be the third bullet in one state and a top-level paragraph in
-another — and that is the expensive half for 5% of the memory.
+**Step 7 made a state share what the edit did not touch**, which is what the
+measurement turned into. `modelForkDocument` copies the document's **outline** —
+which blocks exist, nested in what, and every affix each records — and **shares
+its contents**, the inline tree and the parser's tokens, marking every block it
+walks `shared` on the way past. `modelUnshare` is the other half: before
+anything writes to a block's contents, that block gets its own. **84KB per state
+where the copy was 1,610KB**, 0.068ms where it was 1.22ms, and 8.2MB for a
+hundred states where the old core's HTML strings are 11.6MB — so the 2026-09-19
+claim that this is cheaper than what ships is finally true.
 
-**And it re-opens what step 1 recorded as settled.** Step 1 chose to clone
-rather than share on a correctness argument — `modelSourceSplice` writes into a
-token in place, so a shared token lets a later edit reach backwards into an
-older state — and on a *time* measurement. Both were true, and neither covered
-the option step 7 takes: share, **and copy a paragraph's contents before
-anything writes to it**. A write barrier is exactly what removes the hazard step
-1 named, and the saving step 1 weighed was the wrong axis, because nobody had
-measured the space.
+Four things about it:
+
+- **The barrier is the rule, plus six exceptions.** `modelTouch` is where every
+  content change is supposed to pass, so the barrier goes there. Six functions
+  write to a block's contents *before* calling it — `modelInlineSplice`,
+  `modelSplitLeaf`, `modelInsertBreak`, `modelMergeBlocks`, `modelSourceSplice`,
+  `modelInsertBlocks` — so those carry their own, each confirmed by removing it
+  and watching the sweep fail. `modelTouch`'s own is the only one whose removal
+  fails nothing; it stays for the path nobody has written yet.
+- **The outline is deliberately still copied.** Sharing it would take a state to
+  almost nothing, but `parent` is in it, and one block cannot be the third item
+  of a list in one state and a top-level paragraph in another. That means
+  removing `parent` and rewriting the 42 places that ask it — the expensive
+  half, for 5% of a state.
+- **It re-opens what step 1 recorded as settled.** Step 1 chose to clone rather
+  than share, on correctness (`modelSourceSplice` writes into a token in place,
+  so a shared token lets a later edit reach backwards into an older state) and
+  on a *time* measurement. Both true; neither covered sharing with a
+  copy-before-write barrier, which is exactly what removes the hazard it named.
+- **The check that proves it had to be fixed twice.** Comparing a state's
+  *serialised bytes* is vacuous — an untouched block emits its `source` and
+  never consults its contents — so the sweep passed with the barrier removed
+  entirely. It compares the state's **rendering** now, and two of its edits were
+  silently doing nothing, so it also checks that each edit changed its own
+  document first.
 
 What the model still does *not* do is run a format command, which is slice 7.
 

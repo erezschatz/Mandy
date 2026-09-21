@@ -63,7 +63,7 @@ function fakeModel() {
     scope: {
       modelCoreEnabled: () => true,
       modelCurrentDocument: () => live,
-      modelCloneDocument: clone,
+      modelForkDocument: clone,
       modelRestoreDocument: (root, doc, md, selection) => {
         live = doc; restored.push(doc); applied.push(selection); return doc;
       },

@@ -7492,3 +7492,76 @@ them at once. Step 6's by-hand protocol is re-run afterwards, because the layer
 underneath the input layer has moved.
 
 No code changed, so nothing ran.
+
+## 2026-09-21 — Slice 6, step 7: a state shares what the edit did not touch
+
+An undo state stops being a copy of the document. `modelForkDocument` copies the
+**outline** — which blocks exist, nested in what, and every affix each one
+records — and **shares the contents**, the inline tree and the parser's tokens,
+marking every block it walks `shared` on the way past. `modelUnshare` is the
+other half: before anything writes to a block's contents, that block gets its
+own.
+
+**84KB per state where the copy was 1,610KB**, and 0.068ms where it was 1.22ms.
+A hundred states of this repo's largest file go from 157MB to **8.2MB**, against
+11.6MB for the HTML strings the old core keeps — so the 2026-09-19 claim that
+this is cheaper than what ships is true at last, having been false in the
+direction that mattered since the day it was written.
+
+**The barrier is a rule with six exceptions.** `modelTouch` is where every
+content change is supposed to pass, so the barrier goes there and rides on D1's
+contract rather than on a list somebody had to find. Six functions write to a
+block's contents *before* calling it — `modelInlineSplice`, `modelSplitLeaf`,
+`modelInsertBreak`, `modelMergeBlocks`, `modelSourceSplice`, `modelInsertBlocks`
+— so those carry their own. Every one was confirmed by removing it on its own
+and watching the sweep fail; `modelTouch`'s is the only one whose removal fails
+nothing, and it stays for the path nobody has written yet. The better fix is to
+make those six touch before they write and leave `modelTouch` the only barrier,
+which reorders six edit paths hand-verified in three engines — a separate change
+with its own argument.
+
+**The outline is deliberately still copied**, and that is the step's boundary.
+Sharing it would take a state to almost nothing, but `parent` is in it, and one
+block cannot be the third item of a list in one state and a top-level paragraph
+in another. Sharing it means removing `parent` and rewriting the 42 places that
+ask it, for 5% of a state.
+
+**And it supersedes what step 1 recorded as settled**, which is said where step
+1 is recorded rather than left for a reader to notice. Step 1 chose to clone on
+two grounds: correctness — `modelSourceSplice` writes into a token in place, so
+a shared token lets a later edit reach backwards into a state nobody is looking
+at — and a *time* measurement. Both were true. Neither covered sharing with a
+copy-before-write barrier, which is exactly what removes the hazard the first
+named.
+
+**The check that proves all of this had to be fixed twice, and that is the part
+worth keeping.** It was written as *serialise the state and compare the bytes*,
+which is **vacuous**: an untouched block emits its `source` and never consults
+its contents, so the file comes back identical whatever has happened to the
+shared tree behind it. The sweep passed with the barrier removed entirely. It
+compares the state's **rendering** now — which goes through the tokens, the
+thing actually shared — and with the barrier disabled it fails 861 blocks out of
+861.
+
+Then two of its edits were doing nothing: `modelMergeBlocks` was never called at
+all, and `modelInsertBreak` was called with the wrong arity and silently
+returned null, so two barriers looked redundant when they were merely
+unexercised. The sweep now **checks that each edit changed its own document**
+before checking that it left the state alone. Both turned out to be
+load-bearing.
+
+Thirteen new checks, 1,580 in all: that a fork shares 17,946 tokens and copies
+none of them while every one of its 1,448 blocks is its own object with the same
+id and its parent inside the fork; that forking marks both documents, that
+unsharing gives a block its own contents, clears the mark, leaves the other
+document's alone, keeps the alias between `inline` and `tokens`, keeps the
+prototypes markdown-it's renderer needs, and is idempotent; that every edit in
+the sweep changes its document and that a state survives all 36 of them; that a
+state survives a fence edited as source; and that all 861 inline-bearing blocks
+in the oracle, edited one at a time, leave the state untouched.
+
+Driven in Blink afterwards, because the layer underneath the input layer moved:
+typing and undo with the caret returning to the character it was typed at, an
+indent plus a second edit taken back by two undos to byte-identical and put back
+by two redos, `modelVerifyRender` quiet throughout. Step 6's protocol still
+wants a human in all three engines. `sw.js`'s `VERSION` goes to `v1.46`.

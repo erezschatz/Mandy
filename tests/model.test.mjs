@@ -87,7 +87,7 @@ export default function run(check) {
     modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource,
     modelInlineLeaves, modelTrimRendering,
     modelInsertBlocks, modelTextBlocks, modelAdoptBlocks,
-    modelCloneDocument, modelRecordSelection, modelResolveSelection, modelBlockById,
+    modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection, modelBlockById,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -110,7 +110,7 @@ export default function run(check) {
       " modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource," +
       " modelInlineLeaves, modelTrimRendering," +
       " modelInsertBlocks, modelTextBlocks, modelAdoptBlocks," +
-      " modelCloneDocument, modelRecordSelection, modelResolveSelection," +
+      " modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection," +
       " modelBlockById };",
   );
 
@@ -3364,22 +3364,25 @@ export default function run(check) {
   }
 
   {
-    // --- slice 6's step 1: a state is a clone of the document ---------------
+    // --- slice 6's steps 1 and 7: what a state is ---------------------------
     //
-    // The whole of undo rests on this one function, and every way it can be
-    // wrong is silent. A shared token gives back an undo that renders the edit
-    // it was meant to take back; a `parent` left pointing at the original means
-    // `modelTouch` clears the ancestors of a document nobody is showing, and
-    // the one on screen re-emits its stale bytes. Neither shows up until some
-    // later keystroke, and neither looks like a clone bug when it does.
+    // A state forks the document: it **copies the outline** -- which blocks
+    // exist, nested in what, and every affix each one records -- and **shares
+    // the contents**, the inline tree and the parser's tokens. An edit copies
+    // the one block it is about to write to, and not before.
     //
-    // So the sweep is over the whole oracle rather than a hand-written case:
-    // what is asserted is D1 through the clone (it serialises to the same
-    // bytes), the renderer (markdown-it's own rules call methods on a Token, so
-    // a clone that flattened the prototype throws here and nowhere earlier),
-    // and then the three structural properties a byte comparison cannot see.
+    // Step 1 built this as a whole-document copy and step 7 replaced it, after
+    // step 6 measured a state at fifteen times the markdown's bytes. Step 1's
+    // argument against sharing was correct about sharing with nothing
+    // protecting it; the barrier is what it did not have.
+    //
+    // Every way this is wrong is silent, and one way is silent *and* delayed:
+    // a write that escapes the barrier does not corrupt the document on screen,
+    // it corrupts a state nobody is looking at, and it surfaces the next time
+    // somebody presses Ctrl+Z. So the sweep at the end of this section is the
+    // check that matters, and the ones before it only say why.
 
-    let disjoint = 0, shared = 0, aliasOk = 0, aliasBad = 0, strayParent = 0, metas = 0;
+    let shared = 0, copied = 0, strayParent = 0, aliasOk = 0, aliasBad = 0, metas = 0;
 
     const tokensOf = (doc) => {
       const out = new Set();
@@ -3396,51 +3399,157 @@ export default function run(check) {
     for (const path of ORACLE_FILES) {
       const src = repoFile(path);
       const doc = parse(src);
-      const copy = modelCloneDocument(doc);
+      const fork = modelForkDocument(doc);
 
-      check(`${path}: its clone round-trips byte-identical`, modelSerialise(copy) === src);
+      check(`${path}: a fork round-trips byte-identical`, modelSerialise(fork) === src);
       check(`${path}: and renders identically`,
-        modelRenderDocument(copy, md) === modelRenderDocument(doc, md));
+        modelRenderDocument(fork, md) === modelRenderDocument(doc, md));
 
-      // Nothing mutable in common. This is the check that would have caught the
-      // token-sharing scheme, and it is a set intersection rather than a
-      // spot-check because the one token that matters is whichever one the next
-      // edit happens to touch.
-      const mine = tokensOf(doc), theirs = tokensOf(copy);
-      for (const t of theirs) { if (mine.has(t)) shared += 1; else disjoint += 1; }
+      // The contents are shared. This is the reverse of what step 1 asserted,
+      // and the number is the point: a fork allocates none of this.
+      const mine = tokensOf(doc), theirs = tokensOf(fork);
+      for (const t of theirs) { if (mine.has(t)) shared += 1; else copied += 1; }
 
-      // ...but the *aliases* inside each document are identical. A block's
-      // `inline` is one of its own `tokens`, and a `hiddenBefore` is a token out
-      // of the block before it; copy either twice and the two copies can
-      // disagree about a `hidden` flag modelFillItem sets through one of them.
-      const flat = modelFlatten(doc), flatCopy = modelFlatten(copy);
+      // The outline is not. Every block is its own object, with its own parent.
+      const flat = modelFlatten(doc), flatFork = modelFlatten(fork);
       for (let i = 0; i < flat.length; i += 1) {
-        const at = flat[i].tokens.indexOf(flat[i].inline);
-        if (flat[i].inline) (flatCopy[i].inline === flatCopy[i].tokens[at] ? aliasOk++ : aliasBad++);
-        if (!flat[i].hiddenBefore) continue;
-        const owner = flat.findIndex((b) => b.tokens.indexOf(flat[i].hiddenBefore) >= 0);
-        const where = owner < 0 ? -1 : flat[owner].tokens.indexOf(flat[i].hiddenBefore);
-        (owner >= 0 && flatCopy[i].hiddenBefore === flatCopy[owner].tokens[where] ? aliasOk++ : aliasBad++);
+        if (flat[i] !== flatFork[i] && flat[i].id === flatFork[i].id) aliasOk += 1; else aliasBad += 1;
       }
-
-      // Every parent link points inside the clone. Checked against the
-      // original's blocks rather than by walking down, because the failure is a
-      // reference *out* and a downward walk cannot see one.
-      for (const b of flatCopy) if (b.parent && !flatCopy.includes(b.parent)) strayParent += 1;
+      for (const b of flatFork) if (b.parent && !flatFork.includes(b.parent)) strayParent += 1;
 
       for (const t of mine) if (t.meta !== null && t.meta !== undefined) metas += 1;
     }
 
-    check(`no token is shared between a document and its clone (${disjoint} cloned, ${shared} shared)`,
-      shared === 0 && disjoint > 10000);
-    check(`and every alias inside it is preserved (${aliasOk} of them)`,
+    check(`a fork shares the document's contents rather than copying them (${shared} shared, ${copied} copied)`,
+      copied === 0 && shared > 10000);
+    check(`while every block in it is its own object with the same id (${aliasOk} of them)`,
       aliasBad === 0 && aliasOk > 800);
-    check("every parent link in a clone points inside the clone", strayParent === 0);
-    // The one field carried by reference, and the check that keeps that honest:
-    // markdown-it leaves `meta` null and no rule this project configures writes
-    // one, so a parser upgrade that starts using it fails here rather than
-    // quietly sharing whatever it holds.
+    check("and every parent link points inside the fork", strayParent === 0);
     check(`no token in the oracle carries a meta (${metas} do)`, metas === 0);
+
+    // --- the barrier -------------------------------------------------------
+
+    {
+      const doc = parse(repoFile(CORPUS.todo));
+      const fork = modelForkDocument(doc);
+      const leaf = modelFlatten(doc).find((b) => b.inlines && b.inlines.length);
+      const twin = modelFlatten(fork)[modelFlatten(doc).indexOf(leaf)];
+
+      check("forking marks both documents as sharing", leaf.shared && twin.shared);
+      check("and they are the same contents", leaf.inlines === twin.inlines);
+
+      modelUnshare(leaf);
+      check("unsharing gives the block its own", leaf.inlines !== twin.inlines);
+      check("and clears the mark", !leaf.shared);
+      check("while the other document keeps what it had", twin.shared);
+      // The alias inside a block, which the whole-document clone also had to
+      // keep: `inline` *is* one of `tokens`, and two copies of it can disagree.
+      check("with the block's own aliases intact",
+        !leaf.inline || leaf.tokens.indexOf(leaf.inline) >= 0);
+      // Prototypes, or markdown-it's renderer throws on the first image.
+      check("and the tokens still renderable", typeof leaf.tokens[0].attrIndex === "function");
+      check("unsharing twice is a no-op", modelUnshare(leaf) === leaf && !leaf.shared);
+    }
+
+    // --- the property, which is the one that matters ------------------------
+    //
+    // Take a state, edit the document, and the state must still be what it was.
+    //
+    // **Measured by rendering it, not by serialising it**, and the first
+    // version of this check got that wrong in a way worth recording: an
+    // untouched block emits its `source` bytes and never consults its contents
+    // at all, so `modelSerialise` hands back the original file whatever has
+    // happened to the shared tree behind it. The check passed with the barrier
+    // removed entirely. Rendering goes through the tokens, which is the thing
+    // actually being shared, so that is what has to be compared.
+    //
+    // A write that escapes the barrier changes a state nobody is looking at and
+    // surfaces the next time somebody presses Ctrl+Z; nothing else in this repo
+    // would notice. Run over the whole oracle, and over every kind of edit
+    // slices 3 to 5 built rather than over typing alone.
+
+    {
+      const edits = [
+        ["typing", (d, b) => modelInlineSplice(b, 0, 0, "EDITED ")],
+        ["deleting", (d, b) => modelInlineSplice(b, 0, 1, "")],
+        ["a split", (d, b) => modelSplitLeaf(d, b, 1)],
+        ["a hard break", (d, b) => modelInsertBreak(b, 1, "  ")],
+        ["a paste", (d, b) => modelInsertBlocks(d, b, 1, modelTextBlocks(d, md, "pasted"))],
+        // A merge needs a second block, so it takes the next inline-bearing
+        // leaf rather than the argument. Without it modelMergeBlocks is a path
+        // the sweep never walks, and a barrier nothing exercises is a barrier
+        // nothing checks -- which is how three of these looked load-bearing
+        // until each was removed on its own.
+        ["a merge", (d, b) => {
+          const leaves = modelFlatten(d).filter((x) => x.inlines && x.inlines.length);
+          const next = leaves[leaves.indexOf(b) + 1];
+          return next ? modelMergeBlocks(d, b, next) : null;
+        }],
+      ];
+
+      const broken = [];
+      const idle = [];
+      let tried = 0;
+      for (const path of ORACLE_FILES) {
+        const src = repoFile(path);
+        for (const [name, edit] of edits) {
+          const doc = parse(src);
+          const state = modelForkDocument(doc);
+          const before = modelRenderDocument(state, md);
+          const leaf = modelFlatten(doc).find((b) => b.inlines && b.inlines.length > 1);
+          if (!leaf) continue;
+          tried += 1;
+          edit(doc, leaf);
+          // An edit that did nothing proves nothing, and a run of those is a
+          // green sweep that never touched the thing it is about. This check
+          // exists because the hard-break case was exactly that until it was
+          // asked -- the same reason the oracle checks its own emptiness.
+          if (modelRenderDocument(doc, md) === before) idle.push(`${path}/${name}`);
+          if (modelRenderDocument(state, md) !== before) broken.push(`${path}/${name}`);
+        }
+      }
+      check(`every edit in the sweep actually changed its document (${tried} runs)` +
+        (idle.length ? ` — ${idle.length} did not: ${idle.slice(0, 4).join(", ")}` : ""),
+        tried >= 25 && idle.length === 0);
+      check(`and a state survives every one of them` +
+        (broken.length ? ` — ${broken.length} did not: ${broken.slice(0, 4).join(", ")}` : ""),
+        broken.length === 0);
+
+      // The same again one level down: a *source-bearing* leaf, where the edit
+      // writes into a token rather than into the inline tree. That is the write
+      // step 1 found, and the one a barrier in the wrong place misses.
+      const doc = parse(repoFile("tests/fixtures/torture.md"));
+      const state = modelForkDocument(doc);
+      const before = modelRenderDocument(state, md);
+      const fence = modelFlatten(doc).find((b) => b.kind === "fence");
+      check("the oracle has a fence to try that on", !!fence && modelBearsSource(fence));
+      const body = modelSourceText(modelFlatten(state)[modelFlatten(doc).indexOf(fence)]);
+      modelSourceSplice(fence, 0, 0, "EDITED\n", md);
+      check("and a state survives a fence being edited as source",
+        modelRenderDocument(state, md) === before &&
+        modelSourceText(modelFlatten(state)[modelFlatten(doc).indexOf(fence)]) === body &&
+        modelSourceText(fence) !== body);
+
+      // And the sweep every block, one at a time, since the barrier is per
+      // block and a check on one block proves one block.
+      let swept = 0;
+      const missed = [];
+      for (const path of ORACLE_FILES) {
+        const src = repoFile(path);
+        const count = modelFlatten(parse(src)).filter((b) => b.inlines && b.inlines.length).length;
+        for (let i = 0; i < count; i += 1) {
+          const d = parse(src);
+          const st = modelForkDocument(d);
+          const was = modelRenderDocument(st, md);
+          modelInlineSplice(modelFlatten(d).filter((b) => b.inlines && b.inlines.length)[i], 0, 0, "X");
+          swept += 1;
+          if (modelRenderDocument(st, md) !== was) missed.push(`${path}#${i}`);
+        }
+      }
+      check(`and every inline-bearing block in the oracle, edited on its own, leaves the state alone (${swept} of them)` +
+        (missed.length ? ` — ${missed.length} did not: ${missed.slice(0, 4).join(", ")}` : ""),
+        swept > 800 && missed.length === 0);
+    }
 
     // --- and the two directions of independence ----------------------------
 
@@ -3451,14 +3560,14 @@ export default function run(check) {
 
     const src = repoFile(CORPUS.todo);
     let doc = parse(src);
-    let copy = modelCloneDocument(doc);
+    let copy = modelForkDocument(doc);
     let leaf = modelFlatten(doc).find((b) => b.inlines && b.inlines.length);
     modelInlineSplice(leaf, 0, 0, "EDITED ");
     check("editing the document leaves its clone alone", write(copy) === src);
     check("and the edit is in the document", write(doc) !== src);
 
     doc = parse(src);
-    copy = modelCloneDocument(doc);
+    copy = modelForkDocument(doc);
     leaf = modelFlatten(copy).find((b) => b.inlines && b.inlines.length);
     modelInlineSplice(leaf, 0, 0, "EDITED ");
     check("editing the clone leaves the document alone", write(doc) === src);
@@ -3470,7 +3579,7 @@ export default function run(check) {
     // modelVerifyRender unable to see it -- it skips blocks with no inline
     // tree, which is exactly this one.
     doc = parse(repoFile("tests/fixtures/torture.md"));
-    copy = modelCloneDocument(doc);
+    copy = modelForkDocument(doc);
     const fence = modelFlatten(doc).find((b) => b.kind === "fence");
     const twin = modelFlatten(copy)[modelFlatten(doc).indexOf(fence)];
     const beforeText = modelSourceText(twin);
@@ -3502,7 +3611,7 @@ export default function run(check) {
     check("no selection records as none", modelRecordSelection(null) === null);
     check("and so does one with no block", modelRecordSelection({ offset: 3 }) === null);
 
-    copy = modelCloneDocument(doc);
+    copy = modelForkDocument(doc);
     const record = modelRecordSelection({ block: one, offset: 4, to: { block: other, offset: 2 } });
     const back = modelResolveSelection(copy, record);
     check("resolving finds the block with that id", back.block.id === one.id);
@@ -3534,8 +3643,8 @@ export default function run(check) {
     // minted the first time rather than colliding with what is on screen.
     doc = parse(src);
     check("the id counter comes across with the clone",
-      modelCloneDocument(doc).nextId === doc.nextId);
-    check("and so does the prefix", modelCloneDocument(doc).prefix === doc.prefix);
+      modelForkDocument(doc).nextId === doc.nextId);
+    check("and so does the prefix", modelForkDocument(doc).prefix === doc.prefix);
 
   }
 }

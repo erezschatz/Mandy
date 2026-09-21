@@ -3096,8 +3096,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
     *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 to 5
         are done and tested; step 6 is measured, and its protocol is written and
-        not yet run. Step 7 is what the measurement turned into, and is planned
-        rather than built.** A stack of model states with the caret as a model position,
+        not yet run. Step 7 is what the measurement turned into, and is done and
+        tested.** A stack of model states with the caret as a model position,
         replacing the whole-document `innerHTML` snapshots.
         Coalescing carries over unchanged — same `inputType`, inside 600 ms,
         merges; everything else starts a step — because the commands now name
@@ -3580,8 +3580,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `modelVerifyEnabled` in the console before starting.
 
 
-        7.  **A state shares what the edit did not touch — planned 2026-09-21,
-            not started.** The seventh step of a six-step slice, added because
+        7.  **A state shares what the edit did not touch — done and tested,
+            2026-09-21.** The seventh step of a six-step slice, added because
             step 6's measurement said the second thing it was asked and nobody
             had asked the first.
 
@@ -3617,22 +3617,44 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             private copy first. Capture marks them shared on the way past, which
             is free, because it is already walking the outline to copy it.
 
-            **The ordering at the 27 `modelTouch` call sites has to be checked
-            rather than assumed**, and at least one is already wrong for this:
-            `modelSourceSplice` writes `token.content` and calls `modelTouch`
-            *after*, so a barrier inside `modelTouch` would fire too late. Every
-            site needs to touch before it writes, and that is the part of this
-            step most likely to be larger than it looks.
+            **Six sites write before they touch, so six carry the barrier
+            themselves** — `modelInlineSplice`, `modelSplitLeaf`,
+            `modelInsertBreak`, `modelMergeBlocks`, `modelSourceSplice` and
+            `modelInsertBlocks`. Each was confirmed load-bearing by removing it
+            on its own and watching the sweep fail. The seventh, in
+            `modelTouch`, is the rule rather than a site: it is the only one
+            whose removal fails nothing, and it stays for the path nobody has
+            written yet, the one that touches before it writes. **The better fix
+            is to make those six touch first and leave `modelTouch` the only
+            barrier**, which reorders six edit paths that were hand-verified in
+            three engines — a separate change with its own argument.
 
-            **Verification, and it is the reason this is safe to do at all.**
-            The suite can ask the whole property directly: take a state, edit
-            the document, and the state must still serialise to exactly what it
-            did before — over every file in the oracle, and for every kind of
-            edit slices 3 to 5 built. A write that escapes the barrier changes
-            an older state, and nothing else in the repo would notice; this
-            notices all of them at once. The by-hand protocol in step 6 is
-            re-run afterwards, because the layer under the input layer has
-            moved.
+            **Verification, and the instrument had to be fixed twice before it
+            measured anything.** The property is: take a state, edit the
+            document, and the state must still be what it was — over every file
+            in the oracle and for every kind of edit slices 3 to 5 built.
+
+            It was written as *serialise* the state and compare the bytes, and
+            that is **vacuous**: an untouched block emits its `source` and never
+            consults its contents, so the file comes back identical whatever has
+            happened to the shared tree behind it. The sweep passed with the
+            barrier removed entirely. It compares the state's **rendering** now,
+            which goes through the tokens — the thing actually shared — and with
+            the barrier disabled it fails 861 blocks out of 861.
+
+            Then two of the edits in it were doing nothing: `modelMergeBlocks`
+            was never called at all, and `modelInsertBreak` was called with the
+            wrong arity and silently returned null. So the sweep now **checks
+            that each edit changed its own document** before checking that it
+            left the state alone. Both barriers turned out to be load-bearing
+            once actually exercised, which is the point: a barrier no check
+            reaches is a barrier no check is checking.
+
+            Driven in Blink afterwards, because the layer under the input layer
+            moved: typing and undo with the caret returning to the character it
+            was typed at, an indent and a second edit taken back by two undos to
+            byte-identical and put back by two redos, `modelVerifyRender` quiet
+            throughout. Step 6's protocol still wants a human in all three.
 
         TODO 1.6's caret half — Ctrl+Z after Enter at the end of a bullet
         putting the caret at the top — goes by construction: it is a

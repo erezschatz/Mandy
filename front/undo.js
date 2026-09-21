@@ -234,9 +234,12 @@ function undoRestoreSelection(saved) {
 /**
  * What the document is right now, in whichever shape this core keeps it.
  *
- * Exactly one of `html` and `model` is ever set. The model one is a **clone**,
- * because the live document is about to be edited and a state that moves with
- * it is not a state — which is the whole of slice 6's step 1.
+ * Exactly one of `html` and `model` is ever set. The model one is a **fork**:
+ * it copies the document's outline and shares its contents, and marks the live
+ * document as sharing them, so the next edit copies the one block it touches
+ * before writing to it. A state that moved with the document would not be a
+ * state, and copying the whole document to prevent that was slice 6's step 1 —
+ * step 7 is why it no longer has to.
  *
  * The selection comes in two shapes for the same reason the content does. The
  * old core's is a character offset over the whole editor; the model core's is a
@@ -251,7 +254,7 @@ function undoCaptureState() {
   if (!doc) return { html: null, model: null, selection: null };
   return {
     html: null,
-    model: modelCloneDocument(doc),
+    model: modelForkDocument(doc),
     selection: modelRecordSelection(modelReadSelection(editor, doc)),
   };
 }
@@ -261,10 +264,12 @@ function undoCaptureState() {
  * is the order the old core has always used: the selection has to be restored
  * after the nodes it points at exist.
  *
- * **The model branch installs a clone of the stored state**, never the stored
+ * **The model branch installs a fork of the stored state**, never the stored
  * object. The next edit mutates what it installs, so handing over the entry
  * itself would edit the history — and the way that shows is undo, redo, undo,
- * where the second visit finds the state the first one left behind.
+ * where the second visit finds the state the first one left behind. A fork is
+ * enough because it copies the outline and re-marks the contents as shared, so
+ * the first edit after a restore copies what it is about to write to.
  *
  * A state with neither shape is one taken before a document existed. Nothing
  * is put on screen for it, which is the honest answer: there was nothing.
@@ -274,7 +279,7 @@ function undoApplyState(snapshot) {
     // Resolved against the clone being installed, never against the state:
     // the caret has to land in the tree that is about to be rendered, which is
     // the whole reason a state records ids rather than blocks.
-    const doc = modelCloneDocument(snapshot.model);
+    const doc = modelForkDocument(snapshot.model);
     modelRestoreDocument(editor, doc, md, modelResolveSelection(doc, snapshot.selection));
   } else if (snapshot.html !== null) {
     editor.innerHTML = snapshot.html;

@@ -182,6 +182,10 @@ function modelBlockShape(id, kind) {
     quotePrefixes: null,  // inside a quote only: see modelQuotePrefix
     headingShape: null,   // a heading only: see modelHeadingShape
     leadingAffix: null,   // everything markdown-it took off the first line: see below
+    // Whether an undo state also points at this block's contents — its inline
+    // tree and its tokens. Set by modelForkDocument, cleared by modelUnshare,
+    // and the whole of slice 6's step 7. See the History section.
+    shared: false,
   };
 }
 
@@ -1776,6 +1780,20 @@ function modelJoinBlocks(blocks, emit, leading) {
  * alternative is searching the tree for a block's parent on every keystroke.
  */
 function modelTouch(block) {
+  // Slice 6's step 7's barrier, on the door that already exists: this function
+  // is where every content change is supposed to pass, so putting it here makes
+  // the rule ride on D1's contract rather than on a list of functions somebody
+  // had to go and find.
+  //
+  // **It is the only one of the seven the suite does not need**, because the six
+  // sites that write to a block's contents *before* calling this each carry
+  // their own — removing any of those six fails the sweep, and removing this
+  // one fails nothing. It stays for the path nobody has written yet, the one
+  // that touches before it writes and so is covered by the rule rather than by
+  // a list. The better fix is to make those six touch first and leave this the
+  // only barrier; that reorders six edit paths that were hand-verified in three
+  // engines, so it is a separate change with its own argument.
+  modelUnshare(block);
   for (let node = block; node; node = node.parent) {
     node.source = null;
   }
@@ -2782,6 +2800,7 @@ function modelInlinePrune(nodes) {
  * the rule stage 1 wrote for the caret, reused rather than restated.
  */
 function modelInlineSplice(block, from, to, text) {
+  modelUnshare(block);
   if (!block.inlines) return null;
   const typed = modelNormaliseTyped(text);
   const length = modelInlineText(block.inlines).length;
@@ -2953,8 +2972,9 @@ function modelSetLeadingAffix(block, extra) {
  * The sharing is still right, because the callers here only ever share between
  * blocks of one live document, where a later write is meant to reach both — and
  * no caller hands a fence to one of them, since a fence is never split. What
- * cannot share those tokens is a *state*, which is why `modelCloneDocument`
- * copies every one of them and does not reuse this function alone.
+ * cannot share those tokens across an edit is a *state*, which is why
+ * `modelUnshare` copies every one of them before a write and does not reuse
+ * this function alone.
  *
  * The prototype comes across rather than being flattened to a plain object,
  * because markdown-it's own renderer rules call methods on a Token — `attrGet`
@@ -3274,6 +3294,7 @@ function modelInlineTrimEdge(nodes, side) {
  * it eats the space between two words.
  */
 function modelSplitLeaf(doc, block, offset, trim = true) {
+  modelUnshare(block);
   if (!block.inlines) return null;
   const extra = modelBlockExtra(block);
   const cut = modelInlineSplit(block.inlines, offset);
@@ -3390,6 +3411,7 @@ function modelInsertParagraph(doc, block, offset, md) {
  * writes backslashes.
  */
 function modelInsertBreak(block, offset, spelling = "  ") {
+  modelUnshare(block);
   if (!block.inlines) return null;
   const cut = modelInlineSplit(block.inlines, offset);
   const node = {
@@ -3422,6 +3444,8 @@ function modelInsertBreak(block, offset, spelling = "  ") {
  * does. Hands back the offset the caret lands on: the join.
  */
 function modelMergeBlocks(doc, first, second) {
+  modelUnshare(first);
+  modelUnshare(second);
   if (!first.inlines || !second.inlines) return null;
   const at = modelInlineText(first.inlines).length;
   for (const node of second.inlines) first.inlines.push(node);
@@ -3911,6 +3935,7 @@ function modelSourcePrefixes(block) {
  * is not the same thing as inventing one.
  */
 function modelSourceSplice(block, from, to, text, md) {
+  modelUnshare(block);
   if (!modelBearsSource(block)) return null;
   const body = modelSourceText(block);
   const start = Math.max(0, Math.min(from, body.length));
@@ -4115,6 +4140,7 @@ function modelAdoptBlocks(doc, blocks, like) {
  * or null when the target cannot take it.
  */
 function modelInsertBlocks(doc, block, offset, blocks) {
+  modelUnshare(block);
   if (!blocks.length) return { block, offset };
   if (!block.inlines) return null;
   modelAdoptBlocks(doc, blocks, block);
@@ -4272,8 +4298,8 @@ function modelCloneTokenInto(token, seen) {
 
 // An inline node holds two token references, its children, and otherwise
 // strings — `kind`, `markup`, `content`, `raw`, `tail`. So the copy is the
-// object plus those three fields, the same shape modelCloneBlockInto takes one
-// level up.
+// object plus those three fields, and modelUnshare below is its only caller:
+// it is what gives one block its contents back before an edit writes to them.
 function modelCloneInlinesInto(nodes, seen) {
   return nodes.map((node) => {
     const copy = Object.assign({}, node);
@@ -4284,55 +4310,51 @@ function modelCloneInlinesInto(nodes, seen) {
   });
 }
 
-/**
- * One block and its subtree, with `parent` rebuilt to point inside the clone.
- *
- * Copied wholesale and then corrected, rather than named field by field out of
- * `modelBlockShape`: a scalar added to a block later comes across for free, and
- * only the fields holding a reference have to be listed — which is the same
- * shape `modelCloneToken` itself takes.
- *
- * A `parent` left pointing at the original is the one that half-works, and it
- * would half-work for a long time: nothing reads it until `modelTouch` walks up
- * from an edited block, at which point the edit clears the ancestors of a
- * document nobody is showing and the one on screen re-emits its stale bytes.
- */
-function modelCloneBlockInto(block, parent, seen) {
+function modelForkBlock(block, parent) {
+  block.shared = true;
   const copy = Object.assign({}, block);
   copy.parent = parent;
-  copy.tokens = block.tokens.map((token) => modelCloneTokenInto(token, seen));
-  copy.inline = block.inline ? modelCloneTokenInto(block.inline, seen) : null;
-  copy.hiddenBefore = block.hiddenBefore ? modelCloneTokenInto(block.hiddenBefore, seen) : null;
-  copy.inlines = block.inlines ? modelCloneInlinesInto(block.inlines, seen) : null;
   copy.quotePrefixes = block.quotePrefixes ? block.quotePrefixes.slice() : null;
   copy.headingShape = block.headingShape ? Object.assign({}, block.headingShape) : null;
   copy.children = block.children
-    ? block.children.map((child) => modelCloneBlockInto(child, copy, seen))
+    ? block.children.map((child) => modelForkBlock(child, copy))
     : null;
   return copy;
 }
 
+function modelForkDocument(doc) {
+  return { ...doc, blocks: doc.blocks.map((block) => modelForkBlock(block, null)) };
+}
+
 /**
- * A document that shares nothing mutable with the one it was taken from.
+ * Give a block its own contents back, before anything writes to them.
  *
- * `nextId` comes across, so a state restored and then edited mints the ids it
- * would have minted the first time. That is safe only because a fresh edit
- * clears the redo branch — the blocks carrying the higher ids are discarded in
- * the same breath — and it is written down because it stops being true the
- * moment something mints an id without clearing it.
+ * The write half of copy-on-write, and the reason sharing is safe here where
+ * step 1 refused it: step 1 weighed sharing with *nothing protecting it*, where
+ * an edit reaches backwards into a state nobody is looking at — and
+ * `modelVerifyRender` skips exactly the blocks where that shows. A copy before
+ * the write removes the hazard rather than accepting it.
+ *
+ * Idempotent, and cheap when it is a no-op, because it is called on paths that
+ * run per keystroke. The deep copy is the one the whole-document clone used to
+ * do, over one block instead of the document: prototypes preserved, and the
+ * aliases inside the block kept, since `inline` *is* one of `tokens`.
  */
-function modelCloneDocument(doc) {
+function modelUnshare(block) {
+  if (!block || !block.shared) return block;
   const seen = new Map();
-  return {
-    ...doc,
-    blocks: doc.blocks.map((block) => modelCloneBlockInto(block, null, seen)),
-  };
+  block.tokens = block.tokens.map((token) => modelCloneTokenInto(token, seen));
+  block.inline = block.inline ? modelCloneTokenInto(block.inline, seen) : null;
+  block.hiddenBefore = block.hiddenBefore ? modelCloneTokenInto(block.hiddenBefore, seen) : null;
+  block.inlines = block.inlines ? modelCloneInlinesInto(block.inlines, seen) : null;
+  block.shared = false;
+  return block;
 }
 
 /**
  * Put a state back: install a document and draw it.
  *
- * The other half of `modelCloneDocument`, and it is here rather than in
+ * The other half of `modelForkDocument`, and it is here rather than in
  * `undo.js` because `modelDocument` is this file's variable and reaching into
  * it from outside would make "which document is open" a question with two
  * answers. What `undo.js` owns is the stack; what it asks for is this.
