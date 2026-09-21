@@ -6908,7 +6908,7 @@ it stays open until the new undo is watched doing correctly.
 
 No code changed, so nothing ran.
 
-## 2026-09-21 — Slice 6 clones tokens rather than sharing them
+## 2026-09-21 — `e135a1d` — Slice 6 clones tokens rather than sharing them
 
 Step 1 of yesterday's plan left the token policy to step 6's measurement. The
 measurement is in, and it settles it the other way round from how these usually
