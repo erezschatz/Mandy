@@ -6712,7 +6712,7 @@ saying out loud: setting it in one browser says nothing about another.
 
 No code changed, so nothing ran. `npm test` was green at 1,481 checks before it.
 
-## 2026-09-21 — Drag and drop needed a `dragover` handler, and nobody wrote one
+## 2026-09-21 — `e485c38` — Drag and drop needed a `dragover` handler, and nobody wrote one
 
 Slice 5's step 22 did nothing in Blink and WebKit while working in Gecko:
 dragging a selection only extended the highlight, and a drag from another window
