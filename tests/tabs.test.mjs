@@ -19,7 +19,7 @@
 // toolbar.js, markdown-style.js, app.js, undo.js and file-api.js load
 // concatenated into one scope, the way the page runs them.
 
-import { loadSource, makeEl, markdownitStub, walk } from "./dom.mjs";
+import { loadSource, makeEl, markdownitStub, readFront, walk } from "./dom.mjs";
 
 const HOME = "/home/x";
 
@@ -1298,5 +1298,54 @@ export default async function run(check) {
     // A control that cannot do its one job is worse than an absent one: there
     // is no list for a close to take this document out of.
     check("with no close on it", !partOf(barTabs(app)[0], "tab-close"));
+  }
+
+  // --- the history bundle stays opaque -------------------------------------
+  //
+  // Slice 6's step 5. A parked bundle used to hold whole-innerHTML strings and
+  // now holds model clones, and the switch did not have to change one line for
+  // that -- because this file never looks inside one. It parks a bundle and
+  // adopts a bundle, and what is in it is undo.js's business.
+  //
+  // A source scan rather than a behavioural check, because the way this
+  // regresses is not a broken switch: it is somebody reading a state's field
+  // to answer a question here, after which a tab bar has an opinion about which
+  // core is running and the two shapes have to be kept in step in two files.
+  // Comments stripped first, and that is not incidental: this file *explains*
+  // the ordering at length, so `undoAdopt(null)` and `index.html` both appear
+  // in prose. A scan that counted those would be reading the argument for the
+  // rule as a breach of it.
+  const codeOf = (name) => readFront(name)
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n").filter((line) => !/^\s*\/\//.test(line))
+    .map((line) => line.replace(/\s+\/\/.*$/, ""))
+    .join("\n");
+
+  {
+    const src = codeOf("tabs.js");
+    const calls = (src.match(/undo[A-Za-z]*\(/g) || []).sort();
+    check("tabs.js uses exactly undoPark and undoAdopt, nothing else from undo.js",
+      calls.join() === "undoAdopt(,undoPark(");
+    // The two shapes a state can take, neither of which is nameable here.
+    check("and never reaches inside a state",
+      !/\.undoStack|\.redoStack|\.current\b|\.html\b|\.model\b/.test(src));
+    // The one thing it may know about a bundle: whether there is one. A tab
+    // this session has never shown has none, and undoAdopt(null) is undoReset.
+    check("beyond whether the tab has one at all",
+      /undoAdopt\(tab\.undo \|\| null\)/.test(src));
+  }
+
+  // The claim the switch's ordering comment makes, which slice 6 did not
+  // change and must not have: content first, then undo, then file. Under the
+  // model core "content" is a re-parse rather than an innerHTML assignment, and
+  // the order is load-bearing for the same two reasons either way.
+  {
+    const src = codeOf("tabs.js");
+    const adopt = src.slice(src.indexOf("function adoptActive"));
+    const body = adopt.slice(0, adopt.indexOf("\n}"));
+    check("adoptActive still loads the content before adopting the history",
+      body.indexOf("loadDocumentHtml") < body.indexOf("undoAdopt"));
+    check("and adopts the history before the file state",
+      body.indexOf("undoAdopt") < body.indexOf("fileAdopt"));
   }
 }

@@ -3094,7 +3094,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         are untouched by it: does the engine hand over `text/html` at all, does
         cancelling the event stop the insertion, where does a drop land.
 
-    *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 to 4
+    *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 to 5
         of six are done and tested.** A stack of model states with the caret as a model position,
         replacing the whole-document `innerHTML` snapshots.
         Coalescing carries over unchanged — same `inputType`, inside 600 ms,
@@ -3413,7 +3413,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             undo is watched in the running app under `?core=model`.
 
         5.  **The tab switch, where the model history meets a re-parsed
-            document.** This stage re-parses on adopt — the incoming tab's
+            document — done and tested, and it needed no code.** This stage re-parses on adopt — the incoming tab's
             `content` key is HTML, converted through `htmlToMarkdown` — so the
             document on screen after a switch is a *different object* from the
             one the parked history's states describe, with different ids. That
@@ -3428,6 +3428,54 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             and so reports the same type a keystroke does. Under the model core
             every paste announces `insertFromPaste`, which does not coalesce, so
             the break is unnecessary on this path and stays for the other core.
+            **It is also already unreachable**, which is worth having checked
+            rather than assumed: both menu items branch on `modelOwnsInput()`
+            before they reach `insertPlainText`, and the editor's own `paste`
+            listener returns early under the flag. Had it *not* been, the bug
+            would have been quiet and odd — `breakOnce` set by a paste that then
+            went somewhere else, and consumed by the next unrelated keystroke,
+            which would start its own undo step for no reason anybody could see.
+
+            **What the step turned out to be is an audit**, and the audit passed:
+            `tabs.js` parks a bundle and adopts a bundle and never looks inside
+            one, so switching did not have to learn that a state changed shape.
+            That is now a **source scan** rather than a fact — comments stripped
+            first, because this file explains the ordering at length and
+            `undoAdopt(null)` and `index.html` both appear in its prose, so a
+            scan that counted those would read the argument for the rule as a
+            breach of it. The scan pins three things: only `undoPark` and
+            `undoAdopt` are called, no state field is ever named, and
+            `adoptActive` still loads the content before adopting the history
+            and the history before the file.
+
+            **This is where step 3's choice pays.** A state's caret resolves
+            inside the state's own clone, so a switch cannot break it. Resolved
+            against the *live* document instead — the alternative — the ids
+            would be another parse's and the caret would land nowhere, or worse,
+            somewhere.
+
+            **Driven in Blink, two tabs.** Type in one, open a second with New,
+            type in that, switch both ways: each tab comes back with its own
+            content, `modelVerifyRender` clean on both. An undo in each takes
+            back that tab's own edit and **reaches neither the other's content
+            nor its stack**. And the savepoint survives the round trip: tab
+            two's `cleanPosition` stays put, typing moves `undoPosition()` off
+            it, and after switching away and back an undo lands on it again and
+            the dot clears — which is the undo-before-file ordering working on
+            model states, and the failure it prevents is the one nothing but a
+            suite or this would catch.
+
+            **One thing chased and found correct**, recorded because the symptom
+            is exactly TODO 1.6's: on the *other* tab the dot would not clear
+            however far back the undo went. Its `cleanPosition` is null, because
+            that document was restored from autosave already dirty and
+            `initUndoBaseline` deliberately does not invent a savepoint for one
+            — there is no position it was last saved at. Nothing to do with this
+            slice, and a trap for whoever drives the protocol next.
+
+            **And one about driving it**: `switchToTab` is async, so two tab
+            clicks in one statement race and the second can be lost. A run that
+            does that reads as a switch that silently did nothing.
 
         6.  **The measurement, and the protocol.** The whole clone's cost on
             `docs/TODO.md` — the document the estimate has been taken on all

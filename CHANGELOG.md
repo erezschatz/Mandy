@@ -7228,3 +7228,66 @@ key itself. Whether the old core leaves that menu item enabled-but-pointing-at-a
 arguably the better of the two.
 
 No code changed, so nothing ran.
+
+## 2026-09-21 — Slice 6, step 5: the switch, and it needed no code
+
+A parked history bundle used to hold whole-innerHTML strings and now holds model
+clones, and `tabs.js` did not have to change a line — because it never looks
+inside one. It parks a bundle and adopts a bundle, and what is in there is
+`undo.js`'s business. So the step turned out to be an audit, and the audit
+passed.
+
+**It is a source scan now rather than a fact**, because the way this regresses
+is not a broken switch: it is somebody reading a state's field to answer a
+question in `tabs.js`, after which the tab bar has an opinion about which core
+is running and two shapes have to be kept in step in two files. The scan pins
+that only `undoPark` and `undoAdopt` are called, that no state field is ever
+named, and that `adoptActive` still loads the content before adopting the
+history and the history before the file — the two orderings whose failure is a
+dirty document reporting clean.
+
+**Comments are stripped before it scans**, which is not incidental: `tabs.js`
+explains that ordering at length, so `undoAdopt(null)` and `index.html` both
+appear in its prose. A scan that counted those would be reading the argument for
+the rule as a breach of it.
+
+**`undoBreak`'s one caller is already unreachable under the flag**, checked
+rather than assumed. Both paste menu items branch on `modelOwnsInput()` before
+they reach `insertPlainText`, and the editor's own `paste` listener returns
+early. Had it not been, the bug would have been quiet and odd: `breakOnce` set
+by a paste that then went somewhere else and consumed by the next unrelated
+keystroke, which would start its own undo step for no reason anybody could see.
+
+**This is where step 3's choice pays.** The stage re-parses on adopt, so after a
+switch the document on screen is a different *object* from the one the parked
+bundle's states describe, with its own ids. A state's caret resolves inside the
+state's own clone, so that cannot matter. Resolved against the live document
+instead — the alternative — the ids would be another parse's.
+
+Twelve new checks, 1,567 in all: seven in `undo`, where the fake model grew a
+`reparse` so a check can put a *different document* on screen between a park and
+an adopt, and five in `tabs` for the scan and the ordering. They cover a tab
+with no bundle taking its baseline from what is there, a bundle adopted back
+restoring its own state with its caret resolved inside its own clone, and the
+property the whole park/adopt design exists for asked with model states in it —
+an undo in one tab cannot reach another's content, and the parked bundle still
+has its step.
+
+**And driven in Blink, two tabs.** Type in one, open a second with New, type in
+that, switch both ways: each comes back with its own content and
+`modelVerifyRender` clean. An undo in each takes back that tab's own edit and
+reaches neither the other's content nor its stack. The savepoint survives the
+round trip — tab two's `cleanPosition` stays put, typing moves `undoPosition()`
+off it, and after switching away and back an undo lands on it again and the dot
+clears.
+
+**One thing chased and found correct**, recorded because the symptom is exactly
+TODO 1.6's: on the other tab the dot would not clear however far back the undo
+went. That tab's `cleanPosition` is null, because its document was restored from
+autosave already dirty and `initUndoBaseline` deliberately does not invent a
+savepoint for one — there is no position it was last saved at. Nothing to do
+with this slice, and a trap for whoever drives the protocol next.
+
+**And one about driving it**: `switchToTab` is async, so two tab clicks in one
+statement race and the second can be lost. A run that does that reads as a
+switch that silently did nothing, which cost a round trip here.

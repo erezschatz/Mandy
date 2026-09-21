@@ -52,6 +52,14 @@ function fakeModel() {
     // Where the browser's caret is, in model terms. Set by a check before an
     // edit, exactly as a real one is set by the render the edit ends with.
     look: (id, offset) => { caret = { block: live.blocks.find((b) => b.id === id), offset }; },
+    // What a tab switch does to the model: loadDocumentHtml re-parses the
+    // incoming tab's stored HTML, so the document on screen afterwards is a
+    // *different object* from the one the parked bundle's states describe --
+    // same content, new blocks. Nothing in this file may care.
+    reparse: (text) => {
+      live = { text, clones: 0, blocks: [{ id: 1 }, { id: 2 }] };
+      caret = { block: live.blocks[0], offset: 0 };
+    },
     scope: {
       modelCoreEnabled: () => true,
       modelCurrentDocument: () => live,
@@ -595,6 +603,63 @@ export default function run(check) {
   h.undo();
   check("and a state taken with no caret asks for none",
     h.model.applied[h.model.applied.length - 1] === null);
+
+  // --- slice 6's step 5: the switch, where a bundle meets a re-parsed document
+  //
+  // This stage re-parses on adopt -- the incoming tab's `content` key holds
+  // HTML, converted through htmlToMarkdown -- so after a switch the document on
+  // screen is a different *object* from the one the parked bundle's states
+  // describe, with its own ids. "undoAdopt trusts the bundle to describe what
+  // is on screen" therefore means something weaker here than it does on the old
+  // core, and what makes it survivable is that a restore installs the state's
+  // own clone wholesale and never compares it against the live tree.
+  //
+  // This is also where step 3's choice pays: the caret resolves inside the
+  // state's own clone. Resolved against the *live* document instead -- the
+  // alternative -- a switch would break it, because the ids would be another
+  // parse's.
+
+  h = harness({ modelCore: true });
+  h.model.look(2, 4);
+  h.undoReset();
+  h.model.look(1, 0);
+  h.type("a");                      // an edit in this tab
+  const modelTabA = h.undoPark();
+
+  h.model.reparse("other tab");     // a different document, with its own blocks
+  h.undoAdopt(null);
+  h.type("b");
+  check("a tab with no bundle of its own takes its baseline from what is there",
+    h.undoDepth() === 1);
+  h.undo();
+  check("and undoes within that document", h.model.live.text === "other tab");
+
+  // Back to the first tab: the content is re-parsed, then its bundle is adopted
+  // on top of it. The bundle's states still describe the old objects.
+  h.model.reparse("start");
+  h.undoAdopt(modelTabA);
+  h.undo();
+  check("adopting a bundle back restores that tab's own state",
+    h.model.live.text === "start");
+  const parkedCaret = h.model.applied[h.model.applied.length - 1];
+  check("with its caret resolved inside the state's own clone",
+    parkedCaret && parkedCaret.block.id === 2 && parkedCaret.offset === 4 &&
+      h.model.live.blocks.includes(parkedCaret.block));
+
+  // The property the whole park/adopt design exists for, asked with model
+  // states in it: an undo in one tab can never reach another tab's content.
+  h = harness({ modelCore: true });
+  h.undoReset();
+  h.model.edit("tab one edited"); h.type("a");
+  const parkedFirst = h.undoPark();
+  h.model.reparse("tab two");
+  h.undoAdopt(null);
+  h.model.edit("tab two edited"); h.type("b");
+  h.undo();
+  check("and an undo in one tab cannot reach the other's content",
+    h.model.live.text === "tab two");
+  check("whose own stack is empty at that point", h.undoDepth() === 0);
+  check("while the parked bundle still has its step", parkedFirst.undoStack.length === 1);
 
   // The refusal this replaces is gone, and the source says so rather than
   // leaving a reader to wonder whether it was forgotten.

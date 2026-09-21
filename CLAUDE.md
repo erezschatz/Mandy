@@ -1332,6 +1332,22 @@ question — the same shape `paste-check.html` reached. The consequence worth
 knowing: under the model core Ctrl+Z is the only undo, since the browser's own
 menu item is dead.
 
+**Step 5 was the tab switch, and it needed no code.** `tabs.js` parks a bundle
+and adopts a bundle and never looks inside one, so a state changing shape from
+an HTML string to a model clone reached it as nothing at all. That is a source
+scan now rather than a fact about today — only `undoPark` and `undoAdopt` are
+called, no state field is named, and `adoptActive` still loads the content
+before adopting the history and the history before the file. `undoBreak`'s one
+caller is already unreachable under the flag, which was also checked rather than
+assumed: both paste menu items branch on `modelOwnsInput()` first and the
+editor's own `paste` listener returns early.
+
+The switch is where **step 3's choice pays**. This stage re-parses on adopt, so
+the document on screen after a switch is a different *object* from the one the
+parked bundle's states describe, with its own ids — and a state's caret resolves
+inside the state's own clone, so that cannot matter. Resolved against the live
+document instead, the ids would be another parse's.
+
 What the model still does *not* do is run a format command, which is slice 7.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
