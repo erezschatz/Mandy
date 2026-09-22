@@ -284,11 +284,6 @@ export function loadApp() {
     addRange() {},
   };
 
-  // The toolbar is sticky at top: 0, so an anchor jump has to clear it. Given a
-  // height here so a suite can check the arithmetic rather than just the call.
-  const toolbar = makeEl("div");
-  toolbar.className = "toolbar";
-  toolbar.getBoundingClientRect = () => ({ left: 0, top: 0, width: 0, height: 69 });
 
   // Memoised per id, so a suite can reach the same #editor app.js bound its
   // listeners to rather than a fresh element each lookup.
@@ -310,6 +305,13 @@ export function loadApp() {
         scrollY: 0,
         getSelection: () => selection,
       },
+      // The sticky chrome an anchor jump has to clear. A number rather than
+      // the two elements it is measured from: `chromeClearance` itself lives
+      // in format-bar.js, which this scope does not load, and how it is
+      // measured is the format-bar suite's question. What a suite here can
+      // still check is the arithmetic around it — 69 of toolbar and 36 of tab
+      // strip, the app's own heights.
+      chromeClearance: () => 105,
       TurndownService: class {
         // Options are recorded, not honoured: the serialiser is a pass-through
         // here, so a suite can only assert what app.js asked for. The real
@@ -332,7 +334,7 @@ export function loadApp() {
         createElement: el,
         addEventListener: noop,
         documentElement: root,
-        querySelector: (sel) => (sel === ".toolbar" ? toolbar : null),
+        querySelector: () => null,
         body: { appendChild: noop, removeChild: noop },
         execCommand: (cmd) => commands.push(cmd),
         createRange: () => ({ setStart: noop, collapse: noop }),

@@ -841,18 +841,33 @@ fileDialog.addEventListener("click", (e) => {
   if (e.target === fileDialog) closeDialog();
 });
 
+// Lowercased rather than compared as written, which is undo.js's rule and is
+// load-bearing here for a reason that is easy to miss: **Caps Lock changes
+// `key` and leaves `shiftKey` alone**. With it on, Ctrl+S arrives as "S" with
+// no shift, so the Save As branch below misses on the modifier and the Save
+// branch misses on the letter — and the keystroke falls through to the
+// browser's own Save Page As, which is the single outcome these bindings exist
+// to prevent. Ctrl+O and Ctrl+Shift+P went the same way, the last one
+// backwards: it tested for "P", and Caps Lock with Shift produces "p".
+//
+// `key` and not `code`: a non-Latin layout breaks this the same way and
+// matching the physical key would fix that too, but it would also give a
+// Dvorak user Save on the key that types "o". That one is a measurement
+// nobody has made rather than a fix to guess at.
 document.addEventListener("keydown", (e) => {
+  const key = (e.key || "").toLowerCase();
+
   if (e.key === "Escape" && fileDialog.style.display === "flex") {
     closeDialog();
   }
-  if ((e.ctrlKey || e.metaKey) && e.key === "o") {
+  if ((e.ctrlKey || e.metaKey) && key === "o") {
     e.preventDefault();
     showOpenDialog();
   }
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "s" || e.key === "S")) {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "s") {
     e.preventDefault();
     saveFileAs();
-  } else if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+  } else if ((e.ctrlKey || e.metaKey) && key === "s") {
     e.preventDefault();
     saveCurrentOrPrompt();
   }

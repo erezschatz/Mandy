@@ -88,9 +88,10 @@ export default function run(check) {
 
   // --- jumping to an anchor ------------------------------------------------
 
-  // The toolbar is sticky at top: 0, so scrolling the heading to the very top
-  // of the viewport hides it behind the toolbar — the jump appears to land in
-  // the wrong place, or on a blank strip, and nothing else gives it away.
+  // The chrome is sticky — the toolbar at top: 0 and the tab strip under it —
+  // so scrolling the heading to the very top of the viewport hides it behind
+  // them: the jump appears to land in the wrong place, or on a blank strip, and
+  // nothing else gives it away.
   headings[1].getBoundingClientRect = () => ({ top: 500, left: 0, width: 0, height: 0 });
 
   const tocLink = makeLink("#first-section");
@@ -98,8 +99,8 @@ export default function run(check) {
 
   check("a #anchor scrolls rather than opening a tab",
     app.scrolled.length === 1 && opened.length === 0);
-  check("the jump clears the sticky toolbar (500 - 69 - 12)",
-    app.scrolled[0].top === 419);
+  check("the jump clears the sticky chrome (500 - 105 - 12)",
+    app.scrolled[0].top === 383);
   check("and animates", app.scrolled[0].behavior === "smooth");
 
   // markdown-it percent-encodes non-ASCII in the href, so the handler has to
@@ -108,7 +109,7 @@ export default function run(check) {
   headings[5].getBoundingClientRect = () => ({ top: 900, left: 0, width: 0, height: 0 });
   onClick(clickEvent(makeLink("#%C3%BCn%C3%AFcode-heading"), "meta"));
   check("percent-encoded anchors are decoded before matching",
-    app.scrolled.length === 2 && app.scrolled[1].top === 819);
+    app.scrolled.length === 2 && app.scrolled[1].top === 783);
 
   const scrollsBeforeMiss = app.scrolled.length;
   onClick(clickEvent(makeLink("#no-such-heading"), "meta"));

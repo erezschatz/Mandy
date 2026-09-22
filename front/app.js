@@ -857,14 +857,18 @@ function headingAnchors(root, stamp = false) {
 // rather than a blocklist.
 const LINK_SCHEMES = ["http:", "https:", "mailto:"];
 
-// scrollIntoView would park the heading under the toolbar, which is sticky at
-// top: 0 — so the jump lands on a heading the reader cannot see. Measured from
-// the live element rather than repeating the 69px min-height from app.css,
-// which is a magic number already and wrong once the toolbar wraps to two rows.
+// scrollIntoView would park the heading under the chrome, which is sticky — so
+// the jump lands on a heading the reader cannot see. The clearance is
+// `chromeClearance` in format-bar.js: the same measurement, made once, because
+// this had its own copy that knew only about `.toolbar` and went on parking
+// headings under the tab strip after the redesign moved that out to a sticky
+// sibling. Called rather than defined here because format-bar.js is the file
+// that positions against the chrome; it loads after this one, which costs
+// nothing — a Ctrl/Cmd+click is long past load, the same way `runCommand` is
+// only ever called at click time.
 function scrollToAnchor(target) {
-  const toolbar = document.querySelector(".toolbar");
-  const clearance = toolbar ? toolbar.getBoundingClientRect().height + 12 : 0;
-  const top = target.getBoundingClientRect().top + window.scrollY - clearance;
+  const top = target.getBoundingClientRect().top + window.scrollY -
+    chromeClearance() - 12;
 
   window.scrollTo({
     top: Math.max(top, 0),
@@ -1497,28 +1501,33 @@ editor.addEventListener("keydown", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
+  // Lowercased for the reason file-api.js's copy spells out: Caps Lock moves
+  // `key` and not `shiftKey`, so a bare === against a lowercase letter stops
+  // matching and the keystroke goes to the browser instead.
+  const key = (e.key || "").toLowerCase();
+
   // Save/open bind to the blob fallbacks only where those buttons are rendered,
   // i.e. in exported documents. In the app itself file-api.js owns Ctrl+S and
   // Ctrl+O, and talks to the server instead.
-  if ((e.ctrlKey || e.metaKey) && e.key === "s" && toolbarButton("download-md")) {
+  if ((e.ctrlKey || e.metaKey) && key === "s" && toolbarButton("download-md")) {
     e.preventDefault();
     runToolbarAction("download-md");
   }
-  if ((e.ctrlKey || e.metaKey) && e.key === "o" && toolbarButton("upload-md")) {
+  if ((e.ctrlKey || e.metaKey) && key === "o" && toolbarButton("upload-md")) {
     e.preventDefault();
     runToolbarAction("upload-md");
   }
   // Gated the way Ctrl+S and Ctrl+O are: an exported document renders no PDF
   // item and ships no pdf-export.js, so without this the shortcut swallows the
   // browser's own Ctrl+Shift+P to do nothing.
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "P" && toolbarButton("export-pdf")) {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === "p" && toolbarButton("export-pdf")) {
     e.preventDefault();
     runToolbarAction("export-pdf");
   }
   // Ctrl/Cmd+K for a link, the way every editor binds it. insertLink is a
   // no-op unless the selection is in the editor, so an unfocused window just
   // loses the keystroke rather than acting on nothing.
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === "k") {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === "k") {
     e.preventDefault();
     runToolbarAction("insert-link");
   }

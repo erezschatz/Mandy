@@ -1,12 +1,21 @@
 const BAR_GAP = 10; // between the bar and the selection
 const BAR_EDGE = 8; // between the bar and the edge of the window
 
-// The toolbar is sticky at top: 0, so the usable area starts under it rather
-// than at the top of the viewport. Measured live for the reason scrollToAnchor
-// measures it: app.css's 69px is a magic number and wrong once it wraps.
-function toolbarClearance() {
-  const toolbar = document.querySelector(".toolbar");
-  return toolbar ? toolbar.getBoundingClientRect().height : 0;
+// The chrome is sticky, so the usable area starts under it rather than at the
+// top of the viewport. Measured live for the reason scrollToAnchor measures it:
+// app.css's heights are magic numbers and wrong the moment a row changes.
+//
+// It is two elements rather than one. `.tab-bar` was a second row inside
+// `.toolbar` until the chrome redesign moved it out to a sticky sibling at
+// `top: var(--toolbar-height)`, and this kept measuring `.toolbar` alone — so
+// the band it claimed started 36px too high and the bar parked itself on top of
+// the tab strip, which it wins on z-index. An exported document has no tab bar
+// at all, so the querySelector misses and it contributes nothing.
+function chromeClearance() {
+  return [".toolbar", ".tab-bar"].reduce((total, selector) => {
+    const element = document.querySelector(selector);
+    return total + (element ? element.getBoundingClientRect().height : 0);
+  }, 0);
 }
 
 // The formats the bar offers at a bare caret: block-level only, and that is
@@ -168,7 +177,7 @@ function showFormatBar() {
   // Above the selection by default. Near the first line of the document there
   // is no room for it there — it would sit off the top of the page, or behind
   // the sticky toolbar — so it flips below rather than going out of reach.
-  const ceiling = scrollTop + toolbarClearance() + BAR_EDGE;
+  const ceiling = scrollTop + chromeClearance() + BAR_EDGE;
   const above = rect.top + scrollTop - barHeight - BAR_GAP;
   const top = above >= ceiling ? above : rect.bottom + scrollTop + BAR_GAP;
 
@@ -571,6 +580,19 @@ document.addEventListener("selectionchange", () => {
     }
   }
 });
+
+// The bar is `position: absolute` in document coordinates, so a scroll carries
+// it along with the text it points at — up over the sticky chrome and off the
+// top of the window, or down past the fold — and nothing was taking it away.
+// Vanishing is the whole answer: the bar belongs to a selection the reader can
+// see, and the next selectionchange puts it back where the selection now is.
+//
+// On `window` and without capture, so only the page's own scroll is heard: the
+// outline's and the tab strip's own overflow scrolling is not this bar's
+// business. Passive because this never cancels anything. TODO 4.10 moves the
+// document's scroll into an app-shell container, and this listener moves to it
+// with barRect's scroll read.
+window.addEventListener("scroll", hideFormatBar, { passive: true });
 
 document.addEventListener("click", (e) => {
   if (

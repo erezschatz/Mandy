@@ -685,14 +685,15 @@ category fidelity deliberately does not extend to.
       `overflow-y: auto` and a height derived from the viewport minus the
       chrome — the same `--toolbar-height` / `--tab-bar-height` arithmetic
       4.9 already built, reused rather than duplicated.
-    - **Two call sites read window-level scroll position today and would have
-      to read the new container's instead:** `format-bar.js`'s
-      `barRect()` (`window.pageYOffset || document.documentElement.scrollTop`,
-      used to clamp the floating bar above/below the selection against the
-      sticky toolbar) and `app.js`'s `scrollToAnchor` (`window.scrollY` /
-      `window.scrollTo`, for Ctrl/Cmd+click on a heading link). Both are
-      exercised by existing suites — `format-bar.test.mjs` alone has 79
-      checks — so this is a real, testable change, not a CSS-only one.
+    - **Three places read the window's scroll today and would have to read the
+      new container's instead:** `format-bar.js`'s `barRect()`
+      (`window.pageYOffset || document.documentElement.scrollTop`, used to clamp
+      the floating bar above/below the selection against the sticky chrome), the
+      `scroll` listener beside it that hides the bar — added 2026-09-22, and
+      registered on `window` precisely because the page is what scrolls — and
+      `app.js`'s `scrollToAnchor` (`window.scrollY` / `window.scrollTo`, for
+      Ctrl/Cmd+click on a heading link). All three are exercised by existing
+      suites, so this is a real, testable change, not a CSS-only one.
     - `.outline`'s own sticky positioning inside the new container needs
       re-checking once the outer page no longer scrolls at all — it may
       simplify to a plain height-and-`overflow-y` sidebar inside the same

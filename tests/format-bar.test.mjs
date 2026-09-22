@@ -27,7 +27,7 @@ function scenario(format, buildSelection) {
       },
       runCommand: (cmd, val) => commands.push(val ? `${cmd}:${val}` : cmd),
 
-      window: { getSelection: () => buildSelection(editor, p1, p2) },
+      window: { addEventListener() {}, getSelection: () => buildSelection(editor, p1, p2) },
       editor,
       formatBar: { classList: { remove() {}, add() {} } },
       localStorage: { setItem() {} },
@@ -46,17 +46,29 @@ function scenario(format, buildSelection) {
 
 // Where the bar lands for a selection at `rect`. The bar is positioned
 // absolute, so `top` is in document coordinates and `left` is not.
+//
+// Two sticky elements, not one: `.tab-bar` is a sibling of `.toolbar` rather
+// than a row inside it, so the band the bar must stay clear of is the sum.
+// `tabBarHeight: 0` is the exported document, which ships no tab bar.
 function position({
   rect,
   scrollTop = 0,
   windowWidth = 1000,
   toolbarHeight = 69,
+  tabBarHeight = 36,
   barWidth = 300,
   barHeight = 40,
 }) {
   const editor = makeEl();
-  const toolbar = makeEl();
-  toolbar.getBoundingClientRect = () => ({ left: 0, top: 0, width: 0, height: toolbarHeight });
+  const chrome = {
+    ".toolbar": toolbarHeight,
+    ".tab-bar": tabBarHeight,
+  };
+  const chromeEl = (height) => {
+    const el = makeEl();
+    el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 0, height });
+    return el;
+  };
 
   // app.css keeps the bar display: none until .visible, and a hidden element
   // measures 0×0 — so the stub measures 0 until the class is added, the way the
@@ -76,18 +88,23 @@ function position({
   Object.defineProperty(bar, "offsetWidth", { get: () => (visible ? barWidth : 0) });
   Object.defineProperty(bar, "offsetHeight", { get: () => (visible ? barHeight : 0) });
 
-  return loadSource(
+  // Recorded rather than ignored: the bar hides on the page's own scroll, and a
+  // listener the module registers is the only handle the suite has on that.
+  const listeners = [];
+
+  const result = loadSource(
     "format-bar.js",
     {
       document: {
         createElement: (t) => makeEl(t),
-        querySelector: (sel) => (sel === ".toolbar" ? toolbar : null),
+        querySelector: (sel) => (sel in chrome ? chromeEl(chrome[sel]) : null),
         querySelectorAll: () => [],
         addEventListener() {},
         execCommand() {},
         documentElement: { clientWidth: windowWidth, scrollTop },
       },
       window: {
+        addEventListener: (type, fn) => listeners.push({ type, fn }),
         pageYOffset: scrollTop,
         getSelection: () => ({
           rangeCount: 1,
@@ -114,6 +131,14 @@ function position({
       " top: parseFloat(__bar.style.top), width: __width, windowWidth: __window," +
       " visible: __bar.classList.contains('visible') };",
   );
+
+  return {
+    ...result,
+    isVisible: () => bar.classList.contains("visible"),
+    scroll: () => {
+      for (const l of listeners) if (l.type === "scroll") l.fn();
+    },
+  };
 }
 
 const multiBlock = (editor, p1, p2) => ({
@@ -168,7 +193,7 @@ function codeCase(build) {
         execCommand() {},
       },
       runCommand: () => true,
-      window: { getSelection: () => ({ rangeCount: 1, getRangeAt: () => range }) },
+      window: { addEventListener() {}, getSelection: () => ({ rangeCount: 1, getRangeAt: () => range }) },
       editor,
       formatBar: { classList: { remove() {}, add() {} } },
       localStorage: { setItem() {} },
@@ -253,6 +278,7 @@ function activeCase(build) {
       },
       runCommand: () => {},
       window: {
+        addEventListener() {},
         getSelection: () => ({
           rangeCount: 1,
           getRangeAt: () => ({ intersectsNode: (n) => touched.includes(n) }),
@@ -336,7 +362,7 @@ function caretCase(build, { windowWidth = 1000, toolbarHeight = 69, barWidth = 2
         documentElement: { clientWidth: windowWidth, scrollTop: 0 },
       },
       runCommand: () => {},
-      window: { pageYOffset: 0, getSelection: () => selection },
+      window: { addEventListener() {}, pageYOffset: 0, getSelection: () => selection },
       editor,
       formatBar: bar,
       localStorage: { setItem() {} },
@@ -455,13 +481,32 @@ export default function run(check) {
   p = position({ rect: { left: 400, width: 100, top: 10, bottom: 30 } });
   check("no room above: the bar flips below the selection", p.top === 40);
 
-  // The toolbar is sticky, so "on screen" is not enough — the top 69px of the
-  // viewport is behind it.
+  // The chrome is sticky, so "on screen" is not enough — the top 105px of the
+  // viewport is behind it, 69 of toolbar and 36 of tab strip.
   p = position({ rect: { left: 400, width: 100, top: 100, bottom: 120 } });
-  check("the bar never lands behind the sticky toolbar", p.top >= 69);
+  check("the bar never lands behind the sticky chrome", p.top >= 105);
+
+  // The case the tab strip added, and the one a toolbar-only clearance got
+  // wrong: 80 is clear of the toolbar and squarely on top of the tab bar, which
+  // the bar wins on z-index. So it flips below the selection instead.
+  p = position({ rect: { left: 400, width: 100, top: 130, bottom: 150 } });
+  check("the tab strip counts too: no room above is no room", p.top === 160);
+
+  // Measured rather than assumed — an exported document ships no tab bar, and
+  // the same selection has room above it there.
+  p = position({ rect: { left: 400, width: 100, top: 130, bottom: 150 }, tabBarHeight: 0 });
+  check("with no tab bar the same selection has room above it", p.top === 80);
 
   p = position({ rect: { left: 400, width: 100, top: 300, bottom: 320 }, scrollTop: 500 });
-  check("top is in document coordinates, so scrolling carries it", p.top === 750);
+  check("top is a document coordinate, so it carries the scroll", p.top === 750);
+
+  // Which is exactly why a scroll has to take the bar away: absolute in
+  // document coordinates means it rides the text off the top of the window and
+  // over the chrome on the way. The next selectionchange brings it back.
+  p = position({ rect: { left: 400, width: 100, top: 300, bottom: 320 } });
+  check("the bar is up before the scroll", p.isVisible());
+  p.scroll();
+  check("and a scroll hides it rather than carrying it off screen", !p.isVisible());
 
   // --- block versus inline ---------------------------------------------------
   //

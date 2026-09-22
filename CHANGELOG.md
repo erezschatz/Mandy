@@ -5542,3 +5542,159 @@ what happened — the hash is wrong history rather than an entry to rewrite
 silently.
 
 145 entries, all with a hash, all resolving. No code changed, so nothing ran.
+
+## 2026-09-22 — The format bar vanishes on a scroll, and both jumps clear the tab strip
+
+Two bugs in where the floating format bar is allowed to be, both visible in the
+running editor and neither caught by anything.
+
+**It rode the document.** `.format-bar` is `position: absolute` and
+`showFormatBar` writes a `top` in document coordinates, so the bar travelled
+with the text it points at and nothing ever took it away: scroll down and it
+left the window, scroll up and it slid over the tab strip and the toolbar,
+which it wins on `z-index` (1000 against 90 and 100). A `scroll` listener on
+`window` now calls `hideFormatBar`. Vanishing is the whole answer rather than
+pinning the bar to the selection: the bar belongs to a selection the reader can
+see, and the next `selectionchange` puts it back where the selection now is —
+one rule about when it is up, which is the rule the caret variant already
+follows. Registered on `window` without capture, so the outline's and the tab
+strip's own overflow scrolling is not mistaken for the page's, and passive,
+since it cancels nothing.
+
+**And it never knew about the tab strip.** `toolbarClearance` measured
+`.toolbar` alone, which was right while the tab bar was a second row inside it
+and wrong from the moment the chrome redesign moved it out to a sticky sibling
+at `top: var(--toolbar-height)`. The band the bar refuses to enter therefore
+started 36px too high, and any selection near the top of the window parked the
+bar on top of the tab strip with no scrolling involved at all. It is
+`chromeClearance` now and measures both, live and summed, for the same reason it
+measured one live before: the heights are magic numbers in `app.css` and wrong
+the moment a row changes. An exported document ships no tab bar, the
+`querySelector` misses, and it contributes nothing — which the suite checks
+rather than assumes.
+
+**`scrollToAnchor` had the same bug and now shares the same measurement.** A
+Ctrl/Cmd+click on a heading link subtracted its own `.toolbar` height plus 12,
+so it too parked the heading under the tab strip — the jump landing on a blank
+band, which is the failure the clearance was written to prevent in the first
+place. It calls `chromeClearance` now rather than keeping a second copy: one
+measurement, in the file that positions against the chrome, reached at click
+time the way `runCommand` already is. The `links` suite checks that arithmetic,
+so `dom.mjs` hands the app scope the clearance as a number — a stub value, not
+a second implementation, since how it is measured is the `format-bar` suite's
+question.
+
+The `format-bar` suite grew four checks to 83, and `position()` now stands up
+both sticky elements instead of one and records the listeners the module
+registers, which is the only handle a suite with no layout has on a scroll.
+Both rules were broken on purpose to confirm the checks fail. What a suite with
+no layout cannot see is either bar on screen, so that half is a browser run and
+nothing here claims it: `npm run serve`, select a few words, scroll, and watch
+the bar go rather than climb over the chrome; then select a line just under the
+tab strip and check the bar flips below it instead of sitting on the tabs; then
+Ctrl/Cmd+click a link in the table of contents and check the heading lands
+below the tabs rather than behind them.
+
+## 2026-09-22 — Caps Lock no longer hands Ctrl+S to the browser
+
+Every letter shortcut in the app compared `e.key` against a lowercase letter,
+and **Caps Lock moves `key` without touching `shiftKey`**. With it on, Ctrl+S
+arrives as `"S"` with no shift: `file-api.js`'s Save As branch misses on the
+modifier, its Save branch missed on the letter, and the keystroke fell through
+to the browser's own Save Page As — the single outcome these bindings exist to
+prevent. Ctrl+O went the same way, and Ctrl+Shift+P went the same way
+backwards, since it tested for `"P"` and Caps Lock with Shift produces `"p"`.
+Nothing on screen says any of this: the document is simply never written, and
+the only evidence is the editor still reading as edited.
+
+Both document-level handlers now lowercase once at the top and compare against
+that — `file-api.js`'s four bindings and `app.js`'s Ctrl+S / Ctrl+O / Ctrl+K /
+Ctrl+Shift+P — which is the rule `undo.js` has followed since it was written
+and the reason Ctrl+Z was never affected.
+
+**`key` and not `code`**, deliberately. A non-Latin keyboard layout breaks
+these the same way, and matching the physical key would fix that too — but it
+would also give a Dvorak user Save on the key that types `o`. That is a
+measurement nobody has made rather than a fix to guess at, and the bug this
+entry is about needs no layout to reproduce.
+
+The `file-path` suite drives the real keystrokes now: `press()` dispatches a
+document-level keydown to every handler in its bundle, both files' at once
+since both bind to the same `document`, and reports whether anything asked for
+the browser's default to be suppressed. `file-api.js`'s four get five checks —
+Ctrl+S saves, Caps Lock does not silence it, Ctrl+Shift+S stays Save as rather
+than becoming Save, Cmd+S takes the same path, and a bare `S` is typing rather
+than a shortcut.
+
+**`app.js`'s own two are checked as well, and one of them breaks the other
+way.** Its handler is gated three different ways: Ctrl+S and Ctrl+O are the
+exported document's blob fallbacks, gated on items the app variant does not
+render and so out of this suite's reach; Ctrl+Shift+P is gated on `export-pdf`,
+which is app-only; and Ctrl+K is ungated. The last two are therefore reachable
+here, and the suite spies on the *dispatch* rather than on what the action does
+— it ships no `pdf-export.js`, and `insertLink` backs straight out of a
+selection that is not there, so what is worth pinning is that the keystroke
+matched and reached the right action. Five more checks, including that
+Ctrl+Shift+K is not Insert link. **Ctrl+Shift+P is the one Caps Lock broke by
+making a letter lower case**: Shift spells it `"P"`, Caps Lock on top of Shift
+spells it `"p"`, and the binding tested for `"P"`.
+
+Reverting the fix fails four of the ten. The two export-gated bindings are
+still read rather than exercised — reaching them needs an export-variant
+harness, which is its own piece of work.
+
+Found while chasing a Ctrl+S that Firefox was taking in an installed PWA. That
+turned out to be something else on the machine holding the keyboard — a
+restart cleared it — and this is the bug the search walked into on the way.
+
+## 2026-09-22 — A suite that boots the editor as an exported document
+
+`tests/export-variant.test.mjs` is new, and it exists because of what looking
+for one keybinding's coverage turned up: **nothing had ever booted `app.js` as
+an export.** `data-exported` appeared in exactly one place in `tests/` —
+`toolbar.test.mjs`'s `render()`, which loads `toolbar.js` alone and so can
+check that every item a variant renders has a handler without being able to run
+one. Seven suites load `app.js`, and all seven booted it as the app.
+
+So the parts of `app.js` that exist *only* for an exported document went
+unexercised as a group, and the entry above's two blob fallbacks were the
+smallest of them. What the suite drives now:
+
+- **The keydown gates, both ways.** Ctrl+S downloads the markdown and Ctrl+O
+  opens the file picker, where in the app `file-api.js` answers the same two
+  keystrokes and app.js's branches are skipped. Ctrl+Shift+P is bound to
+  nothing here, because PDF is app-only — and the keystroke is left to the
+  browser rather than swallowed, which is the gate's whole point. Ctrl+K is the
+  control: ungated, so it works in both, which is what shows the other two are
+  skipped by the gate rather than by the handler never running.
+- **New.** An exported document ships no `tabs.js` and no `file-api.js`, so New
+  falls through `typeof newTab === "function"` and `typeof confirmDiscard ===
+  "function"` to app.js's own plain question and resets in place. Backing out
+  of that question keeps the document and its autosave.
+- **What the document opens with**, which is the branch this found by being
+  modelled wrongly first. An exported document's content is the markup in the
+  file; `localStorage` belongs to whoever's browser it was opened in. The suite
+  seeds the two differently and checks the embedded one wins — getting it
+  backwards shows the reader a document of their own in place of the one they
+  were sent — and that `data-exported` is stripped once the toolbar has read
+  it.
+
+It fires `window` `load` rather than skipping it, because all of that startup
+is inside the listener and a harness that never fires one is driving a
+half-booted module.
+
+**It could not be a flag on `file-path.test.mjs`'s `boot()`.** That harness's
+tail returns `currentFilePath` and `fileDescriptor()`, both `file-api.js`
+globals, so a bundle without that file throws before a single check runs — and
+most of its 320 lines are a fake disk, a browse endpoint and a dialog-answer
+queue that an exported document has no use for. The two suites meet at one
+place instead: `file-path` now checks that Ctrl+S in the app does **not** also
+download a copy, which is the same gate from the other side. That check needed
+the object-URL statics stubbed to mean anything — Deno's own `createObjectURL`
+rejects the stub `Blob` and `toolbar.js` catches whatever a handler throws, so
+an inverted gate would otherwise have left no download *and* no failure.
+
+Twenty checks in the new suite, one more in `file-path`. Verified by breaking
+three things on purpose: the letter match back to case-sensitive fails the two
+Caps Lock checks, an exported-branch that is never taken fails the three
+startup ones, and inverting the Ctrl+S gate fails the app-side check.

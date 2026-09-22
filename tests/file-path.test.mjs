@@ -69,8 +69,17 @@ function boot({
   extra.get("editor").id = "editor";
   for (const id of DIALOG_IDS) extra.set(id, makeEl());
 
+  // A blob download, which in this variant must never happen: app.js's Ctrl+S
+  // is gated on an item only an exported document renders, and if that gate
+  // inverted one keystroke would both write the file and download a copy.
+  const downloads = [];
+
   const document = {
-    createElement: (t) => makeEl(t),
+    createElement: (t) => {
+      const el = makeEl(t);
+      if (t === "a") el.click = () => downloads.push(el.download);
+      return el;
+    },
     // Dynamic: toolbar.js builds its buttons during this same execution.
     getElementById: (id) =>
       extra.get(id) ?? walk(toolbar).find((n) => n.id === id) ?? null,
@@ -213,19 +222,41 @@ function boot({
       console,
       setTimeout,
       clearTimeout,
-      URL: globalThis.URL,
+      // The object-URL statics are stubbed rather than left real, and that is
+      // what keeps the check above from being vacuous: Deno's own
+      // createObjectURL rejects the stub Blob, toolbar.js catches whatever a
+      // handler throws, and a gate that had inverted would therefore leave no
+      // download *and* no failure.
+      URL: Object.assign(class extends globalThis.URL {}, {
+        createObjectURL: () => "blob:1",
+        revokeObjectURL: () => {},
+      }),
       Blob: class {},
       Date,
     },
-    "; return { path: currentFilePath, descriptor: () => fileDescriptor()," +
+    "; return { path: currentFilePath, descriptor: () => fileDescriptor(), onToolbarAction," +
       " dir: dialogDir, saveFile, showOpenDialog," +
       " openFile, reloadFile, dirNow: () => dialogDir," +
       " pathNow: () => currentFilePath, mtimeNow: () => fileMtime };",
   );
 
   const editorEl = extra.get("editor");
+
+  // Spies on the two actions app.js's own keydown handler dispatches, rather
+  // than on what those actions do: this suite ships no pdf-export.js, and
+  // insertLink backs straight out of a selection that is not there. What is
+  // under test is that the keystroke matched and reached the right action at
+  // all — the half Caps Lock broke. Registered after the modules, so each real
+  // handler has already run and returned by the time the spy does.
+  const fired = [];
+  for (const action of ["insert-link", "export-pdf"]) {
+    api.onToolbarAction(action, () => fired.push(action));
+  }
+
   return {
     ...api,
+    fired,
+    downloads,
     store,
     browsed,
     reads,
@@ -322,6 +353,27 @@ function boot({
       if (!row) throw new Error(`no dialog row for ${name}`);
       await row.listeners.click[0]();
       await settle();
+    },
+    // A document-level keystroke, as both handlers in this bundle see it —
+    // app.js's and file-api.js's are bound to the same `document` and neither
+    // knows about the other. Reports whether anything asked for the browser's
+    // own action to be suppressed, which is the half that decides between
+    // "Mandy saved" and "Firefox opened Save Page As".
+    press: async (init) => {
+      let prevented = false;
+      const event = {
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+        preventDefault: () => {
+          prevented = true;
+        },
+        ...init,
+      };
+      for (const fn of listeners.keydown || []) fn(event);
+      await settle();
+      return prevented;
     },
     // The browser asks the page whether it may leave. Nothing awaits it there
     // either, which is the reason this guard is returnValue and not ask().
@@ -813,4 +865,78 @@ export default async function run(check) {
   await r.reveal();
   check("dying mid-session disables it without a reload",
     r.find("open-file").disabled === true);
+
+  // --- the shortcuts, with Caps Lock on -------------------------------------
+  //
+  // Caps Lock moves `key` and leaves `shiftKey` alone, so Ctrl+S arrives as
+  // "S" with no shift: the Save As branch misses on the modifier and the Save
+  // branch used to miss on the letter, and the keystroke went to the browser's
+  // own Save Page As. Nothing on screen says so — the document is simply never
+  // written, and the only evidence is the editor still reading (edited).
+
+  r = boot({ savedContent: "<h1>Real work</h1>", savedPath: "/home/erez/notes/plan.md", serverUp: true });
+  await settle();
+
+  let writes = r.writes.length;
+  check("Ctrl+S saves", await r.press({ key: "s", ctrlKey: true }) &&
+    r.writes.length === writes + 1);
+
+  writes = r.writes.length;
+  check("and Caps Lock does not silence it",
+    await r.press({ key: "S", ctrlKey: true }) && r.writes.length === writes + 1);
+
+  // Still Save As rather than Save: the branch is chosen on the modifier, and
+  // the letter must not decide it.
+  writes = r.writes.length;
+  const browsed = r.browsed.length;
+  check("Ctrl+Shift+S under Caps Lock is still Save as, not Save",
+    await r.press({ key: "s", ctrlKey: true, shiftKey: true }) &&
+      r.writes.length === writes && r.browsed.length > browsed);
+
+  // Cmd+S on a Mac takes the same path, and an unmodified letter must not.
+  writes = r.writes.length;
+  check("Cmd+S saves too", await r.press({ key: "S", metaKey: true }) &&
+    r.writes.length === writes + 1);
+
+  writes = r.writes.length;
+  check("a bare S is typing, not a shortcut",
+    !(await r.press({ key: "S" })) && r.writes.length === writes);
+
+  // The other side of the gate the export-variant suite drives from within:
+  // there, Ctrl+S downloads the markdown; here it must save and do nothing
+  // else, because file-api.js owns the keystroke and app.js's branch is
+  // skipped.
+  check("and Ctrl+S in the app does not also download a copy", !r.downloads.length);
+
+  // app.js's own two, which are not file-api.js's and are gated differently:
+  // Ctrl+K is ungated and Ctrl+Shift+P is gated on an app-only item, so both
+  // are reachable here where its Ctrl+S and Ctrl+O — the exported document's
+  // blob fallbacks — are not.
+  let fired = r.fired.length;
+  check("Ctrl+K reaches Insert link",
+    await r.press({ key: "k", ctrlKey: true }) &&
+      r.fired.at(-1) === "insert-link" && r.fired.length === fired + 1);
+
+  fired = r.fired.length;
+  check("and Caps Lock does not silence it",
+    await r.press({ key: "K", ctrlKey: true }) &&
+      r.fired.at(-1) === "insert-link" && r.fired.length === fired + 1);
+
+  fired = r.fired.length;
+  check("Ctrl+Shift+K is not Insert link",
+    !(await r.press({ key: "K", ctrlKey: true, shiftKey: true })) &&
+      r.fired.length === fired);
+
+  fired = r.fired.length;
+  check("Ctrl+Shift+P reaches the PDF export",
+    await r.press({ key: "P", ctrlKey: true, shiftKey: true }) &&
+      r.fired.at(-1) === "export-pdf" && r.fired.length === fired + 1);
+
+  // The one that goes the other way: Shift spells it "P", and Caps Lock on top
+  // of Shift spells it "p" — so the binding that tested for "P" was the one
+  // Caps Lock broke by making the letter *lower* case.
+  fired = r.fired.length;
+  check("and Caps Lock, which spells it lowercase, does not silence it",
+    await r.press({ key: "p", ctrlKey: true, shiftKey: true }) &&
+      r.fired.at(-1) === "export-pdf" && r.fired.length === fired + 1);
 }

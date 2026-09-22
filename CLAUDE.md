@@ -111,6 +111,24 @@ They cover the invariants that fail *silently* rather than loudly:
   It also drives the unsaved-work guard, where the property under test is not
   that a dialog appears but that every answer except Discard leaves the document
   where it was — including a Save the user backed out of halfway.
+- **export-variant** — `app.js` booted as an exported document rather than as
+  the app, which nothing did until 2026-09-22: `data-exported` appeared in one
+  other place in `tests/`, and that one loads `toolbar.js` alone. So the bundle
+  here is the export's — no `file-api.js`, no `tabs.js` — and what it covers is
+  the code that exists only for that configuration. The keydown gates, both
+  ways: Ctrl+S downloads a blob and Ctrl+O opens the file picker where the app
+  would save and browse, Ctrl+Shift+P is bound to nothing because PDF is
+  app-only, and Ctrl+K is the control that works in both. New, which here falls
+  through `typeof confirmDiscard === "function"` to app.js's own plain question
+  and resets in place. And the startup branch that keeps the *embedded*
+  document and ignores this browser's autosave — getting that backwards shows
+  the reader a document of their own in place of the one they were sent. It
+  fires `window` `load` rather than skipping it, since all of that startup is
+  inside the listener. It cannot be a flag on `file-path`'s `boot()`: that
+  harness's tail returns `currentFilePath` and `fileDescriptor()`, so a bundle
+  without `file-api.js` throws before a check runs. The two suites meet at one
+  place instead — `file-path` checks that Ctrl+S in the app does *not* also
+  download, which is the same gate from the other side.
 - **outline** — the depth algorithm, the inline allowlist, and the shape of the
   list Insert TOC writes. The depths are a pure function over heading levels, so
   the pathological document is a table rather than a fixture; the list shape is
@@ -1521,6 +1539,16 @@ binding with `preventDefault` takes the key back in all three, and it lands with
 call — writing it against `execCommand` first is what D4's amendment says not to
 do.
 
+**Every letter binding in `front/` matches a lowercased `key`, and that is a
+rule rather than a style.** Caps Lock moves `event.key` and leaves `shiftKey`
+alone, so a bare `=== "s"` stops matching the moment it is on and the keystroke
+goes to the browser — which for Ctrl+S means Save Page As over a document Mandy
+never wrote, with nothing on screen to say so. `undo.js` has lowercased since it
+was written; `app.js` and `file-api.js` did not until 2026-09-22. It is `key`
+rather than `code` on purpose: matching the physical key would also fix a
+non-Latin layout, and would also give a Dvorak user Save on the key that types
+`o`, which is a measurement nobody has made.
+
 The Format menu also carries **Indent**/**Outdent list item** (TODO 1.1.3),
 which is not part of this count: they call `outdentListItem` and
 `runCommand("indent")` in `app.js` directly, the same path Tab and Shift+Tab
@@ -1602,6 +1630,26 @@ alone, because the row it points at has just changed height and its active
 states have changed with it. If the command left the caret somewhere that is no
 longer a row start, `showFormatBar` hides the bar itself, so there is one rule
 about when it is up rather than two.
+
+**A scroll takes the bar away, and the clearance it measures is the whole
+chrome.** The bar is `position: absolute` with a `top` in document coordinates,
+so a scroll carried it along with the text it points at — off the top of the
+window, over the sticky toolbar and tab strip on the way, since it wins on
+`z-index`. A `scroll` listener on `window` hides it, and the next
+`selectionchange` puts it back where the selection now is: one rule about when
+the bar is up, the same one the caret variant follows. Registered on `window`
+without capture so the outline's and the tab strip's own overflow scrolling is
+not read as the page's. The band it refuses to enter is `chromeClearance`,
+which measures `.toolbar` **and** `.tab-bar` — it measured the toolbar alone
+until 2026-09-22, which was right while the tab bar was a row inside it and
+wrong the moment the redesign made it a sticky sibling, leaving the band 36px
+short and the bar sitting on the tabs with no scrolling involved. An exported
+document has no tab bar, so the `querySelector` misses and it contributes
+nothing. **`scrollToAnchor` in `app.js` calls it too**, having had the same
+one-element copy and parked Ctrl/Cmd+clicked headings under the tab strip for
+the same reason. That is a cross-file call in the direction the load order does
+not allow at load time, and it is fine for the same reason `runCommand` is: a
+click is long past load, so the function only has to be *present* in the bundle.
 
 **Code is the only format with both a block and an inline spelling**, and
 markdown draws that line as sharply as HTML does: ` ``` ` fences a block, single
