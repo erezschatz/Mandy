@@ -5699,7 +5699,7 @@ three things on purpose: the letter match back to case-sensitive fails the two
 Caps Lock checks, an exported-branch that is never taken fails the three
 startup ones, and inverting the Ctrl+S gate fails the app-side check.
 
-## 2026-09-22 — `90e12c1` — Three kinds of row in the file dialog, told apart by more than colour
+## 2026-09-22 — `b65defc` — Three kinds of row in the file dialog, told apart by more than colour
 
 The chrome redesign repainted the browse dialog off the new token table and, in
 doing so, flattened it. A directory's name was `--accent` and so was the whole
@@ -5740,3 +5740,52 @@ and the suites read it there. What they cannot see is the thing that was wrong,
 so this was verified by rendering the dialog's own markup and stylesheet in
 Chrome, light and dark: parent, directories and files are three visibly
 different rows in both.
+
+(This header first read `90e12c1`, which is no longer an object reachable from
+`main`: the hash was written into it as its own loose edit straight after the
+commit, and the commit was then amended to take that edit in — which moved the
+target to `b65defc`. The same amend-after-the-hash that produced the
+`d604beb` dangling on 2026-08-31. See the entry below for what changed so it
+cannot happen a third time.)
+
+## 2026-09-22 — A second dangling hash, and the rule that stops the third
+
+The entry above landed with no hash, as the process says. The hash was then
+written into its header as its own loose edit — and the commit was amended to
+take that edit in, which moved the commit to `b65defc` and left the header
+naming `90e12c1`, an object no longer reachable from `main`. That is the same
+failure as `d604beb` on 2026-08-31, from the same cause: **a hash written
+before the commit it names had stopped moving.**
+
+So the audit that found the first one ran again, over every hash-shaped
+backticked token in `CHANGELOG.md` (129 distinct) and in `README.md`,
+`CLAUDE.md` and `docs/`. Two findings.
+
+**The first is that the previous audit's check was too weak.** It resolved
+each hash against the object database, and an amended-away commit stays in
+the object database for as long as the reflog holds it — 90 days by default.
+`d604beb` resolves today. The test that means anything is reachability:
+`git merge-base --is-ancestor <hash> HEAD`. Under it, exactly one header is
+wrong, the one above, and it now reads `b65defc`.
+
+**The second is that no other header names the wrong commit.** Every one of
+the 150 entry headers was checked against the commit that actually introduced
+its title into this file. Thirty-six differ, and all thirty-six are expected:
+twenty-seven are the entries written retroactively when this file was created
+in `7bee08d`, six are entries written later than the change they describe or
+whose header was corrected by the 2026-09-18 audit (so the search finds the
+correction rather than the original), and three are merges of `rewrite` into
+`main`. The remaining hash-shaped tokens in the prose all resolve too,
+including the two deliberate mentions of `d604beb` that record the first
+incident.
+
+`CLAUDE.md`'s "Making a change" section is where the fix goes, since this is
+a process bug rather than a code one. The backfill rule is now its own
+bullet and says the two things the old half-sentence did not: the *next
+commit* writes the hash as part of its own work, and the edit is **never made
+as an action of its own** — a loose edit in the tree is exactly what an amend
+sweeps in. A second bullet records that dependency bumps found in
+`server/deno.json` and `server/deno.lock` ride along with whatever commit
+finds them, rather than being left behind as somebody else's business.
+
+Metafiles only; nothing ran.

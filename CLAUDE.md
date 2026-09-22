@@ -408,9 +408,22 @@ no server and no app either.
 
 - **Every change lands in [CHANGELOG.md](CHANGELOG.md) as part of the change
   itself.** Add a dated entry in the prose style the file already uses, with no
-  commit hash in the header yet; once it is committed, backfill the header to
-  `## DATE — HASH — Title`. This holds for docs, comments and metafiles too — a
-  change with no CHANGELOG entry is unfinished.
+  commit hash in the header yet. This holds for docs, comments and metafiles
+  too — a change with no CHANGELOG entry is unfinished.
+- **The hash is backfilled by the *next* commit, as part of that commit's own
+  work, and never as an action of its own.** A commit cannot contain its own
+  hash, so the header goes in blank and the commit after it fills it to
+  `## DATE — HASH — Title`. Not by amending, and **not as a loose edit made
+  straight after committing**: an edit sitting in the tree is one an amend
+  will sweep into the commit it names, which moves the hash and leaves the
+  header pointing at an object that no longer exists. That has happened
+  twice — `d604beb` on 2026-08-31 and `90e12c1` on 2026-09-22, both caught
+  only by an audit weeks later. So leave the previous entry hashless until
+  there is a change to carry it, and fold the backfill into that change.
+- **Dependency bumps in `server/deno.json` and `server/deno.lock` are part of
+  the work, not noise to step around.** They arrive from `ncu` runs outside
+  any one task; a commit that finds them in the tree takes them along rather
+  than leaving them behind.
 - **Anything more than trivial is written down before it is built, and again
   as each part lands.** Before: what is about to change, what the stages are,
   and what each one entails — in the item's own entry in
