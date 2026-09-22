@@ -5748,7 +5748,7 @@ target to `b65defc`. The same amend-after-the-hash that produced the
 `d604beb` dangling on 2026-08-31. See the entry below for what changed so it
 cannot happen a third time.)
 
-## 2026-09-22 — A second dangling hash, and the rule that stops the third
+## 2026-09-22 — `e74ac38` — A second dangling hash, and the rule that stops the third
 
 The entry above landed with no hash, as the process says. The hash was then
 written into its header as its own loose edit — and the commit was amended to
@@ -5787,5 +5787,53 @@ as an action of its own** — a loose edit in the tree is exactly what an amend
 sweeps in. A second bullet records that dependency bumps found in
 `server/deno.json` and `server/deno.lock` ride along with whatever commit
 finds them, rather than being left behind as somebody else's business.
+
+Metafiles only; nothing ran.
+
+## 2026-09-22 — Following a local link, past the part of it that is 1.0's
+
+Asked for as a roadmap feature — Ctrl/Cmd+click a link to a local document and
+open it in another tab — and it turned out to be written down already, as the
+first loose end under **TODO 1.2**, including the shape the tabbed view gave
+it: the link opens a *new* tab the way New makes one, so nothing is discarded
+and there is no unsaved-work guard to add. That is 1.0 work and stays where it
+is, with the two pieces it still needs named there (resolving the path against
+the open file's directory, which `file-api.js` has never had to do, and
+`newTab` seeding its directory from the tab that spawned it).
+
+What goes in [docs/ROADMAP.md](docs/ROADMAP.md) is what follows *from* it,
+which nobody had written down: **"A set of linked files, navigated as one
+thing"**. Once one document can reach another, a folder of markdown files
+stops being a list in the open dialog and starts being a thing with a shape,
+and five decisions arrive together.
+
+- **Getting back.** A link that opens a tab is one-way; undo is per-document
+  and the browser's own back button is not ours inside a PWA whose URL never
+  changes. A back across documents is a navigation stack over tabs, and it has
+  to decide what a place is — a tab, or a tab plus where in it you were.
+- **A fragment into another file.** `[x](notes.md#section)` is not two
+  features: `headingAnchors` and `scrollToAnchor` are the second half and 1.2
+  is the first. Between them is ordering, since markdown, Mermaid and MathJax
+  all render async and there is no heading to scroll to until they settle.
+- **A file already open.** `tabDescriptor` answers what path each tab holds in
+  all three of its states, so the lookup needs nothing new; what needs
+  deciding is whether following the same link twice switches to that tab or
+  makes a second copy of a document whose first copy has unsaved edits.
+- **A link that resolves to nothing**, which once *some* relative links work
+  has three different reasons — no file, an extension the file API will not
+  serve (`.md`, `.markdown`, `.txt`, so `./diagram.png` is permanently out),
+  and no directory to resolve against, which is every unsaved document.
+- **Whether a document gets to choose what the editor opens.** A received
+  editable export is markup Mandy did not write — the reason `LINK_SCHEMES` is
+  an allowlist — and the file API is gated on extension rather than directory,
+  so `../../../notes.md` in one resolves to a real read. Nothing leaves the
+  machine and the reader is only shown a file of their own, so it is not the
+  leak it looks like; it is still a decision to make on purpose.
+
+The section also records where this stops (backlinks and a link graph are a
+different feature, on the folder rather than the file) and that exported
+documents are out of it permanently, shipping neither `file-api.js` nor
+`tabs.js`. TODO 1.2 now points at it, so the 1.0 item and its own horizon
+cannot drift apart.
 
 Metafiles only; nothing ran.

@@ -147,7 +147,12 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
       which `file-api.js` has never had to do, and `newTab` seeding its
       directory from the tab that spawned it — `fileAdopt(null)` resets the
       dialog directory with everything else today, and the CHANGELOG entry
-      that introduced it left seeding to whoever creates tabs.
+      that introduced it left seeding to whoever creates tabs. What follows
+      from it once it works — getting back out, a fragment into another file,
+      a file already open in a tab, and whether a document Mandy did not write
+      gets to choose what the editor opens — is deliberately not 1.0's, and is
+      "A set of linked files, navigated as one thing" in
+      [ROADMAP.md](ROADMAP.md).
     - **Touch devices have no modifier**, so there is no way to follow a link on
       one, and the hover tooltip never shows either. Wants its own affordance —
       a long-press, or the chip Google Docs shows.

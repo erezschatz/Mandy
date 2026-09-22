@@ -240,6 +240,70 @@ which document Ctrl+S writes to) now has to ask which pane, not just whether
 there is one. Wants a decision on the interaction before the layout: does a
 tab drag to a side to open the split, is it a toolbar action, or both.
 
+## A set of linked files, navigated as one thing
+
+TODO 1.2's first loose end is the feature itself: Ctrl/Cmd+click a relative
+link and the file opens in a new tab, resolved against the directory of the
+open file, the way New makes a tab — so nothing is discarded and there is no
+unsaved-work guard to add. That is 1.0 work and stays there. What follows from
+it is not, and this is where it goes: once one document can reach another, a
+folder of markdown files stops being a list in the open dialog and starts
+being a thing with a shape, and a handful of decisions nobody has had to make
+yet all arrive at once.
+
+**Getting back.** A link that opens a tab is one-way. The only history Mandy
+has is per-document (undo) and positional (the tab strip), and the browser's
+own back button is not ours to take inside a PWA whose URL never changes. A
+back that spans documents is a navigation stack over tabs, and the thing it
+has to decide first is what counts as a place: a tab, or a tab plus where in
+it you were — because following a link out of the middle of a long document
+and coming back to its top is the version of this that feels broken.
+
+**A link into a heading of another file.** `[x](notes.md#section)` is the
+common case in a linked set and it is not two features: `headingAnchors` and
+`scrollToAnchor` already do the second half, and the file half is 1.2's. What
+is between them is ordering — the fragment has to survive an open that renders
+markdown, then Mermaid, then MathJax, all async, before there is a heading to
+scroll to. The jump belongs after that settles rather than beside it.
+
+**A file that is already open.** `tabDescriptor` in `tabs.js` already answers
+what path each tab holds in all three of its states — live, parked, restored
+from storage and never shown — so the lookup needs nothing new. The decision
+does: following the same link twice either switches to the tab already holding
+that file or opens a second copy of it, and a second copy of a document with
+unsaved edits in the first is the outcome that has to not happen.
+
+**A link that resolves to nothing.** Inert is an honest answer while *every*
+relative link is inert. Once some of them work, the ones that do not have to
+say why, and there are three different reasons: no file at that path, a file
+the server will not serve (the file API is gated on `.md`, `.markdown` and
+`.txt`, so `./diagram.png` and `./spec.pdf` are permanently out of reach), and
+no directory to resolve against at all, which is every unsaved document. Each
+is a `notify` at most, and it is worth deciding whether any of them earns one
+or whether a link that quietly does nothing is better than a toast that
+explains a rule the reader did not ask about.
+
+**Whether a document gets to choose what the editor opens.** An editable
+export that arrived by mail is markup Mandy did not write, which is why
+`LINK_SCHEMES` is an allowlist rather than a blocklist. The file API is gated
+on extension rather than on a directory — deliberately, since reaching the
+user's own files is the point of it — so `../../../notes.md` in a received
+document resolves to a real read. Nothing leaves the machine and the reader is
+only ever shown a file of their own, so this is not the leak it first looks
+like; it is still a document deciding what the editor opens, and that is a
+decision to make on purpose rather than one to arrive at by implementing the
+happy path.
+
+Exported documents are out of this entirely and permanently: an editable export
+ships neither `file-api.js` nor `tabs.js`, so it has no file to resolve against
+and nowhere to put a second document. Relative links stay inert there whatever
+the app learns to do.
+
+Where this stops is the wiki: backlinks, a link graph, a pane listing what
+points at the open document. Those are a different feature with a different
+unit of work — the folder rather than the file — and wanting them is not a
+reason to build any of them into following one link.
+
 ## A tab strip that hides itself on purpose
 
 The chrome redesign's stage 3 (`docs/redesign/`, closed out in
