@@ -5543,7 +5543,7 @@ silently.
 
 145 entries, all with a hash, all resolving. No code changed, so nothing ran.
 
-## 2026-09-22 — The format bar vanishes on a scroll, and both jumps clear the tab strip
+## 2026-09-22 — `51278b4` — The format bar vanishes on a scroll, and both jumps clear the tab strip
 
 Two bugs in where the floating format bar is allowed to be, both visible in the
 running editor and neither caught by anything.
@@ -5595,7 +5595,7 @@ tab strip and check the bar flips below it instead of sitting on the tabs; then
 Ctrl/Cmd+click a link in the table of contents and check the heading lands
 below the tabs rather than behind them.
 
-## 2026-09-22 — Caps Lock no longer hands Ctrl+S to the browser
+## 2026-09-22 — `51278b4` — Caps Lock no longer hands Ctrl+S to the browser
 
 Every letter shortcut in the app compared `e.key` against a lowercase letter,
 and **Caps Lock moves `key` without touching `shiftKey`**. With it on, Ctrl+S
@@ -5647,7 +5647,7 @@ Found while chasing a Ctrl+S that Firefox was taking in an installed PWA. That
 turned out to be something else on the machine holding the keyboard — a
 restart cleared it — and this is the bug the search walked into on the way.
 
-## 2026-09-22 — A suite that boots the editor as an exported document
+## 2026-09-22 — `51278b4` — A suite that boots the editor as an exported document
 
 `tests/export-variant.test.mjs` is new, and it exists because of what looking
 for one keybinding's coverage turned up: **nothing had ever booted `app.js` as
@@ -5698,3 +5698,45 @@ Twenty checks in the new suite, one more in `file-path`. Verified by breaking
 three things on purpose: the letter match back to case-sensitive fails the two
 Caps Lock checks, an exported-branch that is never taken fails the three
 startup ones, and inverting the Ctrl+S gate fails the app-side check.
+
+## 2026-09-22 — `90e12c1` — Three kinds of row in the file dialog, told apart by more than colour
+
+The chrome redesign repainted the browse dialog off the new token table and, in
+doing so, flattened it. A directory's name was `--accent` and so was the whole
+parent-directory row; a file's was plain ink. Three kinds of row — go up, go
+in, open — were carried by one colour used twice, in a palette with one accent
+to spend, and at a glance the list read as one undifferentiated column.
+
+The split now runs on three channels at once rather than on colour alone:
+
+- **A glyph gutter.** `dialogGlyph()` in `file-api.js` puts a stroked 16px SVG
+  in a fixed first column of every row — an up arrow, a folder, a page — read
+  before any of the text is. Same inline-SVG idiom as `notify.js`'s severity
+  icons, stroked in `currentColor`, so each glyph takes the colour its own row
+  already carries instead of needing a rule of its own. The row is a
+  three-column grid now rather than `space-between`, which is what puts every
+  name at the same x whatever sits at the right edge.
+- **A right edge.** A directory ends in a chevron where a file ends in its
+  date, so the two differ in silhouette at rest rather than only on hover — and
+  the chevron says the click goes somewhere rather than opens something. It
+  picks up the accent when the row is hovered.
+- **Weight and step-back.** Directories keep the accent and gain weight. The
+  parent row is the one entry that is not a thing in this directory, so it
+  stops competing with them: muted ink, and ruled off from the listing below
+  by its own pseudo-element — a border on the next row would draw across that
+  row's rounded hover tint. Its `↑` moved out of the text and into the glyph
+  column, which is also what puts its name in line with every other one.
+
+Dark mode gained a rule it should have had already. `--accent` is a fill there
+rather than the brand teal (the token table says so in its own comment) and is
+too dark to read as text against `--paper` at 13.5px, so a directory's name and
+glyph take `--accent-bright` — the token that was defined in the redesign for
+exactly this and had no consumer until now.
+
+`front/app.css` and `front/file-api.js` only; the dialog is app-only markup, so
+there is no exported-document copy to keep in step. `file-path`, `tabs` and
+`notify` pass unchanged — the name still lives in a `.dialog-entry-name` span
+and the suites read it there. What they cannot see is the thing that was wrong,
+so this was verified by rendering the dialog's own markup and stylesheet in
+Chrome, light and dark: parent, directories and files are three visibly
+different rows in both.

@@ -1236,12 +1236,16 @@
       }
 
       /* No row borders — hover and the paper background are what separate
-         one entry from the next now. */
+         one entry from the next now.
+
+         A grid rather than space-between so the glyph gutter is a real column
+         and every name starts at the same x, whatever sits at the right edge
+         of the row. */
       .dialog-entry {
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: 16px 1fr auto;
         align-items: center;
-        gap: 1rem;
+        gap: 0 11px;
         padding: 7px 12px;
         border-radius: 7px;
         font-size: 13.5px;
@@ -1253,10 +1257,73 @@
         background: var(--tint);
       }
 
-      .dialog-entry.is-dir .dialog-entry-name,
+      /* Three kinds of row, one accent to spend — so the split runs on three
+         channels at once (glyph, weight and what sits at the right edge)
+         rather than on colour alone, where a directory and the way back out
+         of it read as the same thing. See dialogGlyph() in file-api.js. */
+      .dialog-entry-glyph,
+      .dialog-entry-enter {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--ink-faint);
+      }
+
+      .dialog-entry-glyph svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .dialog-entry-enter svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      /* The way *out* of this directory rather than something in it, so it
+         steps back to muted ink and is ruled off from the listing below. The
+         rule is the row's own pseudo-element rather than a border on the next
+         entry, which would draw across that entry's rounded hover tint. */
       .dialog-entry.is-up {
+        position: relative;
+        margin-bottom: 9px;
         font-weight: 500;
+        color: var(--ink-muted);
+      }
+
+      .dialog-entry.is-up .dialog-entry-glyph {
+        color: var(--ink-muted);
+      }
+
+      .dialog-entry.is-up::after {
+        content: "";
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: -5px;
+        border-bottom: 1px solid var(--rule-faint);
+      }
+
+      .dialog-entry.is-dir .dialog-entry-name,
+      .dialog-entry.is-dir .dialog-entry-glyph {
+        font-weight: 600;
         color: var(--accent);
+      }
+
+      .dialog-entry.is-dir:hover .dialog-entry-enter {
+        color: var(--accent);
+      }
+
+      /* --accent is a fill in dark mode and too dark to read as text against
+         paper at this size; --accent-bright is the token that exists for
+         exactly that, and this is its first consumer. */
+      [data-theme="dark"] .dialog-entry.is-dir .dialog-entry-name,
+      [data-theme="dark"] .dialog-entry.is-dir .dialog-entry-glyph,
+      [data-theme="dark"] .dialog-entry.is-dir:hover .dialog-entry-enter {
+        color: var(--accent-bright);
+      }
+
+      .dialog-entry.is-file .dialog-entry-name {
+        color: var(--ink);
       }
 
       .dialog-entry-name {
@@ -1268,7 +1335,6 @@
       .dialog-entry-modified {
         font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace;
         color: var(--ink-faint);
-        flex-shrink: 0;
       }
 
       .dialog-empty {

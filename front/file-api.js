@@ -366,6 +366,35 @@ function closeDialog() {
   }
 }
 
+// Three kinds of row share one list — go up, go in, open — and the palette has
+// one accent to spend, so telling them apart on colour alone cannot carry it.
+// The glyph is the channel that does: a silhouette in a fixed gutter, read
+// before any of the text is. Same inline-SVG idiom as notify.js's severity
+// icons, stroked in currentColor, so each glyph takes the colour its own row
+// already carries rather than needing a rule of its own.
+const DIALOG_GLYPHS = {
+  up: '<path d="M12 19V6"/><path d="M5 12l7-7 7 7"/>',
+  dir:
+    '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5' +
+    'a2 2 0 0 1-2-2z"/>',
+  file:
+    '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>' +
+    '<path d="M14 3v5h5"/>',
+  enter: '<path d="M9 6l6 6-6 6"/>',
+};
+
+function dialogGlyph(kind, className) {
+  const span = document.createElement("span");
+  span.className = className;
+  span.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" ' +
+    'aria-hidden="true">' +
+    DIALOG_GLYPHS[kind] +
+    "</svg>";
+  return span;
+}
+
 async function loadDir(dirPath) {
   const url = dirPath
     ? `/api/browse?path=${encodeURIComponent(dirPath)}`
@@ -406,7 +435,13 @@ async function loadDir(dirPath) {
   if (data.parent) {
     const up = document.createElement("div");
     up.className = "dialog-entry is-up";
-    up.textContent = "↑ parent directory";
+    up.appendChild(dialogGlyph("up", "dialog-entry-glyph"));
+    // The arrow is the glyph's job now, so the text is the name alone — which
+    // is also what puts it in the same column as every other row's name.
+    const upName = document.createElement("span");
+    upName.className = "dialog-entry-name";
+    upName.textContent = "parent directory";
+    up.appendChild(upName);
     up.addEventListener("click", () => loadDir(data.parent));
     dialogEntries.appendChild(up);
   }
@@ -414,11 +449,21 @@ async function loadDir(dirPath) {
   for (const entry of data.entries) {
     const row = document.createElement("div");
     row.className = `dialog-entry ${entry.isDir ? "is-dir" : "is-file"}`;
+    row.appendChild(
+      dialogGlyph(entry.isDir ? "dir" : "file", "dialog-entry-glyph")
+    );
 
     const name = document.createElement("span");
     name.className = "dialog-entry-name";
     name.textContent = entry.isDir ? entry.name + "/" : entry.name;
     row.appendChild(name);
+
+    // A directory's right edge is a chevron where a file's is its date, so the
+    // two differ in silhouette at rest rather than only on hover — and the
+    // chevron says the click goes somewhere instead of opening something.
+    if (entry.isDir) {
+      row.appendChild(dialogGlyph("enter", "dialog-entry-enter"));
+    }
 
     if (entry.modified) {
       const modified = document.createElement("span");
