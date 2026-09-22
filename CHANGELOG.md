@@ -5790,7 +5790,7 @@ finds them, rather than being left behind as somebody else's business.
 
 Metafiles only; nothing ran.
 
-## 2026-09-22 — Following a local link, past the part of it that is 1.0's
+## 2026-09-22 — `af4858e` — Following a local link, past the part of it that is 1.0's
 
 Asked for as a roadmap feature — Ctrl/Cmd+click a link to a local document and
 open it in another tab — and it turned out to be written down already, as the
@@ -5837,3 +5837,30 @@ documents are out of it permanently, shipping neither `file-api.js` nor
 cannot drift apart.
 
 Metafiles only; nothing ran.
+
+## 2026-09-22 — Two format-bar icons that did not draw what they meant
+
+**Strikethrough was two hooks with a gap.** The icon is Feather's — two arcs,
+the top ending at y=8 and the bottom starting at y=12 — so at the 15px the
+bar renders them at there is a visible break either side of the strike line
+and the result does not read as a struck-through S. It is now one continuous
+path through the waist, with the line crossing it, which is what the
+letterform actually is.
+
+**The numbers in the ordered list ran together**, and the cause was inherited
+rather than spacing: `<text>` inside that `<svg>` picked up the element's own
+`stroke="currentColor"` and `stroke-width="2"`, so in a 24-unit viewBox each
+numeral was drawn with a two-unit outline around a filled glyph at font-size
+8, on a 6-unit row pitch. Three of those overlap into a blob that also runs
+into the rules beside them. `stroke="none"` is the fix; the size came down to
+7 to fit the pitch, the periods went (the digit is the signal, and the
+bullet icon beside it makes the same point with a dot), and the three are
+right-aligned to a shared edge so they read as a column.
+
+Both are hand-written twice — `index.html` and `html-export.js`'s own copy of
+the bar — and both copies changed, which the self-reproduce suite would not
+have caught either way: it counts assets, not markup. `toolbar`, `format-bar`
+and `self-reproduce` pass unchanged; none of them looks at an icon's path
+data, so this was verified by rendering both files' real `#formatBar` markup
+against the real stylesheet in Chrome and comparing them side by side.
+`sw.js` goes to `v1.33`, since `index.html` is a shell asset.

@@ -183,8 +183,7 @@ ${cssContent}
             </button>
             <button class="format-btn" data-format="strikethrough" title="Strikethrough">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M16 4H9a3 3 0 0 0-2.83 4"></path>
-                    <path d="M14 12a4 4 0 0 1 0 8H6"></path>
+                    <path d="M17 6.2A4 4 0 0 0 9.2 7.4C8.8 10 12 11.2 14.2 12c2.2.8 2.8 2.4 2.4 4.2a4 4 0 0 1-7.8 1.2"></path>
                     <line x1="4" y1="12" x2="20" y2="12"></line>
                 </svg>
             </button>
@@ -204,9 +203,7 @@ ${cssContent}
                     <line x1="10" y1="6" x2="21" y2="6"></line>
                     <line x1="10" y1="12" x2="21" y2="12"></line>
                     <line x1="10" y1="18" x2="21" y2="18"></line>
-                    <text x="3" y="8" font-size="8" fill="currentColor">1.</text>
-                    <text x="3" y="14" font-size="8" fill="currentColor">2.</text>
-                    <text x="3" y="20" font-size="8" fill="currentColor">3.</text>
+                    <g fill="currentColor" stroke="none" font-size="7" text-anchor="end"><text x="7" y="8.4">1</text><text x="7" y="14.4">2</text><text x="7" y="20.4">3</text></g>
                 </svg>
             </button>
             <button class="format-btn" data-format="code" title="Code Block">
