@@ -7895,3 +7895,32 @@ back in `c53aafe`. `docs/REWRITE.md`'s decision bullet now says so, and points a
 agree on the answer. Checked through the real save path in Blink with the old
 core: a retargeted `[the docs][docs]` saves as `[the docs](https://new.example)`,
 and a second link on the same label keeps the reference and its definition.
+
+## 2026-09-28 — Slice 7, step 1: three edits the model never heard about are shut
+
+Under `?core=model`, three controls changed the document on screen without the
+model knowing. The next render put the old content back, so each one looked as
+if it had worked and then quietly didn't. **Code** (the format bar's button and
+Format → Code block) built its `<pre>` or `<code>` by hand. **Insert → Table of
+contents** put its list straight into the editor. **Link…** on an existing link
+set the `href` or unwrapped the `<a>` directly. `runCommand` has refused under
+the flag since slice 3, but none of these three goes through it, so the refusal
+never reached them. It is the same shape as the Ctrl+Z bug found on 2026-09-21.
+
+Each now does nothing under the flag, until the step that builds it as a model
+command replaces the refusal: Code at step 5, the link at step 4, the table of
+contents at step 7. Link… refuses before its dialog rather than after it.
+Before shutting them, every write to the editor outside the model files was
+listed, to confirm these three are the only ones; every other site is detached,
+is chrome, or is already guarded.
+
+Nine checks across `format-bar`, `outline` and `links`, each confirmed to fail
+with its guard removed. The `format-bar` suite loads that file without `app.js`,
+so it supplies `modelOwnsInput` itself. `loadApp` in `tests/dom.mjs` takes a
+`{ modelCore }` option that stands in for model.js's flag. Driven in Blink under
+`?core=model`: all three leave the DOM and the model's serialisation untouched,
+with no `input` and no dialog. The same actions under `?core=legacy` still edit.
+
+The `model core` marker's tooltip now names Insert's link, rule and table of
+contents alongside the formats and Clear, and CLAUDE.md's flag paragraph says
+the same. `sw.js`'s `VERSION` goes to `v1.54`.

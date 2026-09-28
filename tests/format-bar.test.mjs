@@ -36,6 +36,7 @@ function scenario(format, buildSelection) {
       // The Format menu reaches applyFormat through these registrations; this
       // suite drives applyFormat directly and only needs them not to throw.
       onToolbarAction: () => {},
+      modelOwnsInput: () => false,
       __format: format,
     },
     "; applyFormat(__format);",
@@ -106,6 +107,7 @@ function position({
       // The Format menu reaches applyFormat through these registrations; this
       // suite drives applyFormat directly and only needs them not to throw.
       onToolbarAction: () => {},
+      modelOwnsInput: () => false,
       __bar: bar,
       __width: barWidth,
       __window: windowWidth,
@@ -144,7 +146,7 @@ const outsideEditor = () => ({
 // Code is the only format that reads the *extent* of the selection rather than
 // just its position, so it needs a tree and a range built per case rather than
 // the fixed two-paragraph document `scenario` sets up.
-function codeCase(build) {
+function codeCase(build, { modelCore = false } = {}) {
   const container = makeEl();
   const editor = makeEl("div", { parent: container });
   const inserted = [];
@@ -175,6 +177,7 @@ function codeCase(build) {
       Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
       setTimeout: () => {},
       onToolbarAction: () => {},
+      modelOwnsInput: () => modelCore,
       notify: (message) => notices.push(message),
     },
     "; applyFormat('code');",
@@ -511,6 +514,27 @@ export default function run(check) {
     };
   });
   check("a bare caret still makes a block", !!c.tag("PRE"));
+
+  // Under the model core Code is shut until slice 7's step 5 makes it a model
+  // command. It was the one format the flag never reached: every other case
+  // goes through runCommand, which refuses there, and this one edits the DOM by
+  // hand -- so the screen changed, the model did not, and the next render put
+  // the old block back. Both halves of Code, since they are two edits.
+  for (const [shape, selected] of [["a whole line", "line one"], ["a partial selection", "line"]]) {
+    c = codeCase((editor) => {
+      const { p } = para(editor);
+      return {
+        commonAncestorContainer: textIn(p),
+        intersectsNode: (n) => n === p,
+        toString: () => selected,
+        collapsed: false,
+      };
+    }, { modelCore: true });
+    check(`under the model core, Code on ${shape} leaves the document alone`,
+      !c.tag("PRE") && c.inserted.length === 0 &&
+        c.editor.children.length === 1 && c.editor.children[0].textContent === "line one");
+    check(`and raises no input for an edit that did not happen (${shape})`, c.inputs.length === 0);
+  }
 
   // The destructive one. blocksInRange answered with editor.children, so a
   // selection in one bullet reported the whole <ul> — and Code replaced the

@@ -279,6 +279,12 @@ function blockAtCaret() {
 }
 
 function insertToc() {
+  // Shut under the model core until slice 7's step 7 inserts the list as model
+  // blocks. What follows writes to the editor directly, which there is a
+  // divergence rather than an edit: the model never hears of the list, and the
+  // next render throws it away.
+  if (modelOwnsInput()) return;
+
   const entries = outlineEntries(editor);
   if (!entries.length) {
     notify("This document has no headings to build a table of contents from.", {

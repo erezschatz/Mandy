@@ -257,7 +257,11 @@ export function markdownitStub(inlineRules = [], renderRules = {}) {
 // app.js calls configureMarkdownParser at its own top level, and `mathSpan`
 // stays reachable below because these share one scope the way <script> tags do.
 // TurndownService is a recorder here: no suite needs conversion, only the rules.
-export function loadApp() {
+// `modelCore` stands in for model.js's flag, which this harness does not load:
+// app.js asks the question through `typeof modelCoreEnabled`, so leaving the
+// global out is the running core and supplying it is the model core. A suite
+// that wants the model itself loads model.js on its own.
+export function loadApp({ modelCore = false } = {}) {
   const noop = () => {};
   // Honours the tag: outdentListItem builds a sublist of the same kind as the
   // one it came out of, so a stub that answers DIV to everything cannot tell
@@ -355,6 +359,7 @@ export function loadApp() {
       // insertLink's dialog. A suite pushes answers onto `inputAnswers` before
       // driving it; an empty queue is the user backing out.
       Node: { ELEMENT_NODE: 1, TEXT_NODE: 3 },
+      ...(modelCore ? { modelCoreEnabled: () => true } : {}),
       askForInput: () => Promise.resolve(inputAnswers.length ? inputAnswers.shift() : null),
       setTimeout: noop,
       clearTimeout: noop,

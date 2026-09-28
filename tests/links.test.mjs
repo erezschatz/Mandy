@@ -231,4 +231,41 @@ export default async function run(check) {
   check("backing out of the dialog leaves the reference alone",
     backedOut.getAttribute("data-ref-label") === "docs" &&
       backedOut.getAttribute("href") === "https://old.example");
+
+  // --- under the model core ------------------------------------------------
+  //
+  // Link… is shut there until slice 7's step 4 makes it a model command. Two of
+  // its four cases reach runCommand, which refuses under the flag; the other
+  // two -- retarget and unlink -- edit the <a> directly, which the model never
+  // hears about, so the next render put the old link back. Refused before the
+  // dialog, so nobody is asked for an address that is then thrown away.
+  {
+    const core = loadApp({ modelCore: true });
+    const coreEditor = core.byId.get("editor");
+    const link = makeEl("a");
+    link.nodeName = "A";
+    link.setAttribute("href", "https://old.example");
+    coreEditor.appendChild(link);
+    core.selection.rangeCount = 1;
+    core.selection.getRangeAt = () => ({
+      commonAncestorContainer: link,
+      collapsed: true,
+      cloneRange() { return this; },
+    });
+    let inputs = 0;
+    coreEditor.addEventListener("input", () => inputs++);
+
+    core.inputAnswers.push("https://new.example"); // a retarget
+    await core.insertLink();
+    check("under the model core Link… does not ask for an address",
+      core.inputAnswers.length === 1);
+    check("and leaves the link where it was",
+      link.getAttribute("href") === "https://old.example" && inputs === 0);
+
+    core.inputAnswers.length = 0;
+    inputs = 0;
+    core.inputAnswers.push(""); // an unlink
+    await core.insertLink();
+    check("nor unlinks it", coreEditor.children.includes(link) && inputs === 0);
+  }
 }

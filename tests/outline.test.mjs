@@ -453,6 +453,24 @@ export default function run(check) {
         nav().children[0].className === "outline-empty",
     );
     core.setOutlineOpen(false);
+
+    // Insert TOC is shut under this core until slice 7's step 7 writes the
+    // list as model blocks. It wrote to the editor directly, which here is a
+    // divergence rather than an edit: the model never hears of the list, and
+    // the next render throws it away. A document with headings, so the refusal
+    // is the only thing that can stop it -- with none, the no-headings notice
+    // would stop it first and the check would pass for the wrong reason.
+    withHeadings(coreEditor, [["h1", "Heading"]]);
+    const childrenBefore = coreEditor.children.length;
+    const alertsBefore = c.alerts.length;
+    let coreInputs = 0;
+    coreEditor.addEventListener("input", () => coreInputs++);
+    core.insertToc();
+    check(
+      "under the model core Insert TOC leaves the document alone",
+      coreEditor.children.length === childrenBefore && coreInputs === 0,
+    );
+    check("and says nothing about headings it did not look for", c.alerts.length === alertsBefore);
   }
 
   check(

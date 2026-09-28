@@ -1440,8 +1440,9 @@ A/B and there was no way to tell which half of it you were looking at. That is
 worse than having no comparison: slice 1's rule is that the model renders
 *identically* to `markdownToHtml`, so "it looks the same" is the expected answer
 and not evidence of anything, and the differences are all things that stop
-working — the formats and Clear do nothing, a table refuses the caret. The
-marker's `title` says so rather than making the reader look it up. One function
+working — the formats, Clear and most of Insert do nothing, a table refuses
+the caret. The marker's `title` says so rather than making the reader look it
+up. One function
 in `model.js`, one call site and one CSS rule, because it goes at stage 4 with
 the flag.
 It is not for `main` — no merge is planned before stage 4 — it is so the branch

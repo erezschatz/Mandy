@@ -2286,8 +2286,9 @@ function modelCoreMarkRender(document) {
   mark.textContent = "model core";
   mark.href = "?core=legacy";  // relative: the current page, other core
   mark.title = "TODO 3.1's editing core is drawing this document. " +
-    "The formats and Clear do nothing here — they are slice 7 — and a " +
-    "table refuses the caret until stage 3. " +
+    "The formats, Clear, and Insert's link, rule and table of contents do " +
+    "nothing here — they are slice 7 — and a table refuses the caret until " +
+    "stage 3. " +
     "Click to switch back to the running core.";
   // Before the theme toggle rather than at the head of the group, so its place
   // is the same whatever the open file's path is — the directory beside it is

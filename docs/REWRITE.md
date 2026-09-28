@@ -1847,8 +1847,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the strength of it.
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
     Slices 1 to 6 of seven are done and tested, slices 4 to 6 driven by hand
-    in all three engines; slice 7, the formats, is next, planned
-    2026-09-28. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    in all three engines; slice 7, the formats, is in progress, planned
+    2026-09-28 with step 1 of nine done. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3703,8 +3703,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         here but a state carrying the wrong caret, fixed in both cores — and
         TODO 1.6 has left TODO.md.
 
-    *   **7. Formats, the keyboard, and the renderers — not started; planned
-        2026-09-28 before any of it was built.** Every control that edits the
+    *   **7. Formats, the keyboard, and the renderers — in progress; planned
+        2026-09-28 before any of it was built, and step 1 is done and tested
+        the same day.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -3803,6 +3804,32 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             early under the flag until its step below replaces the refusal with
             the command. That is one line per site, and a check per site that
             the editor's markup is unchanged afterwards.
+
+            **Done and tested, 2026-09-28.** Before shutting them, every write
+            to the editor in `front/` outside the model files was listed, to
+            confirm these three are the only ones. Every other site was in one
+            of three places: a detached element (`shieldCodeEdgeSpaces`,
+            `sanitisePastedHtml`), chrome outside the document (the sidebar, the
+            tab bar, the file dialog), or a handler that already returns early
+            under the flag (`outdentListItem`, reached from Tab, the Format menu
+            and the empty-item handler, and all three are guarded). Each door
+            calls `modelOwnsInput()` directly rather than feature-testing it,
+            because `app.js` defines it in every bundle that ships the other two
+            files. The one suite that loads `format-bar.js` without `app.js`
+            supplies it instead, so the production code carries no test for a
+            situation no bundle is in. Link… refuses **before** its dialog, so
+            nobody is asked for an address that is then thrown away.
+
+            Nine checks, in `format-bar`, `outline` and `links`, each confirmed
+            to fail with its guard removed. The TOC check uses a document that
+            *has* a heading, since with none the no-headings notice stops the
+            edit first and the check would pass for the wrong reason.
+            `loadApp` in `tests/dom.mjs` takes `{ modelCore }`, which supplies
+            model.js's flag without loading the model. Driven in Blink on the
+            scratch port: under `?core=model` Code, Insert TOC and Link… on an
+            existing link leave both the DOM and the model's serialisation
+            untouched, no `input` fires and no dialog opens; under
+            `?core=legacy` the same actions still edit.
 
         2.  **Mermaid and MathJax after a render.** `modelRender` and
             `modelRerenderBlock` hand what they built to the two renderers,
