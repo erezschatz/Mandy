@@ -7566,7 +7566,7 @@ indent plus a second edit taken back by two undos to byte-identical and put back
 by two redos, `modelVerifyRender` quiet throughout. Step 6's protocol still
 wants a human in all three engines. `sw.js`'s `VERSION` goes to `v1.46`.
 
-## 2026-09-23 — The check page says when a drop is refused, and why
+## 2026-09-23 — `4a84638` — The check page says when a drop is refused, and why
 
 Found driving `front/input-check.html` in Chrome: a drag spanning two
 paragraphs did nothing, which is exactly what the protocol asks of it — and the
@@ -7591,7 +7591,7 @@ glance down the list could not tell an action from an outcome. While in there,
 the paste step stopped claiming Ctrl+Z does nothing under the flag — true until
 slice 6's step 2. `sw.js`'s `VERSION` goes to `v1.47`.
 
-## 2026-09-23 — Slice 6's undo protocol as a document to open
+## 2026-09-23 — `4a84638` — Slice 6's undo protocol as a document to open
 
 Slice 6's hand check lived only in `docs/REWRITE.md`, as prose to be read in one
 window and carried out in another, with the reader making up their own text to
@@ -7612,7 +7612,7 @@ pages: bold is what you do, italics what should happen.
 Like `break-test.md`, it is never saved over — File → Reload discards a run.
 Nothing in `tests/` reads it; the model suite's oracle is an explicit list.
 
-## 2026-09-23 — Undo puts the caret back where the edit began, and an accent undoes with its letter
+## 2026-09-23 — `4a84638` — Undo puts the caret back where the edit began, and an accent undoes with its letter
 
 The first hand run of `tests/fixtures/undo-check.md`, in Firefox, passed six of
 its nine steps and found two bugs behind the other three.
@@ -7653,7 +7653,7 @@ Firefox run, which confirms TODO 1.6's other half — fixed by `801db70`'s
 ordering and unverified until now.
 `sw.js`'s `VERSION` goes to `v1.48`.
 
-## 2026-09-28 — Tab moves one item, not its followers
+## 2026-09-28 — `4a84638` — Tab moves one item, not its followers
 
 `tests/fixtures/undo-check.md`'s step 5 said that pressing Tab in the second of
 three bullets would carry the third along with it, and that one undo would
@@ -7670,7 +7670,7 @@ nested items, where the other two are the followers and one undo has to put all
 three back. REWRITE.md's protocol and `front/input-check.html`'s Tab step had the
 same loose wording and say the same thing now.
 
-## 2026-09-28 — The accent undoes with its letter, the way Firefox actually sends it
+## 2026-09-28 — `4a84638` — The accent undoes with its letter, the way Firefox actually sends it
 
 The fix in the entry above that for step 7 of `tests/fixtures/undo-check.md`
 was built on a deduction, and the re-run in Firefox said it was wrong: still two
@@ -7698,7 +7698,7 @@ been skipped by asking the log before writing it. `sw.js`'s `VERSION` goes to
 `v1.49`. **Firefox wants step 7 once more**; Chrome and Safari may send the
 accent differently again, and their logs are what would say.
 
-## 2026-09-28 — Safari's accent erased the letter; the join keys on the model
+## 2026-09-28 — `4a84638` — Safari's accent erased the letter; the join keys on the model
 
 Two results from running step 7 of `tests/fixtures/undo-check.md` again, and
 both came with `front/input-check.html` logs, which is what made them fixable.
@@ -7733,13 +7733,13 @@ did not type, an edit in between, and a refused rewrite. Each was confirmed to
 fail with its fix removed. `sw.js`'s `VERSION` goes to `v1.50`. **Firefox and
 Safari both want step 7 again**, after a hard reload; Chrome has not been run.
 
-## 2026-09-28 — Slice 6's undo protocol is clean in Firefox
+## 2026-09-28 — `4a84638` — Slice 6's undo protocol is clean in Firefox
 
 Step 7 passed in Firefox after the fix above — one Cmd+Z takes back the accented
 letter — and with it every step of `tests/fixtures/undo-check.md`. Recorded on
 the protocol in `docs/REWRITE.md`. Safari and Chrome are still to run it.
 
-## 2026-09-28 — Step 5 says what you see
+## 2026-09-28 — `4a84638` — Step 5 says what you see
 
 The previous rewrite of `tests/fixtures/undo-check.md`'s step 5 still said the
 items below a Shift+Tabbed item "come out with it, together". True of the
@@ -7750,7 +7750,7 @@ now describes what is seen, with the structural fact as one parenthetical
 explaining why the items below stay put. REWRITE.md and `front/input-check.html`
 said the same thing the same muddled way and are corrected with it.
 
-## 2026-09-28 — Safari passes the undo protocol; New in Safari opened an unusable page
+## 2026-09-28 — `4a84638` — Safari passes the undo protocol; New in Safari opened an unusable page
 
 **Safari is clean** on every step of `tests/fixtures/undo-check.md`, recorded on
 the protocol in `docs/REWRITE.md`. Chrome is the one left.
@@ -7781,7 +7781,7 @@ at the top with a caret. A tab *switch* swaps the document the same way and was
 tried there too — it needed nothing, so `switchToTab` is left alone.
 `sw.js`'s `VERSION` goes to `v1.51`.
 
-## 2026-09-28 — Slice 6 is done: the undo protocol is clean in all three engines
+## 2026-09-28 — `4a84638` — Slice 6 is done: the undo protocol is clean in all three engines
 
 Chrome ran `tests/fixtures/undo-check.md` clean, with nothing to fix, which
 makes three: Firefox, Safari and Chrome all pass every step. That closes step
