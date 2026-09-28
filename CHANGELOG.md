@@ -7821,7 +7821,7 @@ live references were chased in the same commit: CLAUDE.md, a comment in
 `docs/REWRITE.md` described the item as open. The corpus copy of REWRITE.md
 keeps the number, being a frozen oracle.
 
-## 2026-09-28 — Plan stage 2's slice 7: formats, the keyboard, and the renderers
+## 2026-09-28 — `782da50` — Plan stage 2's slice 7: formats, the keyboard, and the renderers
 
 Written into `docs/REWRITE.md` before any of it is built. Nine steps, four
 decisions settled first, and four corrections to what the slice's entry said.
