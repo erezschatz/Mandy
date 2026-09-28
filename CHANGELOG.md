@@ -5543,7 +5543,7 @@ silently.
 
 145 entries, all with a hash, all resolving. No code changed, so nothing ran.
 
-## 2026-09-28 — Retargeting a reference link no longer loses the new address
+## 2026-09-28 — `f2cfbcc` — Retargeting a reference link no longer loses the new address
 
 Found planning TODO 3.1's slice 7 on `rewrite`, where the model core had to
 decide what Link… does to a `[text][label]` link. The question led back here,
