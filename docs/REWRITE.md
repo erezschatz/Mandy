@@ -193,7 +193,9 @@ offset miscount on a snapshot restore, and it does not get fixed; the design
 that produces it is removed. The dot half may already be gone: stage 4 of the
 tabbed view found `applyUndoSnapshot` dispatching its `input` event before
 moving `history.current`, which produces exactly that symptom, and fixed it —
-unverified against the reported case, which TODO 1.6 records.
+unverified against the reported case, which TODO 1.6 recorded. **Both halves
+closed 2026-09-28** — slice 6's protocol ran the reported case clean in all
+three engines, and the item has left TODO.md.
 
 **One requirement the new history has to be told, because it does not fall out
 of being new:** a savepoint id is per-document and is never compared across
@@ -3578,7 +3580,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
                 drive: automation's synthetic keydown raises no
                 `insertParagraph`. Type, Enter, type. Three Ctrl/Cmd+Z take back
                 three things, in order.
-            4.  **TODO 1.6's reported case**, which is why that item is open:
+            4.  **TODO 1.6's reported case**, which is why that item was open
+                until this protocol closed it:
                 **open a file**, put the caret at the end of a bullet, press
                 Enter, then Ctrl/Cmd+Z. The caret comes back to the end of that
                 bullet rather than to the top of the document, and the tab's
@@ -3693,8 +3696,11 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         putting the caret at the top — goes by construction: it is a
         whole-document offset miscount on a snapshot restore and there is no
         snapshot restore left. The dot half was already fixed in the tabbed
-        view's stage 4 and stays unverified against the reported case, which is
-        why step 6 runs it rather than assuming it.
+        view's stage 4, unverified against the reported case until step 6 ran
+        it. **Both halves are confirmed**, 2026-09-28, in all three engines —
+        though the caret half turned out not to be the miscount guessed at
+        here but a state carrying the wrong caret, fixed in both cores — and
+        TODO 1.6 has left TODO.md.
 
     *   **7. Formats and the keyboard — not started.** Every control in
         `TOOLBAR_MENUS` and on the format bar becomes a model command.

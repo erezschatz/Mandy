@@ -1241,7 +1241,9 @@ What is worth knowing:
   that page exists to ask are untouched: does the engine hand over `text/html`,
   does cancelling stop the insertion, where does a drop land.
 
-**Slice 6 has begun**, 2026-09-21, with the one piece of it that is pure model:
+**Slice 6 gave it undo**, 2026-09-21 to 2026-09-28, and its protocol —
+[tests/fixtures/undo-check.md](tests/fixtures/undo-check.md) — is clean by hand
+in all three engines. It began with the one piece of it that is pure model:
 `modelCloneDocument`, which is what an undo state is. Four things in it.
 
 - **Not `structuredClone`**, which was the plan's word for it. It handles the
@@ -1315,9 +1317,9 @@ caret it was *taken* with, just after the edit before it, which is the same
 place only when the caret never moved between. It had moved in the two cases a
 hand run in Firefox tripped over: a click then an edit sent an undo's caret to
 wherever the previous edit had left it, and the first edit after an Open — whose
-state has no caret at all — sent it nowhere. That second one is TODO 1.6's
-caret half. A caret outside the editor does not count, and nor does one while an
-IME holds the text.
+state has no caret at all — sent it nowhere. That second one was the caret
+half of the undo bug once filed as TODO 1.6, closed 2026-09-28. A caret outside
+the editor does not count, and nor does one while an IME holds the text.
 
 **An edit that rewrites what was just typed joins its step.** The macOS
 press-and-hold accent types the vowel as a keystroke, waits on the popup well
@@ -1438,7 +1440,7 @@ A/B and there was no way to tell which half of it you were looking at. That is
 worse than having no comparison: slice 1's rule is that the model renders
 *identically* to `markdownToHtml`, so "it looks the same" is the expected answer
 and not evidence of anything, and the differences are all things that stop
-working — the formats and Ctrl+Z do nothing, a table refuses the caret. The
+working — the formats and Clear do nothing, a table refuses the caret. The
 marker's `title` says so rather than making the reader look it up. One function
 in `model.js`, one call site and one CSS rule, because it goes at stage 4 with
 the flag.
@@ -1455,10 +1457,11 @@ it with the whole of `htmlToMarkdown` — the same call the save path makes, whi
 is why a tab needs no model bundle and `tabs.js` costs one line. And the save
 path is **unchanged**: `file-api.js` still reads `editor.innerHTML`, Turndown
 still serialises it, and `indexMarkdownBlocks` / `restoreSourceWrapping` still
-run. The model owns *rendering*; the file belongs to the old core until stage 4.
-There is no input layer yet either, so with the flag on the DOM is still the
-browser's to mutate and the model goes stale the moment anything is typed —
-which costs nothing, because nothing reads the model back.
+run. The model owns *editing* — every keystroke, paste and undo goes through it,
+and the DOM changes only by `modelRender` — but the file belongs to the old core
+until stage 4: a save serialises the DOM the model rendered, not the model. That
+is what lets every slice before stage 4 be wrong without a file on disk being
+wrong.
 
 ### Links and heading anchors
 

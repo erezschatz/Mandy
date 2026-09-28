@@ -210,52 +210,6 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     undoable for free — the highlight-and-navigate UI is the whole feature.
     Best after, so it is written once.
 
-*   **1.6** *(bug, closed by 3.1)* Undo does not always come back clean.
-    Reported: open a file, press Enter at the end of an `<li>` (one edit), then
-    Ctrl+Z.
-    The edited dot stays lit, and the caret jumps to the top of the
-    document rather than back to where the edit was.
-
-    **The caret half is fixed, 2026-09-23, in both cores.** Reproduced by
-    hand in Firefox through `tests/fixtures/undo-check.md`: the state an Open
-    mints has no caret, and a state carried the caret it was *taken* with
-    rather than the one it was *left* with, so the undo had nowhere to put it —
-    no visible caret, and arrow keys starting from the top. A state now follows
-    the caret until the next edit pushes it (`undoFollowCaret` in
-    [undo.js](../front/undo.js)); the miscount guessed at below was not it.
-    **The dot half is confirmed fixed**, by the same run: the edited dot
-    cleared on the undo in Firefox, so `801db70`'s ordering fix below was the
-    whole of that half. What is left of this item is Chrome and Safari
-    re-running the fixture.
-
-    **Half of it may be fixed already, unverified.** Stage 4 of the tabbed
-    view (2026-09-07, `801db70`) found `applyUndoSnapshot` dispatching its
-    `input` event *before* moving `history.current`, so `file-api.js`'s
-    listener asked `undoPosition()` and was told the state undo had just left
-    — which is exactly "undo back to the savepoint, dot stays lit", for any
-    edit and not just this one. Nobody has re-run the reported case since. If
-    the dot now clears, what is left of this item is the caret half alone.
-
-    Both halves point at the same place. `file-api.js` clears the dot when
-    undo returns to `cleanPosition` — the `undoPosition()` id recorded at the
-    last open/save — so if the flag stays, the id undo landed on is not the one
-    `markClean()` stored. Either the Enter's snapshot bookkeeping is off, or the
-    caret restore (`undoTextOffset` / `undoLocateOffset` in
-    [undo.js](../front/undo.js), a character offset across element boundaries)
-    is miscounting for a caret at the end of a list item and the snapshot it
-    lands on is not the baseline. The caret-to-top symptom is the same
-    miscount showing directly: offset 0.
-
-    Not yet reproduced in isolation. Candidate to fold in with the empty-`<li>`
-    keydown work if it turns out to share a cause; recorded separately because
-    it is an `undo.js` question, not a list-markup one, and might be neither.
-
-    Not fixed on the old core: whichever of the two it is, both belong to the
-    whole-document `innerHTML` snapshot design that 3.1 removes — undo becomes
-    a stack of model states with the caret as a model position, and there is
-    no offset walk across the whole editor to miscount. Kept here until the
-    new undo is watched doing this exact case correctly.
-
 *   **1.7** *(measurement first; the binding lands with 3.1 stage 2)*
     **No format shortcut is Mandy's.** `app.js` binds Ctrl+S, Ctrl+O,
     Ctrl+Shift+P and Ctrl+K, and nothing binds Ctrl/Cmd+B or Ctrl/Cmd+I — the
@@ -422,7 +376,7 @@ category fidelity deliberately does not extend to.
 
 ## 3. The editing core
 
-*   **3.1** *(unblocks 1.1.6, 1.1.7, 1.1.8, 1.4, 1.6, 1.8, 2.3)*
+*   **3.1** *(unblocks 1.1.6, 1.1.7, 1.1.8, 1.4, 1.8, 2.3)*
     Replace the editing core: hold the document as a block-granular markdown
     model with source spans, render it to the DOM, and treat contenteditable
     as an input method whose `beforeinput` intentions are reinterpreted as

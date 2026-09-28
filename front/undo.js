@@ -478,9 +478,9 @@ editor.addEventListener("input", (event) => {
  * somewhere, type, undo, and the caret went back to wherever the previous edit
  * had left it; undo the first edit after opening a file, whose state was taken
  * with no caret at all, and it went nowhere — invisible in Firefox, with
- * arrow keys starting from the top. That is the caret half of TODO 1.6, found
- * by hand on 2026-09-23 through `tests/fixtures/undo-check.md`, and it was in
- * both cores. So the state that is current follows the caret until the next
+ * arrow keys starting from the top. That was the caret half of the undo bug
+ * once filed as TODO 1.6, found by hand on 2026-09-23 through
+ * `tests/fixtures/undo-check.md`, and it was in both cores. So the state that is current follows the caret until the next
  * edit pushes it, and what an undo restores is **where the caret was when the
  * edit being undone began**.
  *

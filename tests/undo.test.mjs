@@ -633,8 +633,8 @@ export default function run(check) {
     !wasLive.includes(put.block));
 
   // **But the state follows the caret until the next edit leaves it**, so what
-  // comes back is where the caret was when the undone edit *began*. TODO 1.6's
-  // caret half: open a file (a state with no caret), click, press Enter, undo
+  // comes back is where the caret was when the undone edit *began*. The caret
+  // half of the bug once filed as TODO 1.6: open a file (a state with no caret), click, press Enter, undo
   // -- and the caret went nowhere, or to wherever the edit before had left it.
   h = harness({ modelCore: true });
   h.model.look(99, 0);          // opened: no caret anywhere

@@ -7788,3 +7788,35 @@ makes three: Firefox, Safari and Chrome all pass every step. That closes step
 6's protocol and with it **slice 6**, undo on the model core — recorded on its
 line and on stage 2's in `docs/REWRITE.md`, which now reads slices 1 to 6 done
 and slice 7, the formats, next.
+
+## 2026-09-28 — Slice 6's closing left four claims behind, and TODO 1.6 closes
+
+A read-through of where the rewrite stands, before planning slice 7, found the
+documents and one piece of the UI still describing the branch as it was before
+slice 6.
+
+**The `model core` marker's tooltip was wrong on screen.** It said the formats
+and Ctrl+Z do nothing under the flag. Ctrl+Z has worked since slice 6's step 2,
+and it is the tooltip's whole job to say what differs between the two cores, so
+a stale one points the person doing the A/B at the wrong thing. It now names
+what really does nothing — the formats and Clear, which are slice 7 — and the
+table's refusal of the caret, which is stage 3's. `sw.js`'s `VERSION` goes to
+`v1.52`.
+
+**CLAUDE.md, three places.** The model section still opened slice 6 as having
+*begun*; it says it is done, and names the protocol that closed it. The flag's
+paragraph repeated the tooltip's Ctrl+Z claim. And its last paragraph said
+there was **no input layer yet**, so the model went stale the moment anything
+was typed — true before slice 3 and false for a week. It now says what is true:
+the model owns editing and the DOM changes only through `modelRender`, while a
+save still serialises the rendered DOM rather than the model until stage 4.
+
+**TODO 1.6 leaves [docs/TODO.md](docs/TODO.md).** Its last line said what was
+left was Chrome and Safari re-running the fixture, and both have — clean, the
+same day. Both halves are confirmed: the dot by `801db70`'s ordering, the caret
+by `undoFollowCaret`, which fixed it in both cores. The number is free, so the
+live references were chased in the same commit: CLAUDE.md, a comment in
+`front/undo.js`, one in `tests/undo.test.mjs`, the heading of step 1 in
+`tests/fixtures/undo-check.md`, 3.1's *unblocks* list, and the three places
+`docs/REWRITE.md` described the item as open. The corpus copy of REWRITE.md
+keeps the number, being a frozen oracle.

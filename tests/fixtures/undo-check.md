@@ -23,7 +23,7 @@ To start again, use **File → Reload** and choose to discard.
 "Ctrl/Cmd" means Cmd on a Mac and Ctrl elsewhere. Redo is Ctrl/Cmd+Shift+Z, or
 Ctrl+Y.
 
-## 1. Enter at the end of a bullet (TODO 1.6's case)
+## 1. Enter at the end of a bullet (the case that was TODO 1.6)
 
 Do this one first, while the file has no edits yet.
 
