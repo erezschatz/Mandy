@@ -7896,7 +7896,7 @@ agree on the answer. Checked through the real save path in Blink with the old
 core: a retargeted `[the docs][docs]` saves as `[the docs](https://new.example)`,
 and a second link on the same label keeps the reference and its definition.
 
-## 2026-09-28 — Slice 7, step 1: three edits the model never heard about are shut
+## 2026-09-28 — `004967b` — Slice 7, step 1: three edits the model never heard about are shut
 
 Under `?core=model`, three controls changed the document on screen without the
 model knowing. The next render put the old content back, so each one looked as
