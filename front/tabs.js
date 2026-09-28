@@ -277,6 +277,9 @@ function newTab() {
   // editor and adopts nothing everywhere -- the same path a restored tab takes,
   // reading a document that happens not to be there.
   adoptActive(tab);
+  // A new document starts at its top with a caret in it. WebKit leaves neither:
+  // see showDocumentStart in app.js.
+  showDocumentStart();
   return tab.id;
 }
 

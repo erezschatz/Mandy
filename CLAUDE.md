@@ -1307,10 +1307,38 @@ the way back is a lookup rather than a search for something that looks the same.
 A block the document has not got gives null rather than a guess, and an end that
 has gone leaves the caret that has not.
 
-**What an undo restores is the caret the restored state was taken with** — the
-old core's rule kept rather than re-decided. In the ordinary type-then-undo that
-is where the edit was; after a caret move with no edit between, it is where the
-caret was when that state was current.
+**What an undo restores is where the caret was when the undone edit began.**
+The state that is current follows the caret on `selectionchange` until the next
+edit pushes it, in both cores — `undoFollowCaret` in `undo.js`, which reads the
+state's own shape rather than the flag. Until 2026-09-23 a state carried the
+caret it was *taken* with, just after the edit before it, which is the same
+place only when the caret never moved between. It had moved in the two cases a
+hand run in Firefox tripped over: a click then an edit sent an undo's caret to
+wherever the previous edit had left it, and the first edit after an Open — whose
+state has no caret at all — sent it nowhere. That second one is TODO 1.6's
+caret half. A caret outside the editor does not count, and nor does one while an
+IME holds the text.
+
+**An edit that rewrites what was just typed joins its step.** The macOS
+press-and-hold accent types the vowel as a keystroke, waits on the popup well
+past the coalescing window, then replaces it — so one Ctrl+Z took back the accent
+and left a bare vowel nobody typed. `undoJoin()` merges the next edit whatever
+its type and timing, and `modelInputRevises` decides when to call it: **the
+edit's range sits inside what the last keystroke typed and ends where it
+ended**, recorded in model coordinates and cleared by any other edit. Measured
+on `front/input-check.html`: Firefox replaces the vowel with an `insertText`
+over it, Safari with an `insertReplacementText` over it. Two guesses came first
+and both were wrong — a composition (neither engine starts one), and *a range
+while the selection is collapsed* (failed in Firefox, most likely because macOS
+marks the vowel while the popup is up) — which is why the rule reads the model
+rather than the selection. The composition hook is kept for an engine that does
+it. The join is set only after the splice succeeds, so a refused edit cannot
+leave one standing.
+
+**A text edit that carries no text is refused, not treated as a deletion.**
+Safari's `insertReplacementText` has `data` null and its text in
+`dataTransfer`, where the specification puts it for that type. Reading `data`
+alone turned the accent popup into a Backspace that erased the letter.
 
 **Step 4 routed the engine's own undo gesture.** `historyUndo` and
 `historyRedo` arrive as `beforeinput` — the macOS trackpad swipe, a context

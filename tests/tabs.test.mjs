@@ -53,6 +53,10 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   // tab list, not to the modules the state lives in.
   const writes = [];
   const listeners = {};
+  // Where the view and the caret were put, for the one operation that resets
+  // both: New. WebKit resets neither by itself.
+  const scrolls = [];
+  const carets = [];
 
   const timers = new Map();
   let timerId = 0;
@@ -94,7 +98,13 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
     body: makeEl(),
     head: makeEl(),
     documentElement: makeEl(),
-    createRange: () => ({ setStart() {}, collapse() {}, selectNodeContents() {} }),
+    createRange: () => {
+      const range = { collapsed: false };
+      range.setStart = (node, offset) => { range.node = node; range.offset = offset; };
+      range.collapse = () => { range.collapsed = true; };
+      range.selectNodeContents = () => {};
+      return range;
+    },
     execCommand() {},
   };
 
@@ -127,7 +137,8 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
         // No range: undo.js stores a caret offset when there is one and null
         // when there is not, and every check here is about which document is on
         // screen rather than where the caret landed in it.
-        getSelection: () => ({ rangeCount: 0, removeAllRanges() {}, addRange() {} }),
+        getSelection: () => ({ rangeCount: 0, removeAllRanges() {}, addRange: (r) => carets.push(r) }),
+        scrollTo: (x, y) => scrolls.push([x, y]),
       },
       navigator: { clipboard: {} },
       // openFile awaits both renderers outside its own try, so a renderer that
@@ -245,6 +256,8 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
     ...api,
     store,
     writes,
+    scrolls,
+    carets,
     disk,
     pendingTimers: () => timers.size,
     fireInput: () => {
@@ -694,6 +707,12 @@ export default async function run(check) {
 
     check("newTab appends a tab and makes it active",
       id === 2 && same(app.tabIds(), [1, 2]) && app.activeTab() === 2);
+    check("a new tab starts at the top of the page",
+      app.scrolls.length === 1 && app.scrolls[0][0] === 0 && app.scrolls[0][1] === 0);
+    const caret = app.carets[app.carets.length - 1];
+    check("with a caret placed at the start of its first block, not left to the engine",
+      !!caret && caret.collapsed && caret.offset === 0 &&
+        caret.node === (app.editor.firstElementChild || app.editor));
     check("newTab persists the list it just changed",
       app.store.get("mandy-tabs") ===
         JSON.stringify({ order: [1, 2], active: 2, seq: 2 }));

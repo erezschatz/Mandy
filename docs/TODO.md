@@ -216,6 +216,18 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
     The edited dot stays lit, and the caret jumps to the top of the
     document rather than back to where the edit was.
 
+    **The caret half is fixed, 2026-09-23, in both cores.** Reproduced by
+    hand in Firefox through `tests/fixtures/undo-check.md`: the state an Open
+    mints has no caret, and a state carried the caret it was *taken* with
+    rather than the one it was *left* with, so the undo had nowhere to put it —
+    no visible caret, and arrow keys starting from the top. A state now follows
+    the caret until the next edit pushes it (`undoFollowCaret` in
+    [undo.js](../front/undo.js)); the miscount guessed at below was not it.
+    **The dot half is confirmed fixed**, by the same run: the edited dot
+    cleared on the undo in Firefox, so `801db70`'s ordering fix below was the
+    whole of that half. What is left of this item is Chrome and Safari
+    re-running the fixture.
+
     **Half of it may be fixed already, unverified.** Stage 4 of the tabbed
     view (2026-09-07, `801db70`) found `applyUndoSnapshot` dispatching its
     `input` event *before* moving `history.current`, so `file-api.js`'s

@@ -1844,8 +1844,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the second thing, and slice 2 opens by moving two rules out of `app.js` on
     the strength of it.
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
-    Slices 1 to 5 of seven are done and tested, slices 4 and 5 driven by hand
-    in all three engines; slice 6 is a step in. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    Slices 1 to 6 of seven are done and tested, slices 4 to 6 driven by hand
+    in all three engines; slice 7, the formats, is next. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3094,10 +3094,11 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         are untouched by it: does the engine hand over `text/html` at all, does
         cancelling the event stop the insertion, where does a drop land.
 
-    *   **6. Undo — in progress; planned and started 2026-09-21. Steps 1 to 5
-        are done and tested; step 6 is measured, and its protocol is written and
-        not yet run. Step 7 is what the measurement turned into, and is done and
-        tested.** A stack of model states with the caret as a model position,
+    *   **6. Undo — done and tested, 2026-09-28; planned and started
+        2026-09-21.** All seven steps are done and tested, and step 6's protocol
+        has been run by hand in Firefox, Safari and Chrome and is clean in all
+        three — after four fixes the runs found, all written up at the
+        protocol below. A stack of model states with the caret as a model position,
         replacing the whole-document `innerHTML` snapshots.
         Coalescing carries over unchanged — same `inputType`, inside 600 ms,
         merges; everything else starts a step — because the commands now name
@@ -3351,6 +3352,17 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             between two undos reads as wrong until you know which of the two it
             is watching.
 
+            **Superseded 2026-09-23, by the hand run in Firefox.** A state now
+            follows the caret until the next edit pushes it, so an undo restores
+            where the caret was when the undone edit *began*. The rule above
+            was right only when the caret never moved between edits, and the
+            first edit after an Open — a state with no caret — restored none,
+            leaving the caret invisible in Gecko: TODO 1.6's caret half, in
+            both cores. The same run found a composition that replaces the
+            vowel just typed (the macOS press-and-hold accent) undoing as its
+            own step; it now joins the keystroke's. CLAUDE.md's undo section
+            has both.
+
         4.  **The engine's own undo gesture — done and tested.**
             `historyUndo` and `historyRedo`
             arrive as `beforeinput` — the macOS trackpad gesture, a context
@@ -3482,8 +3494,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             clicks in one statement race and the second can be lost. A run that
             does that reads as a switch that silently did nothing.
 
-        6.  **The measurement, and the protocol — measured; protocol written,
-            not yet run.** The whole clone's cost, because the 2026-09-19
+        6.  **The measurement, and the protocol — measured; protocol run clean in
+            all three engines, 2026-09-28.** The whole clone's cost, because the 2026-09-19
             decision was made against today's HTML-string snapshots and is only
             worth keeping while that comparison holds.
 
@@ -3539,6 +3551,24 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             Run it in Chrome, Firefox and Safari. What automation could already
             reach is marked, and was clean in Blink on 2026-09-21.
 
+            **It is written out as a document to open**, since 2026-09-23:
+            [tests/fixtures/undo-check.md](../tests/fixtures/undo-check.md)
+            carries the steps and the paragraphs and lists to run them on, so
+            the file step 4 asks for is the protocol itself. It puts step 4
+            first, while the file still has a save point to return to. The list
+            below is the record of what automation reached.
+
+            **Firefox: clean, 2026-09-28**, all nine steps, after three fixes
+            the run itself found — the caret an undo restores (steps 1 and 3,
+            and TODO 1.6's caret half), and the press-and-hold accent undoing
+            in two steps (step 7), which took two wrong guesses before the
+            `input-check.html` log settled it. Step 1's edited dot cleared,
+            confirming TODO 1.6's other half. **Safari: clean, 2026-09-28**,
+            after one more fix the run found — its accent popup sends the
+            replacement text in `dataTransfer` rather than `data`, and nothing
+            read it, so the accent erased the letter. **Chrome: clean,
+            2026-09-28**, with nothing to fix.
+
             1.  **A run of typing is one step.** Type a word mid-paragraph, then
                 one Ctrl/Cmd+Z: the whole word goes, and the caret is back where
                 you started typing. *(Blink: clean.)*
@@ -3557,9 +3587,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
                 has no savepoint — `initUndoBaseline` will not invent one — so
                 its dot cannot clear and the step would read as a failure.)*
             5.  **Indent and outdent undo whole.** Tab inside a bullet, then
-                Ctrl/Cmd+Z: the item and its followers come back, and a redo
-                puts them out again. This is a *structural* undo — the block
-                count changes — and it is the path Enter would have taken.
+                Ctrl/Cmd+Z: the item comes back out, and a redo nests it again.
+                Only that item moves, either way: on Shift+Tab the items below
+                it in its sublist become its children and so stay where they are
+                on screen. The fixture runs both.
+                This is a *structural* undo — the block count changes — and it
+                is the path Enter would have taken.
                 *(Blink: clean, and the file's bytes are identical either way.)*
             6.  **A paste is one step.** Paste several paragraphs into the
                 middle of one; a single Ctrl/Cmd+Z takes the whole paste,
@@ -3576,8 +3609,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
                 question rather than this one, and is already answered: no
                 engine raises `historyUndo` at all.
 
-            Throughout, `modelVerifyRender` must stay quiet — set
-            `modelVerifyEnabled` in the console before starting.
+            Throughout, `modelVerifyRender` must stay quiet — run
+            `modelVerifySetEnabled(true)` in the console before starting.
 
 
         7.  **A state shares what the edit did not touch — done and tested,

@@ -232,10 +232,16 @@ function modelInputWrite(doc, span, text) {
     const block = target.from.block;
     const start = Math.min(target.from.offset, target.to.offset);
     const end = Math.max(target.from.offset, target.to.offset);
+    const revise = modelInputRevises(block, start, end);
     const offset = modelBearsSource(block)
       ? modelSourceSplice(block, start, end, text, md)
       : modelInlineSplice(block, start, end, text);
     if (offset === null) return false;
+    // After the splice, so the join is spent on this edit's own announcement
+    // and cannot be left standing for some later one if the splice refused.
+    if (revise && typeof undoJoin === "function") undoJoin();
+    // A rewrite extends the run it joined rather than starting a new one.
+    modelPendingTyped = { block, from: revise ? modelLastTyped.from : start, to: offset };
     return modelInputShow(doc, block, { block, offset }, "insertText");
   }
 
@@ -385,10 +391,47 @@ function modelInputKeydown(event) {
  * `inputType` is carried because undo.js coalesces on it.
  */
 function modelInputAnnounce(inputType) {
+  modelLastTyped = modelPendingTyped;
+  modelPendingTyped = null;
   const event = typeof InputEvent === "function"
     ? new InputEvent("input", { inputType, bubbles: true })
     : new Event("input", { bubbles: true });
   editor.dispatchEvent(event);
+}
+
+/**
+ * What the last keystroke typed: `{ block, from, to }`, or null.
+ *
+ * Set by a text edit through `modelInputWrite` and **replaced on every
+ * announcement**, so any other edit — a deletion, an Enter, a paste, a
+ * composition — clears it. An undo installs a fresh copy of the document with
+ * its own block objects, so a record from before it can never match again.
+ */
+let modelLastTyped = null;
+let modelPendingTyped = null;
+
+/**
+ * Whether a text edit rewrites exactly what the last keystroke typed.
+ *
+ * The macOS press-and-hold accent. Hold `e` and the engine types it as an
+ * ordinary edit; pick `é` from the popup and it replaces that `e` — as an
+ * `insertText` whose target range covers it in Firefox, and as an
+ * `insertReplacementText` doing the same in Safari, both measured on
+ * `front/input-check.html`. The wait on the popup is far past the coalescing
+ * window, so without a join one Cmd+Z took back the accent and left a bare
+ * vowel nobody typed.
+ *
+ * **Keyed on the model, not on the selection.** The first version asked
+ * whether the selection was collapsed while the range was not, and still
+ * failed in Firefox — macOS marks the vowel while the popup is up. What both
+ * engines agree on is where the range *is*: inside what was just typed, ending
+ * where it ended. Selecting a word typed earlier and typing over it fails that,
+ * and stays its own step.
+ */
+function modelInputRevises(block, start, end) {
+  const last = modelLastTyped;
+  return !!last && start < end && last.block === block &&
+    end === last.to && start >= last.from;
 }
 
 /**
@@ -416,7 +459,17 @@ function modelInputBeforeInput(event) {
   if (modelInputComposing()) return;
 
   if (MODEL_INPUT_TEXT_TYPES.has(event.inputType)) {
-    modelInputWrite(doc, modelInputSpan(event, doc), event.data || "");
+    // **A text edit that carries no text is not a deletion.** Safari sends
+    // `insertReplacementText` with `data` null and the text in `dataTransfer`,
+    // which is where the specification puts it for that type — and reading
+    // `data` alone turned its accent popup into a Backspace that erased the
+    // letter. Measured in Safari on 2026-09-28. Anything still empty after both
+    // is refused, since writing nothing over a range is a deletion nobody asked
+    // for.
+    const text = event.data ||
+      (event.dataTransfer && event.dataTransfer.getData("text/plain")) || "";
+    if (!text) return;
+    modelInputWrite(doc, modelInputSpan(event, doc), text);
     return;
   }
   if (MODEL_INPUT_DELETE_TYPES.has(event.inputType)) {
@@ -511,6 +564,12 @@ function modelInputCompositionEnd() {
   const offset = modelInlineSplice(block, head, was.length - tail, inserted);
   if (offset === null) return;
   modelRerenderBlock(editor, block, md, { block, offset });
+  // A composition that replaced text the model already held is rewriting what
+  // was just typed — the press-and-hold accent turning `e` into `é` — so it
+  // belongs to that keystroke's undo step rather than being its own. One that
+  // only inserted, like a dead key, is an ordinary step. Feature-tested for the
+  // reason the history route is: this file's check page ships no undo.js.
+  if (was.length - tail > head && typeof undoJoin === "function") undoJoin();
   modelInputAnnounce("insertCompositionText");
 }
 
@@ -682,6 +741,19 @@ function modelInputPointAt(doc, x, y) {
   return node ? modelDomBlockAt(editor, doc, node, offset, -1) : null;
 }
 
+/**
+ * Say that a drop was refused, and why.
+ *
+ * A refusal is correct and indistinguishable from a failure: the text stays
+ * where it was either way. So it is announced as a `modeldroprefused` event
+ * carrying the reason, which `front/input-check.html` logs — the same lesson
+ * as its "no dragstart followed" line, that a page which says nothing reads as
+ * having no opinion. The app listens to nothing, so it costs nothing there.
+ */
+function modelInputRefuseDrop(reason) {
+  editor.dispatchEvent(new CustomEvent("modeldroprefused", { detail: { reason } }));
+}
+
 function modelInputDrop(event) {
   const doc = modelCurrentDocument();
   if (!doc || modelInputComposing()) return;
@@ -700,10 +772,12 @@ function modelInputDrop(event) {
     // implementation: the offsets on the far side of a merge are not the
     // offsets the drop was measured against, and getting that wrong moves the
     // user's text somewhere they did not point at.
-    if (source.from.block !== source.to.block) return;
+    if (source.from.block !== source.to.block) return modelInputRefuseDrop("spans two blocks");
     const start = Math.min(source.from.offset, source.to.offset);
     const end = Math.max(source.from.offset, source.to.offset);
-    if (at.block === source.from.block && at.offset >= start && at.offset <= end) return;
+    if (at.block === source.from.block && at.offset >= start && at.offset <= end) {
+      return modelInputRefuseDrop("dropped onto itself");
+    }
     if (modelInlineSplice(source.from.block, start, end, "") === null) return;
     // Only when the two are in the same block does taking the source out move
     // the target; anywhere else the offset still names the same place.

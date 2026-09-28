@@ -25,12 +25,13 @@ export default function run(check) {
     coreOn = true, doc = { blocks: [] }, range = null, splice = 7,
     source = false, at = null, item = null, empty = false, hardBreak = "  ",
     html = "", point = null, selection = false, history = true,
+    domText = "abX", blockText = "ab",
   } = {}) => {
     const calls = {
       splice: [], rerender: [], render: [], announced: [], sourceSplice: [],
       merged: [], pruned: [], split: [], broke: [], emptyItem: [], moved: [], filled: [],
       parsed: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
-      history: [],
+      history: [], refused: [], joined: 0,
     };
     const editor = makeEl("div");
     // The two halves of a drop position, which are the two spellings the
@@ -39,7 +40,10 @@ export default function run(check) {
       caretPositionFromPoint: () => (point ? { offsetNode: point, offset: 0 } : null),
     };
     const block = { kind: "paragraph", inlines: [], source: "x" };
-    editor.dispatchEvent = (event) => calls.announced.push(event.inputType ?? event.type);
+    editor.dispatchEvent = (event) => {
+      calls.announced.push(event.inputType ?? event.type);
+      if (event.type === "modeldroprefused") calls.refused.push(event.detail.reason);
+    };
 
     const api = loadSource(
       ["model-input.js"],
@@ -49,9 +53,10 @@ export default function run(check) {
         markdownStyle: { hardBreak },
         modelCoreEnabled: () => coreOn,
         modelCurrentDocument: () => doc,
+        // A list answers one call each, for a case whose edits differ.
         modelInlineSplice: (b, from, to, text) => {
           calls.splice.push({ block: b, from, to, text });
-          return splice;
+          return Array.isArray(splice) ? splice.shift() : splice;
         },
         // Slice 4's second text space. The stub answers for whichever kind the
         // case asked for, so the routing question -- inline tree or source --
@@ -111,14 +116,18 @@ export default function run(check) {
         modelDomBlockAt: () => range && range.shift(),
         modelReadSelection: () => at || { block, offset: 0 },
         modelElementFor: () => editor,
-        modelDomText: () => "abX",
-        modelBlockText: () => "ab",
+        modelDomText: () => domText,
+        modelBlockText: () => blockText,
         // A drag records its source from the live selection, so a case that
         // drags has to have one. `collapsed: false` is the whole of what both
         // `modelInputDragStart` and `modelInputSpan` ask it.
         window: {
+          // `selection: "caret"` is a live selection that is only a caret, which
+          // is what an engine leaves standing while it rewrites behind it.
           getSelection: () => (selection
-            ? { rangeCount: 1, getRangeAt: () => ({ collapsed: false, startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }) }
+            ? { rangeCount: 1, getRangeAt: () => (selection === "caret"
+              ? { collapsed: true, startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }
+              : { collapsed: false, startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }) }
             : { rangeCount: 0 }),
         },
         InputEvent: class {
@@ -127,11 +136,15 @@ export default function run(check) {
         Event: class {
           constructor(type) { this.type = type; }
         },
+        CustomEvent: class {
+          constructor(type, init) { this.type = type; this.detail = init && init.detail; }
+        },
         // undo.js's two. Absent when `history` is false, which is
         // front/input-check.html's situation exactly: it ships no undo.js, so
         // the route has to find nothing and do nothing rather than throw.
         ...(history ? {
           undo: () => { calls.history.push("undo"); return true; },
+          undoJoin: () => { calls.joined += 1; },
           redo: () => { calls.history.push("redo"); return true; },
         } : {}),
         console,
@@ -212,6 +225,88 @@ export default function run(check) {
       r.calls.rerender.length === 1 && r.calls.rerender[0].selection.offset === 7);
     check("and announces the change, or nothing downstream would hear it",
       r.calls.announced.length === 1 && r.calls.announced[0] === "insertText");
+    check("an ordinary keystroke is its own undo step", r.calls.joined === 0);
+  }
+
+  // --- the press-and-hold accent ------------------------------------------
+  //
+  // Both engines type the vowel as an ordinary edit and then replace it, far
+  // past the coalescing window. Each case is the engine's own log, replayed:
+  // the first event is the `e`, the second the accent landing over it.
+
+  const typedAt = (at) => ({ startContainer: 1, startOffset: at, endContainer: 1, endOffset: at });
+  const over = (from, to) => ({ startContainer: 1, startOffset: from, endContainer: 2, endOffset: to });
+
+  {
+    // Firefox: `insertText "e" 23–23`, then `insertText "é" 23–24`.
+    const t = { id: 3 };
+    const r = rig({ splice: 24, range: [here(t, 23), here(t, 23), here(t, 24)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "e", targets: [typedAt(23)] }));
+    check("the vowel itself is an ordinary step", r.calls.joined === 0);
+    r.api.modelInputBeforeInput(event("insertText", { data: "é", targets: [over(23, 24)] }));
+    check(`Firefox's accent replaces the vowel (${JSON.stringify(r.calls.splice[1])})`,
+      r.calls.splice.length === 2 && r.calls.splice[1].from === 23 &&
+        r.calls.splice[1].to === 24 && r.calls.splice[1].text === "é");
+    check("and joins the vowel's undo step", r.calls.joined === 1);
+  }
+
+  {
+    // Safari: `insertText "e" 42–42`, then `insertReplacementText 42–43` with
+    // **no `data`** -- the text is in `dataTransfer`, where the spec puts it.
+    const t = { id: 2 };
+    const r = rig({ splice: 43, range: [here(t, 42), here(t, 42), here(t, 43)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "e", targets: [typedAt(42)] }));
+    const e = event("insertReplacementText", { targets: [over(42, 43)] });
+    e.dataTransfer = { getData: (type) => (type === "text/plain" ? "é" : "") };
+    r.api.modelInputBeforeInput(e);
+    check(`Safari's accent is read from dataTransfer (${JSON.stringify(r.calls.splice[1])})`,
+      r.calls.splice.length === 2 && r.calls.splice[1].text === "é" &&
+        r.calls.splice[1].from === 42 && r.calls.splice[1].to === 43);
+    check("so it is announced as text, not as the deletion that erased the letter",
+      r.calls.announced[1] === "insertText");
+    check("and joins the vowel's undo step too", r.calls.joined === 1);
+  }
+
+  {
+    // A text edit carrying no text at all changes nothing, rather than
+    // deleting its range.
+    const t = { id: 2 };
+    const r = rig({ range: [here(t, 42), here(t, 43)] });
+    r.api.modelInputBeforeInput(event("insertReplacementText", { targets: [over(42, 43)] }));
+    check("a text edit with no text is refused, not treated as a deletion",
+      r.calls.splice.length === 0 && r.calls.announced.length === 0);
+  }
+
+  {
+    // Typing over a range that is not what was just typed is a new edit.
+    const t = { id: 3 };
+    const r = rig({ splice: 24, range: [here(t, 10), here(t, 10), here(t, 23), here(t, 24)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "e", targets: [typedAt(10)] }));
+    r.api.modelInputBeforeInput(event("insertText", { data: "x", targets: [over(23, 24)] }));
+    check("typing over text the last keystroke did not type does not join",
+      r.calls.splice.length === 2 && r.calls.joined === 0);
+  }
+
+  {
+    // Any other edit in between clears the record: the rewrite has to follow
+    // the keystroke directly.
+    const t = { id: 3 };
+    const r = rig({ splice: 24, range: [here(t, 23), here(t, 23), here(t, 24), here(t, 23), here(t, 24)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "e", targets: [typedAt(23)] }));
+    r.api.modelInputBeforeInput(event("deleteContentBackward", { targets: [over(23, 24)] }));
+    r.api.modelInputBeforeInput(event("insertText", { data: "é", targets: [over(23, 24)] }));
+    check("an edit between the keystroke and the rewrite breaks the link", r.calls.joined === 0);
+  }
+
+  {
+    // A rewrite the model refuses never announces, so it must not leave a
+    // join standing for whatever edit comes next.
+    const t = { id: 3 };
+    const r = rig({ splice: [24, null], range: [here(t, 23), here(t, 23), here(t, 24)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "e", targets: [typedAt(23)] }));
+    r.api.modelInputBeforeInput(event("insertText", { data: "é", targets: [over(23, 24)] }));
+    check("a refused rewrite leaves no join behind",
+      r.calls.splice.length === 2 && r.calls.announced.length === 1 && r.calls.joined === 0);
   }
 
   {
@@ -458,12 +553,27 @@ export default function run(check) {
 
     r.api.modelInputCompositionEnd();
     check("compositionend is no longer composing", r.api.modelInputComposing() === false);
+    check("a composition that only inserted is its own undo step", r.calls.joined === 0);
     check(
       `and applies the difference as one edit (${JSON.stringify(r.calls.splice[0])})`,
       r.calls.splice.length === 1 && r.calls.splice[0].from === 2 &&
         r.calls.splice[0].to === 2 && r.calls.splice[0].text === "X",
     );
     check("as one step, announced once", r.calls.announced.length === 1);
+  }
+
+  {
+    // The macOS press-and-hold accent: the vowel was typed as an ordinary
+    // keystroke, and the composition *replaces* it. That belongs to the
+    // keystroke's undo step, or one Ctrl+Z leaves a bare "e" nobody typed.
+    const target = { id: 7 };
+    const r = rig({ range: [here(target, 0), here(target, 0)], blockText: "cafe", domText: "café" });
+    r.api.modelInputCompositionStart();
+    r.api.modelInputCompositionEnd();
+    check(`a composition that rewrote what was typed replaces it (${JSON.stringify(r.calls.splice[0])})`,
+      r.calls.splice.length === 1 && r.calls.splice[0].from === 3 &&
+        r.calls.splice[0].to === 4 && r.calls.splice[0].text === "é");
+    check("and joins the undo step before it", r.calls.joined === 1);
   }
 
   // --- slice 5: paste and drop ---------------------------------------------
@@ -613,6 +723,9 @@ export default function run(check) {
     r.api.modelInputDrop({ clientX: 1, clientY: 1, preventDefault() {}, dataTransfer: { getData: () => "x" } });
     check("dropping a selection inside itself changes nothing",
       r.calls.splice.length === 0 && r.calls.inserted.length === 0);
+    // And says so, because a refusal and a failure look identical on screen.
+    check(`and announces the refusal (${r.calls.refused.join(", ")})`,
+      r.calls.refused.length === 1 && r.calls.refused[0] === "dropped onto itself");
   }
 
   {
@@ -627,6 +740,8 @@ export default function run(check) {
     r.api.modelInputDrop({ clientX: 1, clientY: 1, preventDefault() {}, dataTransfer: { getData: () => "x" } });
     check("a drag spanning two blocks is refused",
       r.calls.splice.length === 0 && r.calls.inserted.length === 0);
+    check(`and announces why (${r.calls.refused.join(", ")})`,
+      r.calls.refused.length === 1 && r.calls.refused[0] === "spans two blocks");
   }
 
   // --- slice 6: the engine's own undo gesture -------------------------------

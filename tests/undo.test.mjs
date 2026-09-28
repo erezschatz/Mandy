@@ -87,6 +87,7 @@ function harness({ html = "<p>start</p>", modelCore = false } = {}) {
 
   const actions = new Map();
   const keydowns = [];
+  const selectionchanges = [];
   // Everything else that hangs off `input` — autosave, the dirty flag, the
   // outline. An undo has to reach them, or the document and the autosave part
   // company and the toolbar goes on claiming the file matches.
@@ -104,6 +105,7 @@ function harness({ html = "<p>start</p>", modelCore = false } = {}) {
     document: {
       addEventListener: (event, fn) => {
         if (event === "keydown") keydowns.push(fn);
+        if (event === "selectionchange") selectionchanges.push(fn);
       },
       createRange: () => ({ setStart() {}, setEnd() {} }),
     },
@@ -126,7 +128,7 @@ function harness({ html = "<p>start</p>", modelCore = false } = {}) {
     // throw.
     ...(modelCore ? model.scope : {}),
     console,
-  }, "; return { undo, redo, undoReset, undoBreak, undoPark, undoAdopt," +
+  }, "; return { undo, redo, undoReset, undoBreak, undoJoin, undoPark, undoAdopt," +
      " undoTextOffset, undoLocateOffset," +
      " undoDepth: () => history.undoStack.length," +
      " redoDepth: () => history.redoStack.length, undoPosition };");
@@ -147,6 +149,8 @@ function harness({ html = "<p>start</p>", modelCore = false } = {}) {
       editor.dispatchEvent({ type: "input" });
     },
     key: (init) => { for (const fn of keydowns) fn(init); },
+    // What the browser raises when the caret moves, with no edit.
+    moved: () => { for (const fn of selectionchanges) fn(); },
   };
 }
 
@@ -287,6 +291,40 @@ export default function run(check) {
   h.type("b");
   h.type("c");
   check("the break is spent on the edit it isolates", h.undoDepth() === 2);
+
+  // --- undoJoin: a composition rewriting what was just typed ---------------
+  //
+  // The press-and-hold accent types the vowel, waits on a popup far longer
+  // than the coalescing window, then replaces it under a different inputType.
+  // Neither rule would merge the two, and both are overridden on purpose.
+
+  h = harness();
+  h.undoReset();
+  h.type("e");
+  h.advance(2000);
+  h.undoJoin();
+  h.type("\u0301", "insertCompositionText");
+  check("a joined edit merges across both the type and the pause", h.undoDepth() === 1);
+  h.undo();
+  check("so one undo takes back the letter and its accent together",
+    h.editor.innerHTML === "<p>start</p>");
+
+  h = harness();
+  h.undoReset();
+  h.type("a");
+  h.undoJoin();
+  h.type("b", "insertCompositionText");
+  h.advance(2000);
+  h.type("c");
+  check("the join is spent on the edit it merges", h.undoDepth() === 2);
+
+  h = harness();
+  h.undoReset();
+  h.type("a");
+  h.undoBreak();
+  h.undoJoin();
+  h.type("b");
+  check("and a break wins over a join", h.undoDepth() === 2);
 
   // --- redo ----------------------------------------------------------------
 
@@ -594,7 +632,37 @@ export default function run(check) {
   check("which is a different object from the one on screen before it",
     !wasLive.includes(put.block));
 
-  // A state taken with no caret restores none, rather than a made-up one.
+  // **But the state follows the caret until the next edit leaves it**, so what
+  // comes back is where the caret was when the undone edit *began*. TODO 1.6's
+  // caret half: open a file (a state with no caret), click, press Enter, undo
+  // -- and the caret went nowhere, or to wherever the edit before had left it.
+  h = harness({ modelCore: true });
+  h.model.look(99, 0);          // opened: no caret anywhere
+  h.undoReset();
+  h.model.look(2, 5);           // the user clicks
+  h.moved();
+  h.model.look(1, 0);           // the edit's own render moves it on
+  h.type("a");
+  h.undo();
+  const back = h.model.applied[h.model.applied.length - 1];
+  check("an undo restores the caret from where the edit began, not from when the state was taken",
+    back && back.block.id === 2 && back.offset === 5);
+
+  // A caret outside the editor is not a caret here: clicking the toolbar must
+  // not wipe the one the state is holding.
+  h = harness({ modelCore: true });
+  h.model.look(2, 5);
+  h.undoReset();
+  h.model.look(99, 0);
+  h.moved();
+  h.model.look(1, 0);
+  h.type("a");
+  h.undo();
+  const kept = h.model.applied[h.model.applied.length - 1];
+  check("and a selection that left the editor leaves the state's caret alone",
+    kept && kept.block.id === 2 && kept.offset === 5);
+
+  // A state taken with no caret, never given one, restores none.
   h = harness({ modelCore: true });
   h.model.look(99, 0);          // no such block: modelReadSelection sees nothing
   h.undoReset();

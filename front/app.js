@@ -599,6 +599,35 @@ function loadBlankDocument() {
   modelLoad(editor, "", md);
 }
 
+/**
+ * Put the reader at the top of the document with a caret in its first block.
+ *
+ * For a document that has just been swapped in whole — New, today — where
+ * neither the scroll position nor the caret means anything any more. **Every
+ * engine does the right thing here but one, and that one leaves the document
+ * unusable**: measured 2026-09-28, Blink clamps the scroll to the shorter
+ * document and repairs the selection into the new first block by itself, while
+ * WebKit keeps the old scroll offset — showing empty space below a
+ * one-paragraph document, with the header out of view — and keeps a selection
+ * pointing at nodes that no longer exist, so there is no caret and typing goes
+ * nowhere until the user scrolls up and clicks. Done here rather than trusted
+ * to the engine, which is also what makes it the same in all three.
+ *
+ * Focus before the selection, and without scrolling, so focusing cannot move
+ * a caret this is about to place, nor the view it is about to reset.
+ */
+function showDocumentStart() {
+  if (typeof window.scrollTo === "function") window.scrollTo(0, 0);
+  if (editor.focus) editor.focus({ preventScroll: true });
+  const selection = window.getSelection && window.getSelection();
+  if (!selection) return;
+  const range = document.createRange();
+  range.setStart(editor.firstElementChild || editor, 0);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 // ── Button handlers ──────────────────────────────────────────────────────────
 
 // Registered by action name, not bound to an element: download and upload only

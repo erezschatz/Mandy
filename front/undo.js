@@ -97,6 +97,8 @@ function freshHistory() {
     lastTime: 0,
     // Set by undoBreak(), cleared by the input event it isolates.
     breakOnce: false,
+    // Set by undoJoin(), cleared by the input event it merges.
+    joinOnce: false,
   };
 }
 
@@ -252,11 +254,11 @@ function undoCaptureState() {
   }
   const doc = modelCurrentDocument();
   if (!doc) return { html: null, model: null, selection: null };
-  return {
-    html: null,
-    model: modelForkDocument(doc),
-    selection: modelRecordSelection(modelReadSelection(editor, doc)),
-  };
+  return { html: null, model: modelForkDocument(doc), selection: undoCaptureModelCaret(doc) };
+}
+
+function undoCaptureModelCaret(doc) {
+  return modelRecordSelection(modelReadSelection(editor, doc));
 }
 
 /**
@@ -366,6 +368,20 @@ function undoBreak() {
 }
 
 /**
+ * Merge the next edit into the step before it, whatever its type and however
+ * long it has been. For a composition that **rewrites what was just typed**:
+ * the macOS press-and-hold accent types the plain vowel as an ordinary
+ * keystroke, waits for the user to pick from the popup — well past the
+ * coalescing window — and then replaces that vowel. Without this, one Ctrl+Z
+ * takes back the accent and leaves the vowel, which is not a thing anybody
+ * typed. Found by hand in Firefox on 2026-09-23. `undoBreak()` wins if both
+ * are set, since an isolated step cannot also be merged into.
+ */
+function undoJoin() {
+  history.joinOnce = true;
+}
+
+/**
  * Detach the whole history and leave a fresh one in its place. For a tab
  * switch: stash the returned bundle on the outgoing tab, swap editor.innerHTML
  * to the incoming document, then undoAdopt that tab's stored bundle. Nothing
@@ -428,10 +444,13 @@ editor.addEventListener("input", (event) => {
   const type = event && event.inputType;
   const now = Date.now();
   const coalesce =
-    !history.breakOnce &&
-    UNDO_COALESCING.has(type) &&
-    type === history.lastType &&
-    now - history.lastTime < UNDO_COALESCE_MS;
+    !history.breakOnce && (
+      history.joinOnce || (
+        UNDO_COALESCING.has(type) &&
+        type === history.lastType &&
+        now - history.lastTime < UNDO_COALESCE_MS
+      )
+    );
 
   if (!coalesce) {
     history.undoStack.push(history.current);
@@ -446,7 +465,48 @@ editor.addEventListener("input", (event) => {
   history.lastType = history.breakOnce ? null : type;
   history.lastTime = now;
   history.breakOnce = false;
+  history.joinOnce = false;
 });
+
+/**
+ * Keep the state we are in up to date with where the caret *is*, not only
+ * where it was when the state was taken.
+ *
+ * An undo puts back the caret its state carries, and a state used to carry the
+ * caret from the moment it was taken — just after the edit *before* it. That
+ * is the right place only if the caret never moved in between. Click
+ * somewhere, type, undo, and the caret went back to wherever the previous edit
+ * had left it; undo the first edit after opening a file, whose state was taken
+ * with no caret at all, and it went nowhere — invisible in Firefox, with
+ * arrow keys starting from the top. That is the caret half of TODO 1.6, found
+ * by hand on 2026-09-23 through `tests/fixtures/undo-check.md`, and it was in
+ * both cores. So the state that is current follows the caret until the next
+ * edit pushes it, and what an undo restores is **where the caret was when the
+ * edit being undone began**.
+ *
+ * Only a caret inside the editor counts, so clicking the toolbar does not wipe
+ * it, and not while undo is applying a state or an IME holds the text, when
+ * what the selection points at is not yet the model's.
+ */
+function undoFollowCaret() {
+  const state = history.current;
+  if (undoApplying || !state) return;
+  if (typeof modelInputComposing === "function" && modelInputComposing()) return;
+  // The state's own shape decides, the way it does when one is applied: the
+  // caret is recorded in the shape the state was taken in, never re-asked.
+  let caret = null;
+  if (state.model) {
+    const doc = modelCurrentDocument();
+    caret = doc ? undoCaptureModelCaret(doc) : null;
+  } else if (state.html !== null) {
+    caret = undoCaptureSelection();
+  }
+  if (caret) state.selection = caret;
+}
+
+if (typeof document !== "undefined" && document.addEventListener) {
+  document.addEventListener("selectionchange", undoFollowCaret);
+}
 
 // Registered as toolbar actions rather than bound to keys alone: the Edit menu
 // renders them from the same spec every other item comes from, so the shortcut

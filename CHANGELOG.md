@@ -7565,3 +7565,226 @@ typing and undo with the caret returning to the character it was typed at, an
 indent plus a second edit taken back by two undos to byte-identical and put back
 by two redos, `modelVerifyRender` quiet throughout. Step 6's protocol still
 wants a human in all three engines. `sw.js`'s `VERSION` goes to `v1.46`.
+
+## 2026-09-23 — The check page says when a drop is refused, and why
+
+Found driving `front/input-check.html` in Chrome: a drag spanning two
+paragraphs did nothing, which is exactly what the protocol asks of it — and the
+log showed `dragstart`, 154 `dragover`s and a `drop` with `dropEffect=move`,
+then silence. A refused drop and a broken one look the same on screen and, until
+now, the same in the log. Firefox read identically, so both engines pass the
+step; the page simply could not say so.
+
+`modelInputDrop` now announces each of its two deliberate refusals as a
+`modeldroprefused` event on the editor carrying the reason — *spans two blocks*
+or *dropped onto itself* — and the check page logs it. The app listens to
+nothing, so it costs nothing there. The reason is the input layer's own rather
+than something the page works out from the selection, because a page carrying
+its own copy of the rule would agree with itself whatever the code did. The
+`model-input` suite checks both refusals are announced with the right reason,
+two checks on top of the existing two that nothing is moved.
+
+The protocol's typography has one rule now, said in a comment above the list:
+**bold is what you do**, *italics is what should (or should not) happen*, and
+nothing else is emphasised. It used bold for both, and for asides besides, so a
+glance down the list could not tell an action from an outcome. While in there,
+the paste step stopped claiming Ctrl+Z does nothing under the flag — true until
+slice 6's step 2. `sw.js`'s `VERSION` goes to `v1.47`.
+
+## 2026-09-23 — Slice 6's undo protocol as a document to open
+
+Slice 6's hand check lived only in `docs/REWRITE.md`, as prose to be read in one
+window and carried out in another, with the reader making up their own text to
+type into — and asking what "a pause" was. It is now
+[tests/fixtures/undo-check.md](tests/fixtures/undo-check.md): the protocol and
+the document it runs on in one file, opened in the app under `?core=model`, with
+a paragraph or list written for each step to be typed into right there.
+
+Three things it settles that the prose left to the reader. A pause is defined —
+more than 0.6 seconds between keystrokes, `UNDO_COALESCE_MS`, measured from the
+last keystroke rather than the first. TODO 1.6's case goes **first**, because it
+needs the tab's edited dot to clear, which only happens while the file still has
+a save point to return to. And the console line is the function that exists,
+`modelVerifySetEnabled(true)`; REWRITE.md said to set `modelVerifyEnabled`,
+which works from a console but is not the door. Same typography as the check
+pages: bold is what you do, italics what should happen.
+
+Like `break-test.md`, it is never saved over — File → Reload discards a run.
+Nothing in `tests/` reads it; the model suite's oracle is an explicit list.
+
+## 2026-09-23 — Undo puts the caret back where the edit began, and an accent undoes with its letter
+
+The first hand run of `tests/fixtures/undo-check.md`, in Firefox, passed six of
+its nine steps and found two bugs behind the other three.
+
+**The caret.** A state carried the caret it was *taken* with — just after the
+edit before it — and an undo restored that. Right only when the caret never
+moved in between. Step 1 is TODO 1.6's reported case: the state an Open mints
+has no caret at all, so undoing the first edit put it nowhere — invisible in
+Gecko, with the arrow keys starting from the top. Step 3 hit the other side: a
+click and then an edit, and the undo sent the caret to wherever the previous
+edit had left it. Now the current state **follows the caret on
+`selectionchange`** until the next edit pushes it, so an undo restores where the
+caret was when the undone edit began. `undoFollowCaret` reads the state's own
+shape rather than asking the core flag, the same principle `undoApplyState`
+already follows, so it is one rule for both cores and the flag is still asked
+in exactly one place. A caret outside the editor is ignored, so clicking the
+toolbar does not wipe the one being held, and so is one while an IME holds the
+text. This fixes the old core too, which had the same rule.
+
+**The accent.** Holding a vowel for the macOS popup types the vowel as an
+ordinary keystroke, waits while the user picks — far past the 600ms coalescing
+window — and then replaces it by composition. Different type, long gap: two
+undo steps, and one Cmd+Z left a bare `e` nobody typed. `undoJoin()` is
+`undoBreak()`'s opposite, merging the next edit whatever its type and timing,
+and `modelInputCompositionEnd` calls it when its diff **replaced** text rather
+than only inserting it. A dead key only inserts, so it stays its own step. A
+break wins over a join.
+
+Seven new checks, each confirmed to fail with its fix removed: in `undo`, that
+the caret comes back from where the edit began, that a selection outside the
+editor leaves it alone, and that a join merges across type and pause, undoes
+whole, is spent on one edit, and loses to a break; in `model-input`, that a
+replacing composition joins and an inserting one does not. Driven in Blink
+afterwards: a caretless baseline, a click, typing, Cmd+Z — the caret back at
+the click, `modelVerifyRender` quiet. **Firefox wants a re-run** of steps 1, 3
+and 7, which is what found this. Step 1's edited dot **cleared** in that same
+Firefox run, which confirms TODO 1.6's other half — fixed by `801db70`'s
+ordering and unverified until now.
+`sw.js`'s `VERSION` goes to `v1.48`.
+
+## 2026-09-28 — Tab moves one item, not its followers
+
+`tests/fixtures/undo-check.md`'s step 5 said that pressing Tab in the second of
+three bullets would carry the third along with it, and that one undo would
+bring both back. Tab does nothing of the kind: `modelIndentItem` nests the one
+item under the item above it and leaves everything below where it was. Carrying
+followers is **Shift+Tab**'s rule — `modelOutdentItem` brings the items below
+the outdented one *in its own sublist* out with it, nested under it — and the
+wording had crossed the two. Reported by the person running the fixture. The code
+was right; the protocol was wrong.
+
+The step now runs both. Tab on the middle of three bullets, undo and redo, with
+the third item marked as never moving. Then Shift+Tab on the first of three
+nested items, where the other two are the followers and one undo has to put all
+three back. REWRITE.md's protocol and `front/input-check.html`'s Tab step had the
+same loose wording and say the same thing now.
+
+## 2026-09-28 — The accent undoes with its letter, the way Firefox actually sends it
+
+The fix in the entry above that for step 7 of `tests/fixtures/undo-check.md`
+was built on a deduction, and the re-run in Firefox said it was wrong: still two
+Cmd+Z to take back one accented letter. The deduction was that press-and-hold
+replaces the vowel through a composition. `front/input-check.html`'s log of the
+real gesture says otherwise — **there is no composition at all**. Hold `e` and
+Firefox sends `insertText "e"`; pick `é` from the popup and it sends a second
+`insertText "é"` whose target range covers the `e` (`23–24`), with the caret
+collapsed after it the whole time. The composition hook was never reached.
+
+`modelInputRevises` recognises that shape: a non-empty target range **while the
+live selection is collapsed** is the engine rewriting behind the caret, and
+`modelInputWrite` calls `undoJoin()` for it — after the splice succeeds, so a
+refused edit never announces and leaves no join standing for some later one.
+Typing over a selection hands over the same range with the selection covering
+it, which is a new edit and stays its own step. The composition hook stays, for
+an engine that does deliver the accent that way; nothing has measured one yet.
+
+Four new checks in `model-input`, the first built from the Firefox log itself:
+the rewrite replaces the letter and joins, an ordinary keystroke does not, typing
+over a selection does not, and a refused rewrite leaves no join behind. The join
+check was confirmed to fail with the call removed. The lesson is the check
+pages' own: this was the second fix for step 7, and the first one could have
+been skipped by asking the log before writing it. `sw.js`'s `VERSION` goes to
+`v1.49`. **Firefox wants step 7 once more**; Chrome and Safari may send the
+accent differently again, and their logs are what would say.
+
+## 2026-09-28 — Safari's accent erased the letter; the join keys on the model
+
+Two results from running step 7 of `tests/fixtures/undo-check.md` again, and
+both came with `front/input-check.html` logs, which is what made them fixable.
+
+**Safari erased the letter outright.** Its accent popup sends
+`insertReplacementText` with `data` null. The text is in `event.dataTransfer`,
+which is where the specification puts it for that type, and nothing read it:
+`modelInputBeforeInput` took `event.data || ""`, and a text edit with an empty
+string over a range is a deletion, which is exactly what the log showed —
+`input deleteContentBackward`. It now reads `dataTransfer` when `data` is
+empty, and **a text edit that still carries no text is refused** rather than
+turned into a deletion nobody asked for. That also covers spell-check
+replacement, which uses the same type.
+
+**Firefox still needed two Cmd+Z**, so the previous entry's rule — a non-empty
+range while the selection is collapsed — was a second wrong guess. The likeliest
+reason is that macOS marks the vowel while the popup is up, so the selection is
+not a caret at that moment; the page did not log the selection, so that stays a
+likelihood. Rather than guess a third time about the selection, the rule no
+longer reads it. `modelInputRevises` asks the model instead: **does the range
+sit inside what the last keystroke typed, ending where it ended?** That record
+is set by each text edit and replaced on every announcement, so any other edit
+in between clears it, and an undo's fresh block objects can never match a stale
+one. Both engines' logs satisfy it — Firefox `e` at 23 then `23–24`, Safari `e`
+at 42 then `42–43` — and typing over a word typed earlier does not.
+
+`input-check.html` now logs `dataTransfer` text and the selection state on every
+`beforeinput`, so the next surprise of this kind names itself. Six checks in
+`model-input` replace the three the previous entry added: each engine's log
+replayed as two events, the empty text edit, typing over text the last keystroke
+did not type, an edit in between, and a refused rewrite. Each was confirmed to
+fail with its fix removed. `sw.js`'s `VERSION` goes to `v1.50`. **Firefox and
+Safari both want step 7 again**, after a hard reload; Chrome has not been run.
+
+## 2026-09-28 — Slice 6's undo protocol is clean in Firefox
+
+Step 7 passed in Firefox after the fix above — one Cmd+Z takes back the accented
+letter — and with it every step of `tests/fixtures/undo-check.md`. Recorded on
+the protocol in `docs/REWRITE.md`. Safari and Chrome are still to run it.
+
+## 2026-09-28 — Step 5 says what you see
+
+The previous rewrite of `tests/fixtures/undo-check.md`'s step 5 still said the
+items below a Shift+Tabbed item "come out with it, together". True of the
+structure and false on screen: they become the moved item's children, going out
+a level and in a level at once, so **only the one item visibly moves**, in both
+directions and on undo and redo. Pointed out by the person running it. The step
+now describes what is seen, with the structural fact as one parenthetical
+explaining why the items below stay put. REWRITE.md and `front/input-check.html`
+said the same thing the same muddled way and are corrected with it.
+
+## 2026-09-28 — Safari passes the undo protocol; New in Safari opened an unusable page
+
+**Safari is clean** on every step of `tests/fixtures/undo-check.md`, recorded on
+the protocol in `docs/REWRITE.md`. Chrome is the one left.
+
+The same session found a bug that has nothing to do with undo. **File → New in
+Safari opened what looked like an empty page**: no tab bar, no caret, and
+typing did nothing — until a scroll up brought the tab row back and a click
+made the document editable. Blink does not reproduce it, and measuring why is
+what explains Safari. After New from far down a long document, Blink clamps the
+scroll to the one-paragraph document that replaced it, and repairs the
+selection into the new first block by itself — so it had been leaving a caret
+there without anything here asking. WebKit keeps the old scroll offset, showing
+empty space below the page with the header out of view, and keeps a selection
+pointing at nodes that no longer exist, so there is nowhere for a keystroke to
+go. Nothing in the app had ever placed a caret after New: it was one engine's
+kindness, relied on without knowing.
+
+`showDocumentStart()` in `app.js` now does it on purpose — scroll to the top,
+focus the editor without scrolling, and place a collapsed caret at the start of
+the first block — and `newTab()` calls it after adopting the blank document. It
+is core-agnostic DOM, so it holds for the old core too. Two checks in the `tabs`
+suite, both confirmed to fail with the call removed: New scrolls to the top, and
+places the caret at the start of the first block itself. Every suite that loads
+`app.js` still passes. Driven in Blink afterwards: New from the bottom of the
+welcome document lands at `scrollY` 0 with the model reading the caret at block
+1, offset 0, and typing goes in. **Confirmed in Safari** the same day: New opens
+at the top with a caret. A tab *switch* swaps the document the same way and was
+tried there too — it needed nothing, so `switchToTab` is left alone.
+`sw.js`'s `VERSION` goes to `v1.51`.
+
+## 2026-09-28 — Slice 6 is done: the undo protocol is clean in all three engines
+
+Chrome ran `tests/fixtures/undo-check.md` clean, with nothing to fix, which
+makes three: Firefox, Safari and Chrome all pass every step. That closes step
+6's protocol and with it **slice 6**, undo on the model core — recorded on its
+line and on stage 2's in `docs/REWRITE.md`, which now reads slices 1 to 6 done
+and slice 7, the formats, next.
