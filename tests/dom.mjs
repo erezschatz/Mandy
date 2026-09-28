@@ -268,6 +268,7 @@ export function loadApp() {
   const opened = [];
   const scrolled = [];
   const commands = [];
+  const inputAnswers = [];
   const root = makeEl("html");
 
   const inlineRules = [];
@@ -351,6 +352,10 @@ export function loadApp() {
       onToolbarAction: noop,
       toolbarButton: () => null,
       runToolbarAction: noop,
+      // insertLink's dialog. A suite pushes answers onto `inputAnswers` before
+      // driving it; an empty queue is the user backing out.
+      Node: { ELEMENT_NODE: 1, TEXT_NODE: 3 },
+      askForInput: () => Promise.resolve(inputAnswers.length ? inputAnswers.shift() : null),
       setTimeout: noop,
       clearTimeout: noop,
       console,
@@ -361,6 +366,7 @@ export function loadApp() {
       __opened: opened,
       __scrolled: scrolled,
       __commands: commands,
+      __inputAnswers: inputAnswers,
       __selection: selection,
       __root: root,
       __byId: byId,
@@ -368,6 +374,7 @@ export function loadApp() {
     "; return { rules: __rules, inlineRules: __inlineRules," +
       " renderRules: __renderRules, mathSpan, options: __opts, opened: __opened," +
       " scrolled: __scrolled, commands: __commands, selection: __selection," +
+      " inputAnswers: __inputAnswers, insertLink," +
       " documentElement: __root, byId: __byId," +
       " htmlToMarkdown, anchorSlug, headingAnchors, openExternalLink, normaliseLinkHref," +
       " slugifyTitle, isBlankContent, sniffMarkdownStyle, reflowMarkdown," +
