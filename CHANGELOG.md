@@ -5542,3 +5542,29 @@ what happened — the hash is wrong history rather than an entry to rewrite
 silently.
 
 145 entries, all with a hash, all resolving. No code changed, so nothing ran.
+
+## 2026-09-28 — Retargeting a reference link no longer loses the new address
+
+Found planning TODO 3.1's slice 7 on `rewrite`, where the model core had to
+decide what Link… does to a `[text][label]` link. The question led back here,
+where the answer was already wrong. `insertLink` set the new `href` on the
+`<a>` and left its `data-ref-label` stamp in place. The `referenceLink` Turndown
+rule writes `[text][label]` off that stamp **and never reads the href**, so
+the save wrote the old reference and the new address was gone. Nothing looked
+wrong on screen until the file was reopened.
+
+`retargetLink` in `app.js` now drops the stamp when the address actually
+changes. The link saves inline as `[text](new)`, and the definition stays for any
+other link that uses the label, or is dropped if no link uses it any more, the
+same way an unused label always was. This was a decision rather than the only
+fix: rewriting the definition would move every link using the label at once,
+from a dialog that names one link. An Update that keeps the same address keeps
+the stamp and the author's reference form.
+
+Five checks in the `links` suite drive the real `insertLink` through a stubbed
+dialog, and ask the `referenceLink` rule's own filter rather than the attribute
+alone, since the rule is what decides the syntax the file gets. The one that
+matters fails with the fix removed. `tests/dom.mjs`'s `loadApp` gains the
+dialog stub, `Node`'s two constants, and `insertLink` in what it hands back.
+CLAUDE.md's reference-links section says the rule never reads the href and what
+follows from that. `sw.js`'s `VERSION` goes to `v1.33`.

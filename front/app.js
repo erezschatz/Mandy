@@ -730,7 +730,7 @@ async function insertLink() {
   const href = normaliseLinkHref(answer);
 
   if (existing) {
-    if (href) existing.setAttribute("href", href);
+    if (href) retargetLink(existing, href);
     else unwrapLink(existing);
     editor.dispatchEvent(new Event("input", { bubbles: true }));
     return;
@@ -748,6 +748,19 @@ async function insertLink() {
     return;
   }
   runCommand("createLink", href);
+}
+
+// A reference link that points somewhere new is no longer that reference. The
+// `referenceLink` Turndown rule writes `[text][label]` off the `data-ref-label`
+// stamp and never reads the href, so a stamp left behind here threw the new
+// address away on save, silently, with the right one on screen until reload.
+// Dropping it makes this one link inline and leaves the definition alone for
+// any other link using the label — the dialog names one link, so it changes
+// one. An Update that keeps the same address keeps the stamp, and with it the
+// author's reference form.
+function retargetLink(link, href) {
+  if (link.getAttribute("href") !== href) link.removeAttribute("data-ref-label");
+  link.setAttribute("href", href);
 }
 
 function unwrapLink(link) {

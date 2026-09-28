@@ -1200,6 +1200,12 @@ would otherwise destroy, read it back at serialise time.
   placed it: a definition has no DOM node to track a position with, so
   "collected once at the end" is deliberate rather than a gap. A label used
   twice gets one definition; a label no longer used by anything gets none.
+
+  **The rule never reads the href**, so anything that changes a link's address
+  has to drop the stamp or the change is thrown away on save. Link… does, in
+  `retargetLink`: a retargeted reference link saves inline, and its definition
+  stays for any other link using the label. An Update to the same address keeps
+  the stamp and the reference form.
 - **`isReferenceDefinitionLine` in `markdown-style.js`** keeps
   `reflowMarkdown` from ever wrapping a definition line — the destination is
   one word with nowhere to break, so wrapping would either overflow anyway or
