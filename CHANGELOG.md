@@ -7886,7 +7886,7 @@ dialog stub, `Node`'s two constants, and `insertLink` in what it hands back.
 CLAUDE.md's reference-links section says the rule never reads the href and what
 follows from that. `sw.js`'s `VERSION` goes to `v1.33`.
 
-## 2026-09-28 — Slice 7's plan says the reference-link bug is fixed on `main`
+## 2026-09-28 — `63d39c6` — Slice 7's plan says the reference-link bug is fixed on `main`
 
 The plan written earlier today named the old core's reference-link retarget as
 a live bug on `main`. It has been fixed there since, in `f2cfbcc`, and merged
