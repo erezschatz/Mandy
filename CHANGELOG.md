@@ -7820,3 +7820,42 @@ live references were chased in the same commit: CLAUDE.md, a comment in
 `tests/fixtures/undo-check.md`, 3.1's *unblocks* list, and the three places
 `docs/REWRITE.md` described the item as open. The corpus copy of REWRITE.md
 keeps the number, being a frozen oracle.
+
+## 2026-09-28 — Plan stage 2's slice 7: formats, the keyboard, and the renderers
+
+Written into `docs/REWRITE.md` before any of it is built. Nine steps, four
+decisions settled first, and four corrections to what the slice's entry said.
+
+**The corrections.** `execcommand.js` is not deleted in this slice. Its last
+caller goes when the legacy branch does, which is stage 4, so
+`normaliseEditorMarkup`, `undoRefresh` and the `execcommand` scan's retarget
+all move there. Indent and outdent were already model operations as of slice 4.
+There is no image to insert, because the app has no such item, so that is TODO
+1.1.7's in stage 3. And the one that matters: **Mermaid and MathJax are not
+rendered after a model render.** Measured in Blink on the welcome document:
+after `modelRender`, which is what every Enter, undo and paste runs, the
+diagram is back to its fence and both equations are back to TeX. The renderers
+are only called from the load paths, which is all the old core ever needed.
+Nothing reaches a file wrongly, and `modelVerifyRender` is right to say nothing
+since the text is correct. But stage 2's exit criterion names both, and no slice
+owned them, so this one does, as step 2.
+
+**Three doors are open under the flag today**, found in the same reading:
+`toggleCode`, `insertToc`, and the retarget and unlink branches of `insertLink`
+write to the editor without going through `runCommand`, so its refusal never
+reaches them. It is the same class of bug as the Ctrl+Z one on 2026-09-21: the
+screen changes and the model does not. Shutting them is step 1.
+
+**The decisions**, all user-facing and all taken as recommended: a mark at a
+bare caret is pending until the next keystroke, as every engine does it today;
+bullet ↔ numbered switches the whole list, because markdown cannot mix the two
+in one; a paragraph made into code gets its rendered text, per D0; and
+retargeting a reference link changes that link only. The last one also names a
+live bug on `main`: the old core leaves `data-ref-label` on a retargeted link,
+and the `referenceLink` rule writes `[text][label]` without reading the href,
+so the new address is lost on save.
+
+Two latent emitter faults are recorded where their steps fix them: an edited
+code span is written with its old backtick run whatever it now contains, and a
+new `_` mark mid-word would come back as literal underscores. Neither reaches a
+file before stage 4, because the save path is still Turndown over the DOM.

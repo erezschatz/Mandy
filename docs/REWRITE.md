@@ -1847,7 +1847,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the strength of it.
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
     Slices 1 to 6 of seven are done and tested, slices 4 to 6 driven by hand
-    in all three engines; slice 7, the formats, is next. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    in all three engines; slice 7, the formats, is next, planned
+    2026-09-28. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3702,45 +3703,272 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         here but a state carrying the wrong caret, fixed in both cores — and
         TODO 1.6 has left TODO.md.
 
-    *   **7. Formats and the keyboard — not started.** Every control in
-        `TOOLBAR_MENUS` and on the format bar becomes a model command.
-        `applyFormat` keeps its role as the single entry point and loses its
-        `execCommand` cases; the bar's own logic — when it appears,
-        `CARET_FORMATS`, `blocksInRange`, `updateActiveButtons`'s
-        all/some/none — reads the rendered DOM and needs little change.
-        **`updateActiveButtons` should stay on the DOM this stage** even though
-        the model could answer it better: it is tested, it works, and moving it
-        is a change with no failure driving it.
+    *   **7. Formats, the keyboard, and the renderers — not started; planned
+        2026-09-28 before any of it was built.** Every control that edits the
+        document becomes a model command: the thirteen formats, Clear, the rule,
+        the link, the table of contents, Cut and Copy. `applyFormat` stays the
+        single entry point for the formats and gains a model branch in front of
+        its `execCommand` cases, the same shape the three doors in `app.js`
+        have. The bar's own logic — when it appears, `CARET_FORMATS`,
+        `blocksInRange`, `updateActiveButtons`'s all/some/none — reads the
+        rendered DOM and does not change. **`updateActiveButtons` stays on the
+        DOM**: it is tested, it works, and nothing is failing that would justify
+        moving it. The commands decide add-or-remove from the model rather than
+        from the button, so the two can only disagree if the render is wrong,
+        and that is `modelVerifyRender`'s job.
 
-        Inline marks toggle over a range in the inline tree, with all/some/none
-        deciding add versus remove. A new mark takes the sniffed delimiter;
-        existing nodes keep the spelling the model recorded. Block types change
-        the block's kind or wrap and unwrap it, and the refusals stay where
-        they are — a heading inside a list item, refused at the model now
-        rather than in `applyFormat` before a `formatBlock`; inline code across
-        blocks, still a `notify` rather than a fallback. Lists get indent and
-        outdent as model operations, with D5's list-only rule intact. The
-        leaves are the rule, the image and Insert TOC, which writes model
-        blocks and keeps `buildNestedList` for the sidebar.
+        **Four corrections to what this entry said before the plan**, made here
+        rather than discovered at the landing, the way slice 6 did it:
 
-        **TODO 1.7 lands here** — Ctrl/Cmd+B and Ctrl/Cmd+I bound as `keydown`
-        on the editable, calling the same commands. Measured 2026-09-10: Blink
-        bolds, Gecko on macOS gives the key to its bookmarks sidebar and the
-        page never sees it, WebKit does nothing, so bold-by-keyboard has been
-        dead in two engines out of three for as long as there has been a format
-        bar. The `formatBold` / `formatItalic` / `formatStrikeThrough`
-        `beforeinput` types are a **bonus entry point rather than the
-        mechanism**, and the handler has to ignore one that arrives after a
-        keydown already did the work or the two cancel out. What no script can
-        answer — whether `preventDefault` actually suppresses what the browser
-        wanted the key for — is 1.7's own measurement.
+        - **`execcommand.js` is not deleted in this slice.** Its last caller
+          goes when the *legacy branch* goes, and the legacy branch is the
+          running editor until stage 4 removes the flag. Every call site in
+          `app.js` and `format-bar.js` gains a model branch here and keeps its
+          `runCommand` for the flag being off. So `normaliseEditorMarkup`,
+          `undoRefresh` and the `execcommand` suite's retarget from "only this
+          file calls it" to "nothing does" are all **stage 4's**, which moves
+          what slices 3 and 6 each wrote about "slice 7" one stage later. What
+          this slice can assert is narrower and is asserted as itself: **under
+          the flag, no toolbar action reaches `runCommand`**, and each one that
+          edits changes the model.
+        - **Indent and outdent are already model operations.** Slice 4 built
+          them, and both Format-menu items call `modelIndentAtCaret` under the
+          flag. Nothing to do.
+        - **There is no image to insert.** The app has no Insert → Image today,
+          so it is not parity and belongs to TODO 1.1.7 in stage 3, as this
+          stage's own list of what it does not do already says.
+        - **Mermaid and MathJax are not rendered after a model render, and no
+          slice owned it.** Measured 2026-09-28 in Blink on the welcome
+          document: after a load the diagram and both equations are drawn, and
+          after `modelRender` — which is what every Enter, every undo and every
+          paste runs — there are no `.mermaid-wrapper` and no `mjx-container`
+          left, just the fence and the TeX. An inline edit in a paragraph with
+          maths does the same to that one block. `renderMermaidDiagrams` and
+          `renderLatex` are called from the load paths only, and those are the
+          only paths the old core ever needed, because contenteditable never
+          re-rendered anything. `modelVerifyRender` is silent about it, and
+          rightly — it compares text, and the text is correct. Nothing reaches a
+          file wrongly either: the save path's Turndown reads an un-rendered
+          fence and a `<span data-math>` byte-identically. It is a **parity**
+          gap, and stage 2's exit criterion names "Mermaid and MathJax" in so
+          many words, so it is this slice's, as step 2.
 
-        `execcommand.js` is deleted when its last caller goes, and
-        `normaliseEditorMarkup` with it; the `execcommand` suite's source scan
-        changes target from "only this file calls it" to "nothing does".
-        Clear — today `runCommand("selectAll")` then `runCommand("delete")`,
-        relying on execCommand to raise `input` so it undoes as one step —
-        becomes a model command that is one step by construction.
+        **Four decisions, settled 2026-09-28 before any of the work**, all user
+        facing and all taken as recommended:
+
+        - **A mark at a bare caret is pending.** Ctrl+B, type, Ctrl+B gives bold
+          text, because that is what all three engines do natively today and so
+          what users already have. The pending set lives on the input layer, is
+          consumed by the next `insertText`, and is cleared by anything that
+          moves the caret. The alternative was bolding the word around the
+          caret, which is what Word and Docs do, and it would be a change of
+          behaviour that nobody asked for.
+        - **Switching bullet ↔ numbered converts the whole list the selection
+          touches**, not just the selected items. Markdown cannot mix bullet and
+          ordered items in one list (a change of marker *starts a new list*), so
+          splitting would write three lists where the user saw one. Chrome's
+          `execCommand` splits, which is exactly the kind of answer this rewrite
+          stops inheriting.
+        - **A paragraph turned into a code block gets its rendered text**, not
+          its source: `**bold**` goes in as `bold`. That is D0 — the user never
+          sees markup — and it is also today's behaviour. The way back gives
+          plain text too. The alternative made the toggle lossless and put
+          asterisks in front of a user who never typed any. An image goes in as
+          its alt text and an equation as its `$…$` source, which is the only
+          readable text either has.
+        - **Retargeting a reference link changes this link only.** It becomes an
+          inline `[text](new)`, and the definition stays for any other link that
+          uses it, or becomes an orphan the file still carries. Rewriting the
+          definition would move every use of the label at once, from a dialog
+          that names one link. **This also fixes a live bug on `main`**: the old
+          core sets the new `href` and leaves `data-ref-label` on the `<a>`, and
+          the `referenceLink` Turndown rule writes `[text][label]` from the stamp
+          without reading the href, so a retarget is lost on save.
+
+        **Nine steps, in this order.** The first one shuts doors that are open
+        today; the last is the one a machine cannot run.
+
+        1.  **Shut the three doors that are open under the flag.** Found
+            reading for this plan, and the same class of bug as the Ctrl+Z one
+            fixed on 2026-09-21: code that mutates the DOM **without** going
+            through `runCommand`, so `runCommand`'s refusal never reaches it.
+            `toggleCode` (Format → Code block and the bar's Code button),
+            `insertToc`, and `insertLink`'s retarget and unlink branches all
+            write to the editor directly. Under the flag each one is a
+            divergence rather than a no-op: the screen changes, the model does
+            not, and the next render puts the old content back. Each one returns
+            early under the flag until its step below replaces the refusal with
+            the command. That is one line per site, and a check per site that
+            the editor's markup is unchanged afterwards.
+
+        2.  **Mermaid and MathJax after a render.** `modelRender` and
+            `modelRerenderBlock` hand what they built to the two renderers,
+            scoped to the new subtree rather than the whole editor. Three things
+            to measure before choosing, because each one changes the design:
+            whether a `.mermaid-wrapper` keeps the fence's `data-block` (if it
+            does not, `modelElementFor` loses the block, and re-rendering and
+            the selection mapping lose it with it); what typing in a paragraph
+            with maths looks like when every keystroke re-typesets (68 ms was
+            measured for a first typeset, so the answer may be to typeset
+            behind a short idle rather than per render); and whether the caret
+            survives MathJax replacing the span's contents, which the atom rule
+            says it should. The renderers are asynchronous and the model is not,
+            so a render that has been superseded before its typesetting finishes
+            must not draw over its successor.
+
+        3.  **Inline marks: bold, italic, strikethrough.** A pure command over a
+            block's inline tree, with the range given in model offsets. If every
+            leaf in the range carries the mark, the command removes it;
+            otherwise it adds it. Marks are zero-width in the offset space, so
+            the selection needs no remapping and stays selected, which makes
+            pressing twice a toggle. The rules that decide the bytes:
+
+            - **A new mark's tokens come from the parser.** `md.parseInline` of
+              a template, the same rule slice 4 set for paragraphs and for
+              atoms, because `modelInlineTokens` hands the renderer
+              `node.token` and `node.closeToken` as they are.
+            - **A new mark is spelt the way this document spells that mark**,
+              counted off the model's own tree, which has each node's delimiter
+              as written. `sniffMarkdownStyle` is only the fallback for a
+              document that has none of that mark yet. Existing marks keep
+              their spelling. Until stage 4 this reaches no file, because a save
+              is still Turndown over the DOM, and that is why the suite
+              asserts it.
+            - **`_` cannot open or close inside a word**, so a mark whose edge
+              falls mid-word is spelt `*` whatever the document prefers.
+              Otherwise `foo__bar__` is written and comes back as literal
+              underscores.
+            - **Whitespace at a mark's edge moves outside it.** `** foo**` is
+              not emphasis. This is slice 4's trim rule applied to marks.
+            - **Adjacent marks of one kind merge**, so bolding `b` in `**a**b**c**`
+              gives one mark and not `**a****b****c**`.
+            - **Splitting a mark to remove it from the middle** leaves two marks
+              that each keep the original spelling.
+            - **Typing over a fully marked selection keeps the mark**, which is
+              stage 0's open finding: a new run inherits from what was deleted
+              when something was, and from the left otherwise. This is a change
+              to `modelInputWrite`, not to the command.
+            - **The pending mark** from the decisions above: the set lives on
+              the input layer and is consumed by the next `insertText`.
+
+            **The instrument is a re-parse fixpoint.** For every inline-bearing
+            leaf in the oracle, apply each mark over a spread of ranges
+            (whole, a prefix, a suffix, a middle, one crossing a mark edge, one
+            crossing a link), emit the block, re-parse it, and assert that the
+            re-parsed tree carries the mark on exactly the characters it was
+            applied to and nothing else changed. Serialising and comparing bytes
+            would be vacuous here in the same way it was for slice 6's sweep.
+            The hand-written cases are one per rule above, and each rule is
+            broken on purpose first to confirm its case fails.
+
+        4.  **Inline code and the link.** Both act inside one block.
+            - **Code** over a partial selection builds a code span from the
+              rendered text of the range (marks dropped, as today), and a
+              selection inside a code span turns it back into text. **The
+              backtick run is computed, not copied:** it has to be longer than
+              any run inside the content, with a space of padding when the
+              content starts or ends with a backtick. That fixes a latent bug
+              too — `modelInlineSource` writes `markup + content + markup` for
+              an edited span, so typing a backtick into `` `a` `` today emits
+              `` `a`b` ``, which re-parses as something else. Nothing reaches a
+              file this way until stage 4, which is why it is latent rather
+              than live.
+            - **The link.** Wrapping a selection takes its tokens from
+              `md.parseInline`. A range that already contains a link unwraps it
+              first, because links cannot nest. At a bare caret the address is
+              inserted as its own link text. Retargeting clones the token,
+              sets `href`, clears `tail` and **drops the `data-ref-label`
+              stamp**, per the decision above. Unlinking replaces the node with
+              its children. The dialog, `normaliseLinkHref` and Ctrl+K stay as
+              they are.
+
+        5.  **Block kinds: p, h1–h6 and the code block.** A kind change keeps
+            the block's id, so the selection resolves back into it. Its tokens
+            come from `md.parse` of a template with the inline children
+            replaced, as slice 4 does for a new paragraph.
+            - **A heading targeting a list item is refused at the model**, TODO
+              1.1.5's answer, moved from a DOM `closest("li")` to the model's
+              ancestor chain. A heading inside a quote is fine.
+            - **A heading is one line**, so softbreaks and hardbreaks become
+              spaces when a paragraph becomes one. That is what the old core's
+              `formatBlock` already did, silently. A setext heading moving
+              between levels 1 and 2 keeps its underline style; moving to 3–6
+              it becomes ATX, because setext has no level 3.
+            - **Several blocks at once** apply to each leaf in range. A table in
+              the range is skipped, because a table refuses edits.
+            - **The code block** is the whole-block half of Code:
+              `blocksInRange`'s rules decide which half, as they do today. One
+              or more top-level blocks become one fence, joined by newlines.
+              Inside a list item, the fence nests in the item and takes the
+              item's indent, the way slice 5 shifts a source leaf.
+              Several bullets are still refused with a `notify`. The fence
+              character is the one the document already uses. A fence turned
+              back is a plain-text paragraph, escaped, and never parsed as
+              markdown.
+
+        6.  **Lists: bullet and numbered.** Wrapping contiguous sibling blocks
+            makes one list with one item each. The marker is the one the
+            document uses at that depth, falling back to the sniff, and
+            numbering starts at 1 or follows the document's all-`1.` habit.
+            Applying the list's own type to items unwraps them to paragraphs,
+            which is slice 4's `modelLiftItem` generalised past the empty item.
+            Applying the other type **switches the whole list**, per the
+            decision above, rewriting every item's marker at every depth that
+            list owns, and shifting continuation indents where the marker's
+            width changes. A heading cannot go into a list, which is 1.1.5's
+            refusal from the other side. Each case gets a structural
+            re-render, which is the 16.8 ms the plan already accepted.
+
+        7.  **Insert and Clear.** **The rule** splits the block at the caret and
+            puts an `hr` between the two halves, spelt the way the document
+            spells one. It always gets a blank separator above it, because `---`
+            directly under a line of text is a setext underline. If the rule
+            would be the last block, it gets an empty paragraph after it, since
+            a caret cannot sit in a rule — `modelEnsureBlock`'s table rule,
+            extended. **The table of contents** is built as markdown from
+            `buildNestedList`'s DOM through `htmlFragmentToMarkdown`, then
+            inserted after the caret's block through slice 5's paste pipeline.
+            That keeps the shape the `outline` suite pins and the inline
+            allowlist in one place, and it is the conversion a save of today's
+            TOC already makes. **Clear** is the deletion Backspace would run over
+            the whole document, one step, with no second implementation.
+
+        8.  **The keyboard, and Cut and Copy.** Ctrl/Cmd+B and Ctrl/Cmd+I are
+            bound as a `keydown` on the editable under the flag, calling the
+            step 3 commands with `preventDefault`. **TODO 1.7 lands here** for
+            the model core. For `main` it lands at stage 4, because binding the
+            key against `execCommand` first is what D4's amendment says not to
+            do. `formatBold`, `formatItalic` and `formatStrikeThrough` arriving
+            as `beforeinput` are routed to the same commands as a bonus entry
+            point, and must be ignored when a keydown already did the work, or
+            the two cancel out. Going by slice 6's `historyUndo` finding, they
+            will probably never arrive, and the check page is what says so.
+            **Cut and Copy from the Edit menu** do nothing under the flag today,
+            because `runCommand` refuses: Copy writes the selection's HTML and
+            text through `navigator.clipboard.write`, and Cut is Copy followed
+            by the model deletion. Whether each engine allows that write from a
+            menu click without a permission prompt is measured, not assumed.
+            The keyboard's own Cut and Copy never needed any of this.
+
+        9.  **By hand, in all three engines.** A fixture document,
+            `tests/fixtures/format-check.md`, with the protocol and the text to
+            run it on in one file, the way `undo-check.md` does it: every format
+            on a selection and at a caret, the pending mark, a list switched both
+            ways, Code in all three of its shapes, the link's four cases
+            including a reference link, the rule, the TOC, Clear, an undo after
+            each, and a diagram and an equation surviving an Enter.
+            `front/input-check.html` gains the keyboard steps and logs whether
+            Ctrl/Cmd+B's keydown arrives and whether `preventDefault` kept the
+            browser's own action away. **That second half is TODO 1.7's own
+            measurement** — Gecko on macOS gave the key to its bookmarks sidebar
+            on 2026-09-10 — and no script can answer it.
+
+        **What closes with it.** Stage 2's exit criterion, minus the table,
+        which stays refused until stage 3 as it was always going to. TODO 1.7
+        for the model core. `list-empty-item-check` and `list-indent-check`
+        have been old-core-only since slice 4, and `browser-check` becomes
+        old-core-only here. All three are deleted at stage 4 with the code they
+        watch, not before, since `main` runs that code until then.
 
     **What this stage deliberately does not do**, so each is a decision rather
     than a gap found later: the save path, `markdown-style.js`'s index and
@@ -3806,6 +4034,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
       ordering load-bearing.
     - **Text typed at a mark's edge goes inside when the caret was inside**
       (slice 3).
+
+    Slice 7 settled four more on 2026-09-28, before any of it was built — a
+    pending mark at a bare caret, a list switch that takes the whole list, a
+    code block that gets the rendered text, and a retarget that changes one
+    reference link rather than its definition. They are written up in its
+    entry, with what each was decided against.
 
     None of them is in [DECISIONS.md](DECISIONS.md), and that is a judgement
     rather than an oversight: all but one are implementation choices inside one
