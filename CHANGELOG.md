@@ -7789,7 +7789,7 @@ makes three: Firefox, Safari and Chrome all pass every step. That closes step
 line and on stage 2's in `docs/REWRITE.md`, which now reads slices 1 to 6 done
 and slice 7, the formats, next.
 
-## 2026-09-28 — Slice 6's closing left four claims behind, and TODO 1.6 closes
+## 2026-09-28 — `e306b7a` — Slice 6's closing left four claims behind, and TODO 1.6 closes
 
 A read-through of where the rewrite stands, before planning slice 7, found the
 documents and one piece of the UI still describing the branch as it was before
