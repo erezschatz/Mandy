@@ -3780,10 +3780,13 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           inline `[text](new)`, and the definition stays for any other link that
           uses it, or becomes an orphan the file still carries. Rewriting the
           definition would move every use of the label at once, from a dialog
-          that names one link. **This also fixes a live bug on `main`**: the old
-          core sets the new `href` and leaves `data-ref-label` on the `<a>`, and
-          the `referenceLink` Turndown rule writes `[text][label]` from the stamp
-          without reading the href, so a retarget is lost on save.
+          that names one link. **The old core had the same question answered
+          wrong**: it set the new `href` and left `data-ref-label` on the `<a>`,
+          and the `referenceLink` Turndown rule writes `[text][label]` from the
+          stamp without reading the href, so a retarget was lost on save. Fixed
+          on `main` the same day (`f2cfbcc`, `retargetLink`) with this
+          decision's answer and merged back here, so the two cores already
+          agree. Step 4 gives the model its own half.
 
         **Nine steps, in this order.** The first one shuts doors that are open
         today; the last is the one a machine cannot run.

@@ -7885,3 +7885,13 @@ matters fails with the fix removed. `tests/dom.mjs`'s `loadApp` gains the
 dialog stub, `Node`'s two constants, and `insertLink` in what it hands back.
 CLAUDE.md's reference-links section says the rule never reads the href and what
 follows from that. `sw.js`'s `VERSION` goes to `v1.33`.
+
+## 2026-09-28 — Slice 7's plan says the reference-link bug is fixed on `main`
+
+The plan written earlier today named the old core's reference-link retarget as
+a live bug on `main`. It has been fixed there since, in `f2cfbcc`, and merged
+back in `c53aafe`. `docs/REWRITE.md`'s decision bullet now says so, and points at
+`retargetLink`, so step 4 builds the model's half knowing the two cores already
+agree on the answer. Checked through the real save path in Blink with the old
+core: a retargeted `[the docs][docs]` saves as `[the docs](https://new.example)`,
+and a second link on the same label keeps the reference and its definition.
