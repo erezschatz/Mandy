@@ -125,13 +125,24 @@ function stampLatexSource(container) {
     // The list accumulates across typesets and outlives the nodes it describes,
     // so only stamp roots still standing in this container.
     if (!root || !container.contains(root)) continue;
-    if (root.hasAttribute("data-tex")) continue;
     // A container inside another container is not authored maths. Loading an
     // exported document makes MathJax re-typeset its own assistive MathML and
     // nest a second container inside the first, and that pass reports MathML
     // rather than TeX — stamping it would write a `<math>` element into
     // data-tex and carry it through every later save and export.
     if (root.parentElement && root.parentElement.closest("mjx-container")) continue;
+    // **An equation is one thing to the caret, not a run of glyphs.** Left
+    // editable, Firefox walks the caret into MathJax's own elements — it
+    // vanishes for several presses before coming out the other side — and
+    // anything typed while it is in there lands inside the container, where
+    // nothing shows it and a save throws it away: the "mathjax" Turndown rule
+    // writes the container from its stamp and never reads what is in it.
+    // Measured by hand in Firefox on 2026-09-29. Uneditable, every engine steps
+    // over it in one press and puts typing beside it, the way it treats an
+    // image. Set before the stamp check, so maths stamped before this existed
+    // gets it too.
+    root.setAttribute("contenteditable", "false");
+    if (root.hasAttribute("data-tex")) continue;
     root.setAttribute("data-tex", item.math);
     root.setAttribute("data-display", item.display ? "block" : "inline");
   }

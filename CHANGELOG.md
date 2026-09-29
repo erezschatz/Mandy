@@ -5611,3 +5611,34 @@ stylesheet present, and a save that writes the TeX back byte for byte.
 A document carrying nine containers came back to three. CLAUDE.md's LaTeX
 bullet says what the stamp is now also for. `sw.js`'s `VERSION` goes to
 `v1.34`.
+
+## 2026-09-29 — An equation is one step for the caret, and nothing typed into it is lost
+
+Found in Firefox running `rewrite`'s slice 7 render check. Pressing Left from
+just after an inline equation did not cross it: the caret vanished for several
+presses and then came out on the other side. MathJax's output is a tree of its
+own inline elements, and Gecko walked the caret through them one invisible stop
+at a time. The same happens in this core, and here it loses work. Letters typed
+while the caret was invisible **did not appear**, because they went inside the
+container, and a save writes the container from its `data-tex` stamp without
+reading what is in it, so they were thrown away. `rewrite`'s model core put them
+in front of the equation instead, which is how the bug was noticed at all.
+Blink stepped over the equation in one press all along, which is why it went
+unseen.
+
+`stampLatexSource` now marks every outermost typeset container
+`contenteditable="false"`, in the same pass as the stamp, so every engine treats
+an equation as one indivisible thing, the way it treats an image. It is set
+before the has-it-been-stamped check, so maths stamped before this existed, from
+an autosave or an exported file, gets it too. A nested copy (MathJax's own
+assistive MathML) is left alone. The static export strips nothing new: the
+attribute has no effect on a page that is not editable.
+
+Four checks in the `latex` suite. The two that matter fail with the attribute
+removed, and the one for older stamps also fails with it moved after the check.
+Driven in Blink on this branch's own checkout: one Left press crosses the
+equation, letters typed on either side land there, one Backspace deletes it
+whole, and a save writes exactly what is on screen. **The Firefox half, the
+reason for the change, is still to be confirmed by hand.** CLAUDE.md's LaTeX
+bullet says why the container is uneditable. `sw.js`'s `VERSION` goes to
+`v1.35`.

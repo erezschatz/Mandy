@@ -535,6 +535,13 @@ right on screen.
   loaded: offline the stamped containers stay, and a save still reads them.
   The editable export's own MathJax is a separate load and is untouched.
 
+  **A stamped container is also `contenteditable="false"`**, set in the same
+  pass as the stamp. Left editable, Firefox walked the caret into MathJax's
+  own elements — it vanished for several presses — and letters typed there
+  landed inside the container, where nothing showed them and the `mathjax`
+  rule, which writes from the stamp, dropped them on save. Uneditable, every
+  engine steps over an equation in one press and deletes it whole.
+
 There is a third rule, and it is on the way *in* rather than the way out.
 markdown-it has no notion of maths, so `$…$` used to reach MathJax only by
 passing through as text — with every inline rule applied to it en route.

@@ -65,6 +65,12 @@ export default async function run(check) {
   check("inline maths is marked inline", inline.attrs["data-display"] === "inline");
   check("roots outside the container are left alone", !("data-tex" in stale.attrs));
 
+  // Firefox walked the caret into MathJax's own elements, and what was typed in
+  // there reached no file. Uneditable, the equation is one step for the caret.
+  check("typeset maths is one uneditable unit to the caret",
+    block.attrs.contenteditable === "false" && inline.attrs.contenteditable === "false");
+  check("roots outside the container are not touched either", !("contenteditable" in stale.attrs));
+
   // Loading an exported document makes MathJax re-typeset its own assistive
   // MathML, nesting a second container inside the first and reporting MathML
   // rather than TeX for it. Stamping that would write a <math> element into
@@ -78,6 +84,8 @@ export default async function run(check) {
   );
   check("containers nested inside a container are not stamped",
     !("data-tex" in nested.attrs));
+  check("nor made uneditable, since they are MathJax's and not the author's",
+    !("contenteditable" in nested.attrs));
 
   // Re-stamping must not clobber: MathJax re-typesets already-rendered maths on
   // load in an exported document, and the second pass reports MathML, not TeX.
@@ -86,6 +94,14 @@ export default async function run(check) {
     container,
   );
   check("an existing stamp is not overwritten", block.attrs["data-tex"] === "\\frac{a}{b}");
+
+  // Maths stamped before the attribute existed — restored from an autosave, or
+  // inside an exported file — still gets it, since the stamp check comes after.
+  const older = makeContainer(container);
+  older.setAttribute("data-tex", "z");
+  loadRenderers(fakeMathJax([{ math: "z", display: false, typesetRoot: older }]), container);
+  check("maths stamped before this existed is made uneditable too",
+    older.attrs.contenteditable === "false" && older.attrs["data-tex"] === "z");
 
   // Absent MathJax must be survivable: renderLatex is a no-op without maths,
   // but stampLatexSource is reachable from an exported document either way.
