@@ -5612,7 +5612,7 @@ A document carrying nine containers came back to three. CLAUDE.md's LaTeX
 bullet says what the stamp is now also for. `sw.js`'s `VERSION` goes to
 `v1.34`.
 
-## 2026-09-29 — An equation is one step for the caret, and nothing typed into it is lost
+## 2026-09-29 — `9fe5dd1` — An equation is one step for the caret, and nothing typed into it is lost
 
 Found in Firefox running `rewrite`'s slice 7 render check. Pressing Left from
 just after an inline equation did not cross it: the caret vanished for several
