@@ -60,10 +60,24 @@ $$\int_0^1 x^2 \, dx = \frac{1}{3}$$
    press Backspace once.** *The equation stays drawn with every keystroke, and
    the letters appear right after it.*
 
-4. **In the same paragraph, press the Left arrow until the caret has crossed
-   the equation, then type a letter.** *One press of Left crosses the whole
-   equation, as if it were a single character, and the letter lands just
-   before it.*
+4. **In the same paragraph, put the caret just after the equation and press
+   Left once, then type a letter.** *One press crosses the whole equation, as if
+   it were a single character. The caret never disappears, and the letter lands
+   just before the equation.* In Firefox the caret used to vanish for several
+   presses, walking through MathJax's own elements, and a letter typed then
+   was lost. That was fixed on 2026-09-29 by making the equation uneditable.
+
+   **Then put the caret just after the equation and press Backspace once.**
+   *The whole equation goes in one press.* **Ctrl/Cmd+Z brings it back, drawn.**
+
+   $x_1$ starts this line, and it ends with one: $y_2$
+
+   **Click at the very start of the line above, before $x_1$, and type a
+   letter; then click at the very end, after $y_2$, and type another.** *Both
+   letters appear, the first before $x_1$ and the second after $y_2$, and the
+   caret is visible at both places before you type.* An uneditable element at
+   the edge of a line is where Gecko has been known to leave no room for a
+   caret. If either letter lands somewhere else or not at all, note where.
 
 5. **Switch the theme with the sun/moon toggle, then press Enter somewhere
    in this sentence and Ctrl/Cmd+Z it away.** *The diagram redraws in the new

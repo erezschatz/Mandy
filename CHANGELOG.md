@@ -8054,3 +8054,16 @@ whole, and a save writes exactly what is on screen. **The Firefox half, the
 reason for the change, is still to be confirmed by hand.** CLAUDE.md's LaTeX
 bullet says why the container is uneditable. `sw.js`'s `VERSION` goes to
 `v1.35`.
+
+## 2026-09-29 — The render check covers the caret beside an uneditable equation
+
+`tests/fixtures/format-check.md`'s step 4 was the step that found the Firefox
+caret bug fixed on `main` in `9fe5dd1`. It now says what the fix promises, not
+just what it hoped for: one Left press crosses the equation, the caret never
+disappears, and a letter typed after it lands before the equation. It also
+records what happened before the fix. Two checks join it. One Backspace deletes
+the whole equation, and an undo brings it back drawn. And a line that starts and
+ends with an equation takes a letter at both edges. That second one is a
+question rather than a formality: Gecko is known to leave no room for a caret
+beside an uneditable element at the edge of a line, and the fix has just made
+every equation one.
