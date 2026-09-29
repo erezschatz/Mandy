@@ -5569,7 +5569,7 @@ dialog stub, `Node`'s two constants, and `insertLink` in what it hands back.
 CLAUDE.md's reference-links section says the rule never reads the href and what
 follows from that. `sw.js`'s `VERSION` goes to `v1.33`.
 
-## 2026-09-29 — Reloading a document with maths no longer piles up copies of every equation
+## 2026-09-29 — `5e6efad` — Reloading a document with maths no longer piles up copies of every equation
 
 Found starting TODO 3.1's slice 7, step 2, on `rewrite`, where the model core
 re-renders and so typesets far more often than this core does. That made the
