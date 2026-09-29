@@ -16,7 +16,11 @@ section here. Today it holds step 2's, the diagrams and the maths.
 2. **Open the browser console and run `modelVerifySetEnabled(true)`.**
    Throughout, *the console stays free of `[model] render diverged` warnings*.
    One appearing is a failure, whichever step it came in.
-3. **File → Open this file** (`tests/fixtures/format-check.md`).
+3. **File → Open this file** (`tests/fixtures/format-check.md`). *The
+   console shows `[Mermaid] Render error: Error: Parse error on line 2`, once
+   or twice.* That is expected: it is Mermaid rejecting the broken diagram step
+   8 runs on, and Open asks for it twice before the first answer is back. It
+   is the only error that should appear anywhere in this protocol.
 
 **Never save over this file.** It is the pristine copy every run starts from.
 To start again, use **File → Reload** and choose to discard.
@@ -88,4 +92,6 @@ graph TD
 
 8. **Press Enter at the end of this sentence.** *The broken diagram above
    shows `Mermaid Error:` followed by Mermaid's own message, and its source
-   below it — both before and after the Enter.*
+   below it — both before and after the Enter — and the console gains no new
+   `[Mermaid] Render error` line.* The error is kept from the first attempt;
+   one more line on an Enter means it is being drawn again every time.

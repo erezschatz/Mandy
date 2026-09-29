@@ -8009,3 +8009,17 @@ steps and will grow with the slice. It has not been run in any engine by a
 person yet, and step 3 waits until it has been run in all three. REWRITE.md and
 CLAUDE.md's model section say where the step stands. `sw.js`'s `VERSION` goes
 to `v1.56`.
+
+## 2026-09-29 — The render check says which console errors to expect
+
+`tests/fixtures/format-check.md` contains a deliberately broken diagram, and
+opening the file logs Mermaid's parse error for it once or twice: once for the
+model render, and once for the Open path's own renderer call before the first
+answer is back. The protocol never said so, so the first run in Firefox came
+back asking whether those errors were a failure. Step 3 of "Before you start"
+now names the error, says why it appears, and says it is the only one expected.
+Step 8 now says an Enter must add no further line: the rejection is cached, and
+another line would mean the diagram is being drawn again on every render.
+Firefox showed exactly that, no new error on Enter. A protocol states every
+expected observation, console included, rather than leaving the tester to
+guess which output is noise.
