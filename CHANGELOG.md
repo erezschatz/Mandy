@@ -7968,7 +7968,7 @@ A document carrying nine containers came back to three. CLAUDE.md's LaTeX
 bullet says what the stamp is now also for. `sw.js`'s `VERSION` goes to
 `v1.34`.
 
-## 2026-09-29 — Slice 7, step 2: diagrams and maths survive a render
+## 2026-09-29 — `304e9b9` — Slice 7, step 2: diagrams and maths survive a render
 
 Under `?core=model` every Enter, undo and paste re-renders the whole document,
 and every keystroke re-renders its block. Each render put Mermaid diagrams
