@@ -137,12 +137,49 @@ function stampLatexSource(container) {
   }
 }
 
+// Stamped maths in `container`, outermost only: a container nested inside
+// another is MathJax's re-typeset of its own assistive MathML, never authored.
+function typesetLatexRoots(container) {
+  return [...container.querySelectorAll("mjx-container[data-tex]")].filter(
+    (root) => !(root.parentElement && root.parentElement.closest("mjx-container")),
+  );
+}
+
+// The TeX a stamped container was typeset from, delimited the way the
+// "mathjax" Turndown rule in app.js writes it back.
+function latexSourceOf(root) {
+  const tex = root.getAttribute("data-tex");
+  return root.getAttribute("data-display") === "block" ? `$$${tex}$$` : `$${tex}$`;
+}
+
 // MathJax is only downloaded once the document actually contains maths.
+//
+// **Maths already typeset goes back to its source first, and is typeset again
+// from that.** A typeset container holds MathJax's assistive MathML, and the
+// `tex-mml-chtml` bundle reads MathML as input — so a second pass over one
+// typeset the assistive copy and nested a new container inside the old. Every
+// reload restores typeset HTML from autosave and every Paste markdown re-runs
+// this over the whole editor, so each one added another copy of every equation,
+// which the next autosave kept: measured 2026-09-29, one equation became three
+// containers on a single reload. Nothing showed, because the copies sit inside
+// hidden assistive markup. Typesetting fresh from the stamp also regenerates
+// MathJax's stylesheet, which restored maths needs and which that second pass
+// was, by accident, the only thing providing.
+//
+// After the load, never before it: offline the containers stay as they are,
+// stamped, and a save still writes their TeX back. Put back as text before
+// then, the TeX would reach Turndown as prose and be escaped.
 async function renderLatex(container) {
-  if (!containsLatex(container.textContent)) return;
+  if (!typesetLatexRoots(container).length && !containsLatex(container.textContent)) return;
 
   try {
     const mathJax = await ensureMathJax();
+    // Read after the await, since the document can change while MathJax loads.
+    // The list entries go first, while the containers they describe are still
+    // inside `container` to be found.
+    const typeset = typesetLatexRoots(container);
+    if (typeset.length) mathJax.typesetClear([container]);
+    for (const root of typeset) root.replaceWith(document.createTextNode(latexSourceOf(root)));
     await mathJax.typesetPromise([container]);
     stampLatexSource(container);
   } catch (error) {

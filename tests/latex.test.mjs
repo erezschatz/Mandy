@@ -11,7 +11,7 @@
 //                 which TeX produced it;
 //   app.js        turns that attribute back into `$…$` / `$$…$$`.
 
-import { loadApp, loadSource, makeEl, readFront } from "./dom.mjs";
+import { loadApp, loadSource, makeEl, makeText, readFront, walk } from "./dom.mjs";
 
 // Stands in for a typeset <mjx-container>. Attribute-backed, because that is
 // what has to survive being written into an exported file and parsed back.
@@ -96,6 +96,88 @@ export default async function run(check) {
     threw = error;
   }
   check("no MathJax is not an error", threw === null);
+
+  // ── renderers.js: typesetting again ────────────────────────────────────────
+  //
+  // A second typeset pass over maths already typeset nested a new container
+  // inside the old one, every reload and every Paste markdown, and the
+  // autosave kept each copy: one equation was three containers after a single
+  // reload. renderLatex now puts stamped maths back to its source and typesets
+  // that afresh. The stub has no MathJax and no selector engine, so what is
+  // asserted is what renderLatex hands MathJax, and in what order.
+  {
+    const loadRenderLatex = (container, ensureMathJax) => {
+      container.querySelectorAll = (sel) =>
+        sel === "mjx-container[data-tex]"
+          ? walk(container).filter((n) => n.tagName === "MJX-CONTAINER" && "data-tex" in n.attrs)
+          : [];
+      return loadSource(
+        "renderers.js",
+        {
+          window: { MathJax: undefined },
+          MathJax: undefined,
+          document: {
+            documentElement: { getAttribute: () => "light" },
+            createTextNode: makeText,
+          },
+          editor: container,
+          ensureMathJax,
+          console: { error() {} },
+        },
+        "; return renderLatex;",
+      );
+    };
+    // A typeset container that can be swapped out, the way a real one can.
+    const typesetIn = (parent, tex, display) => {
+      const root = makeContainer(parent);
+      root.setAttribute("data-tex", tex);
+      root.setAttribute("data-display", display);
+      root.replaceWith = (node) => {
+        parent.children[parent.children.indexOf(root)] = node;
+        node.parentElement = parent;
+        root.parentElement = null;
+      };
+      return root;
+    };
+    const textOf = (node) => node.children.map((c) => c.nodeType === 3 ? c.textContent : "<" + c.tagName + ">").join("");
+
+    const para = makeEl("p");
+    typesetIn(para, "\\frac{a}{b}", "block");
+    const inlineRoot = typesetIn(para, "x^2", "inline");
+    // Earlier reloads' nesting, stamped: a container inside the assistive
+    // MathML of another. Only the outer one is authored maths.
+    const assistive = makeEl("mjx-assistive-mml", { parent: inlineRoot });
+    assistive.parentElement = inlineRoot;
+    const nestedRoot = typesetIn(assistive, "<math>copy</math>", "inline");
+
+    const calls = [];
+    const fake = {
+      typesetClear: () => calls.push(`clear:${textOf(para)}`),
+      typesetPromise: async () => calls.push(`typeset:${textOf(para)}`),
+    };
+    await loadRenderLatex(para, async () => fake)(para);
+    check("typeset maths goes back to its source before typesetting",
+      calls[calls.length - 1] === "typeset:$$\\frac{a}{b}$$$x^2$");
+    check("MathJax forgets the old containers while they are still there to find",
+      calls[0] === "clear:<MJX-CONTAINER><MJX-CONTAINER>");
+    check("a nested copy goes with its outer container rather than on its own",
+      !walk(para).includes(nestedRoot) && calls.length === 2);
+
+    // Offline, the stamped containers are what a save reads the TeX from. Put
+    // back as text before MathJax has loaded, it would reach Turndown as prose.
+    const offline = makeEl("p");
+    const kept = typesetIn(offline, "y", "inline");
+    await loadRenderLatex(offline, async () => { throw new Error("offline"); })(offline);
+    check("with MathJax unavailable the typeset maths is left as it was",
+      offline.children[0] === kept && kept.attrs["data-tex"] === "y");
+
+    // And a document with no maths at all still never fetches MathJax.
+    let fetched = false;
+    const plain = makeEl("p");
+    plain.children.push(makeText("Just prose, no maths."));
+    await loadRenderLatex(plain, async () => { fetched = true; return fake; })(plain);
+    check("a document with no maths does not load MathJax", fetched === false);
+  }
 
   // ── app.js: the Turndown rule ─────────────────────────────────────────────
   const { rules } = loadApp();

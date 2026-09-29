@@ -5568,3 +5568,46 @@ matters fails with the fix removed. `tests/dom.mjs`'s `loadApp` gains the
 dialog stub, `Node`'s two constants, and `insertLink` in what it hands back.
 CLAUDE.md's reference-links section says the rule never reads the href and what
 follows from that. `sw.js`'s `VERSION` goes to `v1.33`.
+
+## 2026-09-29 — Reloading a document with maths no longer piles up copies of every equation
+
+Found starting TODO 3.1's slice 7, step 2, on `rewrite`, where the model core
+re-renders and so typesets far more often than this core does. That made the
+question visible: what happens when `renderLatex` runs over maths that is
+already typeset? Here it happens on **every reload**, because the boot restores
+the autosaved HTML, which is typeset, and then calls `renderLatex` over it. It
+also happens on every **Paste markdown**, which re-runs it over the whole editor.
+
+The answer was that MathJax typesets it again. The app loads the `tex-mml-chtml`
+bundle, which reads MathML as input as well as TeX, and every typeset container
+carries a hidden copy of its equation as MathML for screen readers. A second
+pass found that copy, typeset it, and nested a new container inside the old
+one. Measured in Blink: one equation was three containers after a single
+reload, and a document typeset three times over had nine containers for three
+equations. The autosave kept every copy and the next reload added more.
+Nothing showed on screen, since the copies sit inside hidden markup, and saves
+were unaffected, because `stampLatexSource` never stamps a nested container.
+
+`renderLatex` now puts every stamped container back to its `$…$` or `$$…$$`
+source, clears MathJax's record of the old ones, and typesets afresh, so a
+second pass has nothing typeset to find. Any nesting a document already carries
+goes with its outer container on the next load. It turned out that the second
+pass had been doing a job nobody asked of it: typesetting is what makes MathJax
+write its stylesheet, and restored maths had been getting one only through that
+accident. Typesetting afresh now does it on purpose. Switching the bundle to
+`tex-chtml` was considered and rejected for exactly that reason.
+The un-typeset waits until MathJax has loaded, so offline the stamped containers
+stay as they are and a save still reads the TeX off them. The editable export
+loads its own MathJax with its own configuration and is untouched.
+
+Five checks in the `latex` suite: that stamped maths reaches MathJax as source,
+that MathJax's record is cleared while the old containers are still there to be
+found, and that a nested copy goes with its outer container. The first three
+fail against the old `renderLatex`. The other two guard what must not change:
+offline the containers stay, and a document with no maths never loads MathJax.
+Driven in Blink on this branch's own checkout: three real reloads of a
+three-equation document gave three containers each time, none nested, the
+stylesheet present, and a save that writes the TeX back byte for byte.
+A document carrying nine containers came back to three. CLAUDE.md's LaTeX
+bullet says what the stamp is now also for. `sw.js`'s `VERSION` goes to
+`v1.34`.

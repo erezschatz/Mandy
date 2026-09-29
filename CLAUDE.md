@@ -524,6 +524,17 @@ right on screen.
   parsed back; an existing stamp is never overwritten, because MathJax
   re-typesets already-rendered maths on load and reports MathML the second time.
 
+  **The stamp is also what `renderLatex` typesets from.** Maths already typeset
+  is put back to its `$…$` source and typeset afresh, never typeset a second
+  time as it stands: the `tex-mml-chtml` bundle reads MathML as input, so a
+  second pass typeset each container's own assistive MathML and nested a copy
+  inside it — on every reload, since the boot restores typeset HTML, and on
+  every Paste markdown — and the autosave kept every copy. That pass was also,
+  by accident, what regenerated MathJax's stylesheet for restored maths, which
+  typesetting afresh now does on purpose. It happens only once MathJax has
+  loaded: offline the stamped containers stay, and a save still reads them.
+  The editable export's own MathJax is a separate load and is untouched.
+
 There is a third rule, and it is on the way *in* rather than the way out.
 markdown-it has no notion of maths, so `$…$` used to reach MathJax only by
 passing through as text — with every inline rule applied to it en route.
