@@ -8055,7 +8055,7 @@ reason for the change, is still to be confirmed by hand.** CLAUDE.md's LaTeX
 bullet says why the container is uneditable. `sw.js`'s `VERSION` goes to
 `v1.35`.
 
-## 2026-09-29 — The render check covers the caret beside an uneditable equation
+## 2026-09-29 — `6106383` — The render check covers the caret beside an uneditable equation
 
 `tests/fixtures/format-check.md`'s step 4 was the step that found the Firefox
 caret bug fixed on `main` in `9fe5dd1`. It now says what the fix promises, not
