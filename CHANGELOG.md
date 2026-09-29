@@ -7967,3 +7967,45 @@ stylesheet present, and a save that writes the TeX back byte for byte.
 A document carrying nine containers came back to three. CLAUDE.md's LaTeX
 bullet says what the stamp is now also for. `sw.js`'s `VERSION` goes to
 `v1.34`.
+
+## 2026-09-29 — Slice 7, step 2: diagrams and maths survive a render
+
+Under `?core=model` every Enter, undo and paste re-renders the whole document,
+and every keystroke re-renders its block. Each render put Mermaid diagrams
+back to their fenced code and equations back to raw TeX, because the renderers
+were only ever called when a document loaded. Nothing reached a file wrongly,
+and `modelVerifyRender` rightly said nothing, since the text was correct.
+
+`modelRender` and `modelRerenderBlock` now hand what they built to
+`renderAfterModel` in `renderers.js`, after the build and before the selection
+is put back. What an earlier render drew is kept by source — a copy of the
+stamped `mjx-container`, and a diagram's SVG — and put back before anything is
+awaited, so the render and the drawing land in the same task and no frame shows
+source. Only what is new is typeset or drawn: synchronously for maths when
+MathJax is loaded, asynchronously for Mermaid, which has no other form. Measured
+first, in Blink. A diagram costs 15–22 ms and an equation 0.3 ms, so fifty
+equations cost 13–17 ms on every Enter, against 1 ms to reuse all fifty.
+
+Four more things the measuring turned up. Mermaid's wrapper replaced the `<pre>`
+and dropped its `data-block`, so the model could no longer find the fence; the
+wrapper copies it now. MathJax's list of typeset maths grew by one entry per
+equation per render and never shrank; entries whose container has left the page
+are pruned. A diagram Mermaid rejects is cached as its error, message included,
+or it would flash its code on every Enter; a library that failed to load is not
+cached. And typesetting twice nested a copy of every equation, which turned out
+to be a live bug on `main`. It was fixed there first (`5e6efad`) and merged in,
+and the model's asynchronous path typesets only the equations still pending, so
+it never undoes what the cache restored.
+
+Nine checks in the `latex` suite and one in `outline`, each confirmed to fail
+with its rule broken. Driven in Blink with real keystrokes and a sampler on
+every animation frame, about 2,300 frames across typing, Enter, undo and redo:
+none showed a fence, TeX or a broken diagram's code. The caret stayed right
+through typing on both sides of an equation and arrowing across it.
+
+**`tests/fixtures/format-check.md`** is new: slice 7's hand protocol and the
+document it runs on, in the shape of `undo-check.md`. It holds step 2's eight
+steps and will grow with the slice. It has not been run in any engine by a
+person yet, and step 3 waits until it has been run in all three. REWRITE.md and
+CLAUDE.md's model section say where the step stands. `sw.js`'s `VERSION` goes
+to `v1.56`.

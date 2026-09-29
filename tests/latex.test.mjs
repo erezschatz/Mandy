@@ -179,6 +179,127 @@ export default async function run(check) {
     check("a document with no maths does not load MathJax", fetched === false);
   }
 
+  // ── renderers.js: drawing again after a model render ───────────────────────
+  //
+  // TODO 3.1's model core re-renders on every edit, and each render throws away
+  // the diagrams and equations the renderers drew. What was drawn is kept by
+  // source and put back **before anything is awaited**, so a render never
+  // paints a frame of fence or TeX. The stub has no Mermaid and no MathJax; what
+  // is asserted is what lands in the DOM, and when.
+  {
+    const loadDrawing = ({ document: documentExtra, ...globals }) => loadSource(
+      "renderers.js",
+      {
+        window: { MathJax: undefined },
+        MathJax: undefined,
+        document: {
+          documentElement: { getAttribute: () => "light" },
+          createElement: (tag) => makeEl(tag),
+          createTextNode: makeText,
+          getElementById: () => null,
+          ...documentExtra,
+        },
+        editor: makeEl("div"),
+        console: { error() {} },
+        ensureMermaid: async () => {},
+        mermaid: { render: async (id) => ({ svg: `<svg id="${id}"></svg>` }) },
+        ...globals,
+      },
+      "; return { renderMermaidDiagrams, renderedCachePut, renderedCache," +
+        " mathTakeFromCache, mathRemember };",
+    );
+    // A fence the way markdown-it renders one, stamped with its block id the
+    // way the model core's renderer stamps it.
+    const fenceIn = (source, block) => {
+      const container = makeEl("div");
+      const pre = makeEl("pre", { parent: container });
+      pre.parentElement = container;
+      pre.parentNode = container;
+      pre.isConnected = true;
+      if (block) pre.setAttribute("data-block", block);
+      const code = makeEl("code", { parent: pre, text: source });
+      code.parentElement = pre;
+      container.querySelectorAll = (sel) => (sel === "pre code.language-mermaid" && container.children.includes(pre) ? [code] : []);
+      return { container, pre };
+    };
+
+    let r = loadDrawing({});
+    let f = fenceIn("graph TD; A-->B", "7");
+    r.renderedCachePut("mermaid:light:graph TD; A-->B", { svg: "<svg id=\"old\"></svg>", id: "old" });
+    const pending = r.renderMermaidDiagrams(f.container); // deliberately not awaited
+    const drawn = f.container.children[0];
+    check("a diagram drawn before goes back in the same task, before anything is awaited",
+      drawn.className === "mermaid-wrapper");
+    check("and its wrapper keeps the fence's block id, so the model still finds the block",
+      drawn.getAttribute("data-block") === "7");
+    await pending;
+
+    // Two identical diagrams in one document: Mermaid scopes its styles by the
+    // SVG's id, so the second must be drawn afresh rather than given a copy.
+    r = loadDrawing({ document: { getElementById: (id) => (id === "old" ? {} : null) } });
+    f = fenceIn("graph TD; A-->B", "8");
+    r.renderedCachePut("mermaid:light:graph TD; A-->B", { svg: "<svg id=\"old\"></svg>", id: "old" });
+    await r.renderMermaidDiagrams(f.container);
+    check("a drawing whose id is still on the page is drawn afresh instead of copied",
+      f.container.children[0].className === "mermaid-wrapper" &&
+        r.renderedCache.get("mermaid:light:graph TD; A-->B").id !== "old");
+
+    // A render that finishes after the document moved on: the <pre> it was for
+    // has been thrown away, and drawing anywhere would draw over its successor.
+    r = loadDrawing({});
+    f = fenceIn("graph LR; X-->Y", "9");
+    const late = r.renderMermaidDiagrams(f.container);
+    f.container.children.length = 0;
+    f.pre.isConnected = false;
+    f.pre.parentNode = null;
+    let threw = null;
+    try { await late; } catch (error) { threw = error; }
+    check("a diagram finishing after its fence was thrown away draws nothing and does not throw",
+      threw === null && f.container.children.length === 0);
+
+    // A diagram Mermaid rejects is kept as its error, so a broken one does not
+    // flash its code on every Enter while Mermaid rejects it again.
+    r = loadDrawing({ mermaid: { render: async () => { throw new Error("Parse error on line 2"); } } });
+    f = fenceIn("graph TD; A --> -->", "10");
+    await r.renderMermaidDiagrams(f.container);
+    const again = fenceIn("graph TD; A --> -->", "10");
+    r.renderMermaidDiagrams(again.container); // not awaited
+    const errorShown = again.container.children[0];
+    check("a rejected diagram comes back as its error in the same task, message and all",
+      errorShown.className === "mermaid-wrapper" &&
+        JSON.stringify(walk(errorShown).map((n) => n.textContent)).includes("Parse error on line 2"));
+
+    // Maths. A cached equation goes back as a copy of what MathJax drew, stamp
+    // and all, so a save reads it the same as a fresh one.
+    r = loadDrawing({});
+    const para = makeEl("p");
+    const typed = makeEl("span", { parent: para, text: "$x^2$" });
+    typed.querySelector = () => null;
+    typed.replaceChildren = (node) => { typed.children = [node]; };
+    const fresh = makeEl("span", { parent: para, text: "$y$" });
+    fresh.querySelector = () => null;
+    para.querySelectorAll = (sel) => (sel === "[data-math]" ? [typed, fresh] : []);
+    const copy = makeEl("mjx-container");
+    copy.setAttribute("data-tex", "x^2");
+    r.renderedCachePut("math:$x^2$", { cloneNode: () => copy });
+    const waiting = r.mathTakeFromCache(para);
+    check("a cached equation goes back as a copy of what was drawn",
+      typed.children[0] === copy && copy.attrs["data-tex"] === "x^2");
+    check("and only the uncached ones are left for MathJax, keyed by their source",
+      waiting.length === 1 && waiting[0].span === fresh && waiting[0].key === "math:$y$");
+
+    // An equation that typeset but never got its stamp is not kept: a copy of
+    // it would save as its glyphs.
+    const unstamped = makeEl("mjx-container");
+    unstamped.cloneNode = () => unstamped;
+    fresh.querySelector = () => unstamped;
+    r.mathRemember(waiting);
+    check("an unstamped equation is not kept for reuse", !r.renderedCache.has("math:$y$"));
+    unstamped.setAttribute("data-tex", "y");
+    r.mathRemember(waiting);
+    check("a stamped one is", r.renderedCache.get("math:$y$") === unstamped);
+  }
+
   // ── app.js: the Turndown rule ─────────────────────────────────────────────
   const { rules } = loadApp();
   const rule = rules.mathjax;

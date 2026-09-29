@@ -1441,7 +1441,19 @@ Four things about it:
   silently doing nothing, so it also checks that each edit changed its own
   document first.
 
-What the model still does *not* do is run a format command, which is slice 7.
+**Slice 7 has begun**, 2026-09-28: the formats, the keyboard, and the
+renderers. Its first two steps are in. Step 1 shut three doors that edited the
+DOM without the model knowing: Code, Insert TOC and Link…. They do nothing
+under the flag until their own steps build them. Step 2 made Mermaid and
+MathJax survive a render, and that is an architectural fact worth knowing from
+outside: **`modelRender` and `modelRerenderBlock` hand what they built to
+`renderAfterModel` in `renderers.js`**, through `modelDecorate`, after the build
+and before the selection is applied. It puts back what an earlier render drew,
+by source, before anything is awaited. A copy of a stamped `mjx-container` and a
+diagram's SVG are both cached, so a render never paints a frame of fence or TeX.
+The wrapper Mermaid builds now carries its fence's `data-block`, without which
+the model loses the block. What the model still does *not* do is run a format
+command, which is the rest of slice 7.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.

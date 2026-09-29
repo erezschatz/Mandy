@@ -1848,7 +1848,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
     Slices 1 to 6 of seven are done and tested, slices 4 to 6 driven by hand
     in all three engines; slice 7, the formats, is in progress, planned
-    2026-09-28 with step 1 of nine done. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    2026-09-28 with steps 1 and 2 of nine done, step 2 waiting on its hand run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3704,8 +3704,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         TODO 1.6 has left TODO.md.
 
     *   **7. Formats, the keyboard, and the renderers — in progress; planned
-        2026-09-28 before any of it was built, and step 1 is done and tested
-        the same day.** Every control that edits the
+        2026-09-28 before any of it was built. Step 1 is done and tested the
+        same day; step 2 is done and tested by machine on 2026-09-29, and waits
+        on its hand run in three engines before step 3 starts.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -3845,6 +3846,64 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             says it should. The renderers are asynchronous and the model is not,
             so a render that has been superseded before its typesetting finishes
             must not draw over its successor.
+
+            **Done and tested by machine, 2026-09-29; the hand run is
+            `tests/fixtures/format-check.md` in Chrome, Firefox and Safari, and
+            step 3 waits on it.** The three measurements came out differently
+            from what the plan expected, and a fourth changed the order of work:
+
+            - **The wrapper did lose `data-block`.** `renderMermaidDiagrams`
+              replaces the `<pre>` with a new `div`, so the fence had no element
+              and `modelElementFor` could not find the block. The wrapper now
+              copies the attribute; the old core stamps none, so this is nothing
+              there.
+            - **Typesetting is cheap and synchronous, but not free.** MathJax
+              typesets an equation in about 0.3 ms once loaded and has a
+              synchronous `typeset`, so the idle the plan floated is not needed.
+              But a whole-document render re-typesets every equation, 13–17 ms
+              for fifty on every Enter. Mermaid has no synchronous form at all:
+              15–22 ms a diagram, so a frame of fence was guaranteed.
+            - **So a render reuses what the last one drew**, keyed by source:
+              a copy of the stamped `mjx-container`, and the SVG with its id.
+              Put back before anything is awaited, so the render and the
+              drawing land in one task. Reusing fifty equations costs 1 ms.
+              Mermaid's rejections are cached too, since its answer for a source
+              does not change; a library that failed to *load* is not.
+            - **The caret survives.** An equation is one atom whether typeset or
+              not, and MathJax replaces the span's contents and leaves the span.
+              Driven with real keystrokes, the caret stays put through typing
+              on either side of the equation and arrowing across it.
+            - **MathJax's list leaked**, one entry per equation per render, for
+              good. Entries whose container has left the page are pruned after
+              each typeset.
+            - **A second typeset pass nested a copy of every equation**, and
+              that was a live bug on `main` rather than a hazard of this step:
+              the old core's boot restores typeset HTML and typesets over it,
+              so every reload added a container. Fixed on `main` first
+              (`5e6efad`: `renderLatex` typesets afresh from the stamp) and
+              merged here, and this step's asynchronous path typesets the
+              pending equations alone, so it never undoes what the cache
+              restored.
+
+            `modelDecorate` in `model.js` calls `renderAfterModel` in
+            `renderers.js` after the build and before the selection, so the
+            caret is mapped onto the DOM the reader sees. It is feature-tested,
+            like `renderOutline`, since `front/input-check.html` loads the model
+            without `renderers.js`. The load paths still call the two renderers
+            themselves after a model render. That is redundant, harmless since
+            `5e6efad`, and goes at stage 4 with the legacy branches.
+
+            Nine checks in the `latex` suite: a cached diagram in the same task
+            with its block id, a second copy of a still-standing drawing drawn
+            afresh, a late render drawing nothing, a rejection cached with its
+            message, a cached equation restored stamp and all, only the
+            uncached left for MathJax, and an unstamped equation never kept.
+            One in `outline`: a whole-document render hands the built editor to
+            the hook once, after building it. Each was confirmed to fail with
+            its rule broken. In Blink, with a sampler on every animation frame
+            and real keystrokes: typing, Enter, undo and redo over the fixture,
+            about 2,300 frames in all, and **none showed a fence, TeX or a
+            broken diagram's code**, with `modelVerifyRender` clean throughout.
 
         3.  **Inline marks: bold, italic, strikethrough.** A pure command over a
             block's inline tree, with the range given in model offsets. If every

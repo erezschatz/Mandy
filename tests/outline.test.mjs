@@ -45,6 +45,7 @@ function loadOutline({ modelCore = false } = {}) {
   const actions = new Map();
   const selection = { anchorNode: null };
   const timers = [];
+  const decorated = [];
 
   return loadSource(
     ["markdown-parser.js", "markdown-style.js", "model.js", "app.js", "outline.js"],
@@ -105,6 +106,10 @@ function loadOutline({ modelCore = false } = {}) {
         }
       },
       notify: (message) => alerts.push(message),
+      // renderers.js's hook, which the model's renderer feature-tests. Recorded
+      // with what the editor held at the moment, so a check can tell a call
+      // made after the build from one made before it.
+      renderAfterModel: (node) => decorated.push({ node, children: node.children.length }),
       // Immediate rather than deferred: a suite that had to wait a second for
       // the debounce would be a suite nobody runs.
       setTimeout: (fn) => {
@@ -125,6 +130,7 @@ function loadOutline({ modelCore = false } = {}) {
         actions,
         selection,
         timers,
+        decorated,
       },
     },
     "; return { ctx: __ctx, outlineDepths, outlineEntries, copyInline," +
@@ -444,7 +450,16 @@ export default function run(check) {
     const armedBefore = c.timers.length;
     coreEditor.ownerDocument = { createElement: (tag) => makeEl(tag) };
     withHeadings(coreEditor, []);
+    const decoratedBefore = c.decorated.length;
     core.modelRender(coreEditor, { prefix: "", blocks: [], nextId: 1 }, core.md);
+    // Slice 7's step 2: a render hands what it built to Mermaid and MathJax,
+    // which draw over the fence and the TeX markdown-it left. After the build,
+    // or they find an empty editor and draw nothing.
+    const call = c.decorated[decoratedBefore];
+    check(
+      "a whole-document render hands the built editor to the renderers, once, after building it",
+      c.decorated.length === decoratedBefore + 1 && call.node === coreEditor && call.children === 1,
+    );
     check(
       "and a whole-document render redraws it at once, arming nothing" +
         ` (${JSON.stringify(nav().children.map((k) => k.className))}, ${c.timers.length - armedBefore} timers armed)`,

@@ -2112,6 +2112,7 @@ function modelRender(root, doc, md, selection = null) {
     paragraph.appendChild(modelFillerBreak(root.ownerDocument));
     root.appendChild(paragraph);
   }
+  modelDecorate(root);
   // Applied here, by the render step, because nothing may hold a Range across
   // one: every node the old selection pointed at has just been thrown away.
   if (selection) modelApplySelection(root, selection);
@@ -2145,8 +2146,26 @@ function modelRerenderBlock(root, block, md, selection = null, env = {}) {
   parent.removeChild(el);
   const nodes = modelBuildBlock(parent, owner, md, env);
   for (const node of nodes) parent.insertBefore(node, anchor);
+  for (const node of nodes) modelDecorate(node);
   if (selection) modelApplySelection(root, selection);
   return modelElementFor(root, owner);
+}
+
+/**
+ * Hand what a render just built to Mermaid and MathJax, which draw over
+ * markdown-it's fence and `<span data-math>` — slice 7's step 2.
+ *
+ * **After the build and before the selection**, so the caret is mapped onto the
+ * DOM the reader will see rather than onto a `<pre>` about to be replaced. An
+ * equation is one atom in both states, so a caret beside one maps the same
+ * either way; a diagram's wrapper keeps its fence's `data-block`, so the block
+ * is still found.
+ *
+ * Feature-tested, the way `renderOutline` is: `renderers.js` is the app's, and
+ * `front/input-check.html` loads the model without it, as does every suite.
+ */
+function modelDecorate(node) {
+  if (node && node.nodeType === 1 && typeof renderAfterModel === "function") renderAfterModel(node);
 }
 
 // ── Rendering: the verify ────────────────────────────────────────────────────
