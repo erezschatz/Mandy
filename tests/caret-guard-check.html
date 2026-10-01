@@ -36,7 +36,7 @@
 <h1>Caret beside an uneditable equation</h1>
 
 <ol>
-  <li><strong>Wait until all eight equations below are drawn.</strong>
+  <li><strong>Wait until all ten equations below are drawn.</strong>
     <em>The line under this list says the equations are ready.</em></li>
   <li><strong>On each line, click at the very start, before the first equation,
     and type <code>S</code>. Then click at the very end, after the last
@@ -44,6 +44,12 @@
     caret showed <em>before</em> you typed. <em>Line A, which has no stop,
     should behave as the fixture did: the start fiddly, the end
     unreachable.</em></li>
+  <li><strong>On line E, click just after the first equation, press Left once
+    and type <code>S</code>; then click after the last equation and type
+    <code>E</code>.</strong> <em>The caret shows at both places, and line E's row
+    reads <code>&lt;stop "\u200BS"&gt;</code> at the start and ends in
+    <code>"E"</code>.</em> This is the stop the editor would actually use; the
+    mouse is not expected to reach the start on any line.</li>
   <li><strong>Send me the table at the bottom, and your caret notes for each
     line.</strong> <em>It updates as you type: each row lists a line's parts in
     order, and an <code>S</code> or <code>E</code> shows up inside the text part
@@ -61,6 +67,8 @@
   <p data-variant="C">$x_1$ starts this line, and it ends with one: $y_2$</p>
   <div class="label" contenteditable="false">D — a zero-width character in front, a hidden image and a &lt;br&gt; behind</div>
   <p data-variant="D">$x_1$ starts this line, and it ends with one: $y_2$</p>
+  <div class="label" contenteditable="false">E — line C's zero-width character inside a marked &lt;span&gt; in front, a &lt;br&gt; behind</div>
+  <p data-variant="E">$x_1$ starts this line, and it ends with one: $y_2$</p>
 </div>
 
 <table>
@@ -91,12 +99,22 @@
     B: (p) => p.append(document.createElement("br")),
     C: (p) => { p.prepend(zeroWidth()); p.append(zeroWidth()); },
     D: (p) => { p.prepend(zeroWidth()); p.append(hiddenImage(), document.createElement("br")); },
+    // What the model core would build: the stop has to carry a mark so the
+    // model can count it as nothing, and a bare text node cannot carry one.
+    E: (p) => {
+      const stop = document.createElement("span");
+      stop.setAttribute("data-filler", "");
+      stop.append(zeroWidth());
+      p.prepend(stop);
+      p.append(document.createElement("br"));
+    },
   };
 
   function describe(node) {
     if (node.nodeName === "MJX-CONTAINER") return "[equation]";
     if (node.nodeName === "BR") return "<br>";
     if (node.nodeName === "IMG") return "<img>";
+    if (node.nodeType === 1 && node.hasAttribute("data-filler")) return "<stop " + describe(node.firstChild || document.createTextNode("")) + ">";
     if (node.nodeType === 3) return JSON.stringify(node.textContent).replace(/​/g, "\\u200B");
     return "<" + node.nodeName.toLowerCase() + ">";
   }
@@ -120,7 +138,7 @@
       for (const eq of target.querySelectorAll("mjx-container")) eq.setAttribute("contenteditable", "false");
       for (const p of target.querySelectorAll("p")) STOPS[p.dataset.variant](p);
       document.getElementById("status").textContent =
-        `Equations ready: ${target.querySelectorAll("mjx-container").length} of 8 drawn.`;
+        `Equations ready: ${target.querySelectorAll("mjx-container").length} of 10 drawn.`;
       report();
       target.addEventListener("input", report);
     })

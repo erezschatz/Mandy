@@ -3905,6 +3905,70 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             about 2,300 frames in all, and **none showed a fence, TeX or a
             broken diagram's code**, with `modelVerifyRender` clean throughout.
 
+            **The hand run in Firefox found three things, and the third needs
+            building before step 2 can close.** The first two are fixed. An
+            equation's caret walked into MathJax's own elements, which was a bug
+            on `main` too, and a letter typed there was lost on save; every
+            equation is uneditable since `9fe5dd1`. Backspace after an equation
+            did nothing, because Firefox describes it as the equation's own span
+            from offset 0 to 1 and `modelDomOffset` counted neither; fixed in
+            `f6f3e5d`.
+
+            **The third: the caret beside an equation at a line's edge.** Firefox
+            leaves no caret position next to an uneditable inline at the start or
+            end of a line, and the uneditable equation made every equation one.
+            Measured on `tests/caret-guard-check.html`, 2026-10-01:
+
+            - **End of a line:** no caret and no typing with nothing there; a
+              trailing `<br>` gives both. So does a zero-width character, or an
+              image plus `<br>`, and the `<br>` is the simplest of the three.
+            - **Start of a line:** the mouse cannot reach it with any stop. The
+              keyboard can — Left from after the equation — but **only with a
+              zero-width character in front**; with nothing there, Left does not
+              get there either.
+
+            **Decided 2026-10-01: model core only.** `main` keeps the edge
+            problem until stage 4 rather than gaining stops of its own, because
+            in the old core the engine itself types into a stop, so whatever it
+            holds could reach the file. The model draws the DOM, so a stop is
+            its own marked node there, counted as nothing and dropped on save.
+
+            **The plan, before any of it is built:**
+
+            1.  **The stops are the DOM builder's, like the empty-block filler.**
+                After a block is built, each equation that is the first thing in
+                its line gets a stop in front: a zero-width character inside
+                `<span data-filler>`, since a bare text node cannot carry the mark
+                that lets the model count it as nothing. Each equation that is
+                the last thing in its line gets a `<br data-filler>` behind. "A
+                line" means the block's own start or end, or a hard break: an
+                equation straight after a `<br>` is at a line's start too, and
+                one straight before a `<br>` already has the `<br>` it needs.
+                `md.render`'s output is untouched, which keeps slice 1's equality
+                exact, just as the empty-block filler does.
+            2.  **The selection walks count a filler as nothing.**
+                `modelDomText` skips it, `modelDomOffset` maps any position
+                inside one to its own edge, and `modelDomLocate` puts a caret
+                for a line's first offset *inside* the start stop, after its
+                character, where Firefox can show it. Otherwise the model would
+                place it where Firefox cannot draw one. `modelVerifyRender`
+                inherits all of this, because it reads through `modelDomText`.
+            3.  **A save drops them.** The save path is still Turndown over the
+                DOM until stage 4, and Turndown would write the zero-width
+                character into the file and turn a trailing `<br>` into a hard
+                break. A rule in `app.js` drops anything carrying `data-filler`.
+                The old core never stamps one, so it is a no-op there. The
+                empty-block filler has been relying on Turndown discarding an
+                empty paragraph, and this makes that explicit too.
+            4.  **The format bar is told.** `atBlockStart` asks whether any of
+                the block's text comes before the caret, and a zero-width
+                character is text that `trim()` keeps. It skips fillers.
+            5.  **Measured before it is called done.** Line E on the check page
+                is the stop exactly as the model will build it, wrapped span
+                included, because the wrapping is the one thing lines A–D did
+                not test. Then `format-check.md`'s edge line in all three
+                engines.
+
         3.  **Inline marks: bold, italic, strikethrough.** A pure command over a
             block's inline tree, with the range given in model offsets. If every
             leaf in the range carries the mark, the command removes it;

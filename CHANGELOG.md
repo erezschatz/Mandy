@@ -8107,3 +8107,23 @@ types, and the page reports where each letter landed. It replaces a
 forty-line console snippet that was too long to call one. It needs no server.
 Checked in Blink that it loads and typesets all eight equations; the
 measurement itself is Firefox's, by hand.
+
+## 2026-10-01 — Firefox's caret at a line's edge, measured, and the plan for it
+
+`tests/caret-guard-check.html` answered the question it was written for. **The
+end of a line:** with nothing after a trailing equation there is no caret and no
+typing; a trailing `<br>` gives both, as do the two other stops. **The start:**
+the mouse cannot reach it on any line, stop or not. The keyboard can, with Left
+from after the equation, but only where a zero-width character sits in front.
+With nothing there, Left does not reach it either.
+
+The plan is written into `docs/REWRITE.md`, under step 2, before any of it is
+built. The model's DOM builder adds a stop beside an equation at a line's edge:
+`<br data-filler>` after one, and a zero-width character in a
+`<span data-filler>` before one. The selection walks count both as nothing, a
+caret at a line's start is placed inside the stop where Firefox can draw it, a
+Turndown rule drops both on save, and the format bar's start-of-row test skips
+them. The span wrapper is needed because a bare text node cannot carry the mark
+that lets the model ignore it, and the check page had not tested it, so it gains
+line E: the stop exactly as the model will build it. Checked in Blink that the
+page now draws all ten equations.
