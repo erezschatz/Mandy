@@ -3905,8 +3905,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             about 2,300 frames in all, and **none showed a fence, TeX or a
             broken diagram's code**, with `modelVerifyRender` clean throughout.
 
-            **The hand run in Firefox found three things, and the third needs
-            building before step 2 can close.** The first two are fixed. An
+            **The hand run in Firefox found three things, all three now
+            fixed; the third waits on its hand run in three engines.** The first two are fixed. An
             equation's caret walked into MathJax's own elements, which was a bug
             on `main` too, and a letter typed there was lost on save; every
             equation is uneditable since `9fe5dd1`. Backspace after an equation
@@ -3962,12 +3962,35 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
                 empty paragraph, and this makes that explicit too.
             4.  **The format bar is told.** `atBlockStart` asks whether any of
                 the block's text comes before the caret, and a zero-width
-                character is text that `trim()` keeps. It skips fillers.
+                character is text that `trim()` keeps. It ignores zero-width
+                characters, for the reason it already ignores whitespace:
+                nothing on screen tells either apart from nothing at all.
             5.  **Measured before it is called done.** Line E on the check page
                 is the stop exactly as the model will build it, wrapped span
                 included, because the wrapping is the one thing lines A–D did
                 not test. Then `format-check.md`'s edge line in all three
                 engines.
+
+            **Built 2026-10-01; machine-tested; the hand run is pending.**
+            Line E passed in Firefox first — the wrapped stop takes the
+            keyboard's caret as the bare one did — so the five went in as
+            planned. `modelPlaceStops` is called from `modelBuildBlock` for
+            every leaf block and walks only that block's own nodes, so a
+            re-render rebuilds the stops and an edit that moves an equation
+            off a line's edge drops them. Nine checks in `model` and two in
+            `latex`, each but one confirmed to fail with its rule broken. The
+            exception is the call in `modelBuildBlock` itself: the `model` suite
+            has no HTML parser to build a block with, so that call is covered by
+            the browser alone. Driven in Blink on the fixture: stops in front of
+            and behind the edge line's equations and around the display
+            equation; a caret at the line's start drawn inside the stop; `S`
+            and `E` typed at the two edges landing there; the stops gone once
+            the equations no longer touch an edge, and back on undo with the
+            caret inside the front one; the render check clean throughout; and
+            a save of the untouched fixture the same length as the file, with no
+            zero-width character in it. **Not measured:** an equation straight
+            after a hard break, where the caret at that line's start resolves to
+            the end of the break's newline rather than inside the stop.
 
         3.  **Inline marks: bold, italic, strikethrough.** A pure command over a
             block's inline tree, with the range given in model offsets. If every

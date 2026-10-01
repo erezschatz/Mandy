@@ -79,7 +79,7 @@ export default function run(check) {
     modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle,
     modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled,
     modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt,
-    modelIsAtomNode, configureMarkdownParser,
+    modelIsAtomNode, configureMarkdownParser, modelPlaceStops,
     modelInlineSplice, modelNormaliseTyped, modelInlineTokens,
     modelInsertParagraph, modelMergeBlocks, modelInsertBreak, modelSplitLeaf,
     modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice,
@@ -102,7 +102,7 @@ export default function run(check) {
       " modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle," +
       " modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled," +
       " modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt," +
-      " modelIsAtomNode, configureMarkdownParser," +
+      " modelIsAtomNode, configureMarkdownParser, modelPlaceStops," +
       " modelInlineSplice, modelNormaliseTyped, modelInlineTokens," +
       " modelInsertParagraph, modelMergeBlocks, modelInsertBreak, modelSplitLeaf," +
       " modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice," +
@@ -2847,6 +2847,66 @@ export default function run(check) {
       "so Firefox's range over an equation is one character wide, not zero",
       modelDomOffset(para, math, 1, 1) - modelDomOffset(para, math, 0, -1) === 1,
     );
+  }
+
+  // Caret stops beside an equation at a line's edge (slice 7's step 2). Firefox
+  // leaves no caret position beside an uneditable inline there, measured on
+  // tests/caret-guard-check.html: a <br> behind gives the end back, and a
+  // zero-width character in front gives the keyboard the start. Built by the
+  // DOM builder and counted as nothing by every walk.
+  {
+    const doc = { createElement: (tag) => makeEl(tag), createTextNode: makeText };
+    const el = (tag, kids, attrs = {}) => {
+      const node = makeEl(tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      for (const kid of kids) node.appendChild(kid);
+      return node;
+    };
+    const eq = () => el("span", [makeText("$x$")], { "data-math": "" });
+    const shape = (p) => p.childNodes.map((n) =>
+      n.nodeType === 3 ? JSON.stringify(n.textContent)
+        : n.hasAttribute("data-filler") ? (n.tagName === "BR" ? "<br stop>" : "<stop>")
+        : n.hasAttribute("data-math") ? "[eq]" : "<" + n.tagName.toLowerCase() + ">").join(" ");
+
+    let p = el("p", [eq(), makeText(" mid "), eq()]);
+    modelPlaceStops([p], doc);
+    check(`an equation starting a line gets a stop in front, one ending it a <br> behind (${shape(p)})`,
+      shape(p) === '<stop> [eq] " mid " [eq] <br stop>');
+
+    p = el("p", [makeText("a "), eq(), makeText(" b")]);
+    modelPlaceStops([p], doc);
+    check(`an equation mid-line gets nothing (${shape(p)})`, shape(p) === '"a " [eq] " b"');
+
+    // markdown-it renders a hard break as <br>\n, so an equation after one
+    // starts a line, and one right before one already has its <br>.
+    p = el("p", [makeText("a "), eq(), el("br", []), makeText("\n"), eq(), makeText(" b")]);
+    modelPlaceStops([p], doc);
+    check(`a hard break is a line's edge on both sides (${shape(p)})`,
+      shape(p) === '"a " [eq] <br> "\\n" <stop> [eq] " b"');
+
+    // Inside a mark, the stop goes beside the equation, inside the mark.
+    const em = el("em", [eq()]);
+    p = el("p", [em, makeText(" tail")]);
+    modelPlaceStops([p], doc);
+    check("an equation opening a line inside a mark gets its stop inside the mark",
+      em.childNodes[0].hasAttribute("data-filler") && em.childNodes[1].hasAttribute("data-math"));
+
+    // And the walks count a stop as nothing.
+    p = el("p", [eq(), makeText(" ab "), eq()]);
+    modelPlaceStops([p], doc);
+    const stop = p.childNodes[0];
+    check(`a stop adds nothing to the text the model compares against (${JSON.stringify(modelDomText(p))})`,
+      modelDomText(p) === "\uFFFC ab \uFFFC");
+    check("a position inside a stop is the position where it stands",
+      modelDomOffset(p, stop.firstChild, 1) === 0 && modelDomOffset(p, stop, 1) === 0);
+    check("and positions after it are not pushed along by it",
+      modelDomOffset(p, p.childNodes[2], 2) === 3);
+    const at0 = modelDomLocate(p, 0);
+    check("a caret at a line's first offset goes inside the stop, after its character, where Firefox draws one",
+      at0.node === stop.firstChild && at0.offset === 1);
+    const at1 = modelDomLocate(p, 1);
+    check("and offset 1 is still just after the equation",
+      at1.node === p && at1.offset === 2);
   }
 
   // ------------------------------------------------------------- the metric

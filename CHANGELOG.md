@@ -8127,3 +8127,35 @@ them. The span wrapper is needed because a bare text node cannot carry the mark
 that lets the model ignore it, and the check page had not tested it, so it gains
 line E: the stop exactly as the model will build it. Checked in Blink that the
 page now draws all ten equations.
+
+## 2026-10-01 — Firefox's caret reaches both sides of an equation at a line's edge
+
+The plan written earlier today, built. Under the model core an equation that
+starts a line now has a zero-width character in a `<span data-filler>` in front
+of it, and one that ends a line a `<br data-filler>` behind it. A hard break
+counts as a line's edge. Firefox needs both measured stops, and line E of
+`tests/caret-guard-check.html` confirmed in Firefox that the wrapping span does
+not cost the start its caret. `modelPlaceStops` is called by `modelBuildBlock`
+for each leaf block, so the stops are rebuilt with every render and vanish once
+an equation no longer touches an edge.
+
+Every walk between the DOM and the model now counts a filler as nothing.
+`modelDomText` skips it, `modelDomOffset` maps any position in one to where it
+stands, and `modelDomLocate` puts a line's first offset *inside* the start stop,
+the one place Firefox draws a caret there. So `modelVerifyRender` sees no
+difference. A Turndown rule in `app.js`, `modelFiller`, drops every
+`data-filler` node on save, since the save is still Turndown over the DOM until
+stage 4. Without it the character would reach the file and a trailing stop
+would become a hard break. It also makes explicit what the empty-block filler
+had been getting by accident. `atBlockStart` in `format-bar.js` ignores
+zero-width characters for the reason it already ignores whitespace.
+
+Nine checks in `model` and two in `latex`. Each fails with its rule broken,
+except the call in `modelBuildBlock`, which the `model` suite cannot build a
+block to reach, so the browser covers it. Driven in Blink on the fixture: the
+stops sit where planned, `S` and `E` typed at the two edges land there, the
+stops come back on undo with the caret inside the front one, the render check
+is clean, and a save of the untouched fixture is the file's own length with no
+zero-width character. Not measured: an equation straight after a hard break.
+The fixture's edge step now says what was measured: the keyboard, not the
+mouse, reaches the start. `sw.js`'s `VERSION` goes to `v1.59`.

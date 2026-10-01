@@ -71,7 +71,11 @@ function atBlockStart(range) {
     }
   })(block);
 
-  return !before.trim();
+  // A zero-width character counts as nothing for the same reason whitespace
+  // does — nothing on screen tells it apart from nothing at all — and since
+  // TODO 3.1's slice 7 the model core puts one in front of an equation that
+  // starts a line, for Firefox's caret.
+  return !before.replace(/\u200B/g, "").trim();
 }
 
 // What the bar is being positioned against.

@@ -2077,8 +2077,72 @@ function modelBuildBlock(parent, block, md, env) {
     for (const child of block.children) modelBuildBlock(el || parent, child, md, env);
   } else if (modelNeedsFiller(block)) {
     (el || parent).appendChild(modelFillerBreak(parent.ownerDocument));
+  } else if (block.inlines) {
+    modelPlaceStops(el ? [el] : nodes, parent.ownerDocument);
   }
   return nodes;
+}
+
+/**
+ * Caret stops beside an equation at the edge of a line — slice 7's step 2,
+ * measured on `tests/caret-guard-check.html` in Firefox on 2026-10-01.
+ *
+ * Every typeset equation is uneditable, and Gecko leaves no caret position
+ * beside an uneditable inline at a line's edge: after one that ends a line the
+ * caret cannot go at all, and before one that starts a line even the keyboard
+ * cannot reach. A `<br>` behind gives the first back; a zero-width character in
+ * front gives the keyboard the second (the mouse reaches it with no stop at
+ * all). The character is wrapped in a marked `<span>` because a bare text node
+ * cannot carry the mark, and the mark is what lets every walk below count the
+ * stop as nothing — measured that the wrapping does not cost Firefox the
+ * position.
+ *
+ * Here rather than in the renderer, the way the empty-block filler is, so
+ * `md.render`'s output stays exactly slice 1's. "A line" is the block's own
+ * start or end, or a hard break: markdown-it renders one as `<br>\n`, so an
+ * equation after it — whitespace aside — starts a line, and one right before it
+ * already has the `<br>` it needs.
+ */
+function modelPlaceStops(roots, document) {
+  const leaves = [];
+  (function collect(node) {
+    if (node.nodeType === 3) {
+      if (node.textContent !== "") leaves.push(node);
+      return;
+    }
+    if (node.nodeType !== 1 || node.hasAttribute(MODEL_FILLER_ATTR)) return;
+    if (modelIsAtomNode(node) || node.tagName === "BR") {
+      leaves.push(node);
+      return;
+    }
+    for (const child of node.childNodes) collect(child);
+  })({ nodeType: 1, hasAttribute: () => false, childNodes: roots });
+
+  const blank = (leaf) => leaf && leaf.nodeType === 3 && !leaf.textContent.trim();
+  const breakOrNone = (leaf) => !leaf || leaf.nodeType === 1 && leaf.tagName === "BR";
+
+  leaves.forEach((leaf, i) => {
+    if (!(leaf.nodeType === 1 && leaf.hasAttribute(MATH_SPAN_ATTR))) return;
+    let before = i - 1;
+    while (blank(leaves[before])) before--;
+    let after = i + 1;
+    while (blank(leaves[after])) after++;
+
+    if (breakOrNone(leaves[before])) {
+      const stop = document.createElement("span");
+      stop.setAttribute(MODEL_FILLER_ATTR, "");
+      stop.appendChild(document.createTextNode("\u200B"));
+      leaf.parentNode.insertBefore(stop, leaf);
+    }
+    if (!leaves[after]) leaf.parentNode.insertBefore(modelFillerBreak(document), leaf.nextSibling);
+  });
+}
+
+// A node the DOM builder added and the model knows nothing of: the empty-block
+// `<br>` and the caret stops above. Every walk between the DOM and the model
+// counts one as nothing.
+function modelIsFiller(node) {
+  return node.nodeType === 1 && node.hasAttribute(MODEL_FILLER_ATTR);
 }
 
 // The element carrying a block's id, or null when that block owns none.
@@ -2385,6 +2449,7 @@ function modelIsAtomNode(node) {
 // verify is the two of them compared.
 function modelDomText(node) {
   if (node.nodeType === 3) return node.textContent;
+  if (modelIsFiller(node)) return "";
   if (modelIsAtomNode(node)) return MODEL_ATOM;
   let out = "";
   for (const child of node.childNodes) out += modelDomText(child);
@@ -2419,7 +2484,9 @@ function modelDomOffset(root, node, offset, bias = -1) {
     if (found) return;
     if (current === node) {
       if (current.nodeType === 3) total += offset;
-      else if (modelIsAtomNode(current)) {
+      else if (modelIsFiller(current)) {
+        // A stop is nothing to the model: any offset on it is where it stands.
+      } else if (modelIsAtomNode(current)) {
         // **The atom itself as the container**: offset 0 is its front edge and
         // its last child offset its back edge, so the two ends of a range that
         // covers it name the two sides. Firefox describes a Backspace after an
@@ -2441,6 +2508,12 @@ function modelDomOffset(root, node, offset, bias = -1) {
     }
     if (current.nodeType === 3) {
       total += current.textContent.length;
+      return;
+    }
+    // A caret stop is nothing to the model, so a position inside one is the
+    // position where the stop stands.
+    if (modelIsFiller(current)) {
+      if (current.contains(node)) found = true;
       return;
     }
     if (modelIsAtomNode(current)) {
@@ -2491,6 +2564,12 @@ function modelDomLocate(root, offset) {
 
   (function walk(current) {
     if (result) return;
+    if (modelIsFiller(current)) {
+      // A caret that belongs where a start stop stands goes *inside* it, after
+      // its character: that is the one place there Firefox will draw a caret.
+      if (remaining === 0 && current.firstChild) result = { node: current.firstChild, offset: current.firstChild.textContent.length };
+      return;
+    }
     if (current.nodeType === 3) {
       const length = current.textContent.length;
       last = { node: current, offset: length };

@@ -323,6 +323,17 @@ export default async function run(check) {
   check("app.js registers a mathjax rule", !!rule);
   check("the mermaid rule is still registered", !!rules.mermaid);
 
+  // The model core's caret stops beside an equation at a line's edge, and its
+  // empty-block filler, are view: a save drops them. Without the rule the
+  // zero-width character reaches the file and a trailing stop becomes a hard
+  // break, since the save is still Turndown over the DOM until stage 4.
+  const filler = rules.modelFiller;
+  const stopNode = { nodeType: 1, nodeName: "SPAN", hasAttribute: (n) => n === "data-filler" };
+  check("app.js drops the model core's caret stops on save",
+    !!filler && filler.filter(stopNode) && filler.replacement("\u200B", stopNode) === "");
+  check("and only those",
+    !filler.filter({ nodeType: 1, nodeName: "SPAN", hasAttribute: (n) => n === "data-math" }));
+
   const asNode = (attrs) => ({
     nodeName: "MJX-CONTAINER",
     hasAttribute: (n) => n in attrs,

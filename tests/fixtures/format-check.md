@@ -72,12 +72,14 @@ $$\int_0^1 x^2 \, dx = \frac{1}{3}$$
 
    $x_1$ starts this line, and it ends with one: $y_2$
 
-   **Click at the very start of the line above, before $x_1$, and type a
-   letter; then click at the very end, after $y_2$, and type another.** *Both
-   letters appear, the first before $x_1$ and the second after $y_2$, and the
-   caret is visible at both places before you type.* An uneditable element at
-   the edge of a line is where Gecko has been known to leave no room for a
-   caret. If either letter lands somewhere else or not at all, note where.
+   **Click just after $x_1$, press Left once, and type a letter. Then click at
+   the very end of the line, after $y_2$, and type another.** *A caret shows
+   before $x_1$ and after $y_2$, the first letter lands before $x_1$ and the
+   second after $y_2$, and nothing else on the line moves.* **Then
+   Ctrl/Cmd+Z twice.** *Both letters go, and the caret comes back before
+   $x_1$.* In Firefox a mouse click before $x_1$ does not place a caret, with or
+   without the stop: `tests/caret-guard-check.html` measured that on
+   2026-10-01. The keyboard reaching it is what the stop is for.
 
 5. **Switch the theme with the sun/moon toggle, then press Enter somewhere
    in this sentence and Ctrl/Cmd+Z it away.** *The diagram redraws in the new

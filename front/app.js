@@ -250,6 +250,21 @@ turndownService.addRule("mathjax", {
   },
 });
 
+// The model core's fillers: the empty-block `<br>`, and the caret stops beside
+// an equation at a line's edge (TODO 3.1, slice 7's step 2) — a zero-width
+// character in front, a `<br>` behind. None is content. Until stage 4 a save is
+// still this Turndown pass over the DOM the model drew, and without the rule
+// the character would be written into the file and the `<br>` would become a
+// hard break. The old core never stamps one, so here it is a no-op.
+turndownService.addRule("modelFiller", {
+  filter: function (node) {
+    return node.nodeType === 1 && node.hasAttribute("data-filler");
+  },
+  replacement: function () {
+    return "";
+  },
+});
+
 // Turndown ships no strikethrough rule either -- that one lives in
 // turndown-plugin-gfm too -- so execCommand("strikeThrough")'s <s> or <del>
 // fell through to the default and the markup round-tripped as plain text,
