@@ -8389,7 +8389,7 @@ of an equation, and checks that dragging a selection with an equation in it
 still moves the whole selection. REWRITE.md's step 2 records it. `sw.js`'s
 `VERSION` goes to `v1.65`.
 
-## 2026-10-01 — Dragging a selection with an equation in it no longer loses the equation
+## 2026-10-01 — `37de25a` — Dragging a selection with an equation in it no longer loses the equation
 
 Found by the new drag step in `tests/fixtures/format-check.md`, in Firefox and
 Chrome alike. Select from inside the word before an equation to inside the word
