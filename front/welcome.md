@@ -66,25 +66,12 @@ something to be read.
 it can change the text in their browser and send it back. Use it when you want
 edits returned, not just eyes on the page.
 
-## LaTeX and Mermaid Support
+## LaTeX Support
 
-Mandy renders LaTeX math and Mermaid diagrams. Write LaTeX with `$$...$$` for
-block math or `$...$` inline. Mermaid goes in a fenced code block tagged
-`mermaid`.
+Mandy renders LaTeX math. Write `$$...$$` for block math or `$...$` inline.
 
-When exporting to DOCX, Mermaid diagrams are converted into images so they
-survive the trip. LaTeX is exported as plain text — the characters come
+When exporting to DOCX, LaTeX is exported as plain text — the characters come
 through, but the maths is not rendered.
-
-Sample Mermaid diagram:
-
-```mermaid
-graph TD;
-    A-->B;
-    A-->C;
-    B-->D;
-    C-->D;
-```
 
 Sample LaTeX math:
 

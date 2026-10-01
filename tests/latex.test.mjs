@@ -195,6 +195,34 @@ export default async function run(check) {
     check("a document with no maths does not load MathJax", fetched === false);
   }
 
+  // ── renderers.js: diagrams drawn before Mermaid was removed ───────────────
+  //
+  // Mermaid went on 2026-10-01, but a document drawn before then still sits in
+  // autosave and tab storage as the old wrapper: the SVG, plus the source in a
+  // hidden .mermaid-source. Loading one puts back the fenced code block it came
+  // from, so the source shows and no wrapper is ever in the editor again.
+  {
+    const container = makeEl("div");
+    const wrapper = makeEl("div", { parent: container });
+    wrapper.parentNode = container;
+    wrapper.className = "mermaid-wrapper";
+    const hidden = makeEl("pre", { text: "graph TD; A-->B;" });
+    wrapper.querySelector = (sel) => (sel === ".mermaid-source" ? hidden : null);
+    container.querySelectorAll = (sel) => (sel === ".mermaid-wrapper" && container.children.includes(wrapper) ? [wrapper] : []);
+    const unwrap = loadSource(
+      "renderers.js",
+      { window: {}, document: { createElement: (tag) => makeEl(tag) }, console },
+      "; return unwrapMermaidDiagrams;",
+    );
+    unwrap(container);
+    const pre = container.children[0];
+    const code = pre && pre.children[0];
+    check("an old diagram goes back to a fenced code block in the wrapper's place",
+      container.children.length === 1 && pre.tagName === "PRE" && code && code.tagName === "CODE");
+    check("tagged mermaid, holding its source as markdown-it renders a fence's body",
+      code.className === "language-mermaid" && code.textContent === "graph TD; A-->B;\n");
+  }
+
   // ── app.js: the Turndown rule ─────────────────────────────────────────────
   const { rules } = loadApp();
   const rule = rules.mathjax;

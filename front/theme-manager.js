@@ -60,10 +60,6 @@ const ThemeManager = (function () {
     const current = getCurrentTheme();
     const newTheme = current === LIGHT ? DARK : LIGHT;
     setTheme(newTheme);
-    // Re-render mermaid diagrams with new theme
-    if (typeof reRenderMermaidWithTheme === "function") {
-      reRenderMermaidWithTheme(newTheme);
-    }
   }
 
   function updateToggleButton(theme) {

@@ -447,7 +447,7 @@ are no imports. Consequences that bite:
   both;
   `outline.js` defines `outlineIsOpen`, `outlineEntries` and `buildNestedList`,
   which `static-export.js` calls at export time;
-  `renderers.js` defines `renderMermaidDiagrams` / `renderLatex`;
+  `renderers.js` defines `renderLatex` and `unwrapMermaidDiagrams`;
   `lazy-load.js` defines the `ensure*` loaders. Later files call these freely.
 - **Global-name collisions are real bugs, not hypotheticals.** `file-api.js`
   names its function `saveFileAs` rather than `saveAs` because FileSaver.js
@@ -505,16 +505,23 @@ there is no non-blank `localStorage["markdownContent"]` to restore. Edit the
 markdown, not the markup — and note `welcome.md` is a shell asset, so it needs
 its `sw.js` entry to survive offline.
 
-Mermaid and LaTeX are the two exceptions worth knowing, and they are the same
-problem solved twice: both renderers destroy the source they render from, so
-each has to stash it somewhere Turndown can find it again. Break either and the
-content round-trips to nothing — silently, because the document still looks
-right on screen.
+LaTeX is the one exception worth knowing: its renderer destroys the source it
+renders from, so the source has to be stashed somewhere Turndown can find it
+again. Break that and the content round-trips to nothing — silently, because the
+document still looks right on screen.
 
-- **Mermaid** — `renderers.js` replaces the `<pre><code class="language-mermaid">`
-  with a `.mermaid-wrapper` holding both the rendered SVG and a hidden
-  `.mermaid-source` element. A Turndown rule in `app.js` reads that hidden
-  source to reconstruct the fenced block.
+**Mermaid diagrams were removed on 2026-10-01.** There was no way to create
+one without writing the fence by hand, which is the thing this project exists
+to spare people. A ` ```mermaid ` fence is now an ordinary code block, shown as
+its source, and files are unaffected, since the fence was always the fence.
+What remains is compatibility for a document drawn before then, still in a
+browser's autosave or tab storage as the old wrapper — the SVG plus the source
+in a hidden `.mermaid-source`. `unwrapMermaidDiagrams` in `renderers.js` turns
+one back into its fenced code block wherever stored HTML enters the editor (the
+boot restore and a tab swap), and the `mermaid` Turndown rule in `app.js` does
+the same for any that reach a save another way. Drop the rule and such a
+document saves the SVG's text in place of the diagram.
+
 - **LaTeX** — MathJax leaves nothing but glyphs behind, so `stampLatexSource`
   in `renderers.js` copies the original TeX onto each `<mjx-container>` as
   `data-tex` / `data-display`, reading it out of `MathJax.startup.document.math`
@@ -1184,7 +1191,7 @@ definition it depended on had no DOM node to survive on and simply vanished.
 A document that cited one URL twenty times over a reference arrived with one
 definition and would have left with twenty copies, unrecoverably.
 
-The fix is the same two-part shape as Mermaid and LaTeX: stash what parsing
+The fix is the same two-part shape as LaTeX's: stash what parsing
 would otherwise destroy, read it back at serialise time.
 
 - **`referenceAwareLink` in `markdown-parser.js` replaces markdown-it's own
@@ -1258,7 +1265,7 @@ the other two belong too.
 
 ### Lazy loading
 
-Mermaid (3.4 MB), MathJax, html2pdf, docx and FileSaver load on first actual
+MathJax, html2pdf, docx and FileSaver load on first actual
 use via the memoised loaders in [lazy-load.js](front/lazy-load.js). Only
 markdown-it and Turndown load eagerly. Never add a top-level `<script>` for a
 heavy library — add an `ensure*` loader.
@@ -1270,8 +1277,8 @@ There are two, and they are different deliverables:
 - **HTML** ([static-export.js](front/static-export.js)) — the document alone as
   a standalone page, the same kind of artifact as PDF or DOCX. Inlines
   `app.css`, copies MathJax's runtime-generated `<style id="MJX…">` so maths
-  lays out without MathJax present, strips `.mermaid-source` and
-  `contenteditable`, and ships no editor JS at all. It is also the one place a
+  lays out without MathJax present, strips `contenteditable`, and ships no
+  editor JS at all. It is also the one place a
   table of contents is written into the document rather than drawn beside it:
   this file never goes back through Turndown, so nothing added here can reach
   anyone's `.md`. See the outline section below.
@@ -1355,7 +1362,9 @@ does:
 - **Four subtrees are never touched** — `pre`, `code`, `.mermaid-wrapper` and
   `mjx-container`. The last two hold the only copy of their own source, and
   rewriting one breaks the round-trip to markdown irrecoverably with the document
-  still looking right on screen.
+  still looking right on screen. Since Mermaid's removal on 2026-10-01 a
+  `.mermaid-wrapper` can no longer reach the editor — every way in unwraps it —
+  so that guard is inert, and goes with this file at stage 4.
 - **It reports whether it changed anything, and that drives `undoRefresh()`.**
   execCommand dispatches `input` synchronously, so the undo stack snapshotted the
   un-normalised document before `runCommand` got to fix it. Refreshing corrects

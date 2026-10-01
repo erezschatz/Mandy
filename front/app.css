@@ -735,39 +735,6 @@
         border-bottom: 1px solid var(--rule-faint);
       }
 
-      /* Mermaid Diagram Styles */
-      .mermaid-wrapper {
-        margin: 1rem 0;
-        padding: 1rem;
-        background: var(--code-bg);
-        border-radius: 8px;
-        border: 1px solid var(--rule);
-        overflow-x: auto;
-        text-align: center;
-      }
-
-      .mermaid-wrapper svg {
-        max-width: 100%;
-        height: auto;
-      }
-
-      .mermaid-wrapper .mermaid-error {
-        color: #e74c3c;
-        padding: 1rem;
-        font-family: monospace;
-        white-space: pre-wrap;
-        text-align: left;
-      }
-
-      .mermaid-source {
-        display: none;
-      }
-
-      /* Dark mode adjustments for Mermaid */
-      [data-theme="dark"] .mermaid-wrapper {
-        background: var(--code-bg);
-      }
-
       .format-bar {
         position: absolute;
         background: var(--paper);

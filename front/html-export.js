@@ -6,10 +6,6 @@
 // tag is correct here.
 const CLOSE = "</" + "script>";
 
-const MERMAID_TAG =
-  '<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js">' +
-  CLOSE;
-
 // Exported documents follow the reader's OS preference. Deliberately no
 // localStorage and no toggle: this is a document, not the app, and the
 // recipient should not inherit the author's stored preference. Runs before the
@@ -28,18 +24,10 @@ const THEME_SCRIPT =
   "document.documentElement.setAttribute('data-variant','export');" +
   CLOSE;
 
-// Diagrams are exported as SVG with the light Mermaid palette baked in, so a
-// dark-mode reader would otherwise get a dark page with light diagrams.
-const MERMAID_RETHEME_SCRIPT =
-  "<script>if(document.documentElement.getAttribute('data-theme')==='dark'" +
-  "&&typeof reRenderMermaidWithTheme==='function'){reRenderMermaidWithTheme('dark');}" +
-  CLOSE;
-
 const MATHJAX_TAGS =
   "<script>window.MathJax={tex:{inlineMath:[['$','$'],['\\\\(','\\\\)']]," +
   "displayMath:[['$$','$$'],['\\\\[','\\\\]']]},options:{skipHtmlTags:" +
-  "['script','noscript','style','textarea','pre','code']," +
-  'ignoreHtmlClass:"mermaid-wrapper"}};' +
+  "['script','noscript','style','textarea','pre','code']}};" +
   CLOSE +
   '<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">' +
   CLOSE;
@@ -69,9 +57,6 @@ function unwrapInline(text) {
 onToolbarAction("export-editable", async () => {
   const currentContent = editor.innerHTML;
   const currentText = editor.textContent || "";
-  const needsMermaid =
-    currentContent.includes("language-mermaid") ||
-    currentContent.includes("mermaid-wrapper");
   const needsMathJax =
     containsLatex(currentText) ||
     currentContent.includes("mjx-container") ||
@@ -226,12 +211,10 @@ ${cssContent}
     
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"><\/script>
     <script src="https://cdn.jsdelivr.net/npm/turndown@7.1.2/dist/turndown.min.js"><\/script>
-    ${needsMermaid ? MERMAID_TAG : ""}
     ${needsMathJax ? MATHJAX_TAGS : ""}
     <script id="app-script">
 ${jsContent}
     <\/script>
-    ${needsMermaid ? MERMAID_RETHEME_SCRIPT : ""}
 </body>
 </html>`;
 

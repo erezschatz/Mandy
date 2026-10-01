@@ -5642,3 +5642,41 @@ whole, and a save writes exactly what is on screen. **The Firefox half, the
 reason for the change, is still to be confirmed by hand.** CLAUDE.md's LaTeX
 bullet says why the container is uneditable. `sw.js`'s `VERSION` goes to
 `v1.35`.
+
+## 2026-10-01 — Mermaid diagrams are removed
+
+Mermaid came with the project when it was forked, and nothing here ever made it
+something a person could use. A diagram could only be created by typing a
+` ```mermaid ` fence by hand. That is dropping into code, which is the one
+thing this editor exists to spare people, and nobody could say whether anyone
+used it. It was also about to cost real work: the model core on `rewrite`
+re-renders constantly, and keeping diagrams alive through that had just needed
+a render cache, a block-id fix and a cached error for broken diagrams.
+
+**Files are unaffected.** A ` ```mermaid ` fence is now an ordinary code block
+showing its source, and saves back as exactly the fence it was. Gone: the 3.4 MB
+lazy loader and its MathJax `ignoreHtmlClass` entry, `renderMermaidDiagrams` and
+the theme re-render, the editable export's Mermaid tag and dark-mode retheme
+script, the static export's diagram backdrop and source stripping, the PDF
+export's SVG scaling, the DOCX export's SVG-to-PNG conversion and its diagram
+branch, the diagram CSS, the welcome document's section and sample, README's
+example and dependency row, and TODO 6.2, whose subject no longer exists.
+
+**One piece of compatibility stays, because dropping it would lose data.** A
+document drawn before today still sits in a browser's autosave or tab storage as
+the old wrapper: the SVG, plus the source in a hidden `.mermaid-source`. Saved
+without help, that would write the SVG's text in place of the diagram.
+`unwrapMermaidDiagrams` in `renderers.js` turns each wrapper back into its
+fenced code block wherever stored HTML enters the editor, which is the boot
+restore and a tab swap. The `mermaid` Turndown rule stays as the backstop for
+any wrapper that reaches a save another way. Open, upload and Paste markdown
+start from markdown and never meet a wrapper, so their render calls simply go.
+`execcommand.js`'s guard against a wrapper is now inert and goes with that file.
+
+Tests: the `latex` suite checks that an old wrapper comes back as a
+`language-mermaid` code block holding its source, with the newline markdown-it
+gives a fence's body. The `static-export` sample document loses its diagram and
+the three checks about it. The `tabs` suite's failing-render case now fails
+through `renderLatex`, the renderer Open still calls, so it still exercises the
+same `finally`. CLAUDE.md, MARKDOWN.md and the load-order notes say what is
+left. `sw.js`'s `VERSION` goes to `v1.36`.
