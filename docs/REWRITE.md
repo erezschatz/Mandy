@@ -3897,9 +3897,20 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `renderers.js` after the build and before the selection, so the
             caret is mapped onto the DOM the reader sees. It is feature-tested,
             like `renderOutline`, since `front/input-check.html` loads the model
-            without `renderers.js`. The load paths still call the two renderers
-            themselves after a model render. That is redundant, harmless since
-            `5e6efad`, and goes at stage 4 with the legacy branches.
+            without `renderers.js`. The load paths still call the renderers
+            themselves after a model render. **That was written down here as
+            "redundant, harmless since `5e6efad`", and it was not harmless.**
+            Firefox's reload check found 30 nested copies of 15 equations on a
+            fresh page, reproduced in Blink, from two separate second passes.
+            One was the load path's `renderLatex`, racing the render step's own
+            typesetting while MathJax loaded: it now does nothing under the
+            model core, so typesetting has one owner there. The other was
+            MathJax typesetting the whole page by itself the moment it started,
+            which was a bug on `main` too, fixed there first (`e735625`,
+            `startup: { typeset: false }`). Machine-checked after both: three
+            reloads of the fixture, and two renders while MathJax's download
+            was held back by 1.5 s, each typesetting all 15 equations exactly
+            once.
 
             Nine checks in the `latex` suite: a cached diagram in the same task
             with its block id, a second copy of a still-standing drawing drawn

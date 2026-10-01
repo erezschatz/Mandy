@@ -83,11 +83,8 @@ $$\int_0^1 x^2 \, dx = \frac{1}{3}$$
    and run this in the console:**
    `document.querySelectorAll('#editor mjx-container mjx-container').length`
    *It prints `0`.* Anything else means a reload has nested a copy of an
-   equation inside itself — the bug fixed on `main` on 2026-09-29. **Reload
-   and run it twice more.** *Still `0`.*
-
-6. **Open this file in a second, fresh browser window** (so MathJax has not
-   been loaded in it yet), **and press Enter in this sentence as soon as the
-   page appears.** *The equations may appear a moment after the rest of the
-   page — that is MathJax loading — but they do appear, and stay drawn after
-   the Enter.*
+   equation inside itself — fixed twice on `main`, on 2026-09-29 and 2026-10-01.
+   **Reload and run it twice more.** *Still `0`, and every equation on the page
+   is typeset once the page has settled.* A reload is also the check that maths
+   arrives when MathJax has not loaded yet; editing while it is still loading
+   is too quick for a person to do on purpose, so a machine run covers that.

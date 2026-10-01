@@ -124,6 +124,17 @@ function latexSourceOf(root) {
 // stamped, and a save still writes their TeX back. Put back as text before
 // then, the TeX would reach Turndown as prose and be escaped.
 async function renderLatex(container) {
+  // **Under the model core this is the render step's job and nobody else's.**
+  // `renderAfterModel` typesets what each render builds; the load paths go on
+  // calling this as the old core needs them to. On a fresh page that was a
+  // race: MathJax not yet loaded, so the render step's typeset waits for it,
+  // this call looks for stamped maths before that typeset has finished, finds
+  // none, and queues a second pass that lands on the render step's output —
+  // and nests a copy of every equation, the bug `5e6efad` fixed for the old
+  // core. Measured in Firefox and then Blink on 2026-10-01: 15 equations, 30
+  // nested copies, after one reload. Feature-tested, because the suites load
+  // this file without model.js.
+  if (typeof modelCoreEnabled === "function" && modelCoreEnabled()) return;
   if (!typesetLatexRoots(container).length && !containsLatex(container.textContent)) return;
 
   try {

@@ -8304,3 +8304,27 @@ writes the TeX back byte for byte. The editable export loads its own MathJax
 with its own configuration, and relies on that startup pass; it is untouched.
 `lazy-load.js` has no suite, so the browser is the check. `sw.js`'s `VERSION`
 goes to `v1.37`.
+
+## 2026-10-01 — Under the model core, only the render step typesets
+
+Firefox's reload check in `tests/fixtures/format-check.md` found 30 nested
+copies of 15 equations after one reload under `?core=model`, and Blink
+reproduced it. There were two second passes. One was MathJax's own startup
+typeset, a bug on `main` as well, fixed there first in `e735625` and merged.
+The other belonged to this branch: the load paths still call `renderLatex`
+over the whole editor after a model render. On a fresh page that raced the
+render step's typesetting, which was still waiting for MathJax to arrive.
+`renderLatex` looked for stamped maths, found none yet, and queued a pass that
+landed on the render step's output. `renderLatex` now does nothing under the
+model core, where `renderAfterModel` is the one owner of typesetting. Step 2's
+notes in REWRITE.md had called those calls "redundant, harmless", and now say
+they were not.
+
+Checked by machine in Blink. Three reloads of the fixture each gave 15
+equations typeset once, nothing nested, and the render check clean. Then
+MathJax's download was held back by 1.5 s while the document was rendered twice
+in the meantime, and all 15 came out typeset once with nothing nested. That
+covers what the fixture's step 6 asked of a person, pressing Enter in the
+moment MathJax is loading, which nobody can time on purpose. The step is gone,
+and the reload step says what it now covers. `sw.js`'s `VERSION` goes to
+`v1.63`.
