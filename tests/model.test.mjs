@@ -79,7 +79,7 @@ export default function run(check) {
     modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle,
     modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled,
     modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt,
-    modelIsAtomNode, configureMarkdownParser, modelPlaceStops,
+    modelIsAtomNode, configureMarkdownParser, modelPlaceStops, modelInlineSourceRange,
     modelInlineSplice, modelNormaliseTyped, modelInlineTokens,
     modelInsertParagraph, modelMergeBlocks, modelInsertBreak, modelSplitLeaf,
     modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice,
@@ -102,7 +102,7 @@ export default function run(check) {
       " modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle," +
       " modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled," +
       " modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt," +
-      " modelIsAtomNode, configureMarkdownParser, modelPlaceStops," +
+      " modelIsAtomNode, configureMarkdownParser, modelPlaceStops, modelInlineSourceRange," +
       " modelInlineSplice, modelNormaliseTyped, modelInlineTokens," +
       " modelInsertParagraph, modelMergeBlocks, modelInsertBreak, modelSplitLeaf," +
       " modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice," +
@@ -2909,6 +2909,32 @@ export default function run(check) {
     const at1 = modelDomLocate(p, 1);
     check("and offset 1 is still just after the equation",
       at1.node === p && at1.offset === 2);
+  }
+
+  // What a drag inside the document carries (slice 7's step 2): the markdown for
+  // a range of one block, cut from the model rather than read off the clipboard,
+  // after Firefox and Chrome both dropped an equation from a dragged selection.
+  {
+    const leaves = [];
+    for (const path of ORACLE_FILES) {
+      (function walk(b) { if (b.inlines) leaves.push(b); (b.children || []).forEach(walk); })({ children: parse(repoFile(path)).blocks });
+    }
+    const whole = leaves.filter((b) =>
+      modelInlineSourceRange(b, 0, modelInlineText(b.inlines).length, md) === modelInlineSource(b.inlines, md));
+    check(`the whole range of every inline-bearing leaf in the oracle is its own source (${whole.length}/${leaves.length})`,
+      leaves.length > 0 && whole.length === leaves.length);
+
+    const block = parse("Before $e^{i\\pi} + 1 = 0$ to **bold** after.\n").blocks[0];
+    const sourceBefore = modelInlineSource(block.inlines, md);
+    const moved = modelInlineSourceRange(block, 3, 11, md);
+    check(`a range across an equation carries the equation (${JSON.stringify(moved)})`,
+      moved === "ore $e^{i\\pi} + 1 = 0$ to");
+    const marked = modelInlineSourceRange(block, 14, 16, md);
+    check(`a range ending inside a mark carries the mark round what it took (${JSON.stringify(marked)})`,
+      marked === "**ld**");
+    check("and the block it was cut from is untouched",
+      modelInlineSource(block.inlines, md) === sourceBefore && block.source !== null);
+    check("a block with no inline tree carries nothing", modelInlineSourceRange({ inlines: null }, 0, 1, md) === null);
   }
 
   // ------------------------------------------------------------- the metric

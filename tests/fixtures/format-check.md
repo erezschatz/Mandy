@@ -84,7 +84,10 @@ $$\int_0^1 x^2 \, dx = \frac{1}{3}$$
    **Select from the middle of the word before $e^{i\pi} + 1 = 0$ to the middle
    of the word after it, then press on the equation inside the selection and
    drag the selection somewhere else.** *The whole selection moves, equation
-   and all,* exactly as a drag of plain text does.
+   and all, typeset where it lands,* exactly as a drag of plain text does. It
+   lands as selected: drop it just before a word and the selection's last word
+   runs into it, as plain text would. Until 2026-10-01 the equation was lost on
+   the way, in Firefox and Chrome alike.
 
    An equation can also start a line in the middle of a paragraph, after a
    hard break:\

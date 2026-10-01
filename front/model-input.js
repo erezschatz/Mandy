@@ -778,10 +778,19 @@ function modelInputDrop(event) {
     if (at.block === source.from.block && at.offset >= start && at.offset <= end) {
       return modelInputRefuseDrop("dropped onto itself");
     }
+    // **What moves is the model's own content, read before it is taken out**,
+    // not what the engine put on the drag: measured 2026-10-01, Firefox and
+    // Chrome both left an equation out of a dragged selection, so the move
+    // deleted it. See modelInlineSourceRange.
+    const moved = modelInlineSourceRange(source.from.block, start, end, md);
+    if (moved === null || !moved.trim()) return;
     if (modelInlineSplice(source.from.block, start, end, "") === null) return;
     // Only when the two are in the same block does taking the source out move
     // the target; anywhere else the offset still names the same place.
     if (at.block === source.from.block && at.offset > end) at = { block: at.block, offset: at.offset - (end - start) };
+    const landed = modelInsertBlocks(doc, at.block, at.offset, modelParse(moved, md).blocks);
+    if (landed) modelInputRestructure(doc, landed, "insertFromDrop");
+    return;
   }
 
   modelInputPaste(doc, at, data.getData("text/html"), data.getData("text/plain"), "insertFromDrop");

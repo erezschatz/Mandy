@@ -30,7 +30,8 @@ export default function run(check) {
     const calls = {
       splice: [], rerender: [], render: [], announced: [], sourceSplice: [],
       merged: [], pruned: [], split: [], broke: [], emptyItem: [], moved: [], filled: [],
-      parsed: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
+      parsed: [],
+      cut: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
       history: [], refused: [], joined: 0,
     };
     const editor = makeEl("div");
@@ -100,6 +101,11 @@ export default function run(check) {
         modelParse: (markdown) => {
           calls.parsed.push(markdown);
           return { blocks: [{ kind: "paragraph", inlines: [], source: markdown }] };
+        },
+        // What an internal drag carries: the model's own content for the range.
+        modelInlineSourceRange: (b, from, to) => {
+          calls.cut.push({ block: b, from, to });
+          return "from the model";
         },
         modelTextBlocks: (d, parser, text) => {
           calls.textBlocks.push(text);
@@ -681,6 +687,14 @@ export default function run(check) {
         r.calls.splice[0].text === "");
     check(`and the drop offset moves back by what was taken out (${r.calls.inserted[0] && r.calls.inserted[0].offset})`,
       r.calls.inserted.length === 1 && r.calls.inserted[0].offset === 16);
+    // **What moves is the model's own content, cut before the source goes**,
+    // never the drag's clipboard data: Firefox and Chrome both left an equation
+    // out of that, so the move deleted it from the document.
+    check(`what lands is the model's content for the source range (${JSON.stringify(r.calls.parsed)})`,
+      r.calls.cut.length === 1 && r.calls.cut[0].from === 2 && r.calls.cut[0].to === 6 &&
+        r.calls.parsed.length === 1 && r.calls.parsed[0] === "from the model");
+    check("and the drag's own clipboard data is never read",
+      r.calls.sanitised.length === 0 && r.calls.textBlocks.length === 0);
   }
 
   {

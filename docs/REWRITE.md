@@ -4035,6 +4035,16 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             line-ending equation, before a line-starting one, and on each half
             of a mid-line one, every letter landing on the side clicked.
 
+            **And dragging a selection with an equation in it lost the
+            equation**, in Firefox and Chrome, from that same hand run. Slice
+            5's move deleted the source and then inserted what the engine put
+            on the drag, and neither engine's drag data carried the equation.
+            A drag that starts inside the document now moves the model's own
+            content: `modelInlineSourceRange` cuts the range out as markdown
+            before the source is deleted, and that is parsed and inserted
+            through the same path a paste takes. The drag data is read only
+            for a drag from outside.
+
         3.  **Inline marks: bold, italic, strikethrough.** A pure command over a
             block's inline tree, with the range given in model offsets. If every
             leaf in the range carries the mark, the command removes it;

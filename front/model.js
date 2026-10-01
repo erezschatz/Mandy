@@ -4431,6 +4431,27 @@ function modelCloneInlinesInto(nodes, seen) {
   });
 }
 
+/**
+ * The markdown for `[from, to)` of a block's inline tree — what a drag inside
+ * the document carries, slice 7's step 2.
+ *
+ * A drag that starts inside the editor knows exactly what it moves, in model
+ * coordinates, so it moves the model's own content rather than re-reading the
+ * clipboard: Firefox and Chrome both dropped an equation from a dragged
+ * selection on 2026-10-01, measured by hand, and as a move that deleted it from
+ * the document. Markdown rather than the nodes themselves, because the drop
+ * then goes through the same parse every paste does — the tokens come from the
+ * parser, slice 4's rule — and an inline tree's source re-parses to itself,
+ * which the oracle sweep already proves. Works on a clone, since splitting
+ * mutates the nodes it splits. Null for a block with no inline tree.
+ */
+function modelInlineSourceRange(block, from, to, md) {
+  if (!block.inlines) return null;
+  const nodes = modelCloneInlinesInto(block.inlines, new Map());
+  const before = modelInlineSplit(nodes, to).head;
+  return modelInlineSource(modelInlineSplit(before, from).tail, md);
+}
+
 function modelForkBlock(block, parent) {
   block.shared = true;
   const copy = Object.assign({}, block);

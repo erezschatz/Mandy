@@ -8388,3 +8388,34 @@ checks that both listeners are installed, the press on the editor and
 of an equation, and checks that dragging a selection with an equation in it
 still moves the whole selection. REWRITE.md's step 2 records it. `sw.js`'s
 `VERSION` goes to `v1.65`.
+
+## 2026-10-01 — Dragging a selection with an equation in it no longer loses the equation
+
+Found by the new drag step in `tests/fixtures/format-check.md`, in Firefox and
+Chrome alike. Select from inside the word before an equation to inside the word
+after it, drag, drop elsewhere, and only `fore  to` arrived. Because an internal
+drag is a move, the equation was gone from the document altogether. Slice 5's
+drop deleted the source range and then inserted whatever the engine had put on
+the drag, and neither engine's drag data carried the equation. Fed the HTML of
+the same selection directly, the paste path keeps it (`ore $e^{i\pi} + 1 = 0$
+to`, measured in Blink), so the loss is in what the engines put on a drag. Automation
+cannot start a real drag, so that part stays inferred.
+
+A drag that starts inside the document knows exactly what it moves, in model
+coordinates, so it now moves the model's own content and never reads the drag
+data at all. `modelInlineSourceRange` in `model.js` cuts the range out of a
+clone of the block's inline tree as markdown, before the source is deleted. The
+drop parses that and inserts it through `modelInsertBlocks`, the path every
+paste takes, so the tokens still come from the parser. A drag from outside the
+document still reads the drag data, since that is all there is.
+
+Checks: in `model`, the whole range of every inline-bearing leaf in the oracle
+comes back as its own source. Hand cases cover a range across an equation, a
+range ending inside a mark, the source block left untouched, and a block with
+no inline tree carrying nothing. In `model-input`, an internal move inserts the
+model's content for the source range and never reads the drag's clipboard data;
+both fail against the old drop. Driven in Blink through the real drag handlers
+on a real selection, dropped at real screen coordinates with empty drag data:
+the equation arrives typeset, the render check is clean, and a save writes its
+TeX where it landed. The fixture's drag step says what lands and how.
+`sw.js`'s `VERSION` goes to `v1.66`.
