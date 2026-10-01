@@ -8350,7 +8350,7 @@ line to ignore. It also says why a second reload in a row shows no dialog
 despite the red dot: browsers only ask once the page has had a click or a
 keystroke since it loaded.
 
-## 2026-10-01 — A click beside or on an equation puts the caret where it was aimed
+## 2026-10-01 — `c1c58c1` — A click beside or on an equation puts the caret where it was aimed
 
 Chrome's run of `tests/fixtures/format-check.md` under the model core found one
 failure: clicking after an equation that ends a line, then typing, did nothing
