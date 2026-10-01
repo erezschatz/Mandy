@@ -8068,7 +8068,7 @@ question rather than a formality: Gecko is known to leave no room for a caret
 beside an uneditable element at the edge of a line, and the fix has just made
 every equation one.
 
-## 2026-10-01 — Backspace after an equation deletes it in Firefox
+## 2026-10-01 — `f6f3e5d` — Backspace after an equation deletes it in Firefox
 
 Found running `tests/fixtures/format-check.md` in Firefox under the model core,
 in the check added two days ago: one Backspace just after an equation was meant
