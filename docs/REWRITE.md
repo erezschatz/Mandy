@@ -4018,6 +4018,23 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             after a hard break, where the caret at that line's start resolves to
             the end of the break's newline rather than inside the stop.
 
+            **Chrome's hand run then broke the end-of-line half, and the stops
+            were never going to fix it.** A click after an equation that ends a
+            line puts Chrome's caret *inside* MathJax's output, on a glyph
+            (`MJX-C`, offset 0), with the wrapper and the container both
+            uneditable and with every stop on the check page — Firefox did the
+            same until the wrapper went uneditable. And a click *on* an
+            equation moves Chrome's caret nowhere at all. Both are handled in
+            the input layer now, independent of engine and stop:
+            `modelInputLeaveAtom` moves a caret that lands inside an equation
+            to its nearer edge, judged by where the caret sits on screen, and
+            `modelInputPressAtom` does the same for a press on an equation,
+            judged by the click's own x. The press is left to the engine when
+            it lands on an equation already inside the selection, since that is
+            how a drag of the selection starts. Real clicks in Blink: after a
+            line-ending equation, before a line-starting one, and on each half
+            of a mid-line one, every letter landing on the side clicked.
+
         3.  **Inline marks: bold, italic, strikethrough.** A pure command over a
             block's inline tree, with the range given in model offsets. If every
             leaf in the range carries the mark, the command removes it;

@@ -71,9 +71,20 @@ $$\int_0^1 x^2 \, dx = \frac{1}{3}$$
    before $x_1$ and after $y_2$, the first letter lands before $x_1$ and the
    second after $y_2$, and nothing else on the line moves.* **Then
    Ctrl/Cmd+Z twice.** *Both letters go, and the caret comes back before
-   $x_1$.* In Firefox a mouse click before $x_1$ does not place a caret, with or
-   without the stop: `tests/caret-guard-check.html` measured that on
-   2026-10-01. The keyboard reaching it is what the stop is for.
+   $x_1$.*
+
+   **Click on the left half of $x_1$ and type a letter; then click on the right
+   half of $e^{i\pi} + 1 = 0$, in the paragraph above, and type another.** *A
+   click on an equation puts the caret at the edge it is nearer: the first
+   letter lands before $x_1$, the second straight after the equation.* Clicking
+   *beside* $x_1$, in the margin, may still place nothing in Firefox — the
+   engine leaves no room there — which is why clicking the equation itself is
+   the way in.
+
+   **Select from the middle of the word before $e^{i\pi} + 1 = 0$ to the middle
+   of the word after it, then press on the equation inside the selection and
+   drag the selection somewhere else.** *The whole selection moves, equation
+   and all,* exactly as a drag of plain text does.
 
    An equation can also start a line in the middle of a paragraph, after a
    hard break:\

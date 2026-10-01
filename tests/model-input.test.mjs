@@ -38,6 +38,7 @@ export default function run(check) {
     // engines never agreed on. A case that wants a drop supplies `point`.
     editor.ownerDocument = {
       caretPositionFromPoint: () => (point ? { offsetNode: point, offset: 0 } : null),
+      addEventListener() {},
     };
     const block = { kind: "paragraph", inlines: [], source: "x" };
     editor.dispatchEvent = (event) => {
@@ -803,6 +804,9 @@ export default function run(check) {
 
   {
     const root = makeEl("div");
+    // selectionchange fires on the document, not on the editable root.
+    const onDocument = {};
+    root.ownerDocument = { addEventListener: (type, fn) => { onDocument[type] = fn; } };
     const { api } = rig();
     api.modelInputInstall(root);
     check(
@@ -811,7 +815,15 @@ export default function run(check) {
         !!root.listeners.compositionend && !!root.listeners.keydown &&
         !!root.listeners.paste && !!root.listeners.drop &&
         !!root.listeners.dragstart && !!root.listeners.dragend &&
-        !!root.listeners.dragover && !!root.listeners.dragenter,
+        !!root.listeners.dragover && !!root.listeners.dragenter &&
+        !!root.listeners.mousedown,
     );
+    // Slice 7's step 2: a caret that lands inside an equation, or a press on
+    // one, goes to its nearer edge. Where it goes is screen geometry, which only
+    // a browser has, so that half is checked by hand; this pins that both
+    // listeners are there at all.
+    check("a caret landing inside an equation is watched for on the document",
+      typeof onDocument.selectionchange === "function");
+
   }
 }

@@ -843,7 +843,93 @@ function modelPasteMarkdown(text) {
 // flag off this file is inert, and the editor is the one the rest of CLAUDE.md
 // describes.
 
+/**
+ * A caret that lands *inside* an equation moves to the edge it is nearer.
+ *
+ * Slice 7's step 2, measured by hand on 2026-10-01: a click just after an
+ * equation that ends a line puts the caret on one of MathJax's own glyph
+ * elements (`MJX-C`, offset 0) — first in Firefox, until the wrapper was made
+ * uneditable, and then in Chrome even with the wrapper and the container both
+ * uneditable, where no caret stop on `tests/caret-guard-check.html` helped
+ * either. `modelDomOffset` reads any position inside an atom as its front
+ * edge, which is right for a range's start and wrong for this, so a letter
+ * typed there went in front of the equation the user had clicked after.
+ *
+ * So the side comes from where the caret actually is on screen, not from the
+ * DOM: the glyph it sits on is past the equation's midpoint or it is not. That
+ * holds in any engine and for any shape of stop, and a click on an equation
+ * mid-line goes to its nearer edge as well. A selection that is not collapsed
+ * is left alone — dragging across an equation is a real selection of it — and
+ * so is anything during a composition, which owns the text under the caret.
+ */
+function modelInputLeaveAtom() {
+  if (modelInputComposing()) return;
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount || !selection.isCollapsed) return;
+  const anchor = selection.anchorNode;
+  const element = anchor && (anchor.nodeType === 1 ? anchor : anchor.parentElement);
+  const atom = element && element.closest && element.closest("[data-math]");
+  if (!atom || !editor.contains(atom)) return;
+
+  // The glyph the caret sits on, or the element it is inside. A collapsed range
+  // there can measure as an empty rectangle at the origin, so the element's own
+  // box is the reliable one.
+  const at = anchor.nodeType === 1 && anchor.childNodes[selection.anchorOffset]
+    ? anchor.childNodes[selection.anchorOffset]
+    : element;
+  const glyph = (at.nodeType === 1 ? at : element).getBoundingClientRect();
+  modelInputCaretBeside(atom, glyph.left + glyph.width / 2);
+}
+
+// Put the caret at whichever edge of `atom` the screen position `x` is nearer.
+function modelInputCaretBeside(atom, x) {
+  const box = atom.getBoundingClientRect();
+  const after = x > box.left + box.width / 2;
+  const selection = window.getSelection();
+  const parent = atom.parentNode;
+  const index = Array.prototype.indexOf.call(parent.childNodes, atom);
+  const range = document.createRange();
+  const stop = atom.previousSibling;
+  if (after) range.setStart(parent, index + 1);
+  // In front of an equation that starts a line, inside the caret stop, the one
+  // place there Firefox draws a caret — see modelPlaceStops.
+  else if (stop && stop.nodeType === 1 && stop.hasAttribute(MODEL_FILLER_ATTR) && stop.firstChild) {
+    range.setStart(stop.firstChild, stop.firstChild.textContent.length);
+  } else range.setStart(parent, index);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+/**
+ * A press *on* an equation puts the caret beside it, at the nearer edge.
+ *
+ * Measured in Blink on 2026-10-01: clicking an uneditable equation does not
+ * move the caret at all — no `selectionchange` fires — so the next letter
+ * landed wherever the caret already was, somewhere else in the document. The
+ * press is cancelled, which also stops a drag selection starting *on* an
+ * equation; one starting beside it still works, and a press on an equation
+ * already inside the selection is left alone, since that is how a drag of the
+ * selection begins. Shift is left to the engine, since it extends a selection
+ * rather than placing a caret.
+ */
+function modelInputPressAtom(event) {
+  if (event.button !== 0 || event.shiftKey) return;
+  const atom = event.target && event.target.closest && event.target.closest("[data-math]");
+  if (!atom || !editor.contains(atom)) return;
+  // Pressing on an equation that is part of the current selection is how a
+  // drag of that selection starts (slice 5), so it is left to the engine.
+  const selection = window.getSelection();
+  if (selection && selection.rangeCount && !selection.isCollapsed &&
+      selection.getRangeAt(0).intersectsNode(atom)) return;
+  event.preventDefault();
+  editor.focus({ preventScroll: true });
+  modelInputCaretBeside(atom, event.clientX);
+}
+
 function modelInputInstall(root) {
+  root.ownerDocument.addEventListener("selectionchange", modelInputLeaveAtom);
+  root.addEventListener("mousedown", modelInputPressAtom);
   root.addEventListener("beforeinput", modelInputBeforeInput);
   root.addEventListener("compositionstart", modelInputCompositionStart);
   root.addEventListener("compositionend", modelInputCompositionEnd);

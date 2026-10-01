@@ -8349,3 +8349,42 @@ unconfirmed, and it was left there. The fixture now names it as the one console
 line to ignore. It also says why a second reload in a row shows no dialog
 despite the red dot: browsers only ask once the page has had a click or a
 keystroke since it loaded.
+
+## 2026-10-01 — A click beside or on an equation puts the caret where it was aimed
+
+Chrome's run of `tests/fixtures/format-check.md` under the model core found one
+failure: clicking after an equation that ends a line, then typing, did nothing
+useful. On `tests/caret-guard-check.html` no stop gave Chrome a caret there
+either. Reproduced with real clicks in the built-in Blink browser. My earlier
+Blink runs had placed the caret by code, which is why none of them saw it. The
+click puts the caret *inside* MathJax's output, on a glyph element (`MJX-C`,
+offset 0), even with the equation's wrapper and container both uneditable.
+Firefox did the same until this morning's wrapper change. The model reads a
+position inside an atom as its front edge, so the letter went in front of the
+equation. The same run showed a second fault: a click *on* a mid-line equation
+fires no `selectionchange` at all, so the caret stays wherever it was and the
+next letter lands somewhere else in the document.
+
+Both are handled in `model-input.js`, so neither depends on an engine or on the
+shape of a stop. `modelInputLeaveAtom`, on `selectionchange`, moves a collapsed
+caret that has landed inside an equation to the edge it is nearer, judged by
+the screen position of the glyph it sits on. `modelInputPressAtom`, on
+`mousedown`, does the same for a press on an equation, judged by the click's x.
+That press is cancelled, so the editor is focused by hand. It is left to the
+engine when Shift is held, and when the equation is already inside a
+non-collapsed selection, because that is how a drag of the selection starts.
+Both use `modelInputCaretBeside`, which lands a line-starting equation's caret
+inside its stop as before.
+
+Checked with real clicks in Blink, letters typed after each: after a
+line-ending equation, before a line-starting one, and on each half of a mid-line
+one. Every letter landed on the side clicked, and the render check stayed
+clean. One run looked like a failure until the log showed my click had missed:
+the equation had moved, because earlier letters were typed before it. Where the
+caret goes is screen geometry the suites cannot reach. The `model-input` suite
+checks that both listeners are installed, the press on the editor and
+`selectionchange` on the document. Its rig's stand-in document gains an
+`addEventListener` for that. The fixture's edge step now also clicks each half
+of an equation, and checks that dragging a selection with an equation in it
+still moves the whole selection. REWRITE.md's step 2 records it. `sw.js`'s
+`VERSION` goes to `v1.65`.
