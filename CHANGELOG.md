@@ -8248,7 +8248,7 @@ single unwrap check. REWRITE.md's step 2 and stage 2's exit criterion, and
 CLAUDE.md's slice 7 paragraph, say Mermaid is gone. `sw.js`'s `VERSION` goes to
 `v1.61`.
 
-## 2026-10-01 — Plan slice 7's step 10: equations by typing, on probation
+## 2026-10-01 — `a091375` — Plan slice 7's step 10: equations by typing, on probation
 
 Written into `docs/REWRITE.md` before any of it is built. Under the model core,
 typed text is literal by design: a typed `$x^2$` is written to the file as
