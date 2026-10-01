@@ -8336,7 +8336,7 @@ core, run by hand after the five fixes the Firefox runs found along the way.
 Recorded on step 2 in `docs/REWRITE.md`. Safari and Chrome are still to run it,
 and typing an equation waits on them.
 
-## 2026-10-01 — The render check names Firefox's Leave Page error as known noise
+## 2026-10-01 — `3bec074` — The render check names Firefox's Leave Page error as known noise
 
 Firefox's run of `tests/fixtures/format-check.md` passed everywhere, but its
 reload check logged `Error: undefined undefined 1` after **Leave Page** was
