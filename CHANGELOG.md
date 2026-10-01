@@ -8305,7 +8305,7 @@ with its own configuration, and relies on that startup pass; it is untouched.
 `lazy-load.js` has no suite, so the browser is the check. `sw.js`'s `VERSION`
 goes to `v1.37`.
 
-## 2026-10-01 — Under the model core, only the render step typesets
+## 2026-10-01 — `e46f3f5` — Under the model core, only the render step typesets
 
 Firefox's reload check in `tests/fixtures/format-check.md` found 30 nested
 copies of 15 equations after one reload under `?core=model`, and Blink
