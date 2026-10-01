@@ -5643,7 +5643,7 @@ reason for the change, is still to be confirmed by hand.** CLAUDE.md's LaTeX
 bullet says why the container is uneditable. `sw.js`'s `VERSION` goes to
 `v1.35`.
 
-## 2026-10-01 — Mermaid diagrams are removed
+## 2026-10-01 — `981b59e` — Mermaid diagrams are removed
 
 Mermaid came with the project when it was forked, and nothing here ever made it
 something a person could use. A diagram could only be created by typing a
