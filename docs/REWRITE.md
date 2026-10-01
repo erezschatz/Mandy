@@ -3791,7 +3791,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           decision's answer and merged back here, so the two cores already
           agree. Step 4 gives the model its own half.
 
-        **Nine steps, in this order.** The first one shuts doors that are open
+        **Nine steps, in this order, and a tenth added on 2026-10-01** (below
+        the ninth, and on probation). The first one shuts doors that are open
         today; the last is the one a machine cannot run.
 
         1.  **Shut the three doors that are open under the flag.** Found
@@ -4141,6 +4142,77 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             browser's own action away. **That second half is TODO 1.7's own
             measurement** — Gecko on macOS gave the key to its bookmarks sidebar
             on 2026-09-10 — and no script can answer it.
+
+        10. **Equations by typing — planned 2026-10-01, not started; on
+            probation.** Added after the plan above, when Mermaid was removed
+            and the question became whether maths stays at all. Under the
+            model core typed text is literal by design, so a typed `$x^2$` is
+            written to the file as `\$x^2$` — measured — and from stage 4 there
+            would be no way to create an equation in the editor. The old core
+            gets one by accident: the text is saved unescaped and becomes maths
+            when the file is reopened. Decided with the user the same day:
+            **live typing**, not an Insert → Equation dialog.
+
+            **On probation, in so many words.** Maths came with the project
+            when it was forked, it is not why the project exists, and a
+            half-serious LaTeX editor does all of this better for free. If this
+            step turns into a side project, maths goes the way Mermaid went:
+            `$…$` stays as text in the file, the renderer and the stash go, and
+            files are unaffected. **The tripwire, agreed in advance:** more than
+            two rounds of fixes from its hand runs, or a fix that has to reach
+            into the input layer's routing rather than stay in the new
+            functions, and the removal is proposed instead of the next fix.
+
+            The decisions, written before any of it is built:
+
+            - **What counts as an equation is the parser's call, made by the
+              parser's own function.** After a text edit in a block, the text
+              around the caret is asked through `mathSpan` in
+              `markdown-parser.js`, the function that decides it when a file is
+              opened. So typing and reopening cannot disagree, and `$5 and $10`
+              stays prose by the same two rules it always has.
+            - **The decision waits for the character after the closing `$`.**
+              `mathSpan` answers "no" to a closing `$` followed by a digit, and
+              at the very end of the text it cannot see one coming, so it
+              would accept `$5 and $` before the `10` is typed. So a span
+              converts when the next character is typed (and is not a digit),
+              on Enter, or when the caret leaves the block — never on the
+              closing `$` itself.
+            - **The atom's token comes from the parser**, slice 4's rule for
+              atoms: `md.parseInline` of the span's own source, never a token
+              built by hand.
+            - **The conversion is its own undo step**, so Ctrl+Z straight after
+              turns the equation back into the text that was typed. **And it
+              stays declined**: the declined span is remembered by block id and
+              source until that text changes, or the next keystroke would
+              convert it straight back.
+            - **Backspace into an equation reveals its source** rather than
+              deleting it: the atom becomes the text `$…$`, with the caret
+              before the closing `$`, so a typo is fixed by editing and
+              re-forms the equation as soon as the caret leaves the source.
+              This reverses `f6f3e5d`'s one-press delete, deliberately:
+              deleting a whole equation is then select-and-delete, or
+              Backspace through its source. The alternative was revealing the
+              source whenever the caret is beside or inside the equation,
+              which is what Typora and Obsidian do. It is better and much
+              bigger, since every caret move becomes a render, so it is not
+              this step.
+            - **Display maths is the same rule** with `$$` delimiters, in a
+              paragraph of its own.
+            - **Composition is left alone.** A conversion is only ever decided
+              after an ordinary text edit has been applied, never during an
+              IME composition, which owns the text node until it ends.
+
+            **How it is checked.** The decision is pure model work, so most of
+            it runs in the Deno `model` suite against the real markdown-it:
+            every case `mathSpan` has (prices, `\$`, display, a closing `$`
+            then a digit, the end of the text), the token coming from the
+            parser, the round trip from typing to emitted bytes to re-parse,
+            the undo step and the declined span. What only a person can check
+            goes into `format-check.md` and is run in all three engines:
+            typing an equation, a price, Ctrl+Z after a conversion, Backspace
+            revealing the source and the edit re-forming it, and an equation
+            typed at a line's edge, where the caret stops come into play.
 
         **What closes with it.** Stage 2's exit criterion, minus the table,
         which stays refused until stage 3 as it was always going to. TODO 1.7

@@ -8247,3 +8247,27 @@ maths-cache checks and drops the five about diagrams, which are now `main`'s
 single unwrap check. REWRITE.md's step 2 and stage 2's exit criterion, and
 CLAUDE.md's slice 7 paragraph, say Mermaid is gone. `sw.js`'s `VERSION` goes to
 `v1.61`.
+
+## 2026-10-01 — Plan slice 7's step 10: equations by typing, on probation
+
+Written into `docs/REWRITE.md` before any of it is built. Under the model core,
+typed text is literal by design: a typed `$x^2$` is written to the file as
+`\$x^2$` (measured), so from stage 4 there would be no way to create an
+equation at all. The old core only gets one by accident, when the file is
+reopened. Decided with the user: **live typing**, not an Insert → Equation
+dialog. **On probation:** maths is inherited rather than core to the project. If
+the step's hand runs need more than two rounds of fixes, or a fix has to reach
+into the input layer's routing, removal gets proposed in place of the next fix,
+the same way Mermaid went.
+
+The decisions: the parser's own `mathSpan` says what is an equation, so typing
+and reopening cannot disagree. The decision waits for the character after the
+closing `$`, an Enter, or the caret leaving the block, because at the end of
+the text `mathSpan` cannot yet see that `$5 and $` is about to become
+`$5 and $10`. The atom's token comes from the parser. A conversion is its own
+undo step, and stays declined once undone. Backspace into an equation reveals
+its `$…$` source rather than deleting it, which reverses `f6f3e5d`'s
+one-press delete on purpose. Display maths follows the same rule, and
+composition is left alone. It is checked mostly in the Deno `model` suite, since
+the decision is pure model work, and by hand in all three engines through
+`format-check.md`.
