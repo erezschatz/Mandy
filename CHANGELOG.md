@@ -8088,7 +8088,7 @@ asks for, as before. Three checks in the `model` suite, two of which fail
 without the fix. Needs Firefox again: step 4 of the fixture, the Backspace.
 `sw.js`'s `VERSION` goes to `v1.58`.
 
-## 2026-10-01 — A check page for the caret beside an uneditable equation
+## 2026-10-01 — `d53426c` — A check page for the caret beside an uneditable equation
 
 Since `9fe5dd1` every typeset equation is uneditable. Firefox then leaves no
 easy caret position beside one at a line's edge: before an equation that starts
