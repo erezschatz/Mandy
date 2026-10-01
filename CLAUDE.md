@@ -477,6 +477,15 @@ reports each as cancelable. Nothing else — no Windows, no Linux, no Firefox, n
 Safari — so the shipped bindings are provisional, and TODO 4.2 says so. It needs
 no server and no app either.
 
+[tests/caret-guard-check.html](tests/caret-guard-check.html) measures what
+Firefox needs before it will put a caret beside an uneditable equation at the
+very start or end of a line — every typeset equation is uneditable since
+2026-09-29, and measured by hand on 2026-10-01 Gecko then leaves the start
+fiddly and the end unreachable. Four copies of one line: no stop, which is the
+control, then a trailing `<br>`, zero-width characters, and a zero-width
+character with a hidden image and `<br>`. It reports where typed letters landed
+on the page. It needs no server and no app.
+
 ## Making a change
 
 - **Every change lands in [CHANGELOG.md](CHANGELOG.md) as part of the change

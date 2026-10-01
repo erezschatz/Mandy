@@ -8087,3 +8087,23 @@ edge. A position strictly between still clamps to whichever edge the caller
 asks for, as before. Three checks in the `model` suite, two of which fail
 without the fix. Needs Firefox again: step 4 of the fixture, the Backspace.
 `sw.js`'s `VERSION` goes to `v1.58`.
+
+## 2026-10-01 — A check page for the caret beside an uneditable equation
+
+Since `9fe5dd1` every typeset equation is uneditable. Firefox then leaves no
+easy caret position beside one at a line's edge: before an equation that starts
+a line takes a precise click, and after one that ends a line is unreachable.
+Found running `tests/fixtures/format-check.md`. The decision, taken the same
+day, is an invisible caret stop beside such an equation, under the model core
+only: the model draws the DOM, so the stop can be a marked node it owns and a
+save drops. `main` keeps the edge problem until stage 4, and loses no text.
+
+Which kind of stop Firefox accepts is a measurement, so
+[tests/caret-guard-check.html](tests/caret-guard-check.html) makes it one. It
+offers four copies of one line: no stop as the control, a trailing `<br>`,
+zero-width characters either side, and a zero-width character in front with a
+hidden image and a `<br>` behind. The tester clicks at each line's edges and
+types, and the page reports where each letter landed. It replaces a
+forty-line console snippet that was too long to call one. It needs no server.
+Checked in Blink that it loads and typesets all eight equations; the
+measurement itself is Firefox's, by hand.

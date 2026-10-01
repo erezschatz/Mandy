@@ -1,0 +1,130 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Mandy caret-guard check</title>
+
+<!--
+  The question this page exists for: what does Firefox need before it will put
+  a caret beside an uneditable equation at the very start or end of a line?
+
+  Since 2026-09-29 every typeset equation is `contenteditable="false"`, so that
+  the caret steps over it in one press instead of walking into MathJax's own
+  elements. Gecko is known to leave no caret position beside an uneditable
+  inline at a line's edge, and measured by hand on 2026-10-01 it does exactly
+  that: before an equation that starts a line takes a precise click, and after
+  one that ends a line is unreachable. TODO 3.1's slice 7 adds an invisible caret
+  stop there under the model core, and this page measures which kind of stop
+  works before one is built.
+
+  Each line is the same sentence with a different stop. Line A has none and is
+  the control, so a clean result on B, C or D is measured against the bug still
+  being there. Like paste-check.html, it needs no server and no app: open the
+  file directly. It loads MathJax from the CDN the app uses.
+-->
+
+<style>
+  body { font: 14px/1.6 system-ui, sans-serif; margin: 2rem; max-width: 50rem; background: #fff; color: #000; }
+  #target { border: 2px solid #888; border-radius: 6px; padding: 0 1rem; font: 18px/1.6 serif; }
+  #target p { margin: .2rem 0 1rem; }
+  .label { font: 12px monospace; color: #666; margin-top: .8rem; }
+  table { border-collapse: collapse; margin-top: 1rem; width: 100%; }
+  th, td { border: 1px solid #bbb; padding: .4rem .6rem; text-align: left; vertical-align: top; }
+  td { font-family: monospace; }
+  code { background: #eee; padding: 0 .2rem; }
+  #status { color: #666; }
+</style>
+
+<h1>Caret beside an uneditable equation</h1>
+
+<ol>
+  <li><strong>Wait until all eight equations below are drawn.</strong>
+    <em>The line under this list says the equations are ready.</em></li>
+  <li><strong>On each line, click at the very start, before the first equation,
+    and type <code>S</code>. Then click at the very end, after the last
+    equation, and type <code>E</code>.</strong> For each, note whether a blinking
+    caret showed <em>before</em> you typed. <em>Line A, which has no stop,
+    should behave as the fixture did: the start fiddly, the end
+    unreachable.</em></li>
+  <li><strong>Send me the table at the bottom, and your caret notes for each
+    line.</strong> <em>It updates as you type: each row lists a line's parts in
+    order, and an <code>S</code> or <code>E</code> shows up inside the text part
+    where that letter landed.</em></li>
+</ol>
+
+<p id="status">Loading MathJax…</p>
+
+<div id="target" contenteditable="true">
+  <div class="label" contenteditable="false">A — no stop (the control)</div>
+  <p data-variant="A">$x_1$ starts this line, and it ends with one: $y_2$</p>
+  <div class="label" contenteditable="false">B — a &lt;br&gt; after the last equation</div>
+  <p data-variant="B">$x_1$ starts this line, and it ends with one: $y_2$</p>
+  <div class="label" contenteditable="false">C — a zero-width character either side</div>
+  <p data-variant="C">$x_1$ starts this line, and it ends with one: $y_2$</p>
+  <div class="label" contenteditable="false">D — a zero-width character in front, a hidden image and a &lt;br&gt; behind</div>
+  <p data-variant="D">$x_1$ starts this line, and it ends with one: $y_2$</p>
+</div>
+
+<table>
+  <thead><tr><th>Line</th><th>Parts, in order</th></tr></thead>
+  <tbody id="report"></tbody>
+</table>
+
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [["$", "$"]] },
+    startup: { typeset: false },
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<script>
+  const target = document.getElementById("target");
+  const zeroWidth = () => document.createTextNode("​");
+  const hiddenImage = () => {
+    const img = document.createElement("img");
+    img.alt = "";
+    img.style.cssText = "display:inline;width:0;height:0;border:0";
+    return img;
+  };
+
+  // The stops, added after typesetting, since MathJax replaces the source.
+  const STOPS = {
+    A: () => {},
+    B: (p) => p.append(document.createElement("br")),
+    C: (p) => { p.prepend(zeroWidth()); p.append(zeroWidth()); },
+    D: (p) => { p.prepend(zeroWidth()); p.append(hiddenImage(), document.createElement("br")); },
+  };
+
+  function describe(node) {
+    if (node.nodeName === "MJX-CONTAINER") return "[equation]";
+    if (node.nodeName === "BR") return "<br>";
+    if (node.nodeName === "IMG") return "<img>";
+    if (node.nodeType === 3) return JSON.stringify(node.textContent).replace(/​/g, "\\u200B");
+    return "<" + node.nodeName.toLowerCase() + ">";
+  }
+
+  function report() {
+    document.getElementById("report").replaceChildren(...[...target.querySelectorAll("p")].map((p) => {
+      const row = document.createElement("tr");
+      const name = document.createElement("td");
+      name.textContent = p.dataset.variant;
+      const parts = document.createElement("td");
+      parts.textContent = [...p.childNodes].map(describe).join("  ");
+      row.append(name, parts);
+      return row;
+    }));
+  }
+
+  MathJax.startup.promise
+    .then(() => MathJax.typesetPromise([target]))
+    .then(() => {
+      // What the app does to every typeset equation since 2026-09-29.
+      for (const eq of target.querySelectorAll("mjx-container")) eq.setAttribute("contenteditable", "false");
+      for (const p of target.querySelectorAll("p")) STOPS[p.dataset.variant](p);
+      document.getElementById("status").textContent =
+        `Equations ready: ${target.querySelectorAll("mjx-container").length} of 8 drawn.`;
+      report();
+      target.addEventListener("input", report);
+    })
+    .catch((error) => {
+      document.getElementById("status").textContent = "MathJax did not load: " + error.message;
+    });
+</script>
