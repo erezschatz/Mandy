@@ -134,36 +134,6 @@ async function generatePDF() {
     }
   });
 
-  // Fix Mermaid diagram scaling for PDF
-  const mermaidWrappers = element.querySelectorAll(".mermaid-wrapper");
-  mermaidWrappers.forEach((wrapper) => {
-    wrapper.style.background = "#ffffff";
-    wrapper.style.padding = "10px";
-    wrapper.style.margin = "10px 0";
-    wrapper.style.textAlign = "center";
-    wrapper.style.overflow = "visible";
-
-    const svg = wrapper.querySelector("svg");
-    if (svg) {
-      // Get original dimensions
-      const viewBox = svg.getAttribute("viewBox");
-      const originalWidth = svg.getAttribute("width");
-      const originalHeight = svg.getAttribute("height");
-
-      // Set max width to fit page and maintain aspect ratio
-      svg.style.maxWidth = "100%";
-      svg.style.height = "auto";
-      svg.style.display = "block";
-      svg.style.margin = "0 auto";
-
-      // Remove any fixed dimensions that might cause overflow
-      if (originalWidth && parseFloat(originalWidth) > 600) {
-        svg.setAttribute("width", "100%");
-        svg.removeAttribute("height");
-      }
-    }
-  });
-
   // Add to DOM temporarily
   wrapper.appendChild(element);
   document.body.appendChild(wrapper);

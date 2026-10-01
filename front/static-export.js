@@ -16,15 +16,6 @@ const DOC_THEME_SCRIPT =
   ".matches?'dark':'light');" +
   DOC_CLOSE;
 
-// Mermaid is not shipped with the document, so its diagrams keep the light
-// palette they were rendered with. On a dark page they would otherwise be dark
-// text on a dark card, so give them their own light backdrop.
-const DOC_DIAGRAM_CSS = `
-      [data-theme="dark"] .mermaid-wrapper {
-        background: #ffffff;
-        border-color: #d0d0d0;
-      }`;
-
 // The exported page is a document: drop the app chrome and the editor's own
 // viewport-filling geometry, and let the content set the page height.
 //
@@ -131,13 +122,6 @@ function documentBody() {
     }
   }
 
-  for (const source of clone.querySelectorAll(".mermaid-source")) {
-    source.remove();
-  }
-  for (const wrapper of clone.querySelectorAll(".mermaid-wrapper")) {
-    wrapper.removeAttribute("contenteditable");
-  }
-
   return clone.innerHTML;
 }
 
@@ -182,7 +166,6 @@ onToolbarAction("export-html", async () => {
     <style>
 ${cssContent}
 ${DOC_LAYOUT_CSS}
-${DOC_DIAGRAM_CSS}
 ${mathJaxStyles()}
     </style>
 </head>

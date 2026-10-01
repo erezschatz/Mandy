@@ -39,8 +39,8 @@ Marky was where this started. Mandy is where it learned to give your files back 
 - **Export as HTML** - Generate a standalone, self-contained HTML page of the document alone. If the outline sidebar is open, the exported page carries a table of contents of its own
 - **Export as Editable** - Generate an HTML file with the editor bundled in, so recipients can modify it directly in their browser and send it back to you. No markdown knowledge required at their end. The file is completely self-contained - one HTML file that runs entirely in the browser, with nothing to install and no sign-up - and fully capable: they can export it to markdown, PDF, DOCX or HTML, and re-export another editable copy to pass along
 - **Export as PDF** - Generate professional, print-ready PDF documents with one click. Images are automatically optimized to ensure reasonable file sizes while maintaining quality
-- **Export as DOCX** - Generate a Word document with headings, tables and formatting intact. Mermaid
-  diagrams are embedded as images; LaTeX comes through as plain text rather than rendered math
+- **Export as DOCX** - Generate a Word document with headings, tables and formatting intact. LaTeX
+  comes through as plain text rather than rendered math
 
 ### What You Can Format
 
@@ -51,18 +51,7 @@ Marky was where this started. Mandy is where it learned to give your files back 
 - **Tables** - Organize data in structured tables
 - **Links & Images** - Add hyperlinks and embed images
 - **Blockquotes** - Highlight quotes or important notes
-- **Mermaid** diagrams
 - **Latex** math formulas
-
-### Mermaid examples
-
-```mermaid
-  graph TD;
-      A-->B;
-      A-->C;
-      B-->D;
-      C-->D;
-```
 
 ### LaTeX examples
 ```latex
@@ -215,21 +204,20 @@ caches it on first run, so the first `npm run serve` on a new machine needs
 network access; after that it runs from Deno's cache. Everything else the server
 uses is `node:fs`, `node:path` and `node:os`.
 
-**Frontend** — no framework, but seven libraries from CDN, version-pinned:
+**Frontend** — no framework, but six libraries from CDN, version-pinned:
 
 | Library | Loaded | For |
 | --- | --- | --- |
 | markdown-it 13 | eagerly | parsing markdown on the way in |
 | Turndown 7 | eagerly | serialising back to markdown on the way out |
-| Mermaid 11 | on first diagram | rendering fenced `mermaid` blocks |
 | MathJax 3 | on first equation | rendering `$…$` / `$$…$$` |
 | html2pdf 0.10 | on first PDF export | PDF |
 | docx 7.1 | on first DOCX export | building the Word file |
 | FileSaver 2 | on first DOCX export | handing it to the browser |
 
-The five lazy ones load through the `ensure*` loaders in
-[front/lazy-load.js](front/lazy-load.js) — Mermaid alone is 3.4 MB, so none of
-them are paid for unless used. The service worker caches cross-origin URLs
+The four lazy ones load through the `ensure*` loaders in
+[front/lazy-load.js](front/lazy-load.js) — MathJax alone is over 1 MB, so none
+of them are paid for unless used. The service worker caches cross-origin URLs
 cache-first (they are immutable at those versions), so after one visit the
 editor boots offline; a *first* visit still needs the network.
 

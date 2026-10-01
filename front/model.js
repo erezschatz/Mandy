@@ -2226,14 +2226,13 @@ function modelRerenderBlock(root, block, md, selection = null, env = {}) {
 }
 
 /**
- * Hand what a render just built to Mermaid and MathJax, which draw over
- * markdown-it's fence and `<span data-math>` — slice 7's step 2.
+ * Hand what a render just built to MathJax, which typesets over markdown-it's
+ * `<span data-math>` — slice 7's step 2. It handed it to Mermaid too, until
+ * diagrams were removed on 2026-10-01.
  *
  * **After the build and before the selection**, so the caret is mapped onto the
- * DOM the reader will see rather than onto a `<pre>` about to be replaced. An
- * equation is one atom in both states, so a caret beside one maps the same
- * either way; a diagram's wrapper keeps its fence's `data-block`, so the block
- * is still found.
+ * DOM the reader will see. An equation is one atom whether typeset or not, so a
+ * caret beside one maps the same either way.
  *
  * Feature-tested, the way `renderOutline` is: `renderers.js` is the app's, and
  * `front/input-check.html` loads the model without it, as does every suite.

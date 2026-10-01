@@ -1856,7 +1856,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
     The exit criterion is the estimate table's: **everything the app does
     today, on the new core** — undo, the thirteen formats, lists including the
-    two hand-rolled behaviours, paste, links, Mermaid and MathJax. What it
+    two hand-rolled behaviours, paste, links, and MathJax — Mermaid too, until
+    diagrams were removed on 2026-10-01. What it
     pointedly does not include is the save path. At the end of this stage
     `file-api.js` still reads `editor.innerHTML`, Turndown still serialises it,
     and a save still goes through `indexMarkdownBlocks` and
@@ -3832,7 +3833,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             untouched, no `input` fires and no dialog opens; under
             `?core=legacy` the same actions still edit.
 
-        2.  **Mermaid and MathJax after a render.** `modelRender` and
+        2.  **Mermaid and MathJax after a render.** *(Mermaid was removed on
+            2026-10-01, on `main` first and merged here; the diagram half of
+            what follows is history, and its code is gone.)* `modelRender` and
             `modelRerenderBlock` hand what they built to the two renderers,
             scoped to the new subtree rather than the whole editor. Three things
             to measure before choosing, because each one changes the design:

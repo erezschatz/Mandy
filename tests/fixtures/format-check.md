@@ -5,7 +5,8 @@ app, follow the steps, and edit the paragraphs written for each one. **Bold** is
 what you do; *italics* is what should (or should not) happen.
 
 It grows with TODO 3.1's slice 7: each step that needs a person adds its
-section here. Today it holds step 2's, the diagrams and the maths.
+section here. Today it holds step 2's, the maths. (It held diagrams too until
+Mermaid was removed on 2026-10-01.)
 
 ## Before you start
 
@@ -16,11 +17,8 @@ section here. Today it holds step 2's, the diagrams and the maths.
 2. **Open the browser console and run `modelVerifySetEnabled(true)`.**
    Throughout, *the console stays free of `[model] render diverged` warnings*.
    One appearing is a failure, whichever step it came in.
-3. **File → Open this file** (`tests/fixtures/format-check.md`). *The
-   console shows `[Mermaid] Render error: Error: Parse error on line 2`, once
-   or twice.* That is expected: it is Mermaid rejecting the broken diagram step
-   8 runs on, and Open asks for it twice before the first answer is back. It
-   is the only error that should appear anywhere in this protocol.
+3. **File → Open this file** (`tests/fixtures/format-check.md`). *The console
+   shows no errors, here or anywhere in this protocol.*
 
 **Never save over this file.** It is the pristine copy every run starts from.
 To start again, use **File → Reload** and choose to discard.
@@ -28,32 +26,23 @@ To start again, use **File → Reload** and choose to discard.
 "Ctrl/Cmd" means Cmd on a Mac and Ctrl elsewhere. Redo is Ctrl/Cmd+Shift+Z, or
 Ctrl+Y.
 
-## Diagrams and maths survive a render (step 2)
+## Maths survives a render (step 2)
 
 The model core draws the document again after every edit — all of it on Enter,
 undo and paste, one block on an ordinary keystroke. Until step 2 that took
-every diagram back to its code and every equation back to its TeX. What is
-checked here is that they stay drawn, and never show their source even for an
-instant.
+every equation back to its TeX. What is checked here is that equations stay
+typeset, and never show their source even for an instant.
 
-The diagram and the display equation this section runs on:
-
-```mermaid
-graph TD
-    A[Open] --> B{Edited?}
-    B -->|yes| C[Save]
-    B -->|no| D[Close]
-```
+The display equation this section runs on:
 
 $$\int_0^1 x^2 \, dx = \frac{1}{3}$$
 
-1. **Wait until the diagram and both equations on this page have been drawn,
-   then click at the end of this sentence and press Enter three times.** *The
-   diagram and the equations stay drawn throughout, and you never see the
-   diagram's code or a `$` sign, not even as a flicker.*
+1. **Wait until the equations on this page have been typeset, then click at the
+   end of this sentence and press Enter three times.** *The equations stay
+   typeset throughout, and you never see a `$` sign, not even as a flicker.*
 
 2. **Press Ctrl/Cmd+Z three times, then Ctrl/Cmd+Shift+Z three times.**
-   *Same: everything stays drawn, and the empty paragraphs come and go.*
+   *Same: every equation stays typeset, and the empty paragraphs come and go.*
 
 3. This paragraph holds an inline equation, $e^{i\pi} + 1 = 0$, in the middle
    of a sentence. **Click just after the equation and type a few letters, then
@@ -81,33 +70,24 @@ $$\int_0^1 x^2 \, dx = \frac{1}{3}$$
    without the stop: `tests/caret-guard-check.html` measured that on
    2026-10-01. The keyboard reaching it is what the stop is for.
 
-5. **Switch the theme with the sun/moon toggle, then press Enter somewhere
-   in this sentence and Ctrl/Cmd+Z it away.** *The diagram redraws in the new
-   theme's colours when you toggle, and keeps them through the Enter and the
-   undo — it does not flash back to the old theme.*
+   An equation can also start a line in the middle of a paragraph, after a
+   hard break:\
+   $z_3$ starts this second line.
 
-6. **Reload the page (not File → Reload — the browser's own), let it finish,
+   **Click just after $z_3$, press Left once, and type a letter.** *A caret
+   shows before $z_3$ and the letter lands there.* This is the one edge the
+   machine runs did not reach, so if the letter lands anywhere else, or the
+   caret is not drawn, note what happened.
+
+5. **Reload the page (not File → Reload — the browser's own), let it finish,
    and run this in the console:**
    `document.querySelectorAll('#editor mjx-container mjx-container').length`
    *It prints `0`.* Anything else means a reload has nested a copy of an
    equation inside itself — the bug fixed on `main` on 2026-09-29. **Reload
    and run it twice more.** *Still `0`.*
 
-7. **Open this file in a second, fresh browser window** (so MathJax has not
+6. **Open this file in a second, fresh browser window** (so MathJax has not
    been loaded in it yet), **and press Enter in this sentence as soon as the
    page appears.** *The equations may appear a moment after the rest of the
    page — that is MathJax loading — but they do appear, and stay drawn after
    the Enter.*
-
-A broken diagram, for the last step:
-
-```mermaid
-graph TD
-    A --> -->
-```
-
-8. **Press Enter at the end of this sentence.** *The broken diagram above
-   shows `Mermaid Error:` followed by Mermaid's own message, and its source
-   below it — both before and after the Enter — and the console gains no new
-   `[Mermaid] Render error` line.* The error is kept from the first attempt;
-   one more line on an Enter means it is being drawn again every time.
