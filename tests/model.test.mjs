@@ -2876,6 +2876,8 @@ export default function run(check) {
     p = el("p", [makeText("a "), eq(), makeText(" b")]);
     modelPlaceStops([p], doc);
     check(`an equation mid-line gets nothing (${shape(p)})`, shape(p) === '"a " [eq] " b"');
+    check("but every equation's wrapper is uneditable, so a click beside one cannot land inside it",
+      p.childNodes[1].getAttribute("contenteditable") === "false");
 
     // markdown-it renders a hard break as <br>\n, so an equation after one
     // starts a line, and one right before one already has its <br>.

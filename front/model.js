@@ -2123,6 +2123,16 @@ function modelPlaceStops(roots, document) {
 
   leaves.forEach((leaf, i) => {
     if (!(leaf.nodeType === 1 && leaf.hasAttribute(MATH_SPAN_ATTR))) return;
+    // **The wrapper is uneditable too, not only MathJax's container inside it.**
+    // Measured in Firefox on 2026-10-01: with the wrapper editable, a click after
+    // an equation that ends a line put the caret *inside* MathJax's output, on a
+    // glyph element (`MJX-C`, offset 0), and the model, which reads any position
+    // inside an atom as its front edge, typed the letter before the equation.
+    // The check page that measured the stops had no wrapper — the uneditable
+    // container sat directly in the line — and there the same click worked. The
+    // wrapper is an atom to the model, one character never edited inside, so
+    // nothing is lost by telling the engine so.
+    leaf.setAttribute("contenteditable", "false");
     let before = i - 1;
     while (blank(leaves[before])) before--;
     let after = i + 1;

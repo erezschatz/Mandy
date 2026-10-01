@@ -8159,3 +8159,26 @@ is clean, and a save of the untouched fixture is the file's own length with no
 zero-width character. Not measured: an equation straight after a hard break.
 The fixture's edge step now says what was measured: the keyboard, not the
 mouse, reaches the start. `sw.js`'s `VERSION` goes to `v1.59`.
+
+## 2026-10-01 — The equation's wrapper is uneditable too, so a click after one lands after it
+
+In Firefox, clicking after an equation that ends a line and typing put the
+letter in front of the equation. Logged by hand: Firefox had placed the caret
+*inside* MathJax's output, on a glyph element (`MJX-C`, offset 0). The model
+reads any position inside an atom as its front edge, so the letter went in
+front. The check page that measured the caret stops had shown the same click
+working, and the difference was one level of nesting. There, MathJax's
+uneditable container sat directly in the line. In the app it sits inside the
+`<span data-math>` wrapper, which was still editable, so the click landed in the
+editable wrapper and Firefox descended from there.
+
+`modelPlaceStops` now marks every equation's wrapper `contenteditable="false"`
+as well, which gives the app the shape the check page measured. The wrapper is
+an atom to the model, one character never edited inside, so nothing is lost.
+Model core only, since `main` has no wrapper. One check in `model`, which fails
+without the attribute. Driven in Blink, since an uneditable wrapper changes
+what every engine does beside an equation: typing after an equation mid-line
+and at a line's end, Left crossing it in one press, and Delete before it and
+Backspace after it each deleting it whole. The render check was clean
+throughout. Firefox has to confirm the click. `sw.js`'s `VERSION` goes to
+`v1.60`.
