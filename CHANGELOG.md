@@ -8108,7 +8108,7 @@ forty-line console snippet that was too long to call one. It needs no server.
 Checked in Blink that it loads and typesets all eight equations; the
 measurement itself is Firefox's, by hand.
 
-## 2026-10-01 — Firefox's caret at a line's edge, measured, and the plan for it
+## 2026-10-01 — `2d781e8` — Firefox's caret at a line's edge, measured, and the plan for it
 
 `tests/caret-guard-check.html` answered the question it was written for. **The
 end of a line:** with nothing after a trailing equation there is no caret and no
