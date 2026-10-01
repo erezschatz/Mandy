@@ -8160,7 +8160,7 @@ zero-width character. Not measured: an equation straight after a hard break.
 The fixture's edge step now says what was measured: the keyboard, not the
 mouse, reaches the start. `sw.js`'s `VERSION` goes to `v1.59`.
 
-## 2026-10-01 — The equation's wrapper is uneditable too, so a click after one lands after it
+## 2026-10-01 — `82022e7` — The equation's wrapper is uneditable too, so a click after one lands after it
 
 In Firefox, clicking after an equation that ends a line and typing put the
 letter in front of the equation. Logged by hand: Firefox had placed the caret
