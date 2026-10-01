@@ -8420,7 +8420,7 @@ the equation arrives typeset, the render check is clean, and a save writes its
 TeX where it landed. The fixture's drag step says what lands and how.
 `sw.js`'s `VERSION` goes to `v1.66`.
 
-## 2026-10-01 — Copy and cut keep an equation in what they carry
+## 2026-10-01 — `4b5f384` — Copy and cut keep an equation in what they carry
 
 Found by hand right after the drag fix, in Firefox and Chrome alike: copying or
 cutting a selection with an equation in it left the equation out of what was
