@@ -3912,6 +3912,13 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             was held back by 1.5 s, each typesetting all 15 equations exactly
             once.
 
+            **Firefox: clean, 2026-10-01**, every step of
+            `tests/fixtures/format-check.md` as it now stands, after the five
+            fixes its runs found: the caret walking into MathJax's output,
+            Backspace after an equation, the caret stops at a line's edge, the
+            click landing inside the wrapper, and the nested copies on reload.
+            Safari and Chrome are still to run it.
+
             Nine checks in the `latex` suite: a cached diagram in the same task
             with its block id, a second copy of a still-standing drawing drawn
             afresh, a late render drawing nothing, a rejection cached with its

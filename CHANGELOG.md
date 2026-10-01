@@ -8328,3 +8328,10 @@ covers what the fixture's step 6 asked of a person, pressing Enter in the
 moment MathJax is loading, which nobody can time on purpose. The step is gone,
 and the reload step says what it now covers. `sw.js`'s `VERSION` goes to
 `v1.63`.
+
+## 2026-10-01 — The render check is clean in Firefox
+
+Every step of `tests/fixtures/format-check.md` passes in Firefox under the model
+core, run by hand after the five fixes the Firefox runs found along the way.
+Recorded on step 2 in `docs/REWRITE.md`. Safari and Chrome are still to run it,
+and typing an equation waits on them.
