@@ -8419,3 +8419,32 @@ on a real selection, dropped at real screen coordinates with empty drag data:
 the equation arrives typeset, the render check is clean, and a save writes its
 TeX where it landed. The fixture's drag step says what lands and how.
 `sw.js`'s `VERSION` goes to `v1.66`.
+
+## 2026-10-01 — Copy and cut keep an equation in what they carry
+
+Found by hand right after the drag fix, in Firefox and Chrome alike: copying or
+cutting a selection with an equation in it left the equation out of what was
+pasted, and a cut deleted it from the document too. Both engines serialise the
+selection themselves, and the uneditable equation does not survive that, which
+is the same loss the drag had.
+
+Under the model core, `modelInputClipboard` in `model-input.js` now handles
+`copy` and `cut` itself. The HTML it writes is a copy of the selected DOM, which
+keeps the equation, stamp and all. The paste path already turns that back into
+`$…$`, and paragraphs and list items keep their structure. The invisible caret
+stops are dropped. The plain text shows each equation as its `$…$` source rather
+than MathJax's glyph text, with line breaks taken from `innerText` measured on
+an off-screen copy. A cut then deletes through the model, the way Backspace over
+the same selection does, announced as `deleteByCut` so it is its own undo step.
+The Edit menu's Cut and Copy still do nothing under the model core; they are the
+keyboard-and-menus step's, later in slice 7.
+
+Driven in Blink with real `copy`, `cut` and `paste` events carrying a real
+`DataTransfer`. A copy across an equation pasted elsewhere arrived as `ore ￼ to`
+with the equation typeset, and its plain text read `ore $e^{i\pi} + 1 = 0$ to`.
+A cut across two list items carried both, the second's equation included, and
+merged the two items in the model, with the render check clean throughout. The
+`model-input` suite checks that both listeners are installed. That run also
+turned up a save-path bug that is not this one's: a list whose last item has
+been deleted saves with the paragraph after it glued onto the list. It is in
+the old core too, and is its own entry.

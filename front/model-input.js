@@ -936,9 +936,68 @@ function modelInputPressAtom(event) {
   modelInputCaretBeside(atom, event.clientX);
 }
 
+/**
+ * Copy and cut write the clipboard themselves — slice 7's step 2.
+ *
+ * Measured by hand on 2026-10-01: copying or cutting a selection with an
+ * equation in it, in Firefox and in Chrome, left the equation out of what was
+ * pasted — and a cut deleted it from the document. The engines serialise the
+ * selection themselves and the uneditable equation does not survive that, the
+ * same loss a drag had. A copy of the selected DOM does keep it, stamp and all,
+ * and the paste path already turns that back into `$…$` (measured in Blink), so
+ * that is what goes on the clipboard as HTML: paragraphs and list items keep
+ * their structure, which a copy out of the model would have to rebuild. The
+ * caret stops go, being nothing. The plain half shows each equation as its
+ * `$…$` source rather than MathJax's glyph text, and keeps line breaks by
+ * measuring `innerText` on a copy placed off screen.
+ *
+ * A cut then deletes through the model, the way Backspace over the same
+ * selection would, announced as `deleteByCut` so it is its own undo step.
+ */
+function modelInputClipboard(event, cut) {
+  const doc = modelCurrentDocument();
+  if (!doc || modelInputComposing() || !event.clipboardData) return;
+  const live = window.getSelection();
+  if (!live || !live.rangeCount || live.isCollapsed) return;
+  const range = live.getRangeAt(0);
+  if (!editor.contains(range.commonAncestorContainer)) return;
+
+  const holder = document.createElement("div");
+  holder.appendChild(range.cloneContents());
+  for (const stop of holder.querySelectorAll(`[${MODEL_FILLER_ATTR}]`)) stop.remove();
+  const html = holder.innerHTML;
+  for (const equation of holder.querySelectorAll("[data-math]")) {
+    const typeset = equation.querySelector("mjx-container[data-tex]");
+    const source = !typeset ? equation.textContent
+      : typeset.getAttribute("data-display") === "block"
+        ? `$$${typeset.getAttribute("data-tex")}$$`
+        : `$${typeset.getAttribute("data-tex")}$`;
+    equation.replaceWith(document.createTextNode(source));
+  }
+  holder.style.cssText = "position:fixed;left:-99999px;top:0;white-space:pre-wrap";
+  document.body.appendChild(holder);
+  const text = holder.innerText;
+  holder.remove();
+
+  event.preventDefault();
+  event.clipboardData.setData("text/html", html);
+  event.clipboardData.setData("text/plain", text);
+  if (!cut) return;
+
+  const span = modelInputSpan({}, doc);
+  if (!span || span.collapsed) return;
+  const landed = modelInputDelete(doc, modelInputRetarget(doc, span));
+  if (!landed) return;
+  const at = { block: landed.block, offset: landed.offset };
+  if (landed.structural) modelInputRestructure(doc, at, "deleteByCut");
+  else modelInputShow(doc, landed.block, at, "deleteByCut");
+}
+
 function modelInputInstall(root) {
   root.ownerDocument.addEventListener("selectionchange", modelInputLeaveAtom);
   root.addEventListener("mousedown", modelInputPressAtom);
+  root.addEventListener("copy", (event) => modelInputClipboard(event, false));
+  root.addEventListener("cut", (event) => modelInputClipboard(event, true));
   root.addEventListener("beforeinput", modelInputBeforeInput);
   root.addEventListener("compositionstart", modelInputCompositionStart);
   root.addEventListener("compositionend", modelInputCompositionEnd);

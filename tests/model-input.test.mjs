@@ -830,7 +830,7 @@ export default function run(check) {
         !!root.listeners.paste && !!root.listeners.drop &&
         !!root.listeners.dragstart && !!root.listeners.dragend &&
         !!root.listeners.dragover && !!root.listeners.dragenter &&
-        !!root.listeners.mousedown,
+        !!root.listeners.mousedown && !!root.listeners.copy && !!root.listeners.cut,
     );
     // Slice 7's step 2: a caret that lands inside an equation, or a press on
     // one, goes to its nearer edge. Where it goes is screen geometry, which only
