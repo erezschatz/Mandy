@@ -8272,7 +8272,7 @@ composition is left alone. It is checked mostly in the Deno `model` suite, since
 the decision is pure model work, and by hand in all three engines through
 `format-check.md`.
 
-## 2026-10-01 — Typing an equation is built before the formats
+## 2026-10-01 — `b81b35c` — Typing an equation is built before the formats
 
 Slice 7's step 10, typing an equation, is on probation: if it turns into a side
 project, maths is removed. So it is cheaper to find out before the remaining
