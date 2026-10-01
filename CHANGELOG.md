@@ -5680,3 +5680,25 @@ the three checks about it. The `tabs` suite's failing-render case now fails
 through `renderLatex`, the renderer Open still calls, so it still exercises the
 same `finally`. CLAUDE.md, MARKDOWN.md and the load-order notes say what is
 left. `sw.js`'s `VERSION` goes to `v1.36`.
+
+## 2026-10-01 — A fresh page no longer typesets every equation twice
+
+Found by the reload check in `rewrite`'s render fixture, run by hand in Firefox,
+and then reproduced in this core. MathJax's default is to typeset the whole
+page by itself as soon as it starts, and the app always typesets explicitly
+straight afterwards with `renderLatex`. On a fresh page whose autosave held
+maths with its TeX still raw, which is what an edit before the first typeset
+leaves, MathJax's own pass got there first. `renderLatex` then found that
+output unstamped, so it typeset it again, and the second pass nested a copy of
+every equation inside its own assistive MathML. Measured in Blink: three
+equations, three nested copies, after one reload. `5e6efad` never saw it,
+because its reload test restored maths that was already typeset and stamped,
+which `renderLatex` puts back to source first.
+
+`ensureMathJax` now sets `startup: { typeset: false }`, so MathJax only ever
+typesets when the app asks. Two fresh reloads of the same document gave three
+equations, each typeset once and stamped, nothing nested, and a save that
+writes the TeX back byte for byte. The editable export loads its own MathJax
+with its own configuration, and relies on that startup pass; it is untouched.
+`lazy-load.js` has no suite, so the browser is the check. `sw.js`'s `VERSION`
+goes to `v1.37`.
