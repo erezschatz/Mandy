@@ -8128,7 +8128,7 @@ that lets the model ignore it, and the check page had not tested it, so it gains
 line E: the stop exactly as the model will build it. Checked in Blink that the
 page now draws all ten equations.
 
-## 2026-10-01 — Firefox's caret reaches both sides of an equation at a line's edge
+## 2026-10-01 — `9f1263b` — Firefox's caret reaches both sides of an equation at a line's edge
 
 The plan written earlier today, built. Under the model core an equation that
 starts a line now has a zero-width character in a `<span data-filler>` in front
