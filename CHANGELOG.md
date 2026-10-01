@@ -5681,7 +5681,7 @@ through `renderLatex`, the renderer Open still calls, so it still exercises the
 same `finally`. CLAUDE.md, MARKDOWN.md and the load-order notes say what is
 left. `sw.js`'s `VERSION` goes to `v1.36`.
 
-## 2026-10-01 — A fresh page no longer typesets every equation twice
+## 2026-10-01 — `e735625` — A fresh page no longer typesets every equation twice
 
 Found by the reload check in `rewrite`'s render fixture, run by hand in Firefox,
 and then reproduced in this core. MathJax's default is to typeset the whole
