@@ -18,7 +18,12 @@ Mermaid was removed on 2026-10-01.)
    Throughout, *the console stays free of `[model] render diverged` warnings*.
    One appearing is a failure, whichever step it came in.
 3. **File → Open this file** (`tests/fixtures/format-check.md`). *The console
-   shows no errors, here or anywhere in this protocol.*
+   shows no errors, here or anywhere in this protocol* — with one known
+   exception: in Firefox, choosing **Leave Page** on the unsaved-changes dialog
+   during a reload can log `Error: undefined undefined 1`. It happens under
+   `?core=legacy` too, so it is not the model core's, and it changes nothing in
+   the document; ignore it. Reloading again straight away shows no dialog at
+   all: browsers only ask once you have clicked or typed since the page loaded.
 
 **Never save over this file.** It is the pristine copy every run starts from.
 To start again, use **File → Reload** and choose to discard.

@@ -8335,3 +8335,17 @@ Every step of `tests/fixtures/format-check.md` passes in Firefox under the model
 core, run by hand after the five fixes the Firefox runs found along the way.
 Recorded on step 2 in `docs/REWRITE.md`. Safari and Chrome are still to run it,
 and typing an equation waits on them.
+
+## 2026-10-01 — The render check names Firefox's Leave Page error as known noise
+
+Firefox's run of `tests/fixtures/format-check.md` passed everywhere, but its
+reload check logged `Error: undefined undefined 1` after **Leave Page** was
+chosen on the unsaved-changes dialog. Nothing in `front/`, including the service
+worker, writes an error in that shape, and Blink logs nothing like it over the
+same reloads. Run by hand under `?core=legacy`, the same sequence produced the
+same error, so it is not the model core's. The likeliest source is Firefox
+reporting a request the departing page still had in flight, but that is
+unconfirmed, and it was left there. The fixture now names it as the one console
+line to ignore. It also says why a second reload in a row shows no dialog
+despite the red dot: browsers only ask once the page has had a click or a
+keystroke since it loaded.
