@@ -56,6 +56,18 @@ async function ensureMathJax() {
       options: {
         skipHtmlTags: ["script", "noscript", "style", "textarea", "pre", "code"],
       },
+      // **MathJax must not typeset the page by itself on load.** Its default
+      // is to typeset the whole document as soon as it starts, and this app
+      // always typesets explicitly straight afterwards — so on a fresh page,
+      // where the document arrived with its TeX still raw, MathJax's own pass
+      // got there first, the app's pass found the result unstamped, typeset it
+      // again, and nested a copy of every equation inside itself through the
+      // assistive MathML. Measured 2026-10-01: three equations, three nested
+      // copies, after one reload. `5e6efad` never saw it, because its reload
+      // test restored maths that was already typeset, which `renderLatex` puts
+      // back to source first. The editable export loads its own MathJax and
+      // relies on exactly this startup pass; that configuration is separate.
+      startup: { typeset: false },
     };
   }
 
