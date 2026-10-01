@@ -3791,8 +3791,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           decision's answer and merged back here, so the two cores already
           agree. Step 4 gives the model its own half.
 
-        **Nine steps, in this order, and a tenth added on 2026-10-01** (below
-        the ninth, and on probation). The first one shuts doors that are open
+        **Nine steps, and a tenth added on 2026-10-01** (written below the
+        ninth, and on probation). **The tenth is built second-and-a-half:**
+        straight after step 2 closes and before step 3, decided 2026-10-01.
+        It decides whether maths stays at all, so it is cheaper to learn that
+        before seven more steps have built on equations than after. Otherwise
+        in this order. The first one shuts doors that are open
         today; the last is the one a machine cannot run.
 
         1.  **Shut the three doors that are open under the flag.** Found
@@ -4144,7 +4148,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             on 2026-09-10 — and no script can answer it.
 
         10. **Equations by typing — planned 2026-10-01, not started; on
-            probation.** Added after the plan above, when Mermaid was removed
+            probation; built next after step 2 closes, ahead of step 3.** Added after the plan above, when Mermaid was removed
             and the question became whether maths stays at all. Under the
             model core typed text is literal by design, so a typed `$x^2$` is
             written to the file as `\$x^2$` — measured — and from stage 4 there

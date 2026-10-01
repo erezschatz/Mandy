@@ -8271,3 +8271,14 @@ one-press delete on purpose. Display maths follows the same rule, and
 composition is left alone. It is checked mostly in the Deno `model` suite, since
 the decision is pure model work, and by hand in all three engines through
 `format-check.md`.
+
+## 2026-10-01 — Typing an equation is built before the formats
+
+Slice 7's step 10, typing an equation, is on probation: if it turns into a side
+project, maths is removed. So it is cheaper to find out before the remaining
+steps (the formats, links, block kinds, lists, inserts and the keyboard) have
+built anything more on equations. Decided with the user: it is built straight
+after the step that keeps maths typeset through a render closes, and ahead of
+bold, italic and strikethrough. `docs/REWRITE.md` records the order in the
+slice's step list and on the step itself. The numbering is unchanged, because
+code comments refer to the other steps by number.
