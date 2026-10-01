@@ -2830,6 +2830,23 @@ export default function run(check) {
       "and the default is the start, which is what a caret wants",
       modelDomOffset(para, inner, 5) === 2,
     );
+
+    // The atom element itself as the range's container. Firefox describes a
+    // Backspace after an equation as (span, 0) to (span, 1); both ends used to
+    // count as the front edge, so the deletion was zero-wide and the caret
+    // jumped before the equation instead of deleting it.
+    check(
+      `the atom's own offset 0 is its front edge (${modelDomOffset(para, math, 0, -1)})`,
+      modelDomOffset(para, math, 0, -1) === 2,
+    );
+    check(
+      `and its last offset its back edge, whichever side is asked (${modelDomOffset(para, math, 1, -1)})`,
+      modelDomOffset(para, math, 1, -1) === 3 && modelDomOffset(para, math, 1, 1) === 3,
+    );
+    check(
+      "so Firefox's range over an equation is one character wide, not zero",
+      modelDomOffset(para, math, 1, 1) - modelDomOffset(para, math, 0, -1) === 1,
+    );
   }
 
   // ------------------------------------------------------------- the metric

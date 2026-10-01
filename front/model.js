@@ -2419,7 +2419,19 @@ function modelDomOffset(root, node, offset, bias = -1) {
     if (found) return;
     if (current === node) {
       if (current.nodeType === 3) total += offset;
-      else if (!modelIsAtomNode(current)) {
+      else if (modelIsAtomNode(current)) {
+        // **The atom itself as the container**: offset 0 is its front edge and
+        // its last child offset its back edge, so the two ends of a range that
+        // covers it name the two sides. Firefox describes a Backspace after an
+        // equation exactly this way, (span, 0) to (span, 1), and while both
+        // ends counted as the front the deletion was zero-wide: nothing went
+        // and the caret jumped before the equation. Measured by hand on
+        // 2026-10-01. Strictly between, the position is inside the atom and
+        // clamps the way the case below does.
+        const last = current.childNodes.length;
+        if (offset >= last && last > 0) total += 1;
+        else if (offset > 0 && bias > 0) total += 1;
+      } else {
         // An element container: `offset` counts child nodes, not characters.
         const children = current.childNodes;
         for (let i = 0; i < offset && i < children.length; i++) total += modelDomText(children[i]).length;

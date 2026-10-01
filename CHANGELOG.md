@@ -8067,3 +8067,23 @@ ends with an equation takes a letter at both edges. That second one is a
 question rather than a formality: Gecko is known to leave no room for a caret
 beside an uneditable element at the edge of a line, and the fix has just made
 every equation one.
+
+## 2026-10-01 — Backspace after an equation deletes it in Firefox
+
+Found running `tests/fixtures/format-check.md` in Firefox under the model core,
+in the check added two days ago: one Backspace just after an equation was meant
+to delete it, and instead the caret jumped to before it. Logging the
+`beforeinput` showed why. Firefox describes that deletion as a range from the
+equation's own `<span data-math>`, offset 0, to the same span, offset 1, which
+is precisely "before it" to "after it". `modelDomOffset` handled a position
+*inside* an atom by clamping, but had no case for the atom element being the
+container itself, so it counted neither offset. Both ends mapped to the
+equation's front edge, the deletion was zero characters wide, nothing went, and
+the caret was put at the range's start. Blink describes the same range through
+the text nodes either side of the equation, which is why it never showed there.
+
+Offset 0 on the atom now maps to its front edge and its last offset to its back
+edge. A position strictly between still clamps to whichever edge the caller
+asks for, as before. Three checks in the `model` suite, two of which fail
+without the fix. Needs Firefox again: step 4 of the fixture, the Backspace.
+`sw.js`'s `VERSION` goes to `v1.58`.
