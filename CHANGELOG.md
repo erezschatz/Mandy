@@ -8221,7 +8221,7 @@ through `renderLatex`, the renderer Open still calls, so it still exercises the
 same `finally`. CLAUDE.md, MARKDOWN.md and the load-order notes say what is
 left. `sw.js`'s `VERSION` goes to `v1.36`.
 
-## 2026-10-01 — Mermaid's removal reaches `rewrite`, along with what step 2 built for it
+## 2026-10-01 — `d2e5c92` — Mermaid's removal reaches `rewrite`, along with what step 2 built for it
 
 `main`'s removal merged in, and on this side it took more with it. Slice 7's
 step 2 had built Mermaid's part of the render cache: diagrams kept by source
