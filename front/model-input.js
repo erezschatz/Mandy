@@ -223,7 +223,7 @@ function modelInputDelete(doc, span) {
  * selection with typed characters is a paste in everything but name, and paste
  * is slice 5's.
  */
-function modelInputWrite(doc, span, text) {
+function modelInputWrite(doc, span, text, inputType = "") {
   if (!span) return false;
   const target = modelInputRetarget(doc, span);
 
@@ -242,15 +242,143 @@ function modelInputWrite(doc, span, text) {
     if (revise && typeof undoJoin === "function") undoJoin();
     // A rewrite extends the run it joined rather than starting a new one.
     modelPendingTyped = { block, from: revise ? modelLastTyped.from : start, to: offset };
-    return modelInputShow(doc, block, { block, offset }, "insertText");
+    modelMathNext = { doc, id: block.id, at: offset };
+    modelInputShow(doc, block, { block, offset }, "insertText");
+    modelInputSettleMath(false);
+    return true;
   }
 
+  if (modelInputRevealMath(doc, target, inputType)) return true;
   const landed = modelInputDelete(doc, target);
   if (!landed) return false;
   const at = { block: landed.block, offset: landed.offset };
-  return landed.structural
-    ? modelInputRestructure(doc, at, "deleteContentBackward")
-    : modelInputShow(doc, landed.block, at, "deleteContentBackward");
+  if (landed.structural) return modelInputRestructure(doc, at, "deleteContentBackward");
+  modelMathNext = { doc, id: landed.block.id, at: landed.offset };
+  modelInputShow(doc, landed.block, at, "deleteContentBackward");
+  modelInputSettleMath(false);
+  return true;
+}
+
+// ── Equations by typing ──────────────────────────────────────────────────────
+//
+// Slice 7's step 10, on probation: docs/REWRITE.md has the decisions and the
+// tripwire. `model.js` finds, converts and reveals; this decides when. A span
+// converts once the caret is outside it and not sitting straight after its
+// closing `$` — `mathSpan` says no to a closing `$` followed by a digit, and at
+// the end of the text it cannot see one coming, so `$5 and $` must wait to see
+// whether `10` follows. That one rule covers every trigger the plan names: the
+// next character typed, Enter (the caret goes to the next block), and the caret
+// leaving by any other route, which is the `selectionchange` below.
+
+/**
+ * The edit a typed equation would come from: `{ doc, id, at }`, the block and
+ * the offset the last text edit left the caret at. Only a span touching that
+ * offset is considered, so a plain-text paste of `$x$` stays the literal text
+ * it was pasted as unless somebody types against it.
+ *
+ * Set by a text edit or a deletion inside one block, kept across Enter and
+ * Shift+Enter — the two edits whose whole point here is that the caret moves
+ * on — and dropped by every other announcement. Keyed on the document object,
+ * so an undo, which installs a different one, leaves it describing nothing.
+ */
+let modelMathPending = null;
+let modelMathNext = null;
+const MODEL_MATH_KEEPS = new Set(["insertParagraph", "insertLineBreak"]);
+
+/**
+ * The conversion just made, `{ doc, id, source }`, until anything else
+ * happens. If the next thing is a different document — an undo — the user
+ * took the conversion back, and it is **declined**: that span in that block
+ * is left as text until its text changes, or the very next keystroke would
+ * convert it straight back.
+ */
+let modelMathLast = null;
+const modelMathDeclined = new Set();
+
+function modelMathKey(id, source) {
+  return id + "\n" + source;
+}
+
+/**
+ * Convert the pending span if the caret has left it. `leaving` is true when
+ * the caret is known to be elsewhere whatever the selection says.
+ *
+ * Its own undo step, announced as `insertEquation`, so Ctrl+Z straight after
+ * gives back exactly the text that was typed.
+ */
+function modelInputSettleMath(leaving) {
+  if (modelInputComposing()) return false;
+  const doc = modelCurrentDocument();
+  if (modelMathLast && modelMathLast.doc !== doc) {
+    modelMathDeclined.add(modelMathKey(modelMathLast.id, modelMathLast.source));
+    modelMathLast = null;
+  }
+  const pending = modelMathPending;
+  if (!pending || !doc) return false;
+  if (pending.doc !== doc) {
+    modelMathPending = null;
+    return false;
+  }
+  const block = modelBlockById(doc, pending.id);
+  if (!block || !block.inlines) {
+    modelMathPending = null;
+    return false;
+  }
+
+  const caret = leaving ? null : modelReadSelection(editor, doc);
+  if (caret && caret.to) return false; // a selection is being made; wait for it
+  const here = caret && caret.block === block ? caret.offset : null;
+  const span = modelMathCandidates(block).find((candidate) =>
+    candidate.start <= pending.at && pending.at <= candidate.end + 1 &&
+    !modelMathDeclined.has(modelMathKey(block.id, candidate.source)) &&
+    (here === null || here <= candidate.start || here > candidate.end));
+  if (!span) {
+    if (here === null) modelMathPending = null;
+    return false;
+  }
+
+  if (modelMathConvert(block, span.start, span.end, md) === null) {
+    modelMathPending = null;
+    return false;
+  }
+  modelMathPending = null;
+  // The caret where it was, moved back by the TeX the atom now stands for when
+  // it was after it.
+  const at = here === null
+    ? caret
+    : { block, offset: here > span.end ? here - (span.end - span.start) + 1 : here };
+  modelInputShow(doc, block, at, "insertEquation");
+  modelMathLast = { doc, id: block.id, source: span.source };
+  return true;
+}
+
+/**
+ * Backspace into an equation shows its source instead of deleting it, and
+ * Delete does the same from the other side. Only from a bare caret: an
+ * equation that is selected, or part of a wider selection, is deleted like
+ * anything else, which is how a whole one is removed.
+ */
+function modelInputRevealMath(doc, span, inputType) {
+  const backward = inputType === "deleteContentBackward";
+  if (!backward && inputType !== "deleteContentForward") return false;
+  const live = window.getSelection();
+  if (!live || !live.isCollapsed) return false;
+  if (span.from.block !== span.to.block) return false;
+  const block = span.from.block;
+  const start = Math.min(span.from.offset, span.to.offset);
+  if (Math.max(span.from.offset, span.to.offset) !== start + 1) return false;
+  const offset = modelMathReveal(block, start, backward);
+  if (offset === null) return false;
+  // Revealed on purpose, so a decline from an earlier undo no longer applies:
+  // leaving the source is meant to re-form it.
+  const revealed = modelMathCandidates(block).find((candidate) => candidate.start === start);
+  if (revealed) modelMathDeclined.delete(modelMathKey(block.id, revealed.source));
+  modelMathNext = { doc, id: block.id, at: offset };
+  return modelInputShow(doc, block, { block, offset }, "deleteEquation");
+}
+
+function modelInputSelectionMath() {
+  modelInputSettleMath(false);
 }
 
 /**
@@ -393,6 +521,9 @@ function modelInputKeydown(event) {
 function modelInputAnnounce(inputType) {
   modelLastTyped = modelPendingTyped;
   modelPendingTyped = null;
+  modelMathPending = modelMathNext || (MODEL_MATH_KEEPS.has(inputType) ? modelMathPending : null);
+  modelMathNext = null;
+  modelMathLast = null;
   const event = typeof InputEvent === "function"
     ? new InputEvent("input", { inputType, bubbles: true })
     : new Event("input", { bubbles: true });
@@ -474,7 +605,7 @@ function modelInputBeforeInput(event) {
   }
   if (MODEL_INPUT_DELETE_TYPES.has(event.inputType)) {
     if (modelInputEmptyItem(doc, true)) return;
-    modelInputWrite(doc, modelInputSpan(event, doc), "");
+    modelInputWrite(doc, modelInputSpan(event, doc), "", event.inputType);
     return;
   }
   if (event.inputType === "insertParagraph") {
@@ -995,6 +1126,7 @@ function modelInputClipboard(event, cut) {
 
 function modelInputInstall(root) {
   root.ownerDocument.addEventListener("selectionchange", modelInputLeaveAtom);
+  root.ownerDocument.addEventListener("selectionchange", modelInputSelectionMath);
   root.addEventListener("mousedown", modelInputPressAtom);
   root.addEventListener("copy", (event) => modelInputClipboard(event, false));
   root.addEventListener("cut", (event) => modelInputClipboard(event, true));

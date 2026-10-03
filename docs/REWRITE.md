@@ -1849,7 +1849,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     Slices 1 to 6 of seven are done and tested, slices 4 to 6 driven by hand
     in all three engines; slice 7, the formats, is in progress, planned
     2026-09-28 with steps 1 and 2 of nine done and tested, step 2 by hand in all
-    three engines on 2026-10-03; step 10, equations by typing, is next. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    three engines on 2026-10-03; step 10, equations by typing, is built and
+    machine-tested, waiting on its hand run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3709,7 +3710,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         2026-09-28 before any of it was built. Step 1 is done and tested the
         same day; step 2 is done and tested, by machine on 2026-09-29 and by
         hand in all three engines on 2026-10-03, copy and cut included. Step
-        10 is next, then step 3.** Every control that edits the
+        10 is done and tested by machine the same day, and waits on its hand
+        run in three engines before step 3 starts.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4203,8 +4205,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             measurement** — Gecko on macOS gave the key to its bookmarks sidebar
             on 2026-09-10 — and no script can answer it.
 
-        10. **Equations by typing — planned 2026-10-01, not started; on
-            probation; built next after step 2 closes, ahead of step 3.** Added after the plan above, when Mermaid was removed
+        10. **Equations by typing — planned 2026-10-01; done and tested by
+            machine 2026-10-03, waiting on its hand run in three engines; on
+            probation, with no rounds of fixes spent yet.** Added after the plan above, when Mermaid was removed
             and the question became whether maths stays at all. Under the
             model core typed text is literal by design, so a typed `$x^2$` is
             written to the file as `\$x^2$` — measured — and from stage 4 there
@@ -4273,6 +4276,41 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             typing an equation, a price, Ctrl+Z after a conversion, Backspace
             revealing the source and the edit re-forming it, and an equation
             typed at a line's edge, where the caret stops come into play.
+
+            **As built, 2026-10-03.** `model.js` has the three pure halves:
+            `modelMathCandidates` (the spans `mathSpan` finds, scanned the way
+            the inline parser scans, over runs of adjacent text leaves and never
+            across a mark), `modelMathConvert` (the token from `md.parseInline`,
+            refused unless it is exactly one `math` token spelling the same
+            bytes) and `modelMathReveal`. `model-input.js` decides when, and
+            the routing gained nothing but an argument: `modelInputWrite` now
+            receives the `inputType`, because only a Backspace or a Delete
+            reveals. Three things the plan did not say:
+
+            - **One rule covers every trigger.** A span converts when the caret
+              is outside it and not sitting straight after its closing `$`.
+              The next character typed, Enter and a click elsewhere all satisfy
+              that, so after a text edit and on `selectionchange` are the only
+              places it is asked. Enter needs nothing of its own: the caret
+              lands in the next block and the selection change does the rest,
+              which also makes Enter's undo step come before the conversion's.
+            - **Only a span touching the last edit is considered**, so a
+              plain-text paste of `$x$` stays the literal text it was pasted as
+              unless somebody types against it. The pending edit survives Enter
+              and Shift+Enter and is dropped by anything else.
+            - **A decline is noticed, not announced.** The input layer sees an
+              undo as the document object changing — `undo.js` installs a
+              clone — so a conversion followed by a different document is one
+              the user took back. A reveal lifts the decline, since leaving a
+              revealed source is meant to re-form it.
+
+            **What it does not reach until stage 4**: a declined `$w$` is
+            still saved unescaped, because the save is Turndown over the DOM
+            and Turndown does not escape `$`, so it reopens as an equation —
+            the old core's accident, unchanged. The model's emitter writes it
+            as `\$w$`. And the parser's rule cuts both ways: in
+            `$5 and $10 total, and $y$` the first `$` and the one before `y`
+            already make a span, so `$y$` is never one — on reopening too.
 
         **What closes with it.** Stage 2's exit criterion, minus the table,
         which stays refused until stage 3 as it was always going to. TODO 1.7

@@ -25,15 +25,18 @@ export default function run(check) {
     coreOn = true, doc = { blocks: [] }, range = null, splice = 7,
     source = false, at = null, item = null, empty = false, hardBreak = "  ",
     html = "", point = null, selection = false, history = true,
-    domText = "abX", blockText = "ab",
+    domText = "abX", blockText = "ab", spans = [], reveal = null, collapsed = false,
   } = {}) => {
     const calls = {
       splice: [], rerender: [], render: [], announced: [], sourceSplice: [],
       merged: [], pruned: [], split: [], broke: [], emptyItem: [], moved: [], filled: [],
       parsed: [],
       cut: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
-      history: [], refused: [], joined: 0,
+      history: [], refused: [], joined: 0, converted: [], revealed: [],
     };
+    // What a case can move between events: the document an undo would swap in,
+    // and where the caret is.
+    const state = { doc, at };
     const editor = makeEl("div");
     // The two halves of a drop position, which are the two spellings the
     // engines never agreed on. A case that wants a drop supplies `point`.
@@ -54,7 +57,7 @@ export default function run(check) {
         md: {},
         markdownStyle: { hardBreak },
         modelCoreEnabled: () => coreOn,
-        modelCurrentDocument: () => doc,
+        modelCurrentDocument: () => state.doc,
         // A list answers one call each, for a case whose edits differ.
         modelInlineSplice: (b, from, to, text) => {
           calls.splice.push({ block: b, from, to, text });
@@ -121,7 +124,19 @@ export default function run(check) {
         },
         modelRender: (root, d, parser, sel) => calls.render.push({ doc: d, selection: sel }),
         modelDomBlockAt: () => range && range.shift(),
-        modelReadSelection: () => at || { block, offset: 0 },
+        modelReadSelection: () => state.at || { block, offset: 0 },
+        // Equations by typing: the model half is the model suite's, so here a
+        // case says which spans exist and the conversion only records itself.
+        modelBlockById: () => block,
+        modelMathCandidates: () => spans,
+        modelMathConvert: (b, from, to) => {
+          calls.converted.push({ from, to });
+          return from + 1;
+        },
+        modelMathReveal: (b, offset, backward) => {
+          calls.revealed.push({ offset, backward });
+          return reveal;
+        },
         modelElementFor: () => editor,
         modelDomText: () => domText,
         modelBlockText: () => blockText,
@@ -132,7 +147,7 @@ export default function run(check) {
           // `selection: "caret"` is a live selection that is only a caret, which
           // is what an engine leaves standing while it rewrites behind it.
           getSelection: () => (selection
-            ? { rangeCount: 1, getRangeAt: () => (selection === "caret"
+            ? { rangeCount: 1, isCollapsed: collapsed, getRangeAt: () => (selection === "caret"
               ? { collapsed: true, startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }
               : { collapsed: false, startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }) }
             : { rangeCount: 0 }),
@@ -160,9 +175,9 @@ export default function run(check) {
         " modelInputCompositionEnd, modelInputComposing, modelInputInstall," +
         " modelInputKeydown, modelIndentAtCaret, modelInputPasteEvent," +
         " modelInputDrop, modelInputDragStart, modelInputDragOver," +
-        " modelPastePlain, modelPasteMarkdown };",
+        " modelPastePlain, modelPasteMarkdown, modelInputSelectionMath };",
     );
-    return { api, calls, editor, block };
+    return { api, calls, editor, block, state };
   };
 
   // A beforeinput the handler understands nothing about.
@@ -814,13 +829,112 @@ export default function run(check) {
       r.calls.history.length === 0 && e.prevented === 1);
   }
 
+  // --- slice 7's step 10: equations by typing --------------------------------
+  //
+  // Which span, and what a conversion writes, are the model suite's. What is
+  // pinned here is *when*: never with the caret inside the span or straight
+  // after its closing `$`, always as its own undo step, never again once an
+  // undo has taken it back — and Backspace revealing rather than deleting.
+
+  const typing = (opts, typedOffset, caretOffset) => {
+    const target = { id: 1 };
+    const r = rig({ range: [here(target, typedOffset - 1), here(target, typedOffset - 1)], splice: typedOffset, ...opts });
+    r.state.at = { block: r.block, offset: caretOffset };
+    const e = event("insertText", { data: " ", targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] });
+    r.api.modelInputBeforeInput(e);
+    return r;
+  };
+  const xSpan = [{ start: 0, end: 3, source: "$x$" }];
+  {
+    const r = typing({ spans: xSpan }, 4, 4);
+    check(`a character typed after the closing $ converts the span (${JSON.stringify(r.calls.converted)})`,
+      r.calls.converted.length === 1 && r.calls.converted[0].from === 0 && r.calls.converted[0].to === 3);
+    check(`as its own undo step, after the keystroke's (${r.calls.announced.join(", ")})`,
+      r.calls.announced.join(",") === "insertText,insertEquation");
+    const last = r.calls.rerender[r.calls.rerender.length - 1];
+    check(`and the caret stays after what was typed, past the one-character equation (${last.selection.offset})`,
+      last.selection.offset === 2);
+  }
+  {
+    const r = typing({ spans: xSpan }, 3, 3);
+    check("the closing $ itself converts nothing, since a digit may follow",
+      r.calls.converted.length === 0 && r.calls.announced.join(",") === "insertText");
+    r.state.at = { block: { id: "elsewhere" }, offset: 0 };
+    r.api.modelInputSelectionMath();
+    check("but the caret leaving the block does",
+      r.calls.converted.length === 1 && r.calls.announced.join(",") === "insertText,insertEquation");
+  }
+  {
+    const r = typing({ spans: xSpan }, 2, 2);
+    check("nor does an edit with the caret inside the span", r.calls.converted.length === 0);
+    r.state.at = { block: r.block, offset: 0 };
+    r.api.modelInputSelectionMath();
+    check("until the caret moves out in front of it", r.calls.converted.length === 1);
+  }
+  {
+    const r = typing({ spans: [{ start: 20, end: 23, source: "$y$" }] }, 4, 4);
+    check("a span nowhere near the edit is left alone, so pasted text stays literal",
+      r.calls.converted.length === 0);
+  }
+  {
+    const r = typing({ spans: [] }, 4, 4);
+    check("text with no span in it converts nothing", r.calls.converted.length === 0);
+  }
+  {
+    const r = typing({ spans: xSpan }, 3, 3);
+    r.state.at = { block: r.block, offset: 0, to: { block: r.block, offset: 2 } };
+    r.api.modelInputSelectionMath();
+    check("a selection being made is waited for rather than converted under", r.calls.converted.length === 0);
+  }
+  {
+    // The undo is a different document object, which is what the input layer
+    // sees of one: undo.js installs a clone.
+    const r = typing({ spans: xSpan }, 4, 4);
+    r.state.doc = { blocks: [], undone: true };
+    r.api.modelInputSelectionMath();
+    const e = event("insertText", { data: " ", targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] });
+    r.calls.converted.length = 0;
+    r.api.modelInputBeforeInput(e);
+    check("once an undo takes a conversion back, the same span stays text", r.calls.converted.length === 0);
+  }
+
+  {
+    const target = { id: 1 };
+    const r = rig({ range: [here(target, 2), here(target, 3)], selection: "caret", collapsed: true, reveal: 6 });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check(`Backspace into an equation reveals it (${JSON.stringify(r.calls.revealed)})`,
+      r.calls.revealed.length === 1 && r.calls.revealed[0].offset === 2 && r.calls.revealed[0].backward === true);
+    check("rather than deleting it", r.calls.splice.length === 0);
+    check(`as its own undo step, with the caret inside the source (${r.calls.announced.join(", ")})`,
+      r.calls.announced.join(",") === "deleteEquation" && r.calls.rerender[0].selection.offset === 6);
+  }
+  {
+    const target = { id: 1 };
+    const r = rig({ range: [here(target, 2), here(target, 3)], selection: "caret", collapsed: false, reveal: 6 });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check("an equation that is selected is deleted, not revealed",
+      r.calls.revealed.length === 0 && r.calls.splice.length === 1);
+  }
+  {
+    const target = { id: 1 };
+    const r = rig({ range: [here(target, 2), here(target, 3)], selection: "caret", collapsed: true, reveal: null });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check("and a character that is not an equation is deleted as before",
+      r.calls.revealed.length === 1 && r.calls.splice.length === 1);
+  }
+
   // --- installation ---------------------------------------------------------
 
   {
     const root = makeEl("div");
     // selectionchange fires on the document, not on the editable root.
     const onDocument = {};
-    root.ownerDocument = { addEventListener: (type, fn) => { onDocument[type] = fn; } };
+    root.ownerDocument = {
+      addEventListener: (type, fn) => { (onDocument[type] = onDocument[type] || []).push(fn); },
+    };
     const { api } = rig();
     api.modelInputInstall(root);
     check(
@@ -837,7 +951,11 @@ export default function run(check) {
     // a browser has, so that half is checked by hand; this pins that both
     // listeners are there at all.
     check("a caret landing inside an equation is watched for on the document",
-      typeof onDocument.selectionchange === "function");
+      (onDocument.selectionchange || []).length >= 1);
+    // Slice 7's step 10: a typed equation converts when the caret leaves it,
+    // and a caret can leave without any edit at all.
+    check("and so is a caret leaving a typed equation",
+      (onDocument.selectionchange || []).includes(api.modelInputSelectionMath));
 
   }
 }

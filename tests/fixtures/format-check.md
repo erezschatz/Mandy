@@ -5,8 +5,9 @@ app, follow the steps, and edit the paragraphs written for each one. **Bold** is
 what you do; *italics* is what should (or should not) happen.
 
 It grows with TODO 3.1's slice 7: each step that needs a person adds its
-section here. Today it holds step 2's, the maths. (It held diagrams too until
-Mermaid was removed on 2026-10-01.)
+section here. Today it holds two, both about maths: keeping equations typeset
+(step 2) and typing one (step 10). (It held diagrams too until Mermaid was
+removed on 2026-10-01.)
 
 ## Before you start
 
@@ -62,7 +63,10 @@ $$\int_0^1 x^2 \, dx = \frac{1}{3}$$
    was lost. That was fixed on 2026-09-29 by making the equation uneditable.
 
    **Then put the caret just after the equation and press Backspace once.**
-   *The whole equation goes in one press.* **Ctrl/Cmd+Z brings it back, drawn.**
+   *The equation turns into its source, `$e^{i\pi} + 1 = 0$`, with the caret
+   just before the closing `$`.* That is typing an equation's rule, below; until
+   2026-10-03 one press deleted the equation whole. **Ctrl/Cmd+Z brings it
+   back, drawn.**
 
    $x_1$ starts this line, and it ends with one: $y_2$
 
@@ -115,3 +119,60 @@ $$\int_0^1 x^2 \, dx = \frac{1}{3}$$
    is typeset once the page has settled.* A reload is also the check that maths
    arrives when MathJax has not loaded yet; editing while it is still loading
    is too quick for a person to do on purpose, so a machine run covers that.
+
+## Typing an equation (step 10)
+
+Typed text is literal, so `$x^2$` typed into a paragraph stays text until the
+caret leaves it, and then becomes an equation. What counts as an equation is
+the same rule that applies when a file is opened: an opening `$` is never
+followed by a space, and a closing `$` is never followed by a digit, so prices
+stay prose.
+
+This step is on probation. If its hand runs need more than two rounds of fixes,
+maths is proposed for removal rather than fixed a third time.
+
+Each step types into a new paragraph at the end of the file. To start one,
+click at the end of the file's last line and press Enter.
+
+1. **In a new paragraph, type `Area $x^2$` and stop.** *It stays as text, dollar signs and all,
+   while the caret sits straight after the closing `$`* — the next character
+   might be a digit. **Type a space.** *The `$x^2$` becomes a typeset equation
+   at once, and the caret is after the space, ready for the next word.*
+
+2. **In a new paragraph, type `It cost $5 and $10.`** *It stays text throughout*, including the
+   moment after the second `$`, and the `10` arriving settles it as a price.
+
+3. **In a new paragraph, type `Then $y_1$` and press Enter.** *The equation
+   forms, and the caret is at the start of the new paragraph.* **Type
+   `Also $z$` and click anywhere else in the document.** *It forms when the
+   caret leaves.*
+
+4. **Type `$w$ ` (with the space) in a new paragraph, so it forms, then press
+   Ctrl/Cmd+Z once.** *The equation turns back into the text you typed, with
+   the caret where it was.* **Type a letter.** *It stays text*: an undone
+   conversion is not made again until that text changes.
+
+5. **Put the caret just after one of the equations you made and press
+   Backspace once.** *It turns into its source, with the caret just before the
+   closing `$`.* **Change the TeX — `^2` to `^3`, say — then press Right twice,
+   so the caret leaves it.** *It forms again, showing the change.* **Then
+   select the equation by dragging across it and press Backspace.** *It goes
+   whole, in one press.*
+
+6. **In a new paragraph, type `$$\frac{a}{b}$$` and press Enter.** *It forms
+   as a display equation, centred on a line of its own.*
+
+7. **In a new paragraph, type `$q$ starts this line` and press Left until the
+   caret is before the equation.** *The equation formed at the space, a caret
+   shows before it, and a letter typed there lands before it.* That is the
+   caret stop from step 2, now in front of an equation you made.
+
+8. **Save As to a scratch name** (never over this file), **then open the
+   scratch file.** *Every equation you made comes back typeset, and the
+   paragraphs read as you left them.* One thing does not survive the save yet:
+   the `$w$` you undid in 4 comes back as an equation, because the old core's
+   save does not escape a typed `$`. That is stage 4's; note it, but it is not
+   a failure here. Delete the scratch file afterwards.
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors*, with the known Firefox exception from "Before you start".

@@ -8492,3 +8492,55 @@ paragraph they were. `sw.js`'s `VERSION` goes to `v1.38`.
 into its last surviving item. The model core still saves through the same
 restore layer, so the fix applies here unchanged. Conflicts only in this file
 and `sw.js`, whose `VERSION` goes to `v1.68`, past both branches.
+
+## 2026-10-03 — An equation can be typed
+
+Under the model core typed text is literal, so a typed `$x^2$` was saved as
+`\$x^2$` and from stage 4 there would have been no way to make an equation in
+the editor at all. Slice 7's step 10 is that way, built as planned on
+2026-10-01, and on probation: more than two rounds of fixes from its hand runs,
+or a fix that has to reach into the input layer's routing, and removing maths is
+proposed instead.
+
+`$x^2$` typed into a paragraph stays text while the caret sits straight after
+its closing `$`, since a digit might come next and make it a price. It becomes
+an equation once the caret is anywhere else: the next character typed, Enter, a
+click. What counts as one is decided by `mathSpan` in `markdown-parser.js`, the
+function that decides it when a file is opened, and the equation's token comes
+from `md.parseInline`, never from a hand-built one. The conversion is its own
+undo step. Ctrl/Cmd+Z straight after gives back the typed text, and that span
+then stays text until it is edited. Backspace into an equation, or Delete from
+the other side, turns it back into its source with the caret inside, and it
+re-forms once the caret leaves. A selected equation is still deleted whole.
+Display maths is the same rule with `$$`.
+
+`model.js` gains `modelMathCandidates`, `modelMathConvert` and
+`modelMathReveal`, all pure and driven by the `model` suite against the real
+markdown-it. They cover the conversion and the bytes it writes, the parser's
+token, reopening, prices, an escaped `$`, an empty `$$`, a closing `$` before a
+digit, display maths, a span across a mark, a refusal, and reveal and re-form
+byte for byte. `model-input.js` decides when, after a text edit and on
+`selectionchange`. Its routing changed by one argument: `modelInputWrite` now
+receives the `inputType`, so that only Backspace and Delete reveal. The
+`model-input` suite pins when a span converts and when it waits: after the
+closing `$`, inside the span, during a selection, after an undo, and for a span
+far from the edit. It also pins the reveal and its two refusals. The
+waiting-after-`$` rule and the decline were each broken on purpose to confirm
+their checks fail.
+
+Driven in Blink with real keystrokes under `?core=model`:
+- typing `$x^2$` waited at the `$` and converted at the space;
+- Cmd+Z gave the text back, and a letter typed after it left it text;
+- Enter after `$y_1$` converted it and left the caret in the new paragraph;
+- `$$\frac{a}{b}$$` and Enter gave a display equation.
+
+The reveal was driven through the real handler with a real target range, since
+automation cannot make Blink perform a Backspace. It showed `$y_1$` with the
+caret before the closing `$`, and moving the caret away re-formed it. There
+were no render divergences and no errors.
+
+`tests/fixtures/format-check.md` gains the section a person runs in all three
+engines, and its step 2 Backspace now expects the reveal. It names one thing
+that does not survive a save until stage 4: an undone conversion is saved
+unescaped by today's Turndown save, so it reopens as an equation. `sw.js`'s
+`VERSION` goes to `v1.69`.

@@ -88,6 +88,7 @@ export default function run(check) {
     modelInlineLeaves, modelTrimRendering,
     modelInsertBlocks, modelTextBlocks, modelAdoptBlocks,
     modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection, modelBlockById,
+    modelMathCandidates, modelMathConvert, modelMathReveal,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -111,7 +112,7 @@ export default function run(check) {
       " modelInlineLeaves, modelTrimRendering," +
       " modelInsertBlocks, modelTextBlocks, modelAdoptBlocks," +
       " modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection," +
-      " modelBlockById };",
+      " modelBlockById, modelMathCandidates, modelMathConvert, modelMathReveal };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -2935,6 +2936,85 @@ export default function run(check) {
     check("and the block it was cut from is untouched",
       modelInlineSource(block.inlines, md) === sourceBefore && block.source !== null);
     check("a block with no inline tree carries nothing", modelInlineSourceRange({ inlines: null }, 0, 1, md) === null);
+  }
+
+  // Equations by typing (slice 7's step 10, on probation). Typed text is
+  // literal, so these start from text spliced in the way a keystroke puts it
+  // there, never from a parse — a parse would have made the equation already.
+  {
+    const typed = (text) => {
+      const doc = parse("x\n");
+      const block = doc.blocks[0];
+      modelInlineSplice(block, 0, 1, text);
+      return { doc, block };
+    };
+    const spans = (text) => modelMathCandidates(typed(text).block).map((c) => c.source);
+
+    const { doc, block } = typed("Area $x^2$ here");
+    check(`typed maths is literal until converted (${JSON.stringify(modelEmitLeaf(block, md, doc))})`,
+      modelEmitLeaf(block, md, doc) === "Area \\$x^2$ here");
+    const found = modelMathCandidates(block);
+    check(`a typed span is found where the parser would find it (${JSON.stringify(found)})`,
+      found.length === 1 && found[0].start === 5 && found[0].end === 10 && found[0].source === "$x^2$");
+    const after = modelMathConvert(block, 5, 10, md);
+    check(`converting it writes the equation (${JSON.stringify(modelEmitLeaf(block, md, doc))})`,
+      modelEmitLeaf(block, md, doc) === "Area $x^2$ here" && after === 6);
+    check("and it is one atom in the offset space",
+      modelInlineText(block.inlines) === "Area ￼ here");
+    const atom = block.inlines.find((node) => node.kind === "math");
+    check("its token is the parser's, not one built by hand",
+      !!atom && atom.token && atom.token.type === "math" && atom.token.content === "x^2" && atom.markup === "$");
+    check(`and it renders as an equation (${JSON.stringify(modelRenderBlock(block, md))})`,
+      modelRenderBlock(block, md).includes("<span data-math>$x^2$</span>"));
+    const reread = parse(modelEmitLeaf(block, md, doc) + "\n").blocks[0].inlines;
+    check("the bytes it writes reopen as the same equation",
+      reread.some((node) => node.kind === "math" && node.content === "x^2"));
+
+    check(`prices stay prose (${JSON.stringify(spans("it cost $5 and then $10"))})`,
+      spans("it cost $5 and then $10").length === 0);
+    check("an opening $ before a space is not one", spans("a $ b$ c").length === 0);
+    check("an escaped dollar does not open one", spans("a \\$x$ c").length === 0);
+    check("an empty $$ is not one", spans("a $$ b").length === 0);
+    check("a closing $ followed by a digit is not one", spans("$5 and $1").length === 0);
+    check("which is why the end of the text cannot decide: `$5 and $` is one until a digit arrives",
+      spans("$5 and $").length === 1);
+    check(`display maths is the same rule (${JSON.stringify(spans("$$a+b$$"))})`,
+      spans("$$a+b$$").length === 1 && spans("$$a+b$$")[0] === "$$a+b$$");
+    {
+      const { doc: d, block: b } = typed("$$a+b$$");
+      modelMathConvert(b, 0, 7, md);
+      check("and converts to a display equation",
+        modelEmitLeaf(b, md, d) === "$$a+b$$" && b.inlines[0].kind === "math" && b.inlines[0].markup === "$$");
+    }
+    check(`two spans in one run are both found (${JSON.stringify(spans("$a$ and $b$."))})`,
+      spans("$a$ and $b$.").join("|") === "$a$|$b$");
+    {
+      const doc2 = parse("a **b** c\n");
+      const b = doc2.blocks[0];
+      modelInlineSplice(b, 3, 3, "$");
+      modelInlineSplice(b, 6, 6, "$");
+      check(`a span straddling a mark is not one (${JSON.stringify(modelEmitLeaf(b, md, doc2))})`,
+        modelMathCandidates(b).length === 0);
+    }
+    {
+      const { block: b } = typed("plain $x$ text");
+      check("converting text that is not one equation refuses", modelMathConvert(b, 0, 9, md) === null);
+      check("and leaves the block as it was", modelInlineText(b.inlines) === "plain $x$ text");
+    }
+
+    const shown = parse("A $x^2$ b\n");
+    const sb = shown.blocks[0];
+    check("revealing where there is no equation refuses", modelMathReveal(sb, 0, true) === null);
+    const caret = modelMathReveal(sb, 2, true);
+    check(`Backspace into an equation shows its source, caret before the closing $ (${caret})`,
+      modelInlineText(sb.inlines) === "A $x^2$ b" && caret === 6);
+    check("and that source is the same span again",
+      modelMathCandidates(sb).map((c) => c.source).join("|") === "$x^2$");
+    modelMathConvert(sb, 2, 7, md);
+    check(`so leaving it re-forms the equation byte for byte (${JSON.stringify(modelEmitLeaf(sb, md, shown))})`,
+      modelEmitLeaf(sb, md, shown) === "A $x^2$ b");
+    const forward = modelMathReveal(parse("A $$y$$ b\n").blocks[0], 2, false);
+    check(`Delete from the other side puts the caret after the opening delimiter (${forward})`, forward === 4);
   }
 
   // ------------------------------------------------------------- the metric

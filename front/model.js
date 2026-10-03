@@ -2980,6 +2980,127 @@ function modelInlineSplice(block, from, to, text) {
   return start + typed.length;
 }
 
+// ── Equations by typing ──────────────────────────────────────────────────────
+//
+// Slice 7's step 10, on probation (docs/REWRITE.md says what that means and
+// where the tripwire is). Typed text is literal by design, so a typed `$x^2$`
+// stays text until something turns it into an equation, and these three are
+// that something: find a span the parser would read as maths, convert it, and
+// turn an equation back into its source for editing. When to call them is the
+// input layer's; what they do is pure model work, so the suite drives them.
+
+/**
+ * Every span in a block's literal text that the parser would read as maths,
+ * in block offsets: `{ start, end, source }`.
+ *
+ * **The parser's own function decides**, `mathSpan` in markdown-parser.js, so
+ * typing and reopening cannot disagree — `$5 and $10` stays prose by the two
+ * rules it always has. It is asked the way the inline parser asks it: at every
+ * `$` a scan reaches, with a backslash taking the character after it out of
+ * play, and a found span skipped whole.
+ *
+ * The scan runs over **runs of adjacent text leaves in one list**, never
+ * across a mark, a break, a code span or an atom. A span that straddles a mark
+ * is not one the author typed as an equation, and the parser would not see one
+ * there either, since the emitter escapes a `$` in literal text.
+ */
+function modelMathCandidates(block) {
+  if (!block || !block.inlines) return [];
+  const found = [];
+  const spans = modelInlineLeafSpans(block.inlines);
+  let i = 0;
+  while (i < spans.length) {
+    if (spans[i].node.kind !== "text") { i++; continue; }
+    let j = i;
+    let text = spans[i].node.content;
+    while (j + 1 < spans.length && spans[j + 1].node.kind === "text" &&
+           spans[j + 1].list === spans[i].list && spans[j + 1].start === spans[j].end) {
+      j++;
+      text += spans[j].node.content;
+    }
+    const base = spans[i].start;
+    for (let pos = 0; pos < text.length;) {
+      if (text[pos] === "\\") { pos += 2; continue; }
+      const span = text[pos] === "$" ? mathSpan(text, pos) : null;
+      if (!span) { pos++; continue; }
+      found.push({ start: base + pos, end: base + span.end, source: text.slice(pos, span.end) });
+      pos = span.end;
+    }
+    i = j + 1;
+  }
+  return found;
+}
+
+/**
+ * Turn `[start, end)` of a block's literal text into one equation, and hand
+ * back the offset just after it — or null when that text is not one equation.
+ *
+ * **The token comes from the parser**, slice 4's rule for atoms: the span's own
+ * source through `md.parseInline`, and anything but a single `math` token
+ * there is a refusal rather than a token built by hand. The text either side
+ * keeps its leaves; only the leaves the span touches are rebuilt, and a part
+ * of one left over loses its `raw`, the way any edited text does.
+ */
+function modelMathConvert(block, start, end, md) {
+  modelUnshare(block);
+  if (!block.inlines || end <= start) return null;
+  const spans = modelInlineLeafSpans(block.inlines)
+    .filter((span) => span.end > start && span.start < end);
+  if (!spans.length) return null;
+  const list = spans[0].list;
+  if (spans.some((span) => span.node.kind !== "text" || span.list !== list)) return null;
+  const first = spans[0];
+  const last = spans[spans.length - 1];
+  if (first.start > start || last.end < end) return null;
+
+  const source = spans.map((span) => span.node.content).join("")
+    .slice(start - first.start, end - first.start);
+  const tokens = (md.parseInline(source, {})[0]?.children || [])
+    .filter((token) => !(token.type === "text" && token.content === ""));
+  const token = tokens.length === 1 && tokens[0].type === "math" ? tokens[0] : null;
+  if (!token || token.markup + token.content + token.markup !== source) return null;
+
+  const atom = {
+    kind: "math", markup: token.markup, content: token.content,
+    token, closeToken: null, children: null,
+  };
+  const head = first.node.content.slice(0, start - first.start);
+  const tail = last.node.content.slice(end - last.start);
+  const replacement = [];
+  if (head) replacement.push(modelTextNode(head));
+  replacement.push(atom);
+  if (tail) replacement.push(modelTextNode(tail));
+  list.splice(list.indexOf(first.node), spans.length, ...replacement);
+
+  if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
+  modelTouch(block);
+  return start + 1;
+}
+
+/**
+ * Turn the equation at `offset` back into its source text, and hand back where
+ * the caret goes: just inside the closing delimiter when `backward`, just
+ * inside the opening one otherwise. Null when there is no equation there.
+ *
+ * This is Backspace into an equation, which reveals rather than deletes, so a
+ * typo is fixed by editing and the equation re-forms when the caret leaves.
+ * The text is a plain text leaf, literal like anything typed, and converting it
+ * back is `modelMathConvert`'s job like any other.
+ */
+function modelMathReveal(block, offset, backward) {
+  modelUnshare(block);
+  if (!block.inlines) return null;
+  const span = modelInlineLeafSpans(block.inlines)
+    .find((candidate) => candidate.start === offset && candidate.node.kind === "math");
+  if (!span) return null;
+  const node = span.node;
+  const text = node.markup + node.content + node.markup;
+  span.list.splice(span.list.indexOf(node), 1, modelTextNode(text));
+  if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
+  modelTouch(block);
+  return offset + (backward ? text.length - node.markup.length : node.markup.length);
+}
+
 // ── Structure ────────────────────────────────────────────────────────────────
 //
 // Stage 2's slice 4. Stage 1 built the tree and only ever read it; slice 3's

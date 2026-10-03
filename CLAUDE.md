@@ -1477,8 +1477,14 @@ awaited, so a render never paints a frame of TeX. Every equation and its
 `<span data-math>` wrapper are uneditable, and an equation at a line's edge gets
 a caret stop from the DOM builder (`modelPlaceStops`), which every walk counts
 as nothing and a save drops. Step 2 handled Mermaid diagrams as well, until they
-were removed on 2026-10-01. What the model still does *not* do is run a format
-command, which is the rest of slice 7.
+were removed on 2026-10-01. **Step 10 lets an equation be typed**, on probation:
+`$x^2$` typed into a paragraph stays literal until the caret leaves it, then
+converts, judged by `mathSpan` — the parser's own function — so typing and
+reopening cannot disagree. The conversion is its own undo step and an undone
+one stays text, and Backspace into an equation reveals its source instead of
+deleting it, which under the model core reverses the one-press delete described
+above. What the model still does *not* do is run a format command, which is the
+rest of slice 7.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.
