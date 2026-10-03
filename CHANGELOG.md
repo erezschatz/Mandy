@@ -5702,3 +5702,29 @@ writes the TeX back byte for byte. The editable export loads its own MathJax
 with its own configuration, and relies on that startup pass; it is untouched.
 `lazy-load.js` has no suite, so the browser is the check. `sw.js`'s `VERSION`
 goes to `v1.37`.
+
+## 2026-10-03 — Deleting a list's last item no longer saves the next paragraph into it
+
+Delete the last bullet of a list that has a paragraph after it, save, and the
+file held `- first` with `Para after.` on the very next line — which reopens as
+one bullet reading "first Para after.". Nothing was wrong on screen until the
+file was opened again. Found while testing copy and cut on the `rewrite`
+branch, whose model core still saves through this path.
+
+The restore layer gives an untouched segment back its original bytes and the
+separator that followed it in the source. For the surviving bullet that
+separator was the tight `\n` leading to the deleted one, and in front of a
+paragraph a single newline is a lazy continuation of the item. Now
+`restoredSeparator` in `markdown-style.js` hands a tight separator back only
+when what follows is still the segment that followed it in the source, or a
+list item still follows a list item — so deleting from the middle of a list, or
+editing the next item, keeps the list tight. Otherwise the serialiser's own
+separator stands. The index records each segment's successor for this.
+
+`save-fidelity` gains five checks: the bug, a tight list ahead of a paragraph
+that is untouched, a middle item deleted, the next item edited, and a new
+paragraph after a restored item. The bug's two failed before the fix and the
+other three passed both before and after. Driven in Blink through the real
+markdown-it and Turndown: deleting the last item, deleting a middle one,
+merging two, and nothing at all each saved and reopened as the list and
+paragraph they were. `sw.js`'s `VERSION` goes to `v1.38`.

@@ -1096,6 +1096,15 @@ match — which in this repo's own `docs/TODO.md` is most of the file. Each segm
 also carries the separator that followed it, so a restored run comes back tight
 or loose the way the author had it.
 
+**That separator describes the segment's old neighbour, so it is only handed
+to that one.** A tight `\n` in front of anything but a block marker is a lazy
+continuation: delete a list's last item, give the item before it back its
+`\n`, and the paragraph after the list saved *into* the bullet — on screen
+nothing wrong, reopened and it was merged. `restoredSeparator` keeps the
+source's tight separator only when the segment that follows is still its old
+successor, or a list item still follows a list item, so deleting or editing
+an item beside it leaves a list tight; anywhere else the serialiser's stands.
+
 The key ignores whitespace, but a pipe table needs more than that: the `table`
 rule writes its own cell padding and its own three-dash delimiter, so `|---|---|`
 and `| --- | --- |` are the same table and would never be the same key.
