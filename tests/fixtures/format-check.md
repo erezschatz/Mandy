@@ -89,6 +89,14 @@ $$\int_0^1 x^2 \, dx = \frac{1}{3}$$
    runs into it, as plain text would. Until 2026-10-01 the equation was lost on
    the way, in Firefox and Chrome alike.
 
+   **Select the same stretch again, press Ctrl/Cmd+C, click at the end of this
+   paragraph and press Ctrl/Cmd+V.** *The copy lands with the equation typeset
+   in it.* **Then select it again, press Ctrl/Cmd+X, and paste it somewhere
+   else.** *The cut takes the equation out with the words around it, the paste
+   brings it back typeset, and one Ctrl/Cmd+Z undoes the paste and a second
+   undoes the cut.* Until 2026-10-01 both left the equation out of what they
+   carried, and a cut deleted it as well.
+
    An equation can also start a line in the middle of a paragraph, after a
    hard break:\
    $z_3$ starts this second line.

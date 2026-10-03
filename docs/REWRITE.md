@@ -1848,7 +1848,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 *   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
     Slices 1 to 6 of seven are done and tested, slices 4 to 6 driven by hand
     in all three engines; slice 7, the formats, is in progress, planned
-    2026-09-28 with steps 1 and 2 of nine done, step 2 waiting on its hand run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    2026-09-28 with steps 1 and 2 of nine done and tested, step 2 by hand in all
+    three engines on 2026-10-03; step 10, equations by typing, is next. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3706,8 +3707,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
     *   **7. Formats, the keyboard, and the renderers — in progress; planned
         2026-09-28 before any of it was built. Step 1 is done and tested the
-        same day; step 2 is done and tested by machine on 2026-09-29, and waits
-        on its hand run in three engines before step 3 starts.** Every control that edits the
+        same day; step 2 is done and tested, by machine on 2026-09-29 and by
+        hand in all three engines on 2026-10-03, copy and cut included. Step
+        10 is next, then step 3.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -3838,7 +3840,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             untouched, no `input` fires and no dialog opens; under
             `?core=legacy` the same actions still edit.
 
-        2.  **Mermaid and MathJax after a render.** *(Mermaid was removed on
+        2.  **Mermaid and MathJax after a render — done and tested, by hand
+            in all three engines on 2026-10-03.** *(Mermaid was removed on
             2026-10-01, on `main` first and merged here; the diagram half of
             what follows is history, and its code is gone.)* `modelRender` and
             `modelRerenderBlock` hand what they built to the two renderers,
@@ -4044,6 +4047,14 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             before the source is deleted, and that is parsed and inserted
             through the same path a paste takes. The drag data is read only
             for a drag from outside.
+
+            **Copy and cut lost it the same way**, and for the same reason:
+            each engine serialises the selection itself. Under the model core
+            `modelInputClipboard` writes the clipboard instead — the selected
+            DOM as HTML, which the paste path turns back into `$…$`, and plain
+            text with each equation as its source — and a cut deletes through
+            the model as one undo step. Clean by hand in Firefox, Chrome and
+            Safari on 2026-10-03, with the rest of the fixture.
 
         3.  **Inline marks: bold, italic, strikethrough.** A pure command over a
             block's inline tree, with the range given in model offsets. If every

@@ -8448,3 +8448,14 @@ merged the two items in the model, with the render check clean throughout. The
 turned up a save-path bug that is not this one's: a list whose last item has
 been deleted saves with the paragraph after it glued onto the list. It is in
 the old core too, and is its own entry.
+
+## 2026-10-03 — Slice 7's maths step is closed by hand
+
+Keeping maths typeset under the model core, slice 7's step 2, is done and
+tested. The whole of `tests/fixtures/format-check.md` ran clean by hand in
+Firefox, Chrome and Safari, after the run's own fixes: the caret beside an
+equation at a line's edge, clicks on an equation, the drag, and copy and cut.
+The fixture now has a copy-and-cut step beside the drag, which it lacked, and
+says what both should carry. `docs/REWRITE.md` marks the step closed and names
+what comes next: typing an equation, which is built ahead of the inline marks
+because it decides whether maths stays at all.
