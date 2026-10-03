@@ -8544,3 +8544,15 @@ engines, and its step 2 Backspace now expects the reveal. It names one thing
 that does not survive a save until stage 4: an undone conversion is saved
 unescaped by today's Turndown save, so it reopens as an equation. `sw.js`'s
 `VERSION` goes to `v1.69`.
+
+## 2026-10-03 — A typed equation says it was converted
+
+Asked for after the first hand run of typing an equation: text that turns into
+something else as the caret moves on reads as a glitch unless the editor owns up
+to it. Each conversion now raises a toast, "Converted to an equation. Ctrl+Z
+keeps it as text." It reads ⌘Z on a Mac, through `toolbar.js`'s
+`shortcutLabel`, and it names the way back. Both `notify` and `shortcutLabel`
+are feature-tested, because `front/input-check.html` ships neither. The
+`model-input` suite checks that a conversion raises the toast and that waiting
+after the closing `$` does not. Seen in Blink. The fixture's first typing step
+expects it.

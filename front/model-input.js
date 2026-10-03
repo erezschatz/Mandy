@@ -349,6 +349,14 @@ function modelInputSettleMath(leaving) {
     : { block, offset: here > span.end ? here - (span.end - span.start) + 1 : here };
   modelInputShow(doc, block, at, "insertEquation");
   modelMathLast = { doc, id: block.id, source: span.source };
+  // Said out loud, because text turning into something else as the caret moves
+  // on reads as a glitch unless the editor owns up to it — and the toast is
+  // where the way back is named. Feature-tested: front/input-check.html ships
+  // no notify.js, and toolbar.js is what knows Cmd from Ctrl.
+  if (typeof notify === "function") {
+    const keys = typeof shortcutLabel === "function" ? shortcutLabel("Ctrl+Z") : "Ctrl/Cmd+Z";
+    notify(`Converted to an equation. ${keys} keeps it as text.`);
+  }
   return true;
 }
 

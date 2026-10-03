@@ -32,7 +32,7 @@ export default function run(check) {
       merged: [], pruned: [], split: [], broke: [], emptyItem: [], moved: [], filled: [],
       parsed: [],
       cut: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
-      history: [], refused: [], joined: 0, converted: [], revealed: [],
+      history: [], refused: [], joined: 0, converted: [], revealed: [], toasts: [],
     };
     // What a case can move between events: the document an undo would swap in,
     // and where the caret is.
@@ -133,6 +133,7 @@ export default function run(check) {
           calls.converted.push({ from, to });
           return from + 1;
         },
+        notify: (message) => calls.toasts.push(message),
         modelMathReveal: (b, offset, backward) => {
           calls.revealed.push({ offset, backward });
           return reveal;
@@ -851,6 +852,8 @@ export default function run(check) {
       r.calls.converted.length === 1 && r.calls.converted[0].from === 0 && r.calls.converted[0].to === 3);
     check(`as its own undo step, after the keystroke's (${r.calls.announced.join(", ")})`,
       r.calls.announced.join(",") === "insertText,insertEquation");
+    check(`and says so, naming the way back (${JSON.stringify(r.calls.toasts)})`,
+      r.calls.toasts.length === 1 && /equation/.test(r.calls.toasts[0]) && /Z keeps it as text/.test(r.calls.toasts[0]));
     const last = r.calls.rerender[r.calls.rerender.length - 1];
     check(`and the caret stays after what was typed, past the one-character equation (${last.selection.offset})`,
       last.selection.offset === 2);
@@ -858,7 +861,7 @@ export default function run(check) {
   {
     const r = typing({ spans: xSpan }, 3, 3);
     check("the closing $ itself converts nothing, since a digit may follow",
-      r.calls.converted.length === 0 && r.calls.announced.join(",") === "insertText");
+      r.calls.converted.length === 0 && r.calls.announced.join(",") === "insertText" && r.calls.toasts.length === 0);
     r.state.at = { block: { id: "elsewhere" }, offset: 0 };
     r.api.modelInputSelectionMath();
     check("but the caret leaving the block does",

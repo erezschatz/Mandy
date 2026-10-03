@@ -137,7 +137,9 @@ click at the end of the file's last line and press Enter.
 1. **In a new paragraph, type `Area $x^2$` and stop.** *It stays as text, dollar signs and all,
    while the caret sits straight after the closing `$`* — the next character
    might be a digit. **Type a space.** *The `$x^2$` becomes a typeset equation
-   at once, and the caret is after the space, ready for the next word.*
+   at once, and the caret is after the space, ready for the next word. A toast
+   in the corner says it was converted and that Ctrl/Cmd+Z keeps it as text*
+   (⌘Z on a Mac). Every conversion below raises the same toast.
 
 2. **In a new paragraph, type `It cost $5 and $10.`** *It stays text throughout*, including the
    moment after the second `$`, and the `10` arriving settles it as a price.
