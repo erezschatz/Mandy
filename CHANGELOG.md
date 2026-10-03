@@ -8545,7 +8545,7 @@ that does not survive a save until stage 4: an undone conversion is saved
 unescaped by today's Turndown save, so it reopens as an equation. `sw.js`'s
 `VERSION` goes to `v1.69`.
 
-## 2026-10-03 — A typed equation says it was converted
+## 2026-10-03 — `2423647` — A typed equation says it was converted
 
 Asked for after the first hand run of typing an equation: text that turns into
 something else as the caret moves on reads as a glitch unless the editor owns up
