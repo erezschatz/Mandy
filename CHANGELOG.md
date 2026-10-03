@@ -8555,4 +8555,5 @@ keeps it as text." It reads ⌘Z on a Mac, through `toolbar.js`'s
 are feature-tested, because `front/input-check.html` ships neither. The
 `model-input` suite checks that a conversion raises the toast and that waiting
 after the closing `$` does not. Seen in Blink. The fixture's first typing step
-expects it.
+expects it. `sw.js`'s `VERSION` goes to `v1.70`, in a follow-up commit, since
+the bump was missed in this one.
