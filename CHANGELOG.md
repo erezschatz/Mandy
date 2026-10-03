@@ -5703,7 +5703,7 @@ with its own configuration, and relies on that startup pass; it is untouched.
 `lazy-load.js` has no suite, so the browser is the check. `sw.js`'s `VERSION`
 goes to `v1.37`.
 
-## 2026-10-03 — Deleting a list's last item no longer saves the next paragraph into it
+## 2026-10-03 — `12b69cb` — Deleting a list's last item no longer saves the next paragraph into it
 
 Delete the last bullet of a list that has a paragraph after it, save, and the
 file held `- first` with `Para after.` on the very next line — which reopens as
