@@ -8493,7 +8493,7 @@ into its last surviving item. The model core still saves through the same
 restore layer, so the fix applies here unchanged. Conflicts only in this file
 and `sw.js`, whose `VERSION` goes to `v1.68`, past both branches.
 
-## 2026-10-03 — An equation can be typed
+## 2026-10-03 — `5c14860` — An equation can be typed
 
 Under the model core typed text is literal, so a typed `$x^2$` was saved as
 `\$x^2$` and from stage 4 there would have been no way to make an equation in
