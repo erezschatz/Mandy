@@ -8449,7 +8449,7 @@ turned up a save-path bug that is not this one's: a list whose last item has
 been deleted saves with the paragraph after it glued onto the list. It is in
 the old core too, and is its own entry.
 
-## 2026-10-03 — Slice 7's maths step is closed by hand
+## 2026-10-03 — `5f18b8a` — Slice 7's maths step is closed by hand
 
 Keeping maths typeset under the model core, slice 7's step 2, is done and
 tested. The whole of `tests/fixtures/format-check.md` ran clean by hand in
