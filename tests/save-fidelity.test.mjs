@@ -472,6 +472,36 @@ function styleChecks(check) {
     restore(serialised, new Map()) === serialised,
   );
 
+  // A restored segment's separator described the block that followed it in the
+  // source. Delete a list's last item and the item before it comes back with
+  // the tight "\n" that led to the deleted one -- now leading to the paragraph
+  // after the list, which reparses as a lazy continuation of the item. Saved,
+  // reopened, and the paragraph is inside the bullet.
+  const listThenPara = "- first\n- second\n\nPara after.\n";
+  check(
+    "deleting a list's last item does not glue the paragraph after it onto the list",
+    restore("- first\n\nPara after.\n", index(listThenPara)) === "- first\n\nPara after.\n",
+  );
+  check(
+    "an untouched tight list followed by a paragraph comes back as it was",
+    restore("- first\n\n- second\n\nPara after.\n", index(listThenPara)) === listThenPara,
+  );
+  // The tight separator is still the author's whenever what follows is a list
+  // item where a list item followed before, so deleting from the middle of a
+  // list -- or editing the item after -- does not loosen it.
+  check(
+    "deleting a middle item keeps the list tight",
+    restore("- a\n\n- c\n\nP\n", index("- a\n- b\n- c\n\nP\n")) === "- a\n- c\n\nP\n",
+  );
+  check(
+    "editing the item after a restored one keeps the boundary before it tight",
+    restore("- a\n\n- B\n", index("- a\n- b\n")) === "- a\n- B\n",
+  );
+  check(
+    "a tight separator is never handed to a paragraph that did not follow it",
+    restore("- a\n\nNew para\n", index("- a\n- b\n")) === "- a\n\nNew para\n",
+  );
+
   // Escapes are the serialiser's, not the author's, so they must not stop a
   // block matching itself.
   check(
