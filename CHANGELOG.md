@@ -8486,7 +8486,7 @@ markdown-it and Turndown: deleting the last item, deleting a middle one,
 merging two, and nothing at all each saved and reopened as the list and
 paragraph they were. `sw.js`'s `VERSION` goes to `v1.38`.
 
-## 2026-10-03 — Merge `main`: the list-gluing save fix
+## 2026-10-03 — `77e2433` — Merge `main`: the list-gluing save fix
 
 `f128836` from `main`, which stops a save writing the paragraph after a list
 into its last surviving item. The model core still saves through the same
