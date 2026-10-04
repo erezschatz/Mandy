@@ -8896,7 +8896,7 @@ The full suite passes on the merge. The 2026-09-22 entry for `22a31db` had no
 hash in its header and gets it here. `sw.js`'s `VERSION` goes to `v1.39`, past
 both sides.
 
-## 2026-10-04 — Merge `main`: the five 2026-09-22 commits reach the branch
+## 2026-10-04 — `4f27f8e` — Merge `main`: the five 2026-09-22 commits reach the branch
 
 `560a547` from `main`, which rejoined the twelve local commits with five made
 there on 2026-09-22. The five reach `rewrite` here: the format bar's scroll
