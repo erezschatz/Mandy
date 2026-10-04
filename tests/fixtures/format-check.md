@@ -139,7 +139,10 @@ click at the end of the file's last line and press Enter.
    might be a digit. **Type a space.** *The `$x^2$` becomes a typeset equation
    at once, and the caret is after the space, ready for the next word. A toast
    in the corner says it was converted and that Ctrl/Cmd+Z keeps it as text*
-   (⌘Z on a Mac). Every conversion below raises the same toast.
+   (⌘Z on a Mac). Every conversion below raises the same toast. **Keep
+   typing a few words, spaces and all.** *Every space and letter lands where
+   you typed it.* Until 2026-10-04, Chrome and Safari put each letter typed
+   at a line's end in front of the space before it.
 
 2. **In a new paragraph, type `It cost $5 and $10.`** *It stays text throughout*, including the
    moment after the second `$`, and the `10` arriving settles it as a price.

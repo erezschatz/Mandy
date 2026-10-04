@@ -88,7 +88,7 @@ export default function run(check) {
     modelInlineLeaves, modelTrimRendering,
     modelInsertBlocks, modelTextBlocks, modelAdoptBlocks,
     modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection, modelBlockById,
-    modelMathCandidates, modelMathConvert, modelMathReveal,
+    modelMathCandidates, modelMathConvert, modelMathReveal, modelHoldSpaces, modelVerifyRender,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -112,7 +112,8 @@ export default function run(check) {
       " modelInlineLeaves, modelTrimRendering," +
       " modelInsertBlocks, modelTextBlocks, modelAdoptBlocks," +
       " modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection," +
-      " modelBlockById, modelMathCandidates, modelMathConvert, modelMathReveal };",
+      " modelBlockById, modelMathCandidates, modelMathConvert, modelMathReveal," +
+      " modelHoldSpaces, modelVerifyRender };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -2848,6 +2849,57 @@ export default function run(check) {
       "so Firefox's range over an equation is one character wide, not zero",
       modelDomOffset(para, math, 1, 1) - modelDomOffset(para, math, 0, -1) === 1,
     );
+  }
+
+  // A space that would collapse is drawn as U+00A0 (found 2026-10-04). Under
+  // `white-space: normal` a plain space at a line's edge or after another has
+  // no caret position, and Blink and WebKit moved a caret put after one back
+  // in front of it, so ` a b ` typed at a paragraph's end came out `ab   `.
+  {
+    const doc = { createElement: (tag) => makeEl(tag), createTextNode: makeText };
+    const el = (tag, kids, attrs = {}) => {
+      const node = makeEl(tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      for (const kid of kids) node.appendChild(kid);
+      return node;
+    };
+    const drawn = (p) => JSON.stringify(modelDomText(p)).replace(/ /g, "_");
+    const held = (...kids) => { const p = el("p", kids); modelHoldSpaces([p]); return p; };
+
+    check(`a space ending a line is held (${drawn(held(makeText("a b ")))})`,
+      drawn(held(makeText("a b "))) === '"a b_"');
+    check(`one starting a line is held (${drawn(held(makeText(" a")))})`,
+      drawn(held(makeText(" a"))) === '"_a"');
+    check(`a run of spaces alternates, so a line can still wrap at it (${drawn(held(makeText("a   b")))})`,
+      drawn(held(makeText("a   b"))) === '"a _ b"');
+    check(`a space before a hard break is held (${drawn(held(makeText("a "), el("br", []), makeText("\nb")))})`,
+      drawn(held(makeText("a "), el("br", []), makeText("\nb"))) === '"a_\\nb"');
+    check(`the rule runs across marks (${drawn(held(makeText("a "), el("strong", [makeText(" b")])))})`,
+      drawn(held(makeText("a "), el("strong", [makeText(" b")]))) === '"a _b"');
+    const eq = () => el("span", [makeText("$x$")], { "data-math": "" });
+    check(`a space after an equation ending the line is held (${drawn(held(makeText("Then "), eq(), makeText(" ")))})`,
+      drawn(held(makeText("Then "), eq(), makeText(" "))) === '"Then ￼_"');
+    const plain = makeText("an ordinary line of text");
+    held(plain);
+    check("and an ordinary line is untouched", plain.textContent === "an ordinary line of text");
+
+    // A held space is visible, so an equation with one after it does not end
+    // the line and gets no <br> stop between the two.
+    const p = el("p", [makeText("Then "), eq(), makeText(" ")]);
+    modelHoldSpaces([p]);
+    modelPlaceStops([p], doc);
+    check("an equation followed by a held space is not a line's end",
+      !p.childNodes.some((n) => n.nodeType === 1 && n.tagName === "BR"));
+
+    // And the render verify reads a held space as the space the model holds.
+    const parsed = parse("Typed at the end \n");
+    const block = parsed.blocks[0];
+    modelInlineSplice(block, modelInlineText(block.inlines).length, modelInlineText(block.inlines).length, " ");
+    const root = el("div", [el("p", [makeText(modelBlockText(block))], { "data-block": String(block.id) })]);
+    root.querySelector = (sel) => root.childNodes.find((n) => sel.includes(`"${n.getAttribute("data-block")}"`)) || null;
+    modelHoldSpaces(root.childNodes);
+    check("the render verify reads a held space as a space",
+      modelVerifyRender(root, parsed).problems.length === 0 && modelVerifyRender(root, parsed).compared === 1);
   }
 
   // Caret stops beside an equation at a line's edge (slice 7's step 2). Firefox

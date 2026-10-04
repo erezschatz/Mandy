@@ -8910,3 +8910,47 @@ One fix beyond the text. `tests/export-variant.test.mjs` boots `app.js` without
 exported bundle ships `model.js` ahead of `app.js`, so the suite now loads it
 there too, rather than stubbing the flag. The full suite passes. `sw.js`'s
 `VERSION` goes to `v1.71`, past both sides.
+
+## 2026-10-04 — A space typed at the end of a line stays where it was typed
+
+Under the model core, in Chrome and Safari, a space typed at the end of a line
+went in and the next letter landed in front of it: ` a b ` typed at a
+paragraph's end came out `ab   `. Found by hand while typing equations, and it
+looked like the space bar had stopped working. Measured in Blink on a plain
+paragraph with no maths, and on `782da50`, the commit before slice 7 began, so
+it dates from the input layer's first slice. Firefox leaves a caret where it is
+put, which is why its runs passed. A report of Enter behaving like Backspace in
+Firefox may be the same thing; it could not be reproduced.
+
+`#editor` is `white-space: normal`, so a plain space at a line's end, at its
+start, after another space or before a hard break collapses, and has no caret
+position of its own. The old core never met this, because there the browser
+types and writes a U+00A0 itself. The model core writes a plain space and puts
+the caret after it, and Blink and WebKit move that caret back in front of the
+collapsed space.
+
+`modelHoldSpaces` in `model.js` now draws each such space as U+00A0. It is a
+DOM-builder pass beside the caret stops, so `md.render` is unchanged and the
+model and the file keep plain spaces. It is one character for one, so no offset
+moves, and a run of spaces alternates, so a line can still wrap inside one.
+Three readers had to agree:
+- the render verify compares through `modelSameText`;
+- the composition diff reads U+00A0 as a space;
+- copy and cut turn them back into spaces in what they carry.
+
+The save path already does the same, through `normaliseNbsp`. The caret-stop
+pass had been calling whitespace blank with `trim()`, which counts U+00A0 as
+whitespace. That would have put a `<br>` stop between an equation and the space
+typed after it, so it now treats only collapsible whitespace as blank.
+
+The `model` suite checks the spaces that are held: at a line's end, at its
+start, in a run, before a hard break, across a mark and after an equation. It
+also checks that an ordinary line is untouched, that a held space after an
+equation does not count as the line's end, and that the render verify reads a
+held space as a space. The last two were each broken on purpose to confirm
+their checks fail. Driven in Blink with real keystrokes: words and an equation
+typed at a paragraph's end landed in order, the save wrote them correctly, and a
+trailing space, then Enter, a letter and two Backspaces came back to where it
+started. The plan is in `docs/REWRITE.md` under slice 3. The fixture's first
+typing step now says spaces must land where typed. `sw.js`'s `VERSION` goes to
+`v1.72`.

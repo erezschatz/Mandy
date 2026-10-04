@@ -2078,9 +2078,89 @@ function modelBuildBlock(parent, block, md, env) {
   } else if (modelNeedsFiller(block)) {
     (el || parent).appendChild(modelFillerBreak(parent.ownerDocument));
   } else if (block.inlines) {
+    modelHoldSpaces(el ? [el] : nodes);
     modelPlaceStops(el ? [el] : nodes, parent.ownerDocument);
   }
   return nodes;
+}
+
+const MODEL_HELD_SPACE = " ";
+
+/**
+ * Draw every space that would collapse as U+00A0, so it has a caret position.
+ *
+ * `#editor` is `white-space: normal`, and the browser used to keep a typed
+ * space visible by writing an NBSP itself. The model core writes instead, so a
+ * plain space at a line's end had no position of its own, and Blink and WebKit
+ * moved a caret put after it back in front of it — the next keystroke landed
+ * before the space, and ` a b ` typed at a paragraph's end came out `ab   `.
+ * Found 2026-10-04; docs/REWRITE.md's slice 3 has the measurement.
+ *
+ * A space collapses when it starts a line, ends one — the block's end or a
+ * hard break — or follows another collapsible space. Only the drawing changes:
+ * one character for one, so every offset holds, and the model and the file
+ * keep a plain space. A U+00A0 the author wrote is already one and is left
+ * alone. Newlines count as whitespace for the rule and are never rewritten.
+ */
+function modelHoldSpaces(roots) {
+  let collapsible = true;
+  let pending = null; // the last plain space with nothing visible after it yet
+  const hold = (at) => {
+    if (!at) return;
+    const text = at.node.textContent;
+    at.node.textContent = text.slice(0, at.index) + MODEL_HELD_SPACE + text.slice(at.index + 1);
+  };
+
+  (function walk(nodes) {
+    for (const node of nodes) {
+      if (node.nodeType === 3) {
+        let text = node.textContent;
+        let changed = false;
+        for (let i = 0; i < text.length; i++) {
+          const c = text[i];
+          if (c === " ") {
+            if (collapsible) {
+              text = text.slice(0, i) + MODEL_HELD_SPACE + text.slice(i + 1);
+              changed = true;
+              collapsible = false;
+              pending = null;
+            } else {
+              collapsible = true;
+              pending = { node, index: i };
+            }
+          } else if (c === "\n" || c === "\t") {
+            collapsible = true;
+          } else {
+            collapsible = false;
+            pending = null;
+          }
+        }
+        if (changed) node.textContent = text;
+        continue;
+      }
+      if (node.nodeType !== 1 || modelIsFiller(node)) continue;
+      if (node.tagName === "BR") {
+        hold(pending);
+        pending = null;
+        collapsible = true;
+        continue;
+      }
+      if (modelIsAtomNode(node)) {
+        collapsible = false;
+        pending = null;
+        continue;
+      }
+      walk(node.childNodes);
+    }
+  })(roots);
+  hold(pending);
+}
+
+// The same text with every U+00A0 read as a space: how DOM text is compared
+// with the model's, since `modelHoldSpaces` draws spaces as U+00A0 and D3
+// treats whitespace nobody can see as no difference at all.
+function modelSameText(a, b) {
+  return a === b || a.replace(/ /g, " ") === b.replace(/ /g, " ");
 }
 
 /**
@@ -2118,7 +2198,11 @@ function modelPlaceStops(roots, document) {
     for (const child of node.childNodes) collect(child);
   })({ nodeType: 1, hasAttribute: () => false, childNodes: roots });
 
-  const blank = (leaf) => leaf && leaf.nodeType === 3 && !leaf.textContent.trim();
+  // Only whitespace that collapses is blank. A space `modelHoldSpaces` drew as
+  // U+00A0 is visible and has a caret position of its own, so an equation with
+  // one after it does not end the line — and `trim()` would say it did, since
+  // JavaScript counts U+00A0 as whitespace.
+  const blank = (leaf) => leaf && leaf.nodeType === 3 && /^[ \t\n\r]*$/.test(leaf.textContent);
   const breakOrNone = (leaf) => !leaf || leaf.nodeType === 1 && leaf.tagName === "BR";
 
   leaves.forEach((leaf, i) => {
@@ -2295,7 +2379,7 @@ function modelVerifyRender(root, doc) {
       const want = modelBlockText(block);
       const got = modelDomText(el);
       compared += 1;
-      if (got !== want) problems.push({ id: block.id, kind: block.kind, want, got });
+      if (!modelSameText(got, want)) problems.push({ id: block.id, kind: block.kind, want, got });
     }
     if (block.children) block.children.forEach(walk);
   };

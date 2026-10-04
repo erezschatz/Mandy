@@ -686,7 +686,10 @@ function modelInputCompositionEnd() {
 
   const el = modelElementFor(editor, block);
   if (!el) return;
-  const now = modelDomText(el);
+  // Read as the model holds it: the DOM builder draws a space that would
+  // collapse as U+00A0 (`modelHoldSpaces`), and diffing that against the
+  // model's plain space would rewrite text the composition never touched.
+  const now = modelDomText(el).replace(/\u00A0/g, " ");
   const was = modelBlockText(block);
   if (now === was) return;
 
@@ -1104,6 +1107,12 @@ function modelInputClipboard(event, cut) {
   const holder = document.createElement("div");
   holder.appendChild(range.cloneContents());
   for (const stop of holder.querySelectorAll(`[${MODEL_FILLER_ATTR}]`)) stop.remove();
+  // A space the DOM builder drew as U+00A0 is a plain space in the model, and
+  // should be one wherever it is pasted — see `modelHoldSpaces`.
+  const walker = document.createTreeWalker(holder, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.textContent.includes("\u00A0")) node.textContent = node.textContent.replace(/\u00A0/g, " ");
+  }
   const html = holder.innerHTML;
   for (const equation of holder.querySelectorAll("[data-math]")) {
     const typeset = equation.querySelector("mjx-container[data-tex]");

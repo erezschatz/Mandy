@@ -2282,6 +2282,34 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         space to an NBSP behind our back cannot happen when the browser is no
         longer the one writing.
 
+        **That second half had a cost nobody measured until 2026-10-04.** The
+        browser wrote that NBSP for a reason: `#editor` is `white-space:
+        normal`, so a plain space at a line's end, at its start, after another
+        space, or before a hard break collapses and has no caret position of
+        its own. The model renders the plain space it holds, applies the caret
+        after it, and Blink and WebKit move that caret back in front of the
+        collapsed space — so the next keystroke lands before it, and ` a b `
+        typed at a paragraph's end comes out `ab   `. Gecko leaves the caret
+        where it was put. Found by hand while typing equations in slice 7 —
+        measured since in Blink on a plain paragraph, and on the commit before
+        slice 7 began, so it is this slice's, and every hand run since typed
+        words mid-line or in one go.
+
+        **The fix, planned before it was built:** the DOM builder draws every
+        space that would collapse as U+00A0, beside the caret stops and for the
+        same reason they are there rather than in the renderer — `md.render`
+        stays slice 1's, and the model and the file keep plain spaces. A space
+        collapses when it starts a line, ends one (the block's end or a hard
+        break), or follows another collapsible space; one character either way,
+        so no offset moves. Two readers compare DOM text with the model's —
+        the render verify and the composition diff — and both read U+00A0 as a
+        space, which is D3's rule for whitespace nobody can see. The save path
+        already converts it (`normaliseNbsp`), and the copied plain text does
+        too. `white-space: pre-wrap` was the alternative and is what most model
+        editors use, but it would draw every softbreak in a hard-wrapped file as
+        a line break unless the renderer rewrote them, which is the bigger
+        change.
+
         **Composition is decided rather than discovered**, per the design
         section: `insertCompositionText` cannot be cancelled, so from
         `compositionstart` to `compositionend` the engine owns the one text
