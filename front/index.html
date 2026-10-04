@@ -127,8 +127,13 @@
             stroke="currentColor"
             stroke-width="2"
           >
-            <path d="M16 4H9a3 3 0 0 0-2.83 4"></path>
-            <path d="M14 12a4 4 0 0 1 0 8H6"></path>
+            <!-- One continuous S rather than Feather's two arcs, which leave
+                 a gap either side of the strike line and read as two hooks
+                 rather than a struck-through letter at 15px. Repeated in
+                 html-export.js, which hand-writes its own copy of this bar. -->
+            <path
+              d="M17 6.2A4 4 0 0 0 9.2 7.4C8.8 10 12 11.2 14.2 12c2.2.8 2.8 2.4 2.4 4.2a4 4 0 0 1-7.8 1.2"
+            ></path>
             <line x1="4" y1="12" x2="20" y2="12"></line>
           </svg>
         </button>
@@ -162,9 +167,15 @@
             <line x1="10" y1="6" x2="21" y2="6"></line>
             <line x1="10" y1="12" x2="21" y2="12"></line>
             <line x1="10" y1="18" x2="21" y2="18"></line>
-            <text x="3" y="8" font-size="8" fill="currentColor">1.</text>
-            <text x="3" y="14" font-size="8" fill="currentColor">2.</text>
-            <text x="3" y="20" font-size="8" fill="currentColor">3.</text>
+            <!-- stroke="none" is the whole fix: <text> inherits the svg's
+                 own stroke-width of 2, which in a 24-unit box outlined each
+                 numeral until the three ran together. Sized and spaced to the
+                 6-unit row pitch, and right-aligned so 1/2/3 share an edge. -->
+            <g fill="currentColor" stroke="none" font-size="7" text-anchor="end">
+              <text x="7" y="8.4">1</text>
+              <text x="7" y="14.4">2</text>
+              <text x="7" y="20.4">3</text>
+            </g>
           </svg>
         </button>
         <button class="format-btn" data-format="code" title="Code Block">

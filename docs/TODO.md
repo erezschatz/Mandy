@@ -147,7 +147,12 @@ and updated in the same commit — `grep -rn "TODO [0-9]" .` finds them.
       which `file-api.js` has never had to do, and `newTab` seeding its
       directory from the tab that spawned it — `fileAdopt(null)` resets the
       dialog directory with everything else today, and the CHANGELOG entry
-      that introduced it left seeding to whoever creates tabs.
+      that introduced it left seeding to whoever creates tabs. What follows
+      from it once it works — getting back out, a fragment into another file,
+      a file already open in a tab, and whether a document Mandy did not write
+      gets to choose what the editor opens — is deliberately not 1.0's, and is
+      "A set of linked files, navigated as one thing" in
+      [ROADMAP.md](ROADMAP.md).
     - **Touch devices have no modifier**, so there is no way to follow a link on
       one, and the hover tooltip never shows either. Wants its own affordance —
       a long-press, or the chip Google Docs shows.
@@ -685,14 +690,15 @@ category fidelity deliberately does not extend to.
       `overflow-y: auto` and a height derived from the viewport minus the
       chrome — the same `--toolbar-height` / `--tab-bar-height` arithmetic
       4.9 already built, reused rather than duplicated.
-    - **Two call sites read window-level scroll position today and would have
-      to read the new container's instead:** `format-bar.js`'s
-      `barRect()` (`window.pageYOffset || document.documentElement.scrollTop`,
-      used to clamp the floating bar above/below the selection against the
-      sticky toolbar) and `app.js`'s `scrollToAnchor` (`window.scrollY` /
-      `window.scrollTo`, for Ctrl/Cmd+click on a heading link). Both are
-      exercised by existing suites — `format-bar.test.mjs` alone has 79
-      checks — so this is a real, testable change, not a CSS-only one.
+    - **Three places read the window's scroll today and would have to read the
+      new container's instead:** `format-bar.js`'s `barRect()`
+      (`window.pageYOffset || document.documentElement.scrollTop`, used to clamp
+      the floating bar above/below the selection against the sticky chrome), the
+      `scroll` listener beside it that hides the bar — added 2026-09-22, and
+      registered on `window` precisely because the page is what scrolls — and
+      `app.js`'s `scrollToAnchor` (`window.scrollY` / `window.scrollTo`, for
+      Ctrl/Cmd+click on a heading link). All three are exercised by existing
+      suites, so this is a real, testable change, not a CSS-only one.
     - `.outline`'s own sticky positioning inside the new container needs
       re-checking once the outer page no longer scrolls at all — it may
       simplify to a plain height-and-`overflow-y` sidebar inside the same
