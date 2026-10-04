@@ -6051,7 +6051,7 @@ markdown-it and Turndown: deleting the last item, deleting a middle one,
 merging two, and nothing at all each saved and reopened as the list and
 paragraph they were. `sw.js`'s `VERSION` goes to `v1.38`.
 
-## 2026-10-04 — Merge `origin/main`: two lines of work on `main` rejoined
+## 2026-10-04 — `08c9310` — Merge `origin/main`: two lines of work on `main` rejoined
 
 `main` had moved on in two places at once. The copy on GitHub gained five
 commits on 2026-09-22, from the format bar's scroll fix to the file dialog's row
