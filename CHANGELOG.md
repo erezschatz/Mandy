@@ -8911,7 +8911,7 @@ exported bundle ships `model.js` ahead of `app.js`, so the suite now loads it
 there too, rather than stubbing the flag. The full suite passes. `sw.js`'s
 `VERSION` goes to `v1.71`, past both sides.
 
-## 2026-10-04 — A space typed at the end of a line stays where it was typed
+## 2026-10-04 — `d2c2b75` — A space typed at the end of a line stays where it was typed
 
 Under the model core, in Chrome and Safari, a space typed at the end of a line
 went in and the next letter landed in front of it: ` a b ` typed at a
