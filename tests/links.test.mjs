@@ -41,7 +41,7 @@ function makeLink(href) {
   return link;
 }
 
-export default function run(check) {
+export default async function run(check) {
   const app = loadApp();
   const { anchorSlug, headingAnchors, openExternalLink, normaliseLinkHref, opened, byId } = app;
   const editor = byId.get("editor");
@@ -182,4 +182,54 @@ export default function run(check) {
     "the hint is a CSS variable, not a title attribute Turndown would serialise",
     app.documentElement.style["--link-hint"] === '"Cmd+Click to open link"',
   );
+
+  // --- retargeting a reference link ------------------------------------------
+  //
+  // The referenceLink rule writes [text][label] off the data-ref-label stamp and
+  // never reads the href, so a retarget that left the stamp behind was lost on
+  // save. Asked of the rule itself rather than of the attribute alone, since
+  // the rule is what decides which syntax the file gets.
+
+  app.adoptMarkdownStyle("See [the docs][docs].\n\n[docs]: https://old.example\n");
+  const refRule = app.rules.referenceLink;
+
+  function refLink() {
+    const link = makeEl("a");
+    link.nodeName = "A"; // what the rule filters on; makeEl sets only tagName
+    link.setAttribute("href", "https://old.example");
+    link.setAttribute("data-ref-label", "docs");
+    editor.appendChild(link);
+    return link;
+  }
+  function caretIn(link) {
+    app.selection.rangeCount = 1;
+    app.selection.getRangeAt = () => ({
+      commonAncestorContainer: link,
+      collapsed: true,
+      cloneRange() { return this; },
+    });
+  }
+
+  const moved = refLink();
+  caretIn(moved);
+  check("an untouched reference link is written as a reference", refRule.filter(moved));
+  app.inputAnswers.push("https://new.example");
+  await app.insertLink();
+  check("a retarget takes the new address", moved.getAttribute("href") === "https://new.example");
+  check("and is no longer written as the reference, which would drop that address",
+    !moved.hasAttribute("data-ref-label") && !refRule.filter(moved));
+
+  const kept = refLink();
+  caretIn(kept);
+  app.inputAnswers.push("https://old.example");
+  await app.insertLink();
+  check("an Update to the same address keeps the reference form",
+    kept.getAttribute("data-ref-label") === "docs" && refRule.filter(kept));
+
+  const backedOut = refLink();
+  caretIn(backedOut);
+  await app.insertLink();
+  check("backing out of the dialog leaves the reference alone",
+    backedOut.getAttribute("data-ref-label") === "docs" &&
+      backedOut.getAttribute("href") === "https://old.example");
 }

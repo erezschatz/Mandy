@@ -130,13 +130,12 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
         getSelection: () => ({ rangeCount: 0, removeAllRanges() {}, addRange() {} }),
       },
       navigator: { clipboard: {} },
-      // openFile awaits both renderers outside its own try, so a renderer that
+      // openFile awaits the renderer outside its own try, so a renderer that
       // throws throws out of the whole operation -- the path the counter's
       // `finally` exists for.
-      renderMermaidDiagrams: async () => {
-        if (failRender) throw new Error("mermaid blew up");
+      renderLatex: async () => {
+        if (failRender) throw new Error("MathJax blew up");
       },
-      renderLatex: async () => {},
       fetch: async (url, opts) => {
         if (opts && opts.method === "POST") {
           const body = JSON.parse(opts.body);
@@ -610,8 +609,8 @@ export default async function run(check) {
       app.fileOperationInFlight() === false);
   }
 
-  // The case the counter's `finally` is actually for. openFile awaits the two
-  // renderers outside its own try/catch, so one of them throwing throws out of
+  // The case the counter's `finally` is actually for. openFile awaits the
+  // renderer outside its own try/catch, so it throwing throws out of
   // the operation -- and a turn left behind would refuse every switch for the
   // rest of the session, with nothing on screen saying why.
   {

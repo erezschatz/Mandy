@@ -524,13 +524,42 @@ function markdownBody(markdown) {
 
 function indexMarkdownBlocks(markdown) {
   const index = new Map();
-  for (const segment of markdownSegments(markdownBody(markdown)[0])) {
+  const segments = markdownSegments(markdownBody(markdown)[0]);
+  segments.forEach((segment, i) => {
+    segment.next = segments[i + 1] || null;
+  });
+  for (const segment of segments) {
     const key = markdownBlockKey(segment.text);
     if (!key) continue;
     if (!index.has(key)) index.set(key, []);
     index.get(key).push(segment);
   }
   return index;
+}
+
+const LIST_ITEM_START = /^\s*([-*+]|\d+[.)])\s/;
+
+// A restored segment's separator describes what followed it in the source, and
+// a single "\n" is only safe in front of something that ends the block before
+// it. Delete a list's last item and the item before it would hand its "\n" to
+// the paragraph after the list, which then reparses as a lazy continuation of
+// the item -- the paragraph saved into the bullet, nothing wrong on screen. So
+// the source's separator stands when its successor is still the one that
+// follows, or when a list item still follows a list item, which keeps a list
+// tight with an item deleted or edited beside it. Anything else takes the
+// serialiser's.
+function restoredSeparator(original, next, nextOriginal, fallback) {
+  if (!original || !original.gap) return fallback;
+  if (original.gap !== "\n") return original.gap;
+  if (nextOriginal && nextOriginal === original.next) return original.gap;
+  if (
+    original.next &&
+    LIST_ITEM_START.test(original.next.text) &&
+    LIST_ITEM_START.test(next.text)
+  ) {
+    return original.gap;
+  }
+  return fallback;
 }
 
 // Segments are consumed as they are matched, so a document repeating the same
@@ -541,20 +570,25 @@ function restoreSourceWrapping(markdown, index) {
   const used = new Map();
   const [body, trailing] = markdownBody(markdown);
   const segments = markdownSegments(body);
-  let out = "";
-
-  segments.forEach((segment, i) => {
+  // Matched in a pass of their own, since a separator depends on what the next
+  // segment matched as well as on what this one did.
+  const originals = segments.map((segment) => {
     const key = markdownBlockKey(segment.text);
     const bucket = index.get(key);
     const taken = used.get(key) || 0;
     const original = bucket && taken < bucket.length ? bucket[taken] : null;
     if (original) used.set(key, taken + 1);
+    return original;
+  });
+  let out = "";
 
+  segments.forEach((segment, i) => {
+    const original = originals[i];
     out += original ? original.text : segment.text;
     if (i === segments.length - 1) return;
     // A segment that ended its document carries no separator, so fall back to
     // the one the serialiser produced rather than running two segments together.
-    out += (original && original.gap) || segment.gap;
+    out += restoredSeparator(original, segments[i + 1], originals[i + 1], segment.gap);
   });
 
   return out + trailing;

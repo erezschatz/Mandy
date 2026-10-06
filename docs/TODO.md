@@ -767,10 +767,6 @@ category fidelity deliberately does not extend to.
     the honest description of what ships today — send-for-review, one hop —
     which is what the rewrite should say. Real collaboration changing the answer
     later is a README change later.
-*   **6.2** Mermaid diagrams in the static HTML export keep the light palette
-    they were rendered with, since Mermaid isn't shipped with the document.
-    Dark-mode readers get a white card behind the diagram as a workaround
-    rather than a properly re-rendered dark one.
 *   **6.3** *(no urgency)* Ship Mandy as a single executable. `deno compile`
     bundles the runtime, the Hono server and `front/` into one binary per
     platform, so "install Deno, run it under pm2" becomes "download this, run

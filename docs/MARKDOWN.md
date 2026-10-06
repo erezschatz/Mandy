@@ -115,7 +115,7 @@ destroy it. CLAUDE.md's "Document state" section is the detail.
 | Construct | Render | Author | Round-trip | After 3.1 |
 | --- | --- | --- | --- | --- |
 | **Math** `$…$` / `$$…$$` | ✓ `mathSpan` + `math` rule feed MathJax the verbatim source; `hasMathSpan` keeps the re-wrapper in step | ✗ | ✓ `stampLatexSource` writes `data-tex`; the `mathjax` Turndown rule reads it back. Display math split across a blank line is not handled (a TeX error anyway) | → the model holds the TeX; the stamp and the Turndown rule go |
-| **Mermaid** ` ```mermaid ` | ✓ `renderers.js` swaps in the SVG + a hidden `.mermaid-source` | ✗ | ✓ the `mermaid` Turndown rule reconstructs the fence from `.mermaid-source` | → the model holds the fence body; `.mermaid-source` and the rule go |
+| **Mermaid** ` ```mermaid ` | — removed 2026-10-01: an ordinary code block, shown as its source | ✗ | ✓ a fence like any other; the `mermaid` Turndown rule only turns a diagram drawn before the removal back into its fence | → the compatibility rule goes with the old save path |
 
 ---
 
@@ -144,7 +144,7 @@ stage-1 or stage-2 cases:
 - Explicit heading IDs — `## Title {#id}` survives an untouched heading and an
   edited one, and `headingAnchors` resolves a link to `#id` over the auto-slug.
 - Linkified bare URLs serialise back to bare text, not to `[url](url)`.
-- Math and Mermaid source survival — already have suites (`latex`,
+- Math source survival — already has suites (`latex`,
   `self-reproduce`); point them at the model.
 
 ## Decisions

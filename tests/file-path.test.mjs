@@ -127,7 +127,6 @@ function boot({
       navigator: { clipboard: {} },
       // Loaded by renderers.js in the app, which this suite does not need — but
       // openFile calls both on every read, reload included.
-      renderMermaidDiagrams: async () => {},
       renderLatex: async () => {},
       // /api/home on boot; a save echoes back the path it was given, which is
       // what the real endpoint does and what setCurrentFile reads. /api/browse

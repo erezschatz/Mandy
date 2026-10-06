@@ -5838,7 +5838,7 @@ cannot drift apart.
 
 Metafiles only; nothing ran.
 
-## 2026-09-22 — Two format-bar icons that did not draw what they meant
+## 2026-09-22 — `22a31db` — Two format-bar icons that did not draw what they meant
 
 **Strikethrough was two hooks with a gap.** The icon is Feather's — two arcs,
 the top ending at y=8 and the bottom starting at y=12 — so at the 15px the
@@ -5865,6 +5865,208 @@ data, so this was verified by rendering both files' real `#formatBar` markup
 against the real stylesheet in Chrome and comparing them side by side.
 `sw.js` goes to `v1.33`, since `index.html` is a shell asset.
 
+## 2026-09-28 — `f2cfbcc` — Retargeting a reference link no longer loses the new address
+
+Found planning TODO 3.1's slice 7 on `rewrite`, where the model core had to
+decide what Link… does to a `[text][label]` link. The question led back here,
+where the answer was already wrong. `insertLink` set the new `href` on the
+`<a>` and left its `data-ref-label` stamp in place. The `referenceLink` Turndown
+rule writes `[text][label]` off that stamp **and never reads the href**, so
+the save wrote the old reference and the new address was gone. Nothing looked
+wrong on screen until the file was reopened.
+
+`retargetLink` in `app.js` now drops the stamp when the address actually
+changes. The link saves inline as `[text](new)`, and the definition stays for any
+other link that uses the label, or is dropped if no link uses it any more, the
+same way an unused label always was. This was a decision rather than the only
+fix: rewriting the definition would move every link using the label at once,
+from a dialog that names one link. An Update that keeps the same address keeps
+the stamp and the author's reference form.
+
+Five checks in the `links` suite drive the real `insertLink` through a stubbed
+dialog, and ask the `referenceLink` rule's own filter rather than the attribute
+alone, since the rule is what decides the syntax the file gets. The one that
+matters fails with the fix removed. `tests/dom.mjs`'s `loadApp` gains the
+dialog stub, `Node`'s two constants, and `insertLink` in what it hands back.
+CLAUDE.md's reference-links section says the rule never reads the href and what
+follows from that. `sw.js`'s `VERSION` goes to `v1.33`.
+
+## 2026-09-29 — `5e6efad` — Reloading a document with maths no longer piles up copies of every equation
+
+Found starting TODO 3.1's slice 7, step 2, on `rewrite`, where the model core
+re-renders and so typesets far more often than this core does. That made the
+question visible: what happens when `renderLatex` runs over maths that is
+already typeset? Here it happens on **every reload**, because the boot restores
+the autosaved HTML, which is typeset, and then calls `renderLatex` over it. It
+also happens on every **Paste markdown**, which re-runs it over the whole editor.
+
+The answer was that MathJax typesets it again. The app loads the `tex-mml-chtml`
+bundle, which reads MathML as input as well as TeX, and every typeset container
+carries a hidden copy of its equation as MathML for screen readers. A second
+pass found that copy, typeset it, and nested a new container inside the old
+one. Measured in Blink: one equation was three containers after a single
+reload, and a document typeset three times over had nine containers for three
+equations. The autosave kept every copy and the next reload added more.
+Nothing showed on screen, since the copies sit inside hidden markup, and saves
+were unaffected, because `stampLatexSource` never stamps a nested container.
+
+`renderLatex` now puts every stamped container back to its `$…$` or `$$…$$`
+source, clears MathJax's record of the old ones, and typesets afresh, so a
+second pass has nothing typeset to find. Any nesting a document already carries
+goes with its outer container on the next load. It turned out that the second
+pass had been doing a job nobody asked of it: typesetting is what makes MathJax
+write its stylesheet, and restored maths had been getting one only through that
+accident. Typesetting afresh now does it on purpose. Switching the bundle to
+`tex-chtml` was considered and rejected for exactly that reason.
+The un-typeset waits until MathJax has loaded, so offline the stamped containers
+stay as they are and a save still reads the TeX off them. The editable export
+loads its own MathJax with its own configuration and is untouched.
+
+Five checks in the `latex` suite: that stamped maths reaches MathJax as source,
+that MathJax's record is cleared while the old containers are still there to be
+found, and that a nested copy goes with its outer container. The first three
+fail against the old `renderLatex`. The other two guard what must not change:
+offline the containers stay, and a document with no maths never loads MathJax.
+Driven in Blink on this branch's own checkout: three real reloads of a
+three-equation document gave three containers each time, none nested, the
+stylesheet present, and a save that writes the TeX back byte for byte.
+A document carrying nine containers came back to three. CLAUDE.md's LaTeX
+bullet says what the stamp is now also for. `sw.js`'s `VERSION` goes to
+`v1.34`.
+
+## 2026-09-29 — `9fe5dd1` — An equation is one step for the caret, and nothing typed into it is lost
+
+Found in Firefox running `rewrite`'s slice 7 render check. Pressing Left from
+just after an inline equation did not cross it: the caret vanished for several
+presses and then came out on the other side. MathJax's output is a tree of its
+own inline elements, and Gecko walked the caret through them one invisible stop
+at a time. The same happens in this core, and here it loses work. Letters typed
+while the caret was invisible **did not appear**, because they went inside the
+container, and a save writes the container from its `data-tex` stamp without
+reading what is in it, so they were thrown away. `rewrite`'s model core put them
+in front of the equation instead, which is how the bug was noticed at all.
+Blink stepped over the equation in one press all along, which is why it went
+unseen.
+
+`stampLatexSource` now marks every outermost typeset container
+`contenteditable="false"`, in the same pass as the stamp, so every engine treats
+an equation as one indivisible thing, the way it treats an image. It is set
+before the has-it-been-stamped check, so maths stamped before this existed, from
+an autosave or an exported file, gets it too. A nested copy (MathJax's own
+assistive MathML) is left alone. The static export strips nothing new: the
+attribute has no effect on a page that is not editable.
+
+Four checks in the `latex` suite. The two that matter fail with the attribute
+removed, and the one for older stamps also fails with it moved after the check.
+Driven in Blink on this branch's own checkout: one Left press crosses the
+equation, letters typed on either side land there, one Backspace deletes it
+whole, and a save writes exactly what is on screen. **The Firefox half, the
+reason for the change, is still to be confirmed by hand.** CLAUDE.md's LaTeX
+bullet says why the container is uneditable. `sw.js`'s `VERSION` goes to
+`v1.35`.
+
+## 2026-10-01 — `981b59e` — Mermaid diagrams are removed
+
+Mermaid came with the project when it was forked, and nothing here ever made it
+something a person could use. A diagram could only be created by typing a
+` ```mermaid ` fence by hand. That is dropping into code, which is the one
+thing this editor exists to spare people, and nobody could say whether anyone
+used it. It was also about to cost real work: the model core on `rewrite`
+re-renders constantly, and keeping diagrams alive through that had just needed
+a render cache, a block-id fix and a cached error for broken diagrams.
+
+**Files are unaffected.** A ` ```mermaid ` fence is now an ordinary code block
+showing its source, and saves back as exactly the fence it was. Gone: the 3.4 MB
+lazy loader and its MathJax `ignoreHtmlClass` entry, `renderMermaidDiagrams` and
+the theme re-render, the editable export's Mermaid tag and dark-mode retheme
+script, the static export's diagram backdrop and source stripping, the PDF
+export's SVG scaling, the DOCX export's SVG-to-PNG conversion and its diagram
+branch, the diagram CSS, the welcome document's section and sample, README's
+example and dependency row, and TODO 6.2, whose subject no longer exists.
+
+**One piece of compatibility stays, because dropping it would lose data.** A
+document drawn before today still sits in a browser's autosave or tab storage as
+the old wrapper: the SVG, plus the source in a hidden `.mermaid-source`. Saved
+without help, that would write the SVG's text in place of the diagram.
+`unwrapMermaidDiagrams` in `renderers.js` turns each wrapper back into its
+fenced code block wherever stored HTML enters the editor, which is the boot
+restore and a tab swap. The `mermaid` Turndown rule stays as the backstop for
+any wrapper that reaches a save another way. Open, upload and Paste markdown
+start from markdown and never meet a wrapper, so their render calls simply go.
+`execcommand.js`'s guard against a wrapper is now inert and goes with that file.
+
+Tests: the `latex` suite checks that an old wrapper comes back as a
+`language-mermaid` code block holding its source, with the newline markdown-it
+gives a fence's body. The `static-export` sample document loses its diagram and
+the three checks about it. The `tabs` suite's failing-render case now fails
+through `renderLatex`, the renderer Open still calls, so it still exercises the
+same `finally`. CLAUDE.md, MARKDOWN.md and the load-order notes say what is
+left. `sw.js`'s `VERSION` goes to `v1.36`.
+
+## 2026-10-01 — `e735625` — A fresh page no longer typesets every equation twice
+
+Found by the reload check in `rewrite`'s render fixture, run by hand in Firefox,
+and then reproduced in this core. MathJax's default is to typeset the whole
+page by itself as soon as it starts, and the app always typesets explicitly
+straight afterwards with `renderLatex`. On a fresh page whose autosave held
+maths with its TeX still raw, which is what an edit before the first typeset
+leaves, MathJax's own pass got there first. `renderLatex` then found that
+output unstamped, so it typeset it again, and the second pass nested a copy of
+every equation inside its own assistive MathML. Measured in Blink: three
+equations, three nested copies, after one reload. `5e6efad` never saw it,
+because its reload test restored maths that was already typeset and stamped,
+which `renderLatex` puts back to source first.
+
+`ensureMathJax` now sets `startup: { typeset: false }`, so MathJax only ever
+typesets when the app asks. Two fresh reloads of the same document gave three
+equations, each typeset once and stamped, nothing nested, and a save that
+writes the TeX back byte for byte. The editable export loads its own MathJax
+with its own configuration, and relies on that startup pass; it is untouched.
+`lazy-load.js` has no suite, so the browser is the check. `sw.js`'s `VERSION`
+goes to `v1.37`.
+
+## 2026-10-03 — `12b69cb` — Deleting a list's last item no longer saves the next paragraph into it
+
+Delete the last bullet of a list that has a paragraph after it, save, and the
+file held `- first` with `Para after.` on the very next line — which reopens as
+one bullet reading "first Para after.". Nothing was wrong on screen until the
+file was opened again. Found while testing copy and cut on the `rewrite`
+branch, whose model core still saves through this path.
+
+The restore layer gives an untouched segment back its original bytes and the
+separator that followed it in the source. For the surviving bullet that
+separator was the tight `\n` leading to the deleted one, and in front of a
+paragraph a single newline is a lazy continuation of the item. Now
+`restoredSeparator` in `markdown-style.js` hands a tight separator back only
+when what follows is still the segment that followed it in the source, or a
+list item still follows a list item — so deleting from the middle of a list, or
+editing the next item, keeps the list tight. Otherwise the serialiser's own
+separator stands. The index records each segment's successor for this.
+
+`save-fidelity` gains five checks: the bug, a tight list ahead of a paragraph
+that is untouched, a middle item deleted, the next item edited, and a new
+paragraph after a restored item. The bug's two failed before the fix and the
+other three passed both before and after. Driven in Blink through the real
+markdown-it and Turndown: deleting the last item, deleting a middle one,
+merging two, and nothing at all each saved and reopened as the list and
+paragraph they were. `sw.js`'s `VERSION` goes to `v1.38`.
+
+## 2026-10-04 — `08c9310` — Merge `origin/main`: two lines of work on `main` rejoined
+
+`main` had moved on in two places at once. The copy on GitHub gained five
+commits on 2026-09-22, from the format bar's scroll fix to the file dialog's row
+kinds. The local copy gained twelve from 2026-09-28 on: the fixes made for TODO
+3.1's slice 7 and the removal of Mermaid. None of the twelve had been pushed. A
+pull then conflicted only here, since both sides had appended entries; theirs
+come first, being older.
+
+One fix was needed beyond the text. `tests/export-variant.test.mjs`, new on
+their side, stubbed `renderMermaidDiagrams`, which this side removed. The boot
+now calls `unwrapMermaidDiagrams` instead, so the stub is swapped for that one.
+The full suite passes on the merge. The 2026-09-22 entry for `22a31db` had no
+hash in its header and gets it here. `sw.js`'s `VERSION` goes to `v1.39`, past
+both sides.
+
 ## 2026-10-05 — Clicking outside the sheet no longer strands the keyboard
 
 **A click on the page beside the document blurred the editor and left typing
@@ -5880,7 +6082,7 @@ at the end.
 **The column is now `width: 100%` up to its `68ch` cap.** With the outline open
 `.container` is a grid, and a grid item with `margin: 0 auto` and no width
 shrink-wraps to its content, so an empty document was its 64px of padding and
-grew as you typed. `sw.js` goes to `v1.34`.
+grew as you typed. `sw.js` goes to `v1.40`, past the merged-in `v1.39`.
 
 Not covered by any suite: both halves need a real layout engine and a real
 click. To verify, run `npm run serve`, open the outline, start a new tab and

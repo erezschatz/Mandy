@@ -11,7 +11,7 @@
 //                 which TeX produced it;
 //   app.js        turns that attribute back into `$…$` / `$$…$$`.
 
-import { loadApp, loadSource, makeEl, readFront } from "./dom.mjs";
+import { loadApp, loadSource, makeEl, makeText, readFront, walk } from "./dom.mjs";
 
 // Stands in for a typeset <mjx-container>. Attribute-backed, because that is
 // what has to survive being written into an exported file and parsed back.
@@ -65,6 +65,12 @@ export default async function run(check) {
   check("inline maths is marked inline", inline.attrs["data-display"] === "inline");
   check("roots outside the container are left alone", !("data-tex" in stale.attrs));
 
+  // Firefox walked the caret into MathJax's own elements, and what was typed in
+  // there reached no file. Uneditable, the equation is one step for the caret.
+  check("typeset maths is one uneditable unit to the caret",
+    block.attrs.contenteditable === "false" && inline.attrs.contenteditable === "false");
+  check("roots outside the container are not touched either", !("contenteditable" in stale.attrs));
+
   // Loading an exported document makes MathJax re-typeset its own assistive
   // MathML, nesting a second container inside the first and reporting MathML
   // rather than TeX for it. Stamping that would write a <math> element into
@@ -78,6 +84,8 @@ export default async function run(check) {
   );
   check("containers nested inside a container are not stamped",
     !("data-tex" in nested.attrs));
+  check("nor made uneditable, since they are MathJax's and not the author's",
+    !("contenteditable" in nested.attrs));
 
   // Re-stamping must not clobber: MathJax re-typesets already-rendered maths on
   // load in an exported document, and the second pass reports MathML, not TeX.
@@ -86,6 +94,14 @@ export default async function run(check) {
     container,
   );
   check("an existing stamp is not overwritten", block.attrs["data-tex"] === "\\frac{a}{b}");
+
+  // Maths stamped before the attribute existed — restored from an autosave, or
+  // inside an exported file — still gets it, since the stamp check comes after.
+  const older = makeContainer(container);
+  older.setAttribute("data-tex", "z");
+  loadRenderers(fakeMathJax([{ math: "z", display: false, typesetRoot: older }]), container);
+  check("maths stamped before this existed is made uneditable too",
+    older.attrs.contenteditable === "false" && older.attrs["data-tex"] === "z");
 
   // Absent MathJax must be survivable: renderLatex is a no-op without maths,
   // but stampLatexSource is reachable from an exported document either way.
@@ -96,6 +112,116 @@ export default async function run(check) {
     threw = error;
   }
   check("no MathJax is not an error", threw === null);
+
+  // ── renderers.js: typesetting again ────────────────────────────────────────
+  //
+  // A second typeset pass over maths already typeset nested a new container
+  // inside the old one, every reload and every Paste markdown, and the
+  // autosave kept each copy: one equation was three containers after a single
+  // reload. renderLatex now puts stamped maths back to its source and typesets
+  // that afresh. The stub has no MathJax and no selector engine, so what is
+  // asserted is what renderLatex hands MathJax, and in what order.
+  {
+    const loadRenderLatex = (container, ensureMathJax) => {
+      container.querySelectorAll = (sel) =>
+        sel === "mjx-container[data-tex]"
+          ? walk(container).filter((n) => n.tagName === "MJX-CONTAINER" && "data-tex" in n.attrs)
+          : [];
+      return loadSource(
+        "renderers.js",
+        {
+          window: { MathJax: undefined },
+          MathJax: undefined,
+          document: {
+            documentElement: { getAttribute: () => "light" },
+            createTextNode: makeText,
+          },
+          editor: container,
+          ensureMathJax,
+          console: { error() {} },
+        },
+        "; return renderLatex;",
+      );
+    };
+    // A typeset container that can be swapped out, the way a real one can.
+    const typesetIn = (parent, tex, display) => {
+      const root = makeContainer(parent);
+      root.setAttribute("data-tex", tex);
+      root.setAttribute("data-display", display);
+      root.replaceWith = (node) => {
+        parent.children[parent.children.indexOf(root)] = node;
+        node.parentElement = parent;
+        root.parentElement = null;
+      };
+      return root;
+    };
+    const textOf = (node) => node.children.map((c) => c.nodeType === 3 ? c.textContent : "<" + c.tagName + ">").join("");
+
+    const para = makeEl("p");
+    typesetIn(para, "\\frac{a}{b}", "block");
+    const inlineRoot = typesetIn(para, "x^2", "inline");
+    // Earlier reloads' nesting, stamped: a container inside the assistive
+    // MathML of another. Only the outer one is authored maths.
+    const assistive = makeEl("mjx-assistive-mml", { parent: inlineRoot });
+    assistive.parentElement = inlineRoot;
+    const nestedRoot = typesetIn(assistive, "<math>copy</math>", "inline");
+
+    const calls = [];
+    const fake = {
+      typesetClear: () => calls.push(`clear:${textOf(para)}`),
+      typesetPromise: async () => calls.push(`typeset:${textOf(para)}`),
+    };
+    await loadRenderLatex(para, async () => fake)(para);
+    check("typeset maths goes back to its source before typesetting",
+      calls[calls.length - 1] === "typeset:$$\\frac{a}{b}$$$x^2$");
+    check("MathJax forgets the old containers while they are still there to find",
+      calls[0] === "clear:<MJX-CONTAINER><MJX-CONTAINER>");
+    check("a nested copy goes with its outer container rather than on its own",
+      !walk(para).includes(nestedRoot) && calls.length === 2);
+
+    // Offline, the stamped containers are what a save reads the TeX from. Put
+    // back as text before MathJax has loaded, it would reach Turndown as prose.
+    const offline = makeEl("p");
+    const kept = typesetIn(offline, "y", "inline");
+    await loadRenderLatex(offline, async () => { throw new Error("offline"); })(offline);
+    check("with MathJax unavailable the typeset maths is left as it was",
+      offline.children[0] === kept && kept.attrs["data-tex"] === "y");
+
+    // And a document with no maths at all still never fetches MathJax.
+    let fetched = false;
+    const plain = makeEl("p");
+    plain.children.push(makeText("Just prose, no maths."));
+    await loadRenderLatex(plain, async () => { fetched = true; return fake; })(plain);
+    check("a document with no maths does not load MathJax", fetched === false);
+  }
+
+  // ── renderers.js: diagrams drawn before Mermaid was removed ───────────────
+  //
+  // Mermaid went on 2026-10-01, but a document drawn before then still sits in
+  // autosave and tab storage as the old wrapper: the SVG, plus the source in a
+  // hidden .mermaid-source. Loading one puts back the fenced code block it came
+  // from, so the source shows and no wrapper is ever in the editor again.
+  {
+    const container = makeEl("div");
+    const wrapper = makeEl("div", { parent: container });
+    wrapper.parentNode = container;
+    wrapper.className = "mermaid-wrapper";
+    const hidden = makeEl("pre", { text: "graph TD; A-->B;" });
+    wrapper.querySelector = (sel) => (sel === ".mermaid-source" ? hidden : null);
+    container.querySelectorAll = (sel) => (sel === ".mermaid-wrapper" && container.children.includes(wrapper) ? [wrapper] : []);
+    const unwrap = loadSource(
+      "renderers.js",
+      { window: {}, document: { createElement: (tag) => makeEl(tag) }, console },
+      "; return unwrapMermaidDiagrams;",
+    );
+    unwrap(container);
+    const pre = container.children[0];
+    const code = pre && pre.children[0];
+    check("an old diagram goes back to a fenced code block in the wrapper's place",
+      container.children.length === 1 && pre.tagName === "PRE" && code && code.tagName === "CODE");
+    check("tagged mermaid, holding its source as markdown-it renders a fence's body",
+      code.className === "language-mermaid" && code.textContent === "graph TD; A-->B;\n");
+  }
 
   // ── app.js: the Turndown rule ─────────────────────────────────────────────
   const { rules } = loadApp();

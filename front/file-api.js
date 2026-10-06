@@ -612,7 +612,6 @@ async function openFileBody(filePath) {
   }
 
   editor.innerHTML = markdownToHtml(data.content);
-  await renderMermaidDiagrams(editor);
   await renderLatex(editor);
   localStorage.setItem(documentKey("content"), editor.innerHTML);
   // History does not cross a document boundary. Undo handing back the previous

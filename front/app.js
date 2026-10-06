@@ -217,7 +217,12 @@ function markdownStyleAdoptStored() {
   else markdownStyleAdopt(null);
 }
 
-// Turndown rule to convert mermaid wrappers back to markdown code blocks
+// A Mermaid diagram drawn before diagrams were removed on 2026-10-01 goes back to
+// the fence it came from. The load paths unwrap them first (renderers.js), so
+// this is the backstop for any that reach a save another way — the model core on
+// `rewrite` runs stored HTML through Turndown before anything can unwrap it.
+// Without it the SVG's text would be written into the file in the diagram's
+// place.
 turndownService.addRule("mermaid", {
   filter: function (node) {
     return node.classList && node.classList.contains("mermaid-wrapper");
@@ -730,7 +735,7 @@ async function insertLink() {
   const href = normaliseLinkHref(answer);
 
   if (existing) {
-    if (href) existing.setAttribute("href", href);
+    if (href) retargetLink(existing, href);
     else unwrapLink(existing);
     editor.dispatchEvent(new Event("input", { bubbles: true }));
     return;
@@ -748,6 +753,19 @@ async function insertLink() {
     return;
   }
   runCommand("createLink", href);
+}
+
+// A reference link that points somewhere new is no longer that reference. The
+// `referenceLink` Turndown rule writes `[text][label]` off the `data-ref-label`
+// stamp and never reads the href, so a stamp left behind here threw the new
+// address away on save, silently, with the right one on screen until reload.
+// Dropping it makes this one link inline and leaves the definition alone for
+// any other link using the label — the dialog names one link, so it changes
+// one. An Update that keeps the same address keeps the stamp, and with it the
+// author's reference form.
+function retargetLink(link, href) {
+  if (link.getAttribute("href") !== href) link.removeAttribute("data-ref-label");
+  link.setAttribute("href", href);
 }
 
 function unwrapLink(link) {
@@ -769,9 +787,8 @@ onToolbarAction("paste-md", async () => {
       // up the same way a real paste does, and this is no longer an
       // editor.innerHTML assignment site for undo.js to know about.
       runCommand("insertHTML", html);
-      await renderMermaidDiagrams(editor);
       await renderLatex(editor);
-      // The two renderers run after the `input` event above already scheduled
+      // The renderer runs after the `input` event above already scheduled
       // a debounced autosave, so without this an immediate reload could still
       // catch the pre-render markup.
       localStorage.setItem(documentKey("content"), editor.innerHTML);
@@ -793,7 +810,6 @@ if (fileInput) {
       const markdown = event.target.result;
       const html = markdownToHtml(markdown);
       editor.innerHTML = html;
-      await renderMermaidDiagrams(editor);
       await renderLatex(editor);
       localStorage.setItem(documentKey("content"), editor.innerHTML);
       // This is Open, for the variant with no file server behind it.
@@ -1188,11 +1204,9 @@ window.addEventListener("load", () => {
       await loadWelcomeDocument();
     }
 
-    try {
-      await renderMermaidDiagrams(editor);
-    } catch (error) {
-      console.error("[Mermaid] Startup render error:", error);
-    }
+    // Stored HTML can still hold a diagram drawn before Mermaid was removed;
+    // it goes back to its fenced code block. See renderers.js.
+    unwrapMermaidDiagrams(editor);
     try {
       await renderLatex(editor);
     } catch (error) {
@@ -1202,7 +1216,7 @@ window.addEventListener("load", () => {
     // One baseline for all three branches above — exported, restored and
     // welcome — and deliberately after the renderers, so the first snapshot is
     // the document as it will actually be seen rather than the markup before
-    // Mermaid and MathJax rewrote parts of it.
+    // MathJax rewrote parts of it.
     undoReset();
     // Only file-api.js knows whether this session's restored document is
     // dirty, and an exported document has no file-api.js at all.

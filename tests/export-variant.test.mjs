@@ -111,7 +111,7 @@ function boot({
         getSelection: () => ({ removeAllRanges() {}, addRange() {} }),
       },
       navigator: { clipboard: {} },
-      renderMermaidDiagrams: async () => {},
+      unwrapMermaidDiagrams: () => {},
       renderLatex: async () => {},
       // An exported document has no origin to fetch from, and nothing here
       // should try: the stored content is what it opens with. A request is a

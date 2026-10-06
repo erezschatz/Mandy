@@ -478,7 +478,7 @@ are no imports. Consequences that bite:
   both;
   `outline.js` defines `outlineIsOpen`, `outlineEntries` and `buildNestedList`,
   which `static-export.js` calls at export time;
-  `renderers.js` defines `renderMermaidDiagrams` / `renderLatex`;
+  `renderers.js` defines `renderLatex` and `unwrapMermaidDiagrams`;
   `lazy-load.js` defines the `ensure*` loaders. Later files call these freely.
 - **Global-name collisions are real bugs, not hypotheticals.** `file-api.js`
   names its function `saveFileAs` rather than `saveAs` because FileSaver.js
@@ -536,16 +536,23 @@ there is no non-blank `localStorage["markdownContent"]` to restore. Edit the
 markdown, not the markup — and note `welcome.md` is a shell asset, so it needs
 its `sw.js` entry to survive offline.
 
-Mermaid and LaTeX are the two exceptions worth knowing, and they are the same
-problem solved twice: both renderers destroy the source they render from, so
-each has to stash it somewhere Turndown can find it again. Break either and the
-content round-trips to nothing — silently, because the document still looks
-right on screen.
+LaTeX is the one exception worth knowing: its renderer destroys the source it
+renders from, so the source has to be stashed somewhere Turndown can find it
+again. Break that and the content round-trips to nothing — silently, because the
+document still looks right on screen.
 
-- **Mermaid** — `renderers.js` replaces the `<pre><code class="language-mermaid">`
-  with a `.mermaid-wrapper` holding both the rendered SVG and a hidden
-  `.mermaid-source` element. A Turndown rule in `app.js` reads that hidden
-  source to reconstruct the fenced block.
+**Mermaid diagrams were removed on 2026-10-01.** There was no way to create
+one without writing the fence by hand, which is the thing this project exists
+to spare people. A ` ```mermaid ` fence is now an ordinary code block, shown as
+its source, and files are unaffected, since the fence was always the fence.
+What remains is compatibility for a document drawn before then, still in a
+browser's autosave or tab storage as the old wrapper — the SVG plus the source
+in a hidden `.mermaid-source`. `unwrapMermaidDiagrams` in `renderers.js` turns
+one back into its fenced code block wherever stored HTML enters the editor (the
+boot restore and a tab swap), and the `mermaid` Turndown rule in `app.js` does
+the same for any that reach a save another way. Drop the rule and such a
+document saves the SVG's text in place of the diagram.
+
 - **LaTeX** — MathJax leaves nothing but glyphs behind, so `stampLatexSource`
   in `renderers.js` copies the original TeX onto each `<mjx-container>` as
   `data-tex` / `data-display`, reading it out of `MathJax.startup.document.math`
@@ -554,6 +561,24 @@ right on screen.
   rather than an element so it survives being written into an exported file and
   parsed back; an existing stamp is never overwritten, because MathJax
   re-typesets already-rendered maths on load and reports MathML the second time.
+
+  **The stamp is also what `renderLatex` typesets from.** Maths already typeset
+  is put back to its `$…$` source and typeset afresh, never typeset a second
+  time as it stands: the `tex-mml-chtml` bundle reads MathML as input, so a
+  second pass typeset each container's own assistive MathML and nested a copy
+  inside it — on every reload, since the boot restores typeset HTML, and on
+  every Paste markdown — and the autosave kept every copy. That pass was also,
+  by accident, what regenerated MathJax's stylesheet for restored maths, which
+  typesetting afresh now does on purpose. It happens only once MathJax has
+  loaded: offline the stamped containers stay, and a save still reads them.
+  The editable export's own MathJax is a separate load and is untouched.
+
+  **A stamped container is also `contenteditable="false"`**, set in the same
+  pass as the stamp. Left editable, Firefox walked the caret into MathJax's
+  own elements — it vanished for several presses — and letters typed there
+  landed inside the container, where nothing showed them and the `mathjax`
+  rule, which writes from the stamp, dropped them on save. Uneditable, every
+  engine steps over an equation in one press and deletes it whole.
 
 There is a third rule, and it is on the way *in* rather than the way out.
 markdown-it has no notion of maths, so `$…$` used to reach MathJax only by
@@ -1102,6 +1127,15 @@ match — which in this repo's own `docs/TODO.md` is most of the file. Each segm
 also carries the separator that followed it, so a restored run comes back tight
 or loose the way the author had it.
 
+**That separator describes the segment's old neighbour, so it is only handed
+to that one.** A tight `\n` in front of anything but a block marker is a lazy
+continuation: delete a list's last item, give the item before it back its
+`\n`, and the paragraph after the list saved *into* the bullet — on screen
+nothing wrong, reopened and it was merged. `restoredSeparator` keeps the
+source's tight separator only when the segment that follows is still its old
+successor, or a list item still follows a list item, so deleting or editing
+an item beside it leaves a list tight; anywhere else the serialiser's stands.
+
 The key ignores whitespace, but a pipe table needs more than that: the `table`
 rule writes its own cell padding and its own three-dash delimiter, so `|---|---|`
 and `| --- | --- |` are the same table and would never be the same key.
@@ -1197,7 +1231,7 @@ definition it depended on had no DOM node to survive on and simply vanished.
 A document that cited one URL twenty times over a reference arrived with one
 definition and would have left with twenty copies, unrecoverably.
 
-The fix is the same two-part shape as Mermaid and LaTeX: stash what parsing
+The fix is the same two-part shape as LaTeX's: stash what parsing
 would otherwise destroy, read it back at serialise time.
 
 - **`referenceAwareLink` in `markdown-parser.js` replaces markdown-it's own
@@ -1231,6 +1265,12 @@ would otherwise destroy, read it back at serialise time.
   placed it: a definition has no DOM node to track a position with, so
   "collected once at the end" is deliberate rather than a gap. A label used
   twice gets one definition; a label no longer used by anything gets none.
+
+  **The rule never reads the href**, so anything that changes a link's address
+  has to drop the stamp or the change is thrown away on save. Link… does, in
+  `retargetLink`: a retargeted reference link saves inline, and its definition
+  stays for any other link using the label. An Update to the same address keeps
+  the stamp and the reference form.
 - **`isReferenceDefinitionLine` in `markdown-style.js`** keeps
   `reflowMarkdown` from ever wrapping a definition line — the destination is
   one word with nowhere to break, so wrapping would either overflow anyway or
@@ -1265,7 +1305,7 @@ the other two belong too.
 
 ### Lazy loading
 
-Mermaid (3.4 MB), MathJax, html2pdf, docx and FileSaver load on first actual
+MathJax, html2pdf, docx and FileSaver load on first actual
 use via the memoised loaders in [lazy-load.js](front/lazy-load.js). Only
 markdown-it and Turndown load eagerly. Never add a top-level `<script>` for a
 heavy library — add an `ensure*` loader.
@@ -1277,8 +1317,8 @@ There are two, and they are different deliverables:
 - **HTML** ([static-export.js](front/static-export.js)) — the document alone as
   a standalone page, the same kind of artifact as PDF or DOCX. Inlines
   `app.css`, copies MathJax's runtime-generated `<style id="MJX…">` so maths
-  lays out without MathJax present, strips `.mermaid-source` and
-  `contenteditable`, and ships no editor JS at all. It is also the one place a
+  lays out without MathJax present, strips `contenteditable`, and ships no
+  editor JS at all. It is also the one place a
   table of contents is written into the document rather than drawn beside it:
   this file never goes back through Turndown, so nothing added here can reach
   anyone's `.md`. See the outline section below.
@@ -1362,7 +1402,9 @@ does:
 - **Four subtrees are never touched** — `pre`, `code`, `.mermaid-wrapper` and
   `mjx-container`. The last two hold the only copy of their own source, and
   rewriting one breaks the round-trip to markdown irrecoverably with the document
-  still looking right on screen.
+  still looking right on screen. Since Mermaid's removal on 2026-10-01 a
+  `.mermaid-wrapper` can no longer reach the editor — every way in unwraps it —
+  so that guard is inert, and goes with this file at stage 4.
 - **It reports whether it changed anything, and that drives `undoRefresh()`.**
   execCommand dispatches `input` synchronously, so the undo stack snapshotted the
   un-normalised document before `runCommand` got to fix it. Refreshing corrects

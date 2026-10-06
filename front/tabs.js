@@ -200,6 +200,9 @@ function parkActive() {
 // nothing but the order itself will catch it.
 function adoptActive(tab) {
   editor.innerHTML = localStorage.getItem(documentKey("content")) || BLANK_DOCUMENT;
+  // A tab's stored HTML can still hold a diagram drawn before Mermaid was
+  // removed. Feature-tested: the tabs suite loads this file without renderers.js.
+  if (typeof unwrapMermaidDiagrams === "function") unwrapMermaidDiagrams(editor);
   undoAdopt(tab.undo || null);
 
   if (tab.file) fileAdopt(tab.file);
