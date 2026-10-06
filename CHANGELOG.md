@@ -5864,3 +5864,24 @@ and `self-reproduce` pass unchanged; none of them looks at an icon's path
 data, so this was verified by rendering both files' real `#formatBar` markup
 against the real stylesheet in Chrome and comparing them side by side.
 `sw.js` goes to `v1.33`, since `index.html` is a shell asset.
+
+## 2026-10-05 — Clicking outside the sheet no longer strands the keyboard
+
+**A click on the page beside the document blurred the editor and left typing
+going nowhere.** `#editor` is a measured column, so everything either side of it
+(and below a short document) is `.container`, which is not editable: the click
+moved focus off the editor and every keystroke after it was dropped with nothing
+on screen to say so. Worst on a new document, which has no text to click back
+into. A `mousedown` listener in `app.js` now treats a click on the bare page —
+the root, `body` or `.container` itself, never the chrome, a dialog or the
+outline — as a click into the document: default prevented, editor focused, caret
+at the end.
+
+**The column is now `width: 100%` up to its `68ch` cap.** With the outline open
+`.container` is a grid, and a grid item with `margin: 0 auto` and no width
+shrink-wraps to its content, so an empty document was its 64px of padding and
+grew as you typed. `sw.js` goes to `v1.34`.
+
+Not covered by any suite: both halves need a real layout engine and a real
+click. To verify, run `npm run serve`, open the outline, start a new tab and
+check the sheet is full column width, then click the margin beside it and type.

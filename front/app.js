@@ -1136,6 +1136,25 @@ function focusDocumentStart() {
   sel.addRange(range);
 }
 
+// The sheet is a measured column, so the page either side of it (and below a
+// short document) is not editable — and a click there blurs the editor, after
+// which typing lands nowhere with nothing on screen to say why. Only a click
+// on the bare page counts: chrome, dialogs and the outline are interactive and
+// must keep their own focus. Caret goes to the end, where a click below the
+// text would put it anyway.
+document.addEventListener("mousedown", (event) => {
+  if (event.button !== 0) return;
+  if (event.target !== document.documentElement && event.target !== document.body && !event.target.classList.contains("container")) return;
+  event.preventDefault();
+  editor.focus();
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+});
+
 // The welcome document is markdown like any other, not markup baked into the
 // page. Returns false if it cannot be fetched so startup can carry on with an
 // empty editor rather than dying on the welcome text.

@@ -526,6 +526,9 @@
          different width. max-width + margin: 0 auto centers it inside
          .container, which stays full width. */
       #editor {
+        /* width, not just max-width: as a grid item (outline open) auto
+           margins shrink-wrap it, so an empty document was the padding alone. */
+        width: 100%;
         max-width: 68ch;
         margin: 0 auto;
         padding: 56px 32px 80px;
