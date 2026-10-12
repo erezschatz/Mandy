@@ -36,6 +36,10 @@ let dialogMode = "open";
 // by having to do it.
 let dialogDir = localStorage.getItem(documentKey("dir"));
 let saveResolver = null;
+// The tab "Open in new tab" made for the dialog to fill, until a file is
+// picked. Cancelling closes it again, so backing out of the action leaves the
+// bar as it was rather than holding an Untitled tab nobody asked for.
+let openDialogTab = null;
 // Cached from the one successful /api/home probe in checkServerAvailable, so
 // the toolbar's directory display can collapse it to "~" the way a shell
 // prompt does. null until the first check lands; renderToolbarPath() just
@@ -364,6 +368,13 @@ function closeDialog() {
     saveResolver(null);
     saveResolver = null;
   }
+  // After the dialog is hidden, not before: an open dialog refuses the switch
+  // that closing the active tab is.
+  if (openDialogTab !== null) {
+    const id = openDialogTab;
+    openDialogTab = null;
+    closeTab(id);
+  }
 }
 
 // Three kinds of row share one list — go up, go in, open — and the palette has
@@ -486,6 +497,8 @@ async function loadDir(dirPath) {
           discardLabel: "Discard and open",
         });
         if (!proceed) return;
+        // Picked, so the tab stays: it is the one the file opens into.
+        openDialogTab = null;
         closeDialog();
         openFile(target);
       } else {
@@ -800,7 +813,7 @@ function setServerAvailable(available) {
   serverAvailable = available;
 
   const buttons = [
-    ...["open-file", "save-file", "reload-file", "save-as-file"].map((a) =>
+    ...["open-file", "open-file-tab", "save-file", "reload-file", "save-as-file"].map((a) =>
       document.querySelector(`.toolbar [data-action="${a}"]`)
     ),
     ...["open-file", "save-file"].map((a) =>
@@ -851,6 +864,15 @@ async function checkServerAvailable() {
 })();
 
 onToolbarAction("open-file", showOpenDialog);
+// New and Open as one action. newTab() returns null when the switch was
+// refused, and then there is no tab to open into, so nothing is shown rather
+// than an Open that would replace the document still on screen.
+onToolbarAction("open-file-tab", () => {
+  const id = newTab();
+  if (id === null) return;
+  openDialogTab = id;
+  return showOpenDialog();
+});
 onToolbarAction("reload-file", reloadFile);
 onToolbarAction("save-file", saveCurrentOrPrompt);
 onToolbarAction("save-as-file", saveFileAs);

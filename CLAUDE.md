@@ -1433,7 +1433,7 @@ empty `<div class="toolbar">` and [toolbar.js](front/toolbar.js) fills it from
 It was a row of sixteen buttons until it stopped fitting: four groups plus the
 theme toggle, wrapping onto a second line below about 900px, with split buttons
 bolted on where two actions had to share one slot. Six words — File, Edit,
-Insert, Format, View, Export — hold 30 items and fit one line at 375px.
+Insert, Format, View, Export — hold 40 items and fit one line at 375px.
 
 **Edit is the selection's menu, and that is what decides where the two markdown
 clipboard actions live.** Once Edit gained an ordinary Cut / Copy / Paste /
@@ -1549,12 +1549,12 @@ Six things that are decisions rather than details:
   so the labels line up in a column.
 
 Each item declares `variants`. There are three splits. The file group: the app
-talks to the file server (`open-file` / `save-file` / `reload-file` /
-`save-as-file`), while an exported document has none and falls back to
-`upload-md` / `download-md`. The theme toggle, since exported documents follow
-the reader's OS preference rather than inheriting the author's stored one. And
-PDF / DOCX, which are app-only because the formats are terminal — see the two
-exports section above.
+talks to the file server (`open-file` / `open-file-tab` / `save-file` /
+`reload-file` / `save-as-file`), while an exported document has none and falls
+back to `upload-md` / `download-md`. The theme toggle, since exported documents
+follow the reader's OS preference rather than inheriting the author's stored
+one. And PDF / DOCX, which are app-only because the formats are terminal — see
+the two exports section above.
 
 The variant is read from `#editor[data-exported]`, which only exported documents
 carry. `app.js` strips that attribute on `window load`, long after `toolbar.js`

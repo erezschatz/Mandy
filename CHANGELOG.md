@@ -6067,7 +6067,7 @@ The full suite passes on the merge. The 2026-09-22 entry for `22a31db` had no
 hash in its header and gets it here. `sw.js`'s `VERSION` goes to `v1.39`, past
 both sides.
 
-## 2026-10-05 — Clicking outside the sheet no longer strands the keyboard
+## 2026-10-05 — `1722d17` — Clicking outside the sheet no longer strands the keyboard
 
 **A click on the page beside the document blurred the editor and left typing
 going nowhere.** `#editor` is a measured column, so everything either side of it
@@ -6087,3 +6087,28 @@ grew as you typed. `sw.js` goes to `v1.40`, past the merged-in `v1.39`.
 Not covered by any suite: both halves need a real layout engine and a real
 click. To verify, run `npm run serve`, open the outline, start a new tab and
 check the sheet is full column width, then click the margin beside it and type.
+
+## 2026-10-12 — Open in new tab
+
+**File → Open in new tab… is New and Open as one action.** Opening a file
+without losing the one on screen used to be two: New for a blank tab, then Open
+into it. The new item makes the tab and shows the open dialog in one click, and
+the file picked opens into that tab. **Cancelling the dialog closes the tab
+again**, so backing out of the action leaves the bar as it was rather than
+holding an Untitled tab nobody asked for; a plain Open's cancel closes nothing.
+If the tab cannot be made — a file operation is in flight — the dialog is not
+shown either, since an Open then would replace the document still on screen.
+The item is app-only, like Open, and is disabled with it when the file server
+is down. It has no shortcut: Ctrl+Shift+O is claimed by Chrome's bookmark
+manager and Firefox's Library, and whether either gives it up to a page is
+unmeasured. The `tabs` suite drives both the pick and the cancel. `sw.js` goes
+to `v1.41`.
+
+CLAUDE.md names the new action among the app's file-server items, and its count
+of menu items goes from 30 to 40 — it was already 39 before this, having gone
+stale as items were added.
+
+Not covered by any suite: the dialog in a real browser. To verify, run
+`npm run serve`, open a file, then File → Open in new tab…: pick a file and
+check it opens in a second tab with the first untouched; repeat and press
+Escape, and check the bar is back to the tabs it had.
