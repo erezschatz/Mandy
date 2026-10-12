@@ -442,6 +442,10 @@ async function loadDir(dirPath) {
   dialogPathBar.textContent = tildeCollapse(data.path);
   dialogPathBar.title = data.path;
   dialogEntries.innerHTML = "";
+  // The list keeps its height between directories, so it keeps its scroll
+  // offset too, and a long directory left scrolled would hide the next one's
+  // parent row above the fold.
+  dialogEntries.scrollTop = 0;
 
   if (data.parent) {
     const up = document.createElement("div");

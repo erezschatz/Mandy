@@ -6088,7 +6088,7 @@ Not covered by any suite: both halves need a real layout engine and a real
 click. To verify, run `npm run serve`, open the outline, start a new tab and
 check the sheet is full column width, then click the margin beside it and type.
 
-## 2026-10-12 — Open in new tab
+## 2026-10-12 — `89610e2` — Open in new tab
 
 **File → Open in new tab… is New and Open as one action.** Opening a file
 without losing the one on screen used to be two: New for a blank tab, then Open
@@ -6112,3 +6112,22 @@ Not covered by any suite: the dialog in a real browser. To verify, run
 `npm run serve`, open a file, then File → Open in new tab…: pick a file and
 check it opens in a second tab with the first untouched; repeat and press
 Escape, and check the bar is back to the tabs it had.
+
+## 2026-10-12 — The file dialog stays still while you climb a tree
+
+**The open and save dialog's list is a fixed ten rows high now**, where it used
+to size itself to the directory on screen. The dialog is centred, so every step
+up into a directory with a different number of entries moved the "parent
+directory" row out from under the pointer, and going up four levels meant
+finding it again four times. The list scrolls when a directory holds more than
+fits and leaves blank space when it holds fewer, and it still shrinks on a
+window too short for it. Its scroll offset is reset with each directory, since
+a list that keeps its height also keeps its scroll position, and a long
+directory left scrolled would hide the next one's parent row. Moving the
+pointer back onto the row was the other option, but a page cannot move the
+pointer. `sw.js` goes to `v1.42`.
+
+Not covered by any suite: this is layout. To verify, run `npm run serve`, open
+File → Open… in a directory a few levels deep, and click the parent row
+repeatedly without moving the mouse. Each click should go up one level all the
+way to `/`.

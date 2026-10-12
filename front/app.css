@@ -1198,10 +1198,16 @@
         color: var(--ink-muted);
       }
 
+      /* A fixed height, not one sized to the directory: the dialog is centred,
+         so a list that grew and shrank moved the "parent directory" row under
+         the pointer on every step up, and climbing a tree meant hunting for it
+         each time. Ten rows (14px padding plus 13.5px at the body's 1.6), the
+         up row's 9px margin and the list's own padding. Shrinks rather than
+         overflows on a short window; scrolls when the directory is longer. */
       .file-dialog-entries {
-        flex: 1;
+        flex: 0 1 auto;
+        height: calc(10 * (14px + 13.5px * 1.6) + 9px + 12px);
         overflow-y: auto;
-        min-height: 240px;
         padding: 6px;
       }
 
