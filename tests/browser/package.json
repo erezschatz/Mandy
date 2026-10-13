@@ -1,0 +1,13 @@
+{
+  "name": "mandy-browser-checks",
+  "private": true,
+  "description": "Drives the check pages in tests/ through real engines. Not part of `npm test`; see the Tests section of CLAUDE.md.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "engines": "playwright install chromium firefox webkit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2"
+  }
+}

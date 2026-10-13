@@ -752,10 +752,13 @@ against the source — and `tests/fixtures/torture.md` is the document to do it
 with, since it is the only file here carrying constructs like a hard break at
 all.
 
-That page is the realistic version of this item. A full frontend test harness is
-not being planned: user-facing behaviour in someone else's application needs a
-person or a real engine to observe it and report back, and that is accepted
-rather than treated as a gap waiting on tooling.
+That page was the realistic version of this item until 2026-10-13, when a
+frontend harness was agreed to after all: TODO 6.8, Playwright over the three
+engines. Its second step is exactly this item — open, edit, Save As, diff — as
+a spec rather than a page, so the item moves there and leaves here when that
+step lands. The reasoning above about *why* the seam is untestable without a
+real engine is unchanged; what changed is that a real engine is now in the
+tree, and "a person or a real engine" has stopped meaning only the person.
 
 **The standing consequence, which matters more than the item**: when a change's
 real verification is open-edit-save in a browser and no suite can reach it,

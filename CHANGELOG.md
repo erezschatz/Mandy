@@ -8955,7 +8955,7 @@ started. The plan is in `docs/REWRITE.md` under slice 3. The fixture's first
 typing step now says spaces must land where typed. `sw.js`'s `VERSION` goes to
 `v1.72`.
 
-## 2026-10-10 — A click after a typed equation lands after it
+## 2026-10-10 — `233af6a` — A click after a typed equation lands after it
 
 Found by hand in Chrome, in the typing-an-equation step of
 `tests/fixtures/format-check.md`: type `Also $z$`, click elsewhere so it
@@ -8996,3 +8996,36 @@ itself, after a press, and checked all three: past the midpoint moved it after
 the equation, before it and another line did not. **A person is needed for
 Safari again**, and for Chrome on the fixture. `sw.js`'s `VERSION` goes to
 `v1.74`.
+
+
+## 2026-10-13 — The check pages run under a machine
+
+[tests/browser/](tests/browser/) is a Playwright harness, and the first
+dependency with a browser engine in it: ROADMAP.md's "a full frontend test
+harness is not being planned" is reversed, the reversal and the plan are TODO
+6.8, and the Tests section of CLAUDE.md says what it measures and what it does
+not. It drives the three self-running check pages — `browser-check`,
+`list-indent-check`, `list-empty-item-check` — through Playwright's Chromium,
+Firefox and WebKit builds, one test each per engine, and judges the JSON each
+page POSTs to `/report` rather than anything scraped off the page, so what is
+asserted is the report a hand run already prints. `npm run test:browser`; it is
+not in `npm test` and stays out of it. The harness starts the Deno server
+itself when nothing is on the port, honours `MANDY_PORT`, and gives every test
+a fresh profile, so it never touches a real browser's autosave.
+
+Two things the first run taught it. A page that could not run sets a title
+other than `check: N problems` and POSTs nothing, and the harness fails on that
+rather than passing on a count of zero. And the list pages' own ten-second boot
+wait polls for functions that exist before markdown-it has loaded, so with the
+CDN unreachable they run anyway and every case reads as the handler never
+firing — which is what the first run showed, from a machine with no CDN. So any
+failed resource fails the test as *measured nothing* before the count is
+looked at.
+
+Driven in Chromium only, from that machine: `browser-check` reported no
+problems, the two list pages reported *measured nothing*, correctly. **Firefox
+and WebKit have not run yet**, and neither has any engine with the CDN; 6.8
+says so, and the first full run is what moves it. Real Safari stays a hand run
+and the CLAUDE.md paragraph says why. `tests/browser/` carries its own
+`package.json` and `.gitignore` so the root stays as it was: no install, no
+`node_modules`.

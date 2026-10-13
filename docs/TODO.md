@@ -1028,3 +1028,47 @@ category fidelity deliberately does not extend to.
     Worth settling which, and whether Firefox/Safari's lack of File Handling
     API support (Chromium-only as of this writing) makes the second shape the
     only one worth building at all, before writing any code.
+
+*   **6.8** *(survives 3.1)* The check pages run under a machine.
+    [tests/browser/](../tests/browser/) is a Playwright harness — the one
+    dependency with a browser engine in it this project has agreed to, on
+    2026-10-13, reversing ROADMAP.md's "a full frontend test harness is not
+    being planned" — that drives the self-running check pages through
+    Chromium, Firefox and WebKit and judges the report each one POSTs. Stage
+    one landed the same day: `browser-check`, `list-indent-check` and
+    `list-empty-item-check`, one test each per engine, `npm run test:browser`.
+    The Tests section of [CLAUDE.md](../CLAUDE.md) says what it measures and
+    what it does not. **Done, untested in Firefox and WebKit**: the harness was
+    driven in Chromium only, from a machine with no CDN, so `browser-check`
+    came back with no problems and the two list pages with the harness's own
+    *measured nothing*, which is the right answer there. The first run with
+    all three engines and the CDN is the one that moves this to *done and
+    tested*.
+
+    What follows, in order, each written up here as it lands:
+
+    1.  **The trusted-keystroke half.** The list pages press keys with
+        `new KeyboardEvent`, which is untrusted, so whether the native split is
+        suppressed was measured by hand with a real keyboard (CLAUDE.md, the
+        2026-09-13 run). Playwright's keyboard is trusted. A spec that drives
+        the running app with real keystrokes answers that half, and is the
+        shape every input-layer measurement after it takes. *Not started.*
+    2.  **Open, edit, save.** The `break-test.md` recipe as a spec: load the
+        app, open the fixture through the file API, make the edit, Save As to
+        a scratch name, diff against the fixture, delete the scratch — the
+        recipe CLAUDE.md gives for a hand run, so "never save over it" is the
+        spec's own rule. Run twice, `?core=legacy` and `?core=model`, and the
+        two outputs compared: that parity is the gate for the stage 4 merge,
+        which is irreversible. *Not started.*
+    3.  **`caret-guard-check` and `input-check`**, the pages that need a caret
+        and a keystroke, driven the same way. *Not started.*
+
+    Stays by hand: real Safari, periodically, for anything with a Safari
+    version on it; `tab-shortcut-check`'s "did the browser's own tab switch",
+    which is browser chrome no page-level automation can see; and
+    `paste-check` outside Chromium until a driven keystroke is confirmed to
+    reach the engine's own plain-text paste binding.
+
+    6.6's "the check pages are run by hand from a dev server" now reads "by
+    hand or by this": a `MANDY_DEV` gate on `/tests/:name` and `/report` has
+    to be set by the harness's server command as well.

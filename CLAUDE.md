@@ -51,13 +51,16 @@ roadmap item it was until 2026-09-06.
 npm run serve   # deno task start — server on http://localhost:9130
 npm run dev     # same, with --watch auto-restart
 npm test        # deno run --allow-read tests/run.mjs
+npm run test:browser  # the check pages under Chromium, Firefox and WebKit — see Tests
 ```
 
 Type-check the server: `cd server && deno task check`.
 `MANDY_PORT` overrides the port. `pm2 start ecosystem.config.cjs` runs it supervised.
 
-There is no linter and no build step, and nothing is installed — `package.json`
-exists only to hold the scripts, and Deno fetches what it needs itself: Hono for
+There is no linter and no build step, and nothing is installed at the root —
+`package.json` exists only to hold the scripts (the one `node_modules` in the
+tree is [tests/browser/](tests/browser/)'s, with Playwright in it and nothing
+else; the Tests section says why), and Deno fetches what it needs itself: Hono for
 the server, and markdown-it for the model suite, both pinned by `npm:` specifier
 (`server/deno.json` and the root `deno.json`). The root config also sets
 `nodeModulesDir: none`, without which `package.json`'s presence sends Deno
@@ -342,6 +345,38 @@ Not a file:// double click: Firefox refuses a script from outside the page's
 own directory, and a page open off disk cannot reach the `/tests/` route or
 `/report` anyway — the page prints one line saying so rather than eleven
 `runCommand is not defined` throws.
+
+**Since 2026-10-13 the three self-running pages also run under a machine.**
+[tests/browser/](tests/browser/) drives `browser-check`, `list-indent-check`
+and `list-empty-item-check` through Playwright's Chromium, Firefox and WebKit
+builds and judges the JSON each one POSTs to `/report` — the same report a hand
+run prints to the server log, so nothing is asserted that the page does not
+already say. `npm run test:browser` from the root. It is not part of `npm test`
+and will not be: it wants a browser engine and a `node_modules`, which is the
+one dependency of that kind this project has agreed to (TODO 6.8 is the
+agreement and the plan). First time only, `cd tests/browser && npm install &&
+npm run engines`, which downloads the three engines. The run starts `deno task
+start` itself when nothing is on the port and uses the dev server when there
+is. Each test is a fresh profile, so a run never reads or writes the autosave
+of any browser you use.
+
+Three things it measures less than a hand run, stated so a green run is not
+read as more than it is. Playwright's WebKit is WebKit and not Safari — the
+editing code is WebCore's in both, so engine claims carry, but it tracks trunk
+and usually runs ahead of the shipping Safari, so a measurement with a Safari
+version on it still wants real Safari by hand and is recorded as such. Its
+Firefox is likewise a pinned build rather than the one installed. And a run
+with the CDN unreachable is reported as *measured nothing* rather than judged:
+the list pages' own boot wait polls for functions that exist before markdown-it
+is needed, so without the CDN they run anyway and every case reads as the
+handler never firing. The harness fails on any failed resource before it looks
+at the count.
+
+The three pages retire with execCommand at stage 4; the harness does not. The
+trusted keystrokes the list pages cannot send, the open-edit-save loop in
+ROADMAP.md's "No automated test opens, edits and saves a document", and the
+legacy-against-model parity that gates the stage 4 merge are what it is for,
+in that order, under 6.8.
 
 **It is the only thing in the repo that can tell measurement from folklore.**
 Every engine-specific claim in `front/` and in the metafiles either came from
