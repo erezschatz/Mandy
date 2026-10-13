@@ -8954,3 +8954,45 @@ trailing space, then Enter, a letter and two Backspaces came back to where it
 started. The plan is in `docs/REWRITE.md` under slice 3. The fixture's first
 typing step now says spaces must land where typed. `sw.js`'s `VERSION` goes to
 `v1.72`.
+
+## 2026-10-10 — A click after a typed equation lands after it
+
+Found by hand in Chrome, in the typing-an-equation step of
+`tests/fixtures/format-check.md`: type `Also $z$`, click elsewhere so it
+converts, then click just after the equation and type. The letter went in front
+of it. Firefox was fine, and so was a click after an equation of several glyphs
+in the same line.
+
+Chrome puts the caret on the equation's own glyph when it is clicked after, and
+`modelInputLeaveAtom` moved it to the nearer edge by comparing the glyph's centre
+with the equation's. An equation of one glyph *is* its glyph, so the two centres
+are the same point and the tie went to the front. The caret can also arrive at
+the end of `MJX-MATH` with no child to measure, where the element's own centre
+has the same problem.
+
+The press that placed the caret is the better answer, so the input layer now
+records the x of every mouse press in the editor, and the handler uses it when
+the caret landed within half a second of one. A caret that reaches an equation
+any other way is measured as before, and at the end of an element it now reads
+as that element's right edge.
+
+No suite reaches it: the `model-input` stubs have no selection and no layout, so
+the fix is covered by the browser alone. Driven in Blink with real clicks on a
+one-glyph equation: a letter typed after a click beside it landed after it. A
+click on the equation's left half was not measured on its own, and a letter
+typed within milliseconds of the click can still beat the `selectionchange` that
+moves the caret, which only a machine does.
+
+Safari had its own version of it, found by hand the same day: an equation that
+is the whole of its line — `$z$` typed on its own — has a caret stop in front of
+it, and WebKit puts the caret of a click after it *in that stop*, so there was no
+caret inside the equation for the handler to move and the letter went in front.
+`modelInputLeaveStop` now treats a caret that a click has just put in a stop the
+same way: if the click was on the equation's own line and past its midpoint, the
+caret goes after it. A click before the equation, or on another line of the
+paragraph, leaves it in the stop. The press records its y as well as its x for
+that. Blink does not do this, so the Blink run placed the caret in the stop
+itself, after a press, and checked all three: past the midpoint moved it after
+the equation, before it and another line did not. **A person is needed for
+Safari again**, and for Chrome on the fixture. `sw.js`'s `VERSION` goes to
+`v1.74`.

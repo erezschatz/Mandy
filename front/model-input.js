@@ -1020,6 +1020,7 @@ function modelInputLeaveAtom() {
   const anchor = selection.anchorNode;
   const element = anchor && (anchor.nodeType === 1 ? anchor : anchor.parentElement);
   const atom = element && element.closest && element.closest("[data-math]");
+  if (!atom && element && element.closest) modelInputLeaveStop(element);
   if (!atom || !editor.contains(atom)) return;
 
   // The glyph the caret sits on, or the element it is inside. A collapsed range
@@ -1029,7 +1030,55 @@ function modelInputLeaveAtom() {
     ? anchor.childNodes[selection.anchorOffset]
     : element;
   const glyph = (at.nodeType === 1 ? at : element).getBoundingClientRect();
-  modelInputCaretBeside(atom, glyph.left + glyph.width / 2);
+  // A caret at the *end* of an element that has children — Blink puts one at
+  // `MJX-MATH` offset 1 for a click after a line-ending equation — names no
+  // child to measure, and the element's own centre is never past the
+  // equation's midpoint. Its right edge is where the caret is.
+  const atEnd = anchor.nodeType === 1 && anchor.childNodes.length > 0 &&
+    selection.anchorOffset >= anchor.childNodes.length;
+  // When a click has just placed it, though, the click is the answer. An
+  // equation of one glyph — `$z$` — *is* its glyph, so the glyph's centre is
+  // the equation's centre and a click after it ties with a click before it.
+  const press = modelInputFreshPress();
+  modelInputCaretBeside(atom, press ? press.x : atEnd ? glyph.right : glyph.left + glyph.width / 2);
+}
+
+// The last mouse press in the editor, which `modelInputLeaveAtom` reads: the
+// engine places a click's caret on the mousedown, and the `selectionchange` it
+// raises follows within a task or two. A caret that lands inside an equation
+// later than this did not come from a click, and is measured the old way.
+let modelInputPress = null;
+const MODEL_PRESS_FRESH_MS = 500;
+
+function modelInputFreshPress() {
+  return modelInputPress && performance.now() - modelInputPress.time < MODEL_PRESS_FRESH_MS
+    ? modelInputPress : null;
+}
+
+/**
+ * A click after an equation that is the whole of its line, in WebKit.
+ *
+ * Measured by hand in Safari on 2026-10-10: the caret does not land inside the
+ * equation, as it does in Blink, but in the caret stop in front of it — the
+ * zero-width `<span data-filler>` `modelPlaceStops` puts before an equation that
+ * starts a line — so `modelInputLeaveAtom` saw nothing to leave and a letter
+ * went in front of the equation the user had clicked after. An equation with
+ * text before it has no front stop, which is why only a line of nothing but an
+ * equation shows it.
+ *
+ * So a caret that a click has just put in a stop is moved after the equation
+ * when the click was on the equation's own line and past its midpoint. A click
+ * before it, or on another line, leaves the caret in the stop, where it belongs.
+ */
+function modelInputLeaveStop(element) {
+  const stop = element.closest(`[${MODEL_FILLER_ATTR}]`);
+  const atom = stop && stop.nextSibling;
+  const press = modelInputFreshPress();
+  if (!press || !atom || atom.nodeType !== 1 || !atom.hasAttribute("data-math")) return;
+  if (!editor.contains(atom)) return;
+  const box = atom.getBoundingClientRect();
+  if (press.y < box.top || press.y > box.bottom) return;
+  if (press.x > box.left + box.width / 2) modelInputCaretBeside(atom, press.x);
 }
 
 // Put the caret at whichever edge of `atom` the screen position `x` is nearer.
@@ -1144,6 +1193,9 @@ function modelInputClipboard(event, cut) {
 function modelInputInstall(root) {
   root.ownerDocument.addEventListener("selectionchange", modelInputLeaveAtom);
   root.ownerDocument.addEventListener("selectionchange", modelInputSelectionMath);
+  root.addEventListener("mousedown", (event) => {
+    modelInputPress = { x: event.clientX, y: event.clientY, time: performance.now() };
+  }, true);
   root.addEventListener("mousedown", modelInputPressAtom);
   root.addEventListener("copy", (event) => modelInputClipboard(event, false));
   root.addEventListener("cut", (event) => modelInputClipboard(event, true));
