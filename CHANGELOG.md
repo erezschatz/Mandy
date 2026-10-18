@@ -8998,7 +8998,7 @@ Safari again**, and for Chrome on the fixture. `sw.js`'s `VERSION` goes to
 `v1.74`.
 
 
-## 2026-10-13 — The check pages run under a machine
+## 2026-10-13 — `99c0600` — The check pages run under a machine
 
 [tests/browser/](tests/browser/) is a Playwright harness, and the first
 dependency with a browser engine in it: ROADMAP.md's "a full frontend test
@@ -9029,3 +9029,23 @@ says so, and the first full run is what moves it. Real Safari stays a hand run
 and the CLAUDE.md paragraph says why. `tests/browser/` carries its own
 `package.json` and `.gitignore` so the root stays as it was: no install, no
 `node_modules`.
+
+## 2026-10-18 — Playwright's keyboard edits, measured
+
+Whether the input layer's check pages can be driven by a machine turned on one
+unmeasured question: does Playwright's own keyboard make an engine perform
+editing commands, where the automation measured on 2026-09-20 delivered a
+trusted Backspace `keydown` and nothing else. A throwaway spec in
+`tests/browser/` pressed Backspace, Enter, Shift+Enter, Alt+Backspace and Tab
+and typed a word into a bare two-paragraph `contenteditable`, and recorded
+every `beforeinput`. **In Playwright's Chromium and WebKit it does**: each
+fired trusted and cancelable, with the expected `inputType`, and the
+Backspace's target range ran across both blocks. One divergence:
+WebKit's Shift+Enter came through as `insertParagraph` rather than
+`insertLineBreak`, and whether real Safari does that too was not measured.
+Firefox did not launch on that machine at all — its own process sandbox
+refused — so it stays unmeasured. TODO 6.8 has the table with build numbers,
+and what stays by hand regardless: real IME composition, macOS press-and-hold
+accents, and real Safari. CLAUDE.md's "a machine cannot run it" for
+`input-check.html` now says which machine. The spec was deleted rather than
+committed; nothing in `front/` changed.

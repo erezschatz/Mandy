@@ -481,7 +481,11 @@ one the rewrite's riskiest stage is measured by: does an engine send a
 `getTargetRanges()` say, and what does a real IME do. **A machine cannot run
 it** — measured 2026-09-20 in Blink, automation delivers a trusted `keydown` for
 Backspace and the engine performs no editing command for it, which is the same
-gap stage 0's spike hit — so it carries a numbered protocol and needs a human at
+gap stage 0's spike hit. **Playwright's keyboard is a different path and
+does**: measured 2026-10-18 in Playwright's Chromium and WebKit, it yields
+trusted, cancelable editing `beforeinput`s that the engine then performs, and
+Firefox would not launch on that machine — TODO 6.8 has the table, and until a
+spec drives this page that way it carries a numbered protocol and needs a human at
 a keyboard, the way `paste-check` does. It reports every event the engine sent
 and, after each one, whether any block's DOM text has come adrift from its
 model's. Slice 4 added eight steps to its protocol — the split, the merge across
