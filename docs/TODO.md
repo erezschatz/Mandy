@@ -1052,7 +1052,56 @@ category fidelity deliberately does not extend to.
         suppressed was measured by hand with a real keyboard (CLAUDE.md, the
         2026-09-13 run). Playwright's keyboard is trusted. A spec that drives
         the running app with real keystrokes answers that half, and is the
-        shape every input-layer measurement after it takes. *Not started.*
+        shape every input-layer measurement after it takes. *Not started*
+        as a spec — but whether it can work at all was measured first, below.
+
+        **Measured 2026-10-18: Playwright's keyboard yields real editing
+        commands in Chromium and WebKit, and Firefox did not launch.**
+        Playwright 1.58.2 on macOS 27.0.1 (26A434), driving a bare
+        `contenteditable` of two `<p>` blocks with `page.keyboard.press` and
+        `page.keyboard.type`, no app loaded. Every `beforeinput` that fired
+        was `isTrusted` and `cancelable`, and the engine then performed the
+        edit — the opposite of the 2026-09-20 Blink measurement CLAUDE.md
+        quotes, which used a different automation path:
+
+        | Keystroke | Chromium 145.0.7632.6 (v1208) | WebKit 26.0 (v2248) |
+        | --- | --- | --- |
+        | Backspace at start of block 2 | `deleteContentBackward`; ranges span both blocks | `deleteContentBackward`; ranges span both blocks |
+        | Enter mid-word | `insertParagraph` | `insertParagraph` |
+        | Shift+Enter mid-word | `insertLineBreak`, a `<br>` | **`insertParagraph`**, a split |
+        | Typing `abc` | three `insertText`, one per letter | three `insertText`, one per letter |
+        | Alt+Backspace at end of line | `deleteWordBackward` | `deleteWordBackward` |
+        | Tab | no `beforeinput`; focus left the editor | no `beforeinput`; focus left the editor |
+
+        "Span both blocks" means the one target range ran from the end of the
+        first block's text node to offset 0 of the second `<p>`, in both. The
+        WebKit Shift+Enter is the row not to build on: whether real Safari
+        does the same, or this is Playwright's own key-to-command mapping
+        rather than the engine, was not measured, and a spec that asserted it
+        would be asserting one or the other on a guess. **Firefox 146.0.1 (v1509) is unmeasured**:
+        its launch timed out on this machine with
+        `sandbox_extension_issue_file_to_process … Operation not permitted`
+        for `plugin-container.app`. `MOZ_DISABLE_CONTENT_SANDBOX=1` clears
+        that error and it then fails on `RenderCompositorSWGL failed mapping
+        default framebuffer`; launched from the user's own Terminal, outside
+        any agent sandbox, it simply hangs. Most likely Playwright 1.58's
+        Firefox build does not run on this macOS, and the likely fix is a
+        bump to Playwright's current release, 1.64.1, which wants the user's
+        go-ahead first and has not been made. Until then the harness's own
+        Firefox run above cannot happen on this machine either. Separately,
+        `npm run engines` (`playwright install`) hangs in its own unzip under
+        Node 26.12 — one run sat for 23 hours after a ten-second download —
+        so the engines in the cache were unpacked by hand with `ditto` and
+        marked `INSTALLATION_COMPLETE`. The probe was a
+        throwaway spec and was deleted rather than kept; `input-check.html`
+        was not driven, and is the next thing to try now that the first pass
+        came back positive.
+
+        **Stays by hand however this goes**: real IME composition, macOS
+        press-and-hold accents (both are system input methods Playwright's
+        keyboard does not go through), and real Safari as distinct from
+        Playwright's WebKit — which the Shift+Enter row is the first evidence
+        is a real distinction rather than a formality.
     2.  **Open, edit, save.** The `break-test.md` recipe as a spec: load the
         app, open the fixture through the file API, make the edit, Save As to
         a scratch name, diff against the fixture, delete the scratch — the

@@ -9030,7 +9030,7 @@ and the CLAUDE.md paragraph says why. `tests/browser/` carries its own
 `package.json` and `.gitignore` so the root stays as it was: no install, no
 `node_modules`.
 
-## 2026-10-17 — Safari's hand runs move to the end
+## 2026-10-17 — `5a88d73` — Safari's hand runs move to the end
 
 Decided with the user: from today, the rewrite's hand runs are owed in Chrome
 and Firefox. WebKit is covered by Playwright's build under `tests/browser/`,
@@ -9041,3 +9041,33 @@ The person running the hand runs had become the slowest part of the rewrite,
 and a third browser was a third of that time. docs/REWRITE.md records it on
 stage 5's line and under "What is accepted", and slice 7's steps 9 and 10 now
 name two browsers. Safari runs already recorded stand.
+
+## 2026-10-18 — `68dcb64` — Playwright's keyboard edits, measured
+
+Whether the input layer's check pages can be driven by a machine turned on one
+unmeasured question: does Playwright's own keyboard make an engine perform
+editing commands, where the automation measured on 2026-09-20 delivered a
+trusted Backspace `keydown` and nothing else. A throwaway spec in
+`tests/browser/` pressed Backspace, Enter, Shift+Enter, Alt+Backspace and Tab
+and typed a word into a bare two-paragraph `contenteditable`, and recorded
+every `beforeinput`. **In Playwright's Chromium and WebKit it does**: each
+fired trusted and cancelable, with the expected `inputType`, and the
+Backspace's target range ran across both blocks. One divergence:
+WebKit's Shift+Enter came through as `insertParagraph` rather than
+`insertLineBreak`, and whether real Safari does that too was not measured.
+Firefox did not launch on that machine at all — not from the agent's
+sandbox, with Firefox's content sandbox disabled, or from a plain Terminal —
+so it stays unmeasured; the likely fix is Playwright 1.58.2 to 1.64.1, which
+waits on a go-ahead. `playwright install` also hangs in its own unzip under
+Node 26.12, so the engines were unpacked by hand, and 6.8 says so. TODO 6.8 has the table with build numbers,
+and what stays by hand regardless: real IME composition, macOS press-and-hold
+accents, and real Safari. CLAUDE.md's "a machine cannot run it" for
+`input-check.html` now says which machine. The spec was deleted rather than
+committed; nothing in `front/` changed.
+
+## 2026-10-18 — Merge the keyboard probe
+
+The probe's branch, `claude/heuristic-golick-bcf04e`, joins `rewrite`: the
+measurement in TODO 6.8 and the line in CLAUDE.md, both documentation. Its
+CHANGELOG entry and the Safari deferral's had both been appended at the end of
+the file, and both are kept, in date order.
