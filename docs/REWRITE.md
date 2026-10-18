@@ -4220,7 +4220,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             menu click without a permission prompt is measured, not assumed.
             The keyboard's own Cut and Copy never needed any of this.
 
-        9.  **By hand, in all three engines.** A fixture document,
+        9.  **By hand, in Chrome and Firefox**, and in WebKit by machine —
+            Safari's own run moved to stage 5 on 2026-10-17. A fixture document,
             `tests/fixtures/format-check.md`, with the protocol and the text to
             run it on in one file, the way `undo-check.md` does it: every format
             on a selection and at a caret, the pending mark, a list switched both
@@ -4234,7 +4235,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             on 2026-09-10 — and no script can answer it.
 
         10. **Equations by typing — planned 2026-10-01; done and tested by
-            machine 2026-10-03, waiting on its hand run in three engines; on
+            machine 2026-10-03, waiting on its hand run in Chrome and Firefox
+            (Safari's moved to stage 5 on 2026-10-17 — see that line); on
             probation, with no rounds of fixes spent yet.** Added after the plan above, when Mermaid was removed
             and the question became whether maths stays at all. Under the
             model core typed text is literal by design, so a typed `$x^2$` is
@@ -4453,6 +4455,17 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     autocorrect, spellcheck and Safari's quirks are what only real documents in
     daily use turn up, which is the same reason D8 gives for merging at all.
 
+    **Safari's hand runs moved here on 2026-10-17**, decided with the user.
+    Until then every hand run in stages 2 to 4 was owed in three browsers, and
+    the person running them had become the slowest part of the rewrite. From
+    that date a hand run is **Chrome and Firefox**, and WebKit is covered by
+    the machine — Playwright's WebKit under `tests/browser/` (TODO 6.8), which
+    runs WebCore's editing code but is not the shipping Safari. Whatever real
+    Safari does differently is found once the rewrite is in daily use, then
+    triaged and fixed here, with the rest of the fallout. Runs already recorded
+    in Safari stand. A step whose hand run named Safari before this date is
+    complete without it.
+
 ## What is accepted
 
 - **The core is owned forever.** execCommand gave IME, mobile keyboards and
@@ -4461,6 +4474,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
   price of a document the app controls, and for this app's audience it is the
   right trade — but it is a permanent maintenance surface, not a one-time cost.
 - **Android and in-document drag are unmeasured** on the first pass, above.
+- **Real Safari is not run by hand from 2026-10-17 until stage 5.** WebKit's
+  editing code is still measured by machine, but anything specific to the
+  shipping Safari reaches `main` unmeasured and is found in daily use. Stage
+  5's line says why.
 - **Block granularity is final.** An edited paragraph re-serialises whole. This
   was already the roadmap's position and the model makes it structural.
 - **No 1.0 until this lands.** `main` keeps the working editor; the branch

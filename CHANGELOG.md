@@ -8998,7 +8998,7 @@ Safari again**, and for Chrome on the fixture. `sw.js`'s `VERSION` goes to
 `v1.74`.
 
 
-## 2026-10-13 — The check pages run under a machine
+## 2026-10-13 — `99c0600` — The check pages run under a machine
 
 [tests/browser/](tests/browser/) is a Playwright harness, and the first
 dependency with a browser engine in it: ROADMAP.md's "a full frontend test
@@ -9029,3 +9029,15 @@ says so, and the first full run is what moves it. Real Safari stays a hand run
 and the CLAUDE.md paragraph says why. `tests/browser/` carries its own
 `package.json` and `.gitignore` so the root stays as it was: no install, no
 `node_modules`.
+
+## 2026-10-17 — Safari's hand runs move to the end
+
+Decided with the user: from today, the rewrite's hand runs are owed in Chrome
+and Firefox. WebKit is covered by Playwright's build under `tests/browser/`,
+which runs the same editing code but is not the shipping Safari. Real Safari is
+not run by hand again until stage 5, the fallout stage, when the rewrite is on
+`main` in daily use; whatever it does differently is triaged and fixed then.
+The person running the hand runs had become the slowest part of the rewrite,
+and a third browser was a third of that time. docs/REWRITE.md records it on
+stage 5's line and under "What is accepted", and slice 7's steps 9 and 10 now
+name two browsers. Safari runs already recorded stand.
