@@ -1081,10 +1081,18 @@ category fidelity deliberately does not extend to.
         would be asserting one or the other on a guess. **Firefox 146.0.1 (v1509) is unmeasured**:
         its launch timed out on this machine with
         `sandbox_extension_issue_file_to_process … Operation not permitted`
-        for `plugin-container.app`, inside and outside the agent's command
-        sandbox alike, so it is Firefox's own process sandbox failing here,
-        not the harness. That also means the harness's own Firefox run above
-        cannot happen on this machine until it is solved. The probe was a
+        for `plugin-container.app`. `MOZ_DISABLE_CONTENT_SANDBOX=1` clears
+        that error and it then fails on `RenderCompositorSWGL failed mapping
+        default framebuffer`; launched from the user's own Terminal, outside
+        any agent sandbox, it simply hangs. Most likely Playwright 1.58's
+        Firefox build does not run on this macOS, and the likely fix is a
+        bump to Playwright's current release, 1.64.1, which wants the user's
+        go-ahead first and has not been made. Until then the harness's own
+        Firefox run above cannot happen on this machine either. Separately,
+        `npm run engines` (`playwright install`) hangs in its own unzip under
+        Node 26.12 — one run sat for 23 hours after a ten-second download —
+        so the engines in the cache were unpacked by hand with `ditto` and
+        marked `INSTALLATION_COMPLETE`. The probe was a
         throwaway spec and was deleted rather than kept; `input-check.html`
         was not driven, and is the next thing to try now that the first pass
         came back positive.

@@ -9043,8 +9043,11 @@ fired trusted and cancelable, with the expected `inputType`, and the
 Backspace's target range ran across both blocks. One divergence:
 WebKit's Shift+Enter came through as `insertParagraph` rather than
 `insertLineBreak`, and whether real Safari does that too was not measured.
-Firefox did not launch on that machine at all — its own process sandbox
-refused — so it stays unmeasured. TODO 6.8 has the table with build numbers,
+Firefox did not launch on that machine at all — not from the agent's
+sandbox, with Firefox's content sandbox disabled, or from a plain Terminal —
+so it stays unmeasured; the likely fix is Playwright 1.58.2 to 1.64.1, which
+waits on a go-ahead. `playwright install` also hangs in its own unzip under
+Node 26.12, so the engines were unpacked by hand, and 6.8 says so. TODO 6.8 has the table with build numbers,
 and what stays by hand regardless: real IME composition, macOS press-and-hold
 accents, and real Safari. CLAUDE.md's "a machine cannot run it" for
 `input-check.html` now says which machine. The spec was deleted rather than
