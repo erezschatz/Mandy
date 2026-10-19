@@ -426,11 +426,12 @@ no server and no app either.
   than leaving them behind.
 - **Anything more than trivial is written down before it is built, and again
   as each part lands.** Before: what is about to change, what the stages are,
-  and what each one entails — in the item's own entry in
-  [docs/TODO.md](docs/TODO.md) when it has one, or a `docs/` file when it is
+  and what each one entails — in the item's own task file in
+  [tasks/](tasks/) when it has one, or a `docs/` file when it is
   large enough to need one (3.1 has [docs/REWRITE.md](docs/REWRITE.md)). After:
   each stage says where it stands — *done and tested*, *done, untested*, *not
-  started* — updated as part of the landing rather than afterwards. **Do not
+  started* — in the `## What was done` section that lands with it, rather than
+  afterwards. **Do not
   start the work before the plan is written.** The failure this prevents is a
   CHANGELOG entry announcing "stage two" of a sequence that exists nowhere a
   reader can find it, which is what the tabbed view's first two stages shipped as.
@@ -440,6 +441,40 @@ no server and no app either.
   that names the file you touched (import it directly, per the Tests section
   above) rather than the whole `npm test`, unless the change reaches across
   enough of `front/` that only the full run covers it.
+
+## The Unities
+
+**Adopted 2026-10-19 as an evaluation** — the rules are deliberately lenient so
+that what fits this project's way of working can be told from what does not.
+[tasks/adopt-unities.md](tasks/adopt-unities.md) records what was installed and
+what was left out on purpose.
+
+The work, its record and its location are the same thing at the same time.
+Every change to `front/` or `server/src/` is one commit that also carries its doc
+line — the CHANGELOG entry counts, and is still written by hand as above — and a
+`## What was done` section appended to its task file in [tasks/](tasks/). A
+small fix that never had a task gets one created in the same commit; see
+[tasks/README.md](tasks/README.md) for the format. The task's section can be two
+sentences and a pointer, since the CHANGELOG entry carries the prose.
+[docs/TODO.md](docs/TODO.md) is retired: its items are task files now, and "TODO
+3.1" names `tasks/3.1-*.md`.
+
+`.claude/hooks/check-unit.mjs` checks it in two places, and only one of them
+refuses:
+
+- **At commit** — a `PreToolUse` hook on `git commit` and `.githooks/pre-commit`
+  (`deno task hooks` once per clone) refuse a staged set with source but no doc
+  line or no task record. A missing test is a note, never a refusal.
+  **Stage in a separate call from the commit**: the hook reads the index before
+  the command runs, so `git add … && git commit` is judged on what was staged
+  before the `add`.
+- **At the end of a turn** — the `Stop` hook reports what the uncommitted tree is
+  missing and never sends the turn back, because stopping mid-change to ask a
+  design question or hand over a browser recipe is how work goes here.
+
+Before committing a change, have a reader that has not seen the work — a
+read-only subagent — check that the task record describes the staged diff. The
+hooks test presence, not truth.
 
 ## Architecture
 
@@ -518,7 +553,7 @@ The document lives in `editor.innerHTML` as HTML, always. Markdown is a
 boundary format: markdown-it parses on the way in, Turndown serialises on the
 way out. Nothing keeps a markdown copy in memory.
 
-**This is the design being replaced.** TODO 3.1 in [docs/TODO.md](docs/TODO.md)
+**This is the design being replaced.** TODO 3.1 ([tasks/3.1-editing-core-rewrite.md](tasks/3.1-editing-core-rewrite.md))
 rewrites the editing core so that a block-granular markdown model owns the
 document and the DOM is rendered from it — [docs/REWRITE.md](docs/REWRITE.md)
 is the design, D6 in [docs/DECISIONS.md](docs/DECISIONS.md) the decision. Until

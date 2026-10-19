@@ -6113,7 +6113,7 @@ Not covered by any suite: the dialog in a real browser. To verify, run
 check it opens in a second tab with the first untouched; repeat and press
 Escape, and check the bar is back to the tabs it had.
 
-## 2026-10-12 — The file dialog stays still while you climb a tree
+## 2026-10-12 — `8d20745` — The file dialog stays still while you climb a tree
 
 **The open and save dialog's list is a fixed ten rows high now**, where it used
 to size itself to the directory on screen. The dialog is centred, so every step
@@ -6131,3 +6131,33 @@ Not covered by any suite: this is layout. To verify, run `npm run serve`, open
 File → Open… in a directory a few levels deep, and click the parent row
 repeatedly without moving the mouse. Each click should go up one level all the
 way to `/`.
+
+## 2026-10-19 — Adopt the Unities, as an evaluation
+
+**Work now arrives as a task file in [tasks/](tasks/), and a change to the code
+is refused at commit unless its doc line and its task record come with it** —
+[docs/UNITIES.md](docs/UNITIES.md) carried out, with the rules deliberately
+lenient while it is tried against how this project already works.
+[tasks/adopt-unities.md](tasks/adopt-unities.md) is the full record: what was
+installed, what was left out on purpose, and why.
+
+The 25 open items in docs/TODO.md are now one file each, keeping their numbers
+so every "TODO 3.1" in the code and the docs still names something; the file
+itself is retired in place with its content below a pointer.
+`.claude/hooks/check-unit.mjs` refuses a staged change to `front/` or
+`server/src/` with no doc line or no task file — as a Claude Code `PreToolUse`
+hook on `git commit` and as `.githooks/pre-commit` (`deno task hooks` once per
+clone) — and only reports at the end of a turn, since stopping mid-change to
+ask a design question is how work goes here. A missing test is a note, never a
+refusal. This file stays hand-written and counts as the doc line; compiling it
+from task records at release waits until there is more than one developer or a
+release schedule. CLAUDE.md gains "The Unities" section.
+
+The hook a previous attempt left on 2026-10-18 had never run: it was gitignored,
+and under Deno `node:child_process` also needs `--allow-env`, so every git call
+threw and the Stop hook failed silently on every turn. The new one is
+Deno-native and committed, and refuses at commit if it cannot run at all.
+
+Not covered by any suite: this is tooling. Verified in a scratch clone by
+staging a probe file in `front/` and committing — refused by both hooks, passed
+once a CHANGELOG change and a task file were staged beside it.

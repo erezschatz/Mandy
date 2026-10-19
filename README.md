@@ -136,6 +136,11 @@ If the server is not running the editor still loads — the service worker serve
 it from cache — but Open, Save, Save As and Reload disable themselves, since
 there is nothing to read or write through. The clipboard and the HTML/PDF/DOCX exports keep working.
 
+Working on Mandy itself: run `deno task hooks` once after cloning. It points git
+at [.githooks/](.githooks), whose pre-commit refuses a change to `front/` or
+`server/src/` that arrives without its doc line and its task file in
+[tasks/](tasks) — see "The Unities" in [CLAUDE.md](CLAUDE.md).
+
 ### Running it permanently with pm2
 
 [ecosystem.config.cjs](ecosystem.config.cjs) defines the process:

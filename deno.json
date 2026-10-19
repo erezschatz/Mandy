@@ -11,6 +11,11 @@
   // its own cache: package.json's presence otherwise sends it looking for a
   // node_modules this project does not have and does not want.
   "nodeModulesDir": "none",
+  // Points git at the committed .githooks/, whose pre-commit refuses a change
+  // that arrives without its record (CLAUDE.md, The Unities). Run once per clone.
+  "tasks": {
+    "hooks": "git config core.hooksPath .githooks"
+  },
   "imports": {
     "markdown-it": "npm:markdown-it@13.0.1"
   }
