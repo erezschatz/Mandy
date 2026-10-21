@@ -396,7 +396,7 @@ itself against.
 
 There are four other pages beside it, same idea and same reason. The first two
 watch our own hand-rolled list surgery in a real editing engine rather than a
-command's output, and both drive the running app in an `<iframe src="/">` —
+command's output, and both drive the running app in an `<iframe>` pointed at `/` —
 served through the same `/tests/` route, so the frame is same-origin and the
 page reads app internals straight out of its window. `CHECK_PAGES` in
 `server.ts` is the literal set of names that route serves; a new check page has

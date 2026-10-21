@@ -3950,7 +3950,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             fixes its runs found: the caret walking into MathJax's output,
             Backspace after an equation, the caret stops at a line's edge, the
             click landing inside the wrapper, and the nested copies on reload.
-            Safari and Chrome are still to run it.
+            Chrome and Safari ran it clean on 2026-10-03, which closed the
+            step.
 
             Nine checks in the `latex` suite: a cached diagram in the same task
             with its block id, a second copy of a still-standing drawing drawn
@@ -4237,7 +4238,13 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         10. **Equations by typing — planned 2026-10-01; done and tested by
             machine 2026-10-03, waiting on its hand run in Chrome and Firefox
             (Safari's moved to stage 5 on 2026-10-17 — see that line); on
-            probation, with no rounds of fixes spent yet.** Added after the plan above, when Mermaid was removed
+            probation, with one round of fixes spent: `233af6a`, a click
+            after a one-glyph equation, found in Chrome and Safari on
+            2026-10-10. `d2c2b75`'s held spaces were found during the same
+            runs but date from slice 3, so they do not count against it.
+            Owed: Chrome's whole typing pass, and a Firefox re-run, since
+            `233af6a` changed the click handling Firefox's clean run had
+            passed.** Added after the plan above, when Mermaid was removed
             and the question became whether maths stays at all. Under the
             model core typed text is literal by design, so a typed `$x^2$` is
             written to the file as `\$x^2$` — measured — and from stage 4 there

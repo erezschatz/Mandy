@@ -26,8 +26,20 @@ for (const name of PAGES) {
       // The report POST itself is a fire-and-forget sink; the test closing the
       // page before its 204 arrives is not a missing resource.
       if (new URL(req.url()).pathname === "/report") return;
-      failed.push(`${req.failure()?.errorText ?? "failed"} ${req.url()}`);
+      failed.push({ text: `${req.failure()?.errorText ?? "failed"} ${req.url()}`, frame: req.frame() });
     });
+    // A list page removes its app frame once the report is written, so a
+    // debounced autosave cannot land after it restores the tester's keys — and
+    // that cancels whatever the app still had in flight, including the
+    // /api/home its own visibilitychange wake fires on the way out. Those are
+    // the page's teardown, not a resource that failed to load: an abort from a
+    // frame that has since been detached. Checked here rather than in the
+    // listener because the detach can be reported after the abort. A CDN that
+    // cannot be reached fails with its own error, never an abort, so it still
+    // trips this.
+    const missing = () => failed
+      .filter(({ text, frame }) => !(/^(net::ERR_ABORTED|cancelled) /.test(text) && frame.isDetached()))
+      .map(({ text }) => text);
 
     const posted = page.waitForRequest(
       (req) => req.method() === "POST" && new URL(req.url()).pathname === "/report",
@@ -48,7 +60,8 @@ for (const name of PAGES) {
 
     // "could not run" / "execcommand.js did not load": the page is telling us
     // the measurement never happened. That is a failure of the run, not a pass.
-    expect(failed, "resources failed to load, so the page measured nothing:\n" + failed.join("\n")).toEqual([]);
+    const lost = missing();
+    expect(lost, "resources failed to load, so the page measured nothing:\n" + lost.join("\n")).toEqual([]);
     expect(title, `page title: ${title}`).toMatch(/^check: \d+ problems$/);
     expect(report, "no report was POSTed to /report").not.toBeNull();
 

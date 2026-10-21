@@ -21,7 +21,7 @@
   How to run it: `npm run serve`, then open
   http://localhost:9130/tests/list-indent-check.html in each browser you care
   about. The server serves this file by a small route of its own — it is not
-  under front/ — and the <iframe src="/"> below then loads the app from the
+  under front/ — and the <iframe> below then loads the app from the
   same origin, which is the whole mechanism: this page reads outdentListItem
   and runCommand straight out of the app's window, so a cross-origin frame
   would be useless. A file:// open cannot work at all, and the guard below
@@ -36,7 +36,7 @@
 pre{white-space:pre-wrap} .bad{color:#b00}</style>
 <h1 id="head">running…</h1>
 <pre id="out"></pre>
-<iframe id="app" src="/"></iframe>
+<iframe id="app"></iframe>
 <script>
 // Only meaningful when something is listening; harmless otherwise.
 const COLLECTOR = "/report";
@@ -44,6 +44,11 @@ const snapshot = Object.fromEntries(Object.keys(localStorage).map(k => [k, local
 
 // The app is a PWA and app.js is a shell asset, so a stale cache would have
 // this page measuring the previous release. Clear it, then let the iframe load.
+// The frame ships with no src so that this is its only navigation: with one in
+// the markup the app started booting at once, and re-pointing the frame here
+// aborted every script that first load had in flight — harmless to the cases,
+// which run in the second load, and a run of failed requests to anything
+// watching the network.
 const fresh = async () => {
   if (navigator.serviceWorker) {
     const regs = await navigator.serviceWorker.getRegistrations();

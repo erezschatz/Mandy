@@ -16,7 +16,7 @@
   and that no stray blocks appear.
 
   Same mechanism as tests/list-indent-check.html: drive the running app in an
-  <iframe src="/"> so the keydown handler, the guards and the DOM surgery are
+  <iframe> so the keydown handler, the guards and the DOM surgery are
   exactly the ones the user gets. Served by the /tests/ route in server.ts,
   same origin as the frame, so this page reads results straight out of the
   app's window.
@@ -31,11 +31,13 @@
 pre{white-space:pre-wrap} .bad{color:#b00}</style>
 <h1 id="head">running…</h1>
 <pre id="out"></pre>
-<iframe id="app" src="/"></iframe>
+<iframe id="app"></iframe>
 <script>
 const COLLECTOR = "/report";
 const snapshot = Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)]));
 
+// The frame ships with no src so that fresh() is its only navigation — see
+// tests/list-indent-check.html, where one in the markup aborted a first load.
 const fresh = async () => {
   if (navigator.serviceWorker) {
     const regs = await navigator.serviceWorker.getRegistrations();
