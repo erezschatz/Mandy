@@ -351,7 +351,11 @@ own directory, and a page open off disk cannot reach the `/tests/` route or
 and `list-empty-item-check` through Playwright's Chromium, Firefox and WebKit
 builds and judges the JSON each one POSTs to `/report` — the same report a hand
 run prints to the server log, so nothing is asserted that the page does not
-already say. `npm run test:browser` from the root. It is not part of `npm test`
+already say. Since 2026-10-21 it also drives one hand protocol itself:
+`equation-typing.spec.mjs` types `tests/fixtures/format-check.md`'s "Typing an
+equation" steps into the running app with Playwright's keyboard and mouse,
+which are trusted (TODO 6.8 has the measurement), and stands in for that run in
+Chromium and WebKit. `npm run test:browser` from the root. It is not part of `npm test`
 and will not be: it wants a browser engine and a `node_modules`, which is the
 one dependency of that kind this project has agreed to (TODO 6.8 is the
 agreement and the plan). First time only, `cd tests/browser && npm install &&

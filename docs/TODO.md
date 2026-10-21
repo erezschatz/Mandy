@@ -1156,6 +1156,52 @@ category fidelity deliberately does not extend to.
         keyboard does not go through), and real Safari as distinct from
         Playwright's WebKit — which the Shift+Enter row is the first evidence
         is a real distinction rather than a formality.
+
+        **The first spec is `tests/fixtures/format-check.md`'s "Typing an
+        equation" section** — planned 2026-10-21, because it is slice 7's step
+        10 and the hand run every later step is waiting behind.
+        `equation-typing.spec.mjs` loads `/?core=model` in a fresh profile,
+        turns on `modelVerifySetEnabled(true)`, and loads the fixture itself,
+        read off disk and handed to `loadDocumentMarkdown`, so it starts from
+        the same document a hand run does. There is no file dialog, which is
+        what File → Open would cost. Each of the section's numbered steps is one
+        test, typed with Playwright's keyboard and mouse into a new paragraph at
+        the end, and judged three ways: what the paragraph shows (an equation
+        exists or does not), where the next typed letters land, and what
+        `htmlToMarkdown(editor.innerHTML)` would write, which is the save path
+        step 8 checks by hand. Every test fails on a `[model] render diverged`
+        warning or any console error, as the protocol does. Step 3's click
+        after a one-glyph equation, which is the `233af6a` bug, gets a test of
+        its own.
+
+        It replaces the hand run in Chromium and WebKit, not in Firefox. Two
+        things stay by hand even there: whether the conversion toast looks
+        right, since the test checks only that it says what it should, and
+        whether the display equation in step 6 is *centred*, which is layout a
+        person judges.
+
+        **Done and tested, 2026-10-21, in Chromium 156.0.8078.4 and WebKit
+        27.2** (Playwright 1.64.1, macOS 27.0.1). Ten tests, the protocol's
+        eight steps plus two for the click after a one-glyph equation, and all
+        but one pass in both engines. The centring turned out to be measurable
+        after all, as the distance between the equation's centre and the
+        line's, so only the toast's look stays by hand. The run also showed
+        what the hand protocol had been taking on trust. **WebKit puts a click
+        anywhere after an equation that ends its line in front of it.** The
+        caret lands at the end of the text before the equation, so neither
+        caret handler sees it. That test is marked as an expected failure in
+        WebKit and points at docs/REWRITE.md, where it is open under step 10.
+        The other surprises were the spec's, not the app's. A press within a
+        couple of pixels of an equation lands on the equation, so the drag
+        starts twenty pixels out, as a hand's does. A letter typed in the same
+        instant as a click beats the selection update that moves the caret, so
+        the spec waits for it, as `233af6a`'s entry said a machine must. And
+        the fixture quotes the very text the steps type, so the save checks
+        read the document's last lines rather than searching it. Each check
+        that guards a fix was confirmed to fail without it: with `233af6a`
+        switched off in the page, the Q lands in front of the equation. On the
+        first cold run, step 2 once logged a console error that never came
+        back; if it does, the run says so, since every test fails on one.
     2.  **Open, edit, save.** The `break-test.md` recipe as a spec: load the
         app, open the fixture through the file API, make the edit, Save As to
         a scratch name, diff against the fixture, delete the scratch — the

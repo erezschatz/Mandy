@@ -9125,7 +9125,7 @@ two pages no longer says `src="/"`. Firefox was not run, since it still does
 not launch here. No `npm test` suite loads either page or the spec, so none
 was run.
 
-## 2026-10-21 — Merge the list-page fix, and two stale status lines
+## 2026-10-21 — `c65e759` — Merge the list-page fix, and two stale status lines
 
 `claude/list-check-aborted` joins `rewrite`, bringing Playwright 1.64.1 and the
 list pages' fix with it. Two status lines in docs/REWRITE.md that had stopped
@@ -9134,3 +9134,27 @@ run `format-check.md`, but both ran it clean on 2026-10-03 and closed the step.
 Step 10 said it had spent no rounds of fixes, but `233af6a` was one. It now
 names what is owed: Chrome's whole typing pass, and a Firefox re-run, because
 that fix changed click handling Firefox had already passed.
+
+## 2026-10-21 — The equation-typing steps run under a machine
+
+`tests/browser/equation-typing.spec.mjs` runs the "Typing an equation" section
+of `tests/fixtures/format-check.md`, slice 7's step 10, in Playwright's
+Chromium and WebKit, with the trusted keyboard and mouse TODO 6.8 measured. It
+loads the fixture off disk through `loadDocumentMarkdown`, so it works on the
+same document a hand run does, without the file dialog. Each step is one test,
+judged by what the new paragraph shows, where the next letters land, and what
+the save path writes, and any render divergence or console error fails it. The
+display equation's centring is measured too, so the only part of the section
+left to a person is how the conversion toast looks. It stands in for Chrome's
+pass; Firefox still will not launch under Playwright and stays a hand run.
+
+It found a bug on its first run. In WebKit, a click anywhere after an equation
+that ends its line, with text before it, puts the caret in front of the
+equation. The caret lands at the end of that text, where neither caret handler
+looks. That test is marked as an expected WebKit failure, and the bug is open
+under step 10 in docs/REWRITE.md, since fixing it would be the probation's
+second round. The click test was checked against the bug it exists for: with
+`233af6a` switched off in the page, it fails. TODO 6.8 records what the spec had
+to learn about pressing beside an equation and typing straight after a click.
+The harness's `node_modules` is installed in the main checkout now. Nothing in
+`front/` changed.

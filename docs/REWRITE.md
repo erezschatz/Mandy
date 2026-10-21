@@ -4242,9 +4242,14 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             after a one-glyph equation, found in Chrome and Safari on
             2026-10-10. `d2c2b75`'s held spaces were found during the same
             runs but date from slice 3, so they do not count against it.
-            Owed: Chrome's whole typing pass, and a Firefox re-run, since
-            `233af6a` changed the click handling Firefox's clean run had
-            passed.** Added after the plan above, when Mermaid was removed
+            Since 2026-10-21 `tests/browser/equation-typing.spec.mjs` runs the
+            protocol in Playwright's Chromium and WebKit (TODO 6.8), which
+            stands in for Chrome's typing pass. Owed: a Firefox re-run by
+            hand, since `233af6a` changed the click handling Firefox's clean
+            run had passed. Open: that spec found that **WebKit puts a click
+            after an equation which ends its line in front of it**, when text
+            comes before it on the line. Fixing it would be the probation's
+            second round, so whether to spend it is the user's call.** Added after the plan above, when Mermaid was removed
             and the question became whether maths stays at all. Under the
             model core typed text is literal by design, so a typed `$x^2$` is
             written to the file as `\$x^2$` — measured — and from stage 4 there
