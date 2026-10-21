@@ -9065,9 +9065,29 @@ accents, and real Safari. CLAUDE.md's "a machine cannot run it" for
 `input-check.html` now says which machine. The spec was deleted rather than
 committed; nothing in `front/` changed.
 
-## 2026-10-18 — Merge the keyboard probe
+## 2026-10-18 — `d7cdf25` — Merge the keyboard probe
 
 The probe's branch, `claude/heuristic-golick-bcf04e`, joins `rewrite`: the
 measurement in TODO 6.8 and the line in CLAUDE.md, both documentation. Its
 CHANGELOG entry and the Safari deferral's had both been appended at the end of
 the file, and both are kept, in date order.
+
+## 2026-10-21 — Playwright 1.64.1, and Firefox still does not launch
+
+`tests/browser/` moves from Playwright 1.58.2 to 1.64.1, which brings Chromium
+156, Firefox 157 and WebKit 27.2. The bump was made to fix Firefox, and it did
+not: Firefox 157 exits at launch with `Could not find profile folder.`, inside
+and outside the agent's sandbox and wherever the profile is put, so it is
+still unmeasured on this machine. The failure is fast and clear now where
+1.58's hung. What the bump did fix is the installer: `npm run engines` hung in
+its own unzip under Node 26.12 on 1.58, and on 1.64.1 it installed all three
+engines first time. The keyboard probe from 2026-10-18 was re-run in Chromium
+156 and WebKit 27.2 and came back the same in every row, WebKit's Shift+Enter
+`insertParagraph` included; it was deleted again afterwards.
+
+One more thing found on the way, and recorded rather than fixed because it is
+older than the bump: `list-indent-check` and `list-empty-item-check` come back
+as *measured nothing* in Chromium and WebKit under both versions, because the
+app frame's own scripts are aborted mid-load. `browser-check` passes. TODO 6.8
+has the detail. Only `tests/browser/package.json` changed in code; no suite
+under `npm test` reaches it, so none was run.

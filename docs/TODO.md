@@ -1097,6 +1097,30 @@ category fidelity deliberately does not extend to.
         was not driven, and is the next thing to try now that the first pass
         came back positive.
 
+        **The bump was made on 2026-10-21, and it did not fix Firefox.**
+        Playwright 1.64.1 brings Chromium 156.0.8078.4 (v1248), Firefox 157.0
+        (v1555) and WebKit 27.2 (v2370). Its own installer worked first time,
+        all three in under four minutes, so the unzip hang is 1.58's and
+        nothing is unpacked by hand any more. Re-run on the same probe, the
+        Chromium and WebKit columns above came back **unchanged in every
+        row**, WebKit's Shift+Enter `insertParagraph` included. Firefox 157
+        fails differently rather than not at all: it exits within 100ms of
+        launch with `Could not find profile folder.`, although Playwright has
+        just created the folder it names. The same both inside and outside
+        the agent's command sandbox, and with the profile under
+        `/var/folders`, the scratchpad or `~/.cache`. So **Firefox is still
+        unmeasured on this machine**, now with a fast, clear failure where
+        1.58's hung, and the next question is Firefox's, not the harness's.
+
+        Found on the way, and **not caused by the bump**: the two list pages
+        fail as *measured nothing* in Chromium and WebKit on this machine, under
+        1.58.2 and 1.64.1 alike, inside the sandbox and out. Out of the
+        sandbox the CDN loads; what fails is the app frame's own same-origin
+        scripts (`app.js`, `undo.js`, `tabs.js` and the rest), each
+        `ERR_ABORTED` about 400ms in, which reads as the page being torn
+        down while its frame is still loading rather than as anything
+        missing. `browser-check` passes in both. Not diagnosed.
+
         **Stays by hand however this goes**: real IME composition, macOS
         press-and-hold accents (both are system input methods Playwright's
         keyboard does not go through), and real Safari as distinct from
