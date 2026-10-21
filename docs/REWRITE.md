@@ -4238,18 +4238,20 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         10. **Equations by typing — planned 2026-10-01; done and tested by
             machine 2026-10-03, waiting on its hand run in Chrome and Firefox
             (Safari's moved to stage 5 on 2026-10-17 — see that line); on
-            probation, with one round of fixes spent: `233af6a`, a click
-            after a one-glyph equation, found in Chrome and Safari on
-            2026-10-10. `d2c2b75`'s held spaces were found during the same
-            runs but date from slice 3, so they do not count against it.
-            Since 2026-10-21 `tests/browser/equation-typing.spec.mjs` runs the
-            protocol in Playwright's Chromium and WebKit (TODO 6.8), which
-            stands in for Chrome's typing pass. Owed: a Firefox re-run by
-            hand, since `233af6a` changed the click handling Firefox's clean
-            run had passed. Open: that spec found that **WebKit puts a click
-            after an equation which ends its line in front of it**, when text
-            comes before it on the line. Fixing it would be the probation's
-            second round, so whether to spend it is the user's call.** Added after the plan above, when Mermaid was removed
+            probation, with two rounds of fixes spent, which is its limit: a
+            third means proposing maths for removal instead. Round one was
+            `233af6a`, a click after a one-glyph equation, found by hand in
+            Chrome and Safari on 2026-10-10. `d2c2b75`'s held spaces were found
+            during the same runs but date from slice 3, so they do not count.
+            Round two, 2026-10-21, was the same click in WebKit when text comes
+            before the equation: the caret lands at the end of that text, a
+            second spelling of the place in front of the equation, and
+            `modelInputAtomAhead` now recognises it. It was found by
+            `tests/browser/equation-typing.spec.mjs`, which since that day runs
+            the protocol in Playwright's Chromium and WebKit (TODO 6.8) and
+            stands in for Chrome's typing pass. Owed: a Firefox re-run by hand,
+            since both rounds changed click handling Firefox's clean run had
+            passed.** Added after the plan above, when Mermaid was removed
             and the question became whether maths stays at all. Under the
             model core typed text is literal by design, so a typed `$x^2$` is
             written to the file as `\$x^2$` — measured — and from stage 4 there

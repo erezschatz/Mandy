@@ -1020,7 +1020,7 @@ function modelInputLeaveAtom() {
   const anchor = selection.anchorNode;
   const element = anchor && (anchor.nodeType === 1 ? anchor : anchor.parentElement);
   const atom = element && element.closest && element.closest("[data-math]");
-  if (!atom && element && element.closest) modelInputLeaveStop(element);
+  if (!atom && element && element.closest) modelInputLeaveFront(selection, element);
   if (!atom || !editor.contains(atom)) return;
 
   // The glyph the caret sits on, or the element it is inside. A collapsed range
@@ -1056,29 +1056,51 @@ function modelInputFreshPress() {
 }
 
 /**
- * A click after an equation that is the whole of its line, in WebKit.
+ * A click after an equation that WebKit puts in front of it.
  *
  * Measured by hand in Safari on 2026-10-10: the caret does not land inside the
  * equation, as it does in Blink, but in the caret stop in front of it — the
  * zero-width `<span data-filler>` `modelPlaceStops` puts before an equation that
  * starts a line — so `modelInputLeaveAtom` saw nothing to leave and a letter
- * went in front of the equation the user had clicked after. An equation with
- * text before it has no front stop, which is why only a line of nothing but an
- * equation shows it.
+ * went in front of the equation the user had clicked after. Only an equation
+ * that starts its line has a front stop.
  *
  * So a caret that a click has just put in a stop is moved after the equation
  * when the click was on the equation's own line and past its midpoint. A click
  * before it, or on another line, leaves the caret in the stop, where it belongs.
+ *
+ * **WebKit has a second spelling of the same place**, found by
+ * `tests/browser/equation-typing.spec.mjs` on 2026-10-21 in Playwright's WebKit
+ * 27.2: an equation that ends its line with text before it — `Also $z$` — has no
+ * front stop, and a click anywhere after it puts the caret at the *end of that
+ * text*. That is in front of the equation too, in a text node rather than a
+ * stop, so the same rule covers it: whatever position directly precedes the
+ * equation counts, however the engine spells it.
  */
-function modelInputLeaveStop(element) {
-  const stop = element.closest(`[${MODEL_FILLER_ATTR}]`);
-  const atom = stop && stop.nextSibling;
+function modelInputLeaveFront(selection, element) {
   const press = modelInputFreshPress();
-  if (!press || !atom || atom.nodeType !== 1 || !atom.hasAttribute("data-math")) return;
-  if (!editor.contains(atom)) return;
+  if (!press) return;
+  const atom = modelInputAtomAhead(selection, element);
+  if (!atom || !editor.contains(atom)) return;
   const box = atom.getBoundingClientRect();
   if (press.y < box.top || press.y > box.bottom) return;
   if (press.x > box.left + box.width / 2) modelInputCaretBeside(atom, press.x);
+}
+
+// The equation a collapsed caret sits directly in front of, or null: from
+// inside its caret stop, from the end of the text node just before it, or from
+// an element offset that names it.
+function modelInputAtomAhead(selection, element) {
+  const isAtom = (node) => node && node.nodeType === 1 && node.hasAttribute("data-math");
+  const stop = element.closest(`[${MODEL_FILLER_ATTR}]`);
+  if (stop) return isAtom(stop.nextSibling) ? stop.nextSibling : null;
+  const anchor = selection.anchorNode;
+  const offset = selection.anchorOffset;
+  if (anchor.nodeType === 3) {
+    return offset === anchor.data.length && isAtom(anchor.nextSibling) ? anchor.nextSibling : null;
+  }
+  const next = anchor.childNodes[offset];
+  return isAtom(next) ? next : null;
 }
 
 // Put the caret at whichever edge of `atom` the screen position `x` is nearer.

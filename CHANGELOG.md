@@ -9135,7 +9135,7 @@ Step 10 said it had spent no rounds of fixes, but `233af6a` was one. It now
 names what is owed: Chrome's whole typing pass, and a Firefox re-run, because
 that fix changed click handling Firefox had already passed.
 
-## 2026-10-21 — The equation-typing steps run under a machine
+## 2026-10-21 — `1071476` — The equation-typing steps run under a machine
 
 `tests/browser/equation-typing.spec.mjs` runs the "Typing an equation" section
 of `tests/fixtures/format-check.md`, slice 7's step 10, in Playwright's
@@ -9158,3 +9158,27 @@ second round. The click test was checked against the bug it exists for: with
 to learn about pressing beside an equation and typing straight after a click.
 The harness's `node_modules` is installed in the main checkout now. Nothing in
 `front/` changed.
+
+## 2026-10-21 — A click after an equation lands after it in WebKit too
+
+The bug the equation-typing spec found on its first run is fixed. In WebKit, a
+click anywhere after an equation that ends its line, with text before it,
+put the caret at the end of that text, which is in front of the equation. So
+the next letter went there. `233af6a` had fixed the same click for an equation
+that is the whole line, where WebKit puts the caret in the caret stop instead.
+Both are the place directly in front of the equation, spelled two ways, and
+`modelInputLeaveFront` now treats them as one. After a click on the equation's
+own line and past its midpoint, a caret anywhere directly in front of it, as
+found by `modelInputAtomAhead`, moves after it. A click before an equation
+still lands before it, in Chromium and WebKit alike.
+
+This is step 10's second round of fixes, which is the probation's limit:
+docs/REWRITE.md says so, and that a third would mean proposing maths for
+removal. The spec's click test is no longer marked as an expected WebKit
+failure, and the harness passes in Chromium and WebKit, run twice. The
+`model-input` suite passes; it cannot reach this, having no layout and no
+selection. One thing seen in passing and left alone: in WebKit, a click two
+pixels before an equation in the middle of a line lands before the space in
+front of it. This fix only ever moves a caret forward past an equation, so it
+cannot be the cause. `sw.js`'s `VERSION` goes to `v1.75`. Firefox still owes
+step 10 a hand run.

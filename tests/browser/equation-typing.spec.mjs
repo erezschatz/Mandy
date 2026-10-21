@@ -154,13 +154,10 @@ async function clickJustAfter(page, id) {
   });
 }
 
-test("3. a click just after a one-glyph equation lands after it", async ({ page, browserName }) => {
-  // Found by this spec on 2026-10-21: WebKit puts a click anywhere after an
-  // equation that ends its line at the end of the text *before* it, so the
-  // caret is in plain text and neither caret handler sees it. Open in
-  // docs/REWRITE.md under slice 7's step 10. Marked rather than skipped, so the
-  // run says so when it starts passing.
-  test.fail(browserName === "webkit", "known: WebKit puts the caret before the equation");
+test("3. a click just after a one-glyph equation lands after it", async ({ page }) => {
+  // In WebKit, with text before the equation, the click's caret lands at the
+  // end of that text rather than on the equation — found by this test on
+  // 2026-10-21, and what modelInputAtomAhead's text-node branch is for.
   const id = await newParagraph(page);
   await page.keyboard.type("Also $z$");
   await page.locator("#editor > p").first().click();

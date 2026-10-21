@@ -1189,8 +1189,9 @@ category fidelity deliberately does not extend to.
         what the hand protocol had been taking on trust. **WebKit puts a click
         anywhere after an equation that ends its line in front of it.** The
         caret lands at the end of the text before the equation, so neither
-        caret handler sees it. That test is marked as an expected failure in
-        WebKit and points at docs/REWRITE.md, where it is open under step 10.
+        caret handler sees it. It was fixed the same day as step 10's second
+        round of fixes (docs/REWRITE.md), and the test now passes in both
+        engines.
         The other surprises were the spec's, not the app's. A press within a
         couple of pixels of an equation lands on the equation, so the drag
         starts twenty pixels out, as a hand's does. A letter typed in the same
