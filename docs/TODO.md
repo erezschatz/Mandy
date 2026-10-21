@@ -1038,7 +1038,8 @@ category fidelity deliberately does not extend to.
     one landed the same day: `browser-check`, `list-indent-check` and
     `list-empty-item-check`, one test each per engine, `npm run test:browser`.
     The Tests section of [CLAUDE.md](../CLAUDE.md) says what it measures and
-    what it does not. **Done, untested in Firefox and WebKit**: the harness was
+    what it does not. **Done, untested in Firefox** — Chromium and WebKit
+    since 2026-10-21, below. Originally: the harness was
     driven in Chromium only, from a machine with no CDN, so `browser-check`
     came back with no problems and the two list pages with the harness's own
     *measured nothing*, which is the right answer there. The first run with
@@ -1119,7 +1120,36 @@ category fidelity deliberately does not extend to.
         scripts (`app.js`, `undo.js`, `tabs.js` and the rest), each
         `ERR_ABORTED` about 400ms in, which reads as the page being torn
         down while its frame is still loading rather than as anything
-        missing. `browser-check` passes in both. Not diagnosed.
+        missing. `browser-check` passes in both.
+
+        **Diagnosed and fixed the same day: the pages had always measured, and
+        the harness was reading their own navigation as lost resources.** A
+        request timeline per frame, on the worktree's own server rather than
+        whatever held :9130, showed two sources of aborts and nothing else.
+        The frame was navigated twice: the markup's `<iframe src="/">` began
+        booting the app, and `fresh()` re-pointed it at `/?fresh=…` some 20ms
+        later, after clearing the service worker, which cancelled every script
+        the first load had in flight — that is the run the report above saw.
+        And once the report was written, the page removed its frame on
+        purpose, so a debounced autosave cannot land after it restores the
+        tester's keys, which cancelled what the app still had out: the
+        `/api/home` its own `visibilitychange` wake fires on the way out, a
+        web font, sometimes `welcome.md`. The cases themselves run
+        synchronously in one task against the second load and had come back
+        `check: 0 problems` all along. A late `welcome.md` cannot land between
+        two of them for the same reason. Two changes: both pages ship the
+        frame with no `src`, so `fresh()` is its only navigation; and the spec
+        drops a failure only when it is an abort (`net::ERR_ABORTED`,
+        WebKit's `cancelled`) from a frame that has since been detached, which
+        is the teardown and nothing else. Checked against a control: with
+        `cdn.jsdelivr.net` blocked by `page.route`, both list pages still fail
+        in both engines with `ERR_INTERNET_DISCONNECTED`, so the guard the
+        filter sits in front of still does its job.
+
+        **Run 2026-10-21, Playwright 1.64.1, Chromium 156.0.8078.4 and WebKit
+        27.2 on macOS 27.0.1: all three pages, both engines, 0 problems** —
+        `list-indent-check` and `list-empty-item-check` for the first time
+        under this harness. Firefox was not run, for the reason above.
 
         **Stays by hand however this goes**: real IME composition, macOS
         press-and-hold accents (both are system input methods Playwright's

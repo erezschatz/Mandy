@@ -9072,7 +9072,7 @@ measurement in TODO 6.8 and the line in CLAUDE.md, both documentation. Its
 CHANGELOG entry and the Safari deferral's had both been appended at the end of
 the file, and both are kept, in date order.
 
-## 2026-10-21 — Playwright 1.64.1, and Firefox still does not launch
+## 2026-10-21 — `b8feba9` — Playwright 1.64.1, and Firefox still does not launch
 
 `tests/browser/` moves from Playwright 1.58.2 to 1.64.1, which brings Chromium
 156, Firefox 157 and WebKit 27.2. The bump was made to fix Firefox, and it did
@@ -9091,3 +9091,36 @@ as *measured nothing* in Chromium and WebKit under both versions, because the
 app frame's own scripts are aborted mid-load. `browser-check` passes. TODO 6.8
 has the detail. Only `tests/browser/package.json` changed in code; no suite
 under `npm test` reaches it, so none was run.
+
+## 2026-10-21 — The list pages measure under Playwright
+
+`list-indent-check` and `list-empty-item-check` now report a real problem count
+in `npm run test:browser` — 0 in Chromium 156 and WebKit 27.2, with
+`browser-check` 0 in both as before. They had been measuring all along. What
+failed them was the harness's failed-resource guard reading the pages' own
+navigation as missing resources, and a timeline of every request by frame
+found two sources of aborts and nothing else. Neither page nor server was
+serving anything different: it reproduced on this worktree's own server, not
+only on whatever held :9130.
+
+The first was a double navigation. Both pages shipped `<iframe src="/">`, so
+the app began booting the moment the page parsed, and `fresh()` then
+re-pointed the frame at `/?fresh=…` about 20ms later, once it had cleared the
+service worker — cancelling every script of the first load. The frame now
+ships with no `src`, so `fresh()` is its only navigation. The second is
+deliberate and stays: once its report is written a list page removes the
+frame, so a debounced autosave cannot land after the tester's keys are put
+back, and that cancels whatever the app still has in flight — the `/api/home`
+its own `visibilitychange` wake fires on the way out, a web font, sometimes
+`welcome.md`. The spec now drops a failure only when it is an abort from a
+frame that has since been detached. An unreachable CDN fails with its own
+error and still trips the guard: blocking `cdn.jsdelivr.net` with
+`page.route` failed both list pages in both engines with
+`ERR_INTERNET_DISCONNECTED`, and that control was removed again afterwards.
+
+The cases run synchronously in one task against the second load, so a late
+`welcome.md` could never have landed between two of them, and no result
+changes. TODO 6.8 has the detail and the run; CLAUDE.md's description of the
+two pages no longer says `src="/"`. Firefox was not run, since it still does
+not launch here. No `npm test` suite loads either page or the spec, so none
+was run.
