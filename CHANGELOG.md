@@ -9159,7 +9159,7 @@ to learn about pressing beside an equation and typing straight after a click.
 The harness's `node_modules` is installed in the main checkout now. Nothing in
 `front/` changed.
 
-## 2026-10-21 — A click after an equation lands after it in WebKit too
+## 2026-10-21 — `f01d1c1` — A click after an equation lands after it in WebKit too
 
 The bug the equation-typing spec found on its first run is fixed. In WebKit, a
 click anywhere after an equation that ends its line, with text before it,
@@ -9182,3 +9182,12 @@ pixels before an equation in the middle of a line lands before the space in
 front of it. This fix only ever moves a caret forward past an equation, so it
 cannot be the cause. `sw.js`'s `VERSION` goes to `v1.75`. Firefox still owes
 step 10 a hand run.
+
+## 2026-10-22 — The harness's lockfile is committed
+
+`tests/browser/package-lock.json` was written by `npm install` when Playwright
+1.64.1 was first installed in the main checkout, and it had never been
+committed. It is now. `package.json` already pins `@playwright/test` exactly, so
+what the lockfile adds is the two packages that one pulls in, `playwright` and
+`playwright-core`, at the same version. So every checkout installs the same
+Playwright, and `npm ci` works.
