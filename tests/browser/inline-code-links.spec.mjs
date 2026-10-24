@@ -37,11 +37,13 @@ test("Code over a word makes a code span, and again turns it back", async ({ pag
   expect(await markdown(page)).toBe("Run npm now.\n");
 });
 
-test("Code over a whole paragraph is left for the code block step", async ({ page }) => {
+// Until step 5 this left the paragraph alone; since then it is the code block,
+// and block-kinds.spec.mjs covers the rest of that half.
+test("Code over a whole paragraph makes it a code block", async ({ page }) => {
   await open(page, "Whole line.\n");
   await paragraph(page).click({ clickCount: 3 });
   await bar(page, "code");
-  expect(await markdown(page)).toBe("Whole line.\n");
+  expect(await markdown(page)).toBe("```\nWhole line.\n```\n");
 });
 
 test("a selection becomes a link through Insert → Link…", async ({ page }) => {

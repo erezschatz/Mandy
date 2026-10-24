@@ -9403,7 +9403,7 @@ and WebKit run it by machine and Safari's run waits for stage 5, so step 4 is
 done and tested. Step 5, paragraphs, headings and the code block, is next.
 docs/REWRITE.md records the run on the stage line, the slice line and the step.
 
-## 2026-10-24 — Paragraphs, headings and the code block are model commands
+## 2026-10-24 — `4fd458f` — Paragraphs, headings and the code block are model commands
 
 Slice 7's step 5. Under the model core, Paragraph and Heading 1–6, from the
 Format menu or the bar at a line's start, and Code over whole blocks now change
@@ -9440,3 +9440,17 @@ as that kind with its text. There is one hand-written case per rule.
 format bar in Chromium and WebKit, and `tests/fixtures/format-check.md` gains a
 section for the Firefox run, which is still owed. `sw.js`'s `VERSION` goes to
 `v1.80`.
+
+## 2026-10-24 — Two browser tests put right after the code block step
+
+The previous commit went in with three of the harness's 82 tests failing,
+because the commit was chained onto the run without waiting for its verdict.
+Two were the same stale test in two engines. `inline-code-links.spec.mjs` still
+asserted step 4's behaviour, that Code over a whole paragraph does nothing,
+which step 5 deliberately changed, so it now expects a code block. The step 4
+section of `tests/fixtures/format-check.md` said the same and is corrected. The
+third failed once, in Chromium, and passed five times in a row on its own.
+`format-marks.spec.mjs` opened the Format menu before the arrow keys had
+landed the caret inside the bold word. It now waits for that caret before it
+looks. The whole harness then passed in Chromium and WebKit three times in a
+row.

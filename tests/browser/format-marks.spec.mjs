@@ -123,6 +123,15 @@ test("the Format menu checks Bold with the caret in bold text", async ({ page })
   await doubleClickWord(page, 0, "beta");
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("ArrowRight");
+  // The precondition, waited for rather than assumed: a bare caret inside the
+  // bold word. Opening the menu before the arrows have landed read the state of
+  // wherever the caret was a moment earlier, once in a full run.
+  await page.waitForFunction(() => {
+    const selection = getSelection();
+    const node = selection.anchorNode;
+    const element = node && (node.nodeType === 1 ? node : node.parentElement);
+    return selection.isCollapsed && !!element && !!element.closest("strong");
+  });
   expect(await menuState(page, "bold")).toBe("true");
   expect(await menuState(page, "italic")).toBe("false");
 });

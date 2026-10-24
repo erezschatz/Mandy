@@ -242,8 +242,8 @@ of errors*, with the known Firefox exception from "Before you start".
 
 ## Inline code and links (step 4)
 
-Code on the format bar, Insert → Link… and Ctrl/Cmd+K. Code acts inside one
-block; a whole block is step 5's code block and does nothing yet.
+Code on the format bar, Insert → Link… and Ctrl/Cmd+K. Here Code acts inside
+one block; over a whole block it makes a code block, which is step 5's section.
 
 The paragraphs to work on:
 
@@ -256,7 +256,7 @@ Read [the guide](https://a.example) first.
 1. **Double-click `npm` and press Code on the format bar.** *It becomes a code
    span and stays selected.* **Press Code again.** *It is plain text again.*
 2. **Triple-click "Run npm now." to select the whole paragraph and press
-   Code.** *Nothing changes.* That is step 5's.
+   Code.** *It becomes a code block*, step 5's half of Code. (Undo it.)
 3. **Double-click `docs` and choose Insert → Link…. Type `example.com/docs`
    and press Insert.** *`docs` becomes a link.* **Hover it.** *The hint says
    Ctrl/Cmd+click opens it.*
