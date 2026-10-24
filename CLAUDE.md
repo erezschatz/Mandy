@@ -351,11 +351,12 @@ own directory, and a page open off disk cannot reach the `/tests/` route or
 and `list-empty-item-check` through Playwright's Chromium, Firefox and WebKit
 builds and judges the JSON each one POSTs to `/report` — the same report a hand
 run prints to the server log, so nothing is asserted that the page does not
-already say. Since 2026-10-21 it also drives one hand protocol itself:
-`equation-typing.spec.mjs` types `tests/fixtures/format-check.md`'s "Typing an
-equation" steps into the running app with Playwright's keyboard and mouse,
-which are trusted (TODO 6.8 has the measurement), and stands in for that run in
-Chromium and WebKit. `npm run test:browser` from the root. It is not part of `npm test`
+already say. Since 2026-10-21 it also drives hand protocols itself:
+`equation-typing.spec.mjs` and, since 2026-10-24, `format-marks.spec.mjs` type
+and select their way through `tests/fixtures/format-check.md`'s "Typing an
+equation" and "Bold, italic and strikethrough" steps in the running app, with
+Playwright's keyboard and mouse, which are trusted (TODO 6.8 has the
+measurement), and stand in for those runs in Chromium and WebKit. `npm run test:browser` from the root. It is not part of `npm test`
 and will not be: it wants a browser engine and a `node_modules`, which is the
 one dependency of that kind this project has agreed to (TODO 6.8 is the
 agreement and the plan). First time only, `cd tests/browser && npm install &&
@@ -1557,8 +1558,14 @@ converts, judged by `mathSpan` — the parser's own function — so typing and
 reopening cannot disagree. The conversion is its own undo step and an undone
 one stays text, and Backspace into an equation reveals its source instead of
 deleting it, which under the model core reverses the one-press delete described
-above. What the model still does *not* do is run a format command, which is the
-rest of slice 7.
+above. **Step 3 made bold, italic and strikethrough model commands**:
+`modelSetMark` rebuilds one block's tree with one mark kind given or taken, and
+**the parser judges the result** — the block's new inline source goes back
+through `md.parseInline`, and a tree the parser does not read back exactly is
+fixed at its edges or refused, never written. `applyFormat` calls
+`modelInputFormat` for the three under the flag; a bare caret sets a pending
+mark for the next letters typed, and typing over a selection keeps what the
+selection was marked with. The other formats are the rest of slice 7.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.

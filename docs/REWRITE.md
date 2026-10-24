@@ -1851,7 +1851,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     2026-09-28 with steps 1 and 2 of nine done and tested, step 2 by hand in all
     three engines on 2026-10-03; step 10, equations by typing, is done and
     tested, by machine in Chromium and WebKit and by hand in Firefox on
-    2026-10-24. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    2026-10-24; step 3, bold, italic and strikethrough, is done and tested by
+    machine the same day and waits on its Firefox run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3740,7 +3741,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         same day; step 2 is done and tested, by machine on 2026-09-29 and by
         hand in all three engines on 2026-10-03, copy and cut included. Step
         10 is done and tested: by machine in Chromium and WebKit, and by hand
-        in Firefox 158 on 2026-10-24, which clears the way for step 3.** Every control that edits the
+        in Firefox 158 on 2026-10-24, which clears the way for step 3. Step 3
+        is done and tested by machine the same day, in the `model` suite and
+        in Playwright's Chromium and WebKit, and waits on its Firefox run.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4088,7 +4091,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             the model as one undo step. Clean by hand in Firefox, Chrome and
             Safari on 2026-10-03, with the rest of the fixture.
 
-        3.  **Inline marks: bold, italic, strikethrough.** A pure command over a
+        3.  **Inline marks: bold, italic, strikethrough — done and tested by
+            machine 2026-10-24; waiting on its hand run in Firefox.** A pure command over a
             block's inline tree, with the range given in model offsets. If every
             leaf in the range carries the mark, the command removes it;
             otherwise it adds it. Marks are zero-width in the offset space, so
@@ -4132,6 +4136,75 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             would be vacuous here in the same way it was for slice 6's sweep.
             The hand-written cases are one per rule above, and each rule is
             broken on purpose first to confirm its case fails.
+
+            **Build order, written 2026-10-24 before any of it was built.**
+
+            1.  **`modelSetMark(block, from, to, kind, on, md, spell)`** in
+                `model.js`, the one primitive the rest is made of: give or take
+                one mark kind over a range of one block, and nothing else. It
+                rebuilds the block's tree from its leaves rather than splicing
+                marks in place. Each leaf keeps its node and its `raw`, and
+                every mark other than `kind` keeps its node, so only the marks
+                of that kind are re-formed, and adjacent ones merge for free.
+                A re-formed mark keeps the spelling of a mark of that kind that
+                already covered any of its characters. It sits where the old
+                one sat, outside or inside a link, when that is still possible.
+                `modelToggleMark` decides `on` (off only when every leaf in the
+                range already carries the mark) and runs it over every block a
+                selection touches.
+            2.  **The input layer**: a model branch at the top of
+                `applyFormat` for bold, italic and strikethrough, which reads
+                the selection in model coordinates, toggles, re-renders,
+                restores the same selection, and announces `formatBold`,
+                `formatItalic` or `formatStrikeThrough` as its own undo step.
+                A bare caret sets the pending mark instead. The rule for typing
+                over a selection goes into `modelInputWrite`.
+            3.  **The `model` suite**: the re-parse fixpoint over the oracle,
+                and one hand-written case per rule.
+            4.  **`tests/browser/format-marks.spec.mjs`**, the hand protocol's
+                replacement in Chromium and WebKit, the way
+                `equation-typing.spec.mjs` is step 10's. It selects with the
+                mouse and keyboard, presses the format bar's buttons and the
+                Format menu's items, and judges what the screen shows, where the
+                selection is afterwards, Ctrl/Cmd+Z, and the markdown the block
+                emits. Not the save path, which is still Turndown over the DOM
+                until stage 4 and would be testing the old core. The Firefox
+                run, and a new section in `tests/fixtures/format-check.md` for
+                it, are this step's hand half.
+
+            The keyboard shortcuts are step 8's, as planned. This step makes the
+            commands they will call.
+
+            **What the build found.** Three things the plan did not foresee,
+            all found by the re-parse sweep on its first runs:
+
+            - **CommonMark's flanking rule bites far more often than the `_`
+              rule.** A delimiter with a letter outside it and punctuation
+              inside cannot open or close, so bolding `.md` in `CLAUDE.md`
+              writes `CLAUDE**.md**`, which comes back as literal asterisks.
+              About a third of the sweep's first ranges failed this way. The
+              punctuation now moves outside the mark: `CLAUDE.**md**`.
+            - **The edges have to be judged in the tree, not the text.** A
+              mark's neighbour in the file is often another mark's delimiter
+              or a link's bracket, and `*a*` next to `**b**` writes `*a***b**`,
+              which is one delimiter run. So **the parser judges every result**:
+              `modelSetMark` parses the block's new inline source and keeps it
+              only if the parser reads back exactly the marks that were built.
+              When it does not, the fixes are tried in a fixed order: a space
+              or a break at the edge moves out, a delimiter touching one of its
+              own character is respelt between `*` and `_`, and punctuation
+              moves out. A result none of that makes readable is refused,
+              rather than written. The sweep's refusals are in its label, and
+              each leaves the block untouched.
+            - **A line can start with a block marker once a mark is gone.**
+              Unbolding `**0. Spike**` at the start of a list item leaves
+              `0. Spike`, which the parser reads as a nested list. That is the
+              emitter's open gap, which `modelEscapeText`'s own comment names:
+              nothing escapes a block marker at a line's start, and typing
+              `1. foo` into a new paragraph reaches it too. **Open, and owed
+              before stage 4**, since until then no save goes through the
+              emitter. The sweep counts these apart and asserts that they are
+              the only cases the parser reads differently.
 
         4.  **Inline code and the link.** Both act inside one block.
             - **Code** over a partial selection builds a code span from the

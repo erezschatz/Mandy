@@ -514,7 +514,16 @@ function applyFormat(format) {
   // and what the bar does afterwards depends on which bar it was.
   const caret = !!selection.isCollapsed;
 
-  switch (format) {
+  // Under the model core the three marks are model commands, slice 7's step 3,
+  // and the rest of this switch is the old core's. Feature-tested, since an
+  // exported document's bundle decides for itself what it ships.
+  const mark = { bold: "strong", italic: "em", strikethrough: "strike" }[format];
+  const modelMark = !!mark && modelOwnsInput() && typeof modelInputFormat === "function";
+  if (modelMark) modelInputFormat(mark);
+
+  switch (modelMark ? null : format) {
+    case null:
+      break;
     case "bold":
       runCommand("bold");
       break;

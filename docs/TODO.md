@@ -1203,6 +1203,15 @@ category fidelity deliberately does not extend to.
         switched off in the page, the Q lands in front of the equation. On the
         first cold run, step 2 once logged a console error that never came
         back; if it does, the run says so, since every test fails on one.
+
+        **The second is `format-marks.spec.mjs`**, 2026-10-24, for slice 7's
+        step 3: bold, italic and strikethrough through the format bar and the
+        Format menu, judged by the markdown the model holds rather than the
+        save path, which is still the old core's. Done and tested in Chromium
+        and WebKit on its first day. It learnt one thing about the platform:
+        on macOS, WebKit takes Home and End to scroll the page and leaves the
+        caret where it is, so the spec moves along a line with Cmd+Left and
+        Cmd+Right there, as a Mac user does.
     2.  **Open, edit, save.** The `break-test.md` recipe as a spec: load the
         app, open the fixture through the file API, make the edit, Save As to
         a scratch name, diff against the fixture, delete the scratch — the

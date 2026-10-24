@@ -1449,6 +1449,25 @@ function modelReferenceLabels(doc, md) {
 }
 
 /**
+ * The document's reference definitions as markdown-it's own `env`, for parsing
+ * one block's inline source on its own and still resolving `[text][label]`.
+ * The same search as `modelReferenceLabels`, keeping what each definition says
+ * rather than only its label.
+ */
+function modelReferenceEnv(doc, md) {
+  const env = { references: {} };
+  const visit = (block) => {
+    if (block.children) return void block.children.forEach(visit);
+    if (block.inlines || !block.source) return;
+    const found = {};
+    md.parse(block.source, found);
+    Object.assign(env.references, found.references || {});
+  };
+  (doc ? doc.blocks : []).forEach(visit);
+  return env;
+}
+
+/**
  * The item affix a leaf's lines carry: the marker its first line opens with and
  * the indent the rest sit under, taken off the **nearest** item ancestor.
  *
@@ -3183,6 +3202,426 @@ function modelMathReveal(block, offset, backward) {
   if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
   modelTouch(block);
   return offset + (backward ? text.length - node.markup.length : node.markup.length);
+}
+
+// ── Marks ────────────────────────────────────────────────────────────────────
+//
+// Slice 7's step 3: bold, italic and strikethrough as commands over a block's
+// inline tree. docs/REWRITE.md has the rules; this is the one primitive they
+// are built from, `modelSetMark`, and the toggle over a selection that uses it.
+
+// The three kinds a format command can give or take, and the spelling each
+// falls back to when neither the document nor the sniffed style has one.
+const MODEL_MARK_KINDS = new Set(["strong", "em", "strike"]);
+const MODEL_MARK_FALLBACK = { strong: "**", em: "*", strike: "~~" };
+
+/**
+ * A mark's open and close tokens, from the parser.
+ *
+ * Slice 4's rule for anything the model creates: `md.parseInline` of a
+ * template, and anything but exactly that mark around one text token is a
+ * refusal rather than a token built by hand. The tokens are clones, so two
+ * marks made from one call never share an object the renderer could see twice.
+ */
+function modelMarkTokens(md, kind, markup) {
+  const tokens = (md.parseInline(markup + "x" + markup, {})[0]?.children || [])
+    .filter((token) => !(token.type === "text" && token.content === ""));
+  if (tokens.length !== 3) return null;
+  const [open, text, close] = tokens;
+  if (MODEL_INLINE_KINDS[open.type] !== kind || open.markup !== markup || text.type !== "text") return null;
+  return { open: modelCloneToken(open), close: modelCloneToken(close) };
+}
+
+// `_` cannot open or close inside a word, so a mark spelt with it whose edge
+// touches a letter or digit on both sides is spelt with `*` instead —
+// otherwise `foo__bar__` is written and comes back as literal underscores.
+function modelMarkSpelling(markup, before, first, last, after) {
+  if (!markup.startsWith("_")) return markup;
+  const word = /[\p{L}\p{N}]/u;
+  const inside = (word.test(before) && word.test(first)) || (word.test(last) && word.test(after));
+  return inside ? markup.replace(/_/g, "*") : markup;
+}
+
+/**
+ * The spelling a new mark of `kind` takes in this document: the commonest
+ * delimiter among the marks of that kind the document already has, counted off
+ * the model's own tree, where each node keeps its delimiter as written. A
+ * document with none of that kind yet takes `fallback`, the sniffed style, and
+ * then the house default.
+ */
+function modelMarkPreference(doc, kind, fallback) {
+  const counts = new Map();
+  (function walk(blocks) {
+    for (const block of blocks || []) {
+      if (block.children) walk(block.children);
+      (function marks(nodes) {
+        for (const node of nodes || []) {
+          if (!node.children) continue;
+          if (node.kind === kind) counts.set(node.markup, (counts.get(node.markup) || 0) + 1);
+          marks(node.children);
+        }
+      })(block.inlines);
+    }
+  })(doc ? doc.blocks : []);
+  let best = null;
+  for (const [markup, count] of counts) if (!best || count > counts.get(best)) best = markup;
+  return best || fallback || MODEL_MARK_FALLBACK[kind];
+}
+
+// What a reader can tell about an inline tree: its text, and which of its
+// characters each mark kind covers. Two trees with one signature render the
+// same marks over the same text, however their delimiters are spelt.
+function modelMarkSignature(nodes) {
+  let text = "";
+  const masks = { strong: "", em: "", strike: "" };
+  (function walk(list, path) {
+    for (const node of list || []) {
+      if (node.children) { walk(node.children, path.concat(node.kind)); continue; }
+      const piece = modelInlineText([node]);
+      text += piece;
+      for (const kind of MODEL_MARK_KINDS) masks[kind] += (path.includes(kind) ? "1" : "0").repeat(piece.length);
+    }
+  })(nodes, []);
+  return text + "\u0000" + masks.strong + masks.em + masks.strike;
+}
+
+/**
+ * Give (`on`) or take away one mark kind over `[from, to)` of one block, and
+ * nothing else. Returns whether the tree changed; false for a block with no
+ * inline tree, an empty range, or a spelling the parser would not read back.
+ *
+ * **It rebuilds the block's tree from its leaves** rather than splicing marks
+ * in place. Every leaf keeps its node and its `raw`, and every mark that is not
+ * of this kind keeps its node, so what is re-formed is only the marks of this
+ * kind — and the rules in docs/REWRITE.md fall out of that rather than each
+ * being a case:
+ *
+ * - **Adjacent marks merge**, because a run of leaves that all want the mark
+ *   is wrapped once, wherever its marks came from.
+ * - **Removing from the middle splits**, because the leaves either side still
+ *   want it and are no longer adjacent.
+ * - **A re-formed mark keeps its spelling**: it takes the delimiter of a mark
+ *   of this kind that covered any of its leaves before. Only a mark that
+ *   covers nothing that was marked takes `spell`, the document's preference.
+ * - **Whitespace at a mark's edge moves outside it**, and so does a break,
+ *   because `** foo**` is not emphasis.
+ * - **A mark goes outside the containers its run spans**, links and other
+ *   marks alike, which is what lets bold over `*a*b` be one mark. A run that
+ *   is a single container whose old mark sat *inside* it goes back inside,
+ *   so `[**b**](u)` stays as it was written.
+ *
+ * Only a text leaf is split at the range's edges. A code span, a break and an
+ * atom are one piece each, so a range that touches one takes it whole.
+ *
+ * **The parser is the judge of the result**, the same rule as everywhere else
+ * the model creates something: the rebuilt tree's source goes back through
+ * `md.parseInline`, with `env` holding the document's reference definitions,
+ * and it is kept only if the parser reads back exactly the text and the marks
+ * that were built. The edge rules below are what is tried when it does not,
+ * and a tree they cannot make readable is refused rather than written.
+ */
+function modelSetMark(block, from, to, kind, on, md, spell, env) {
+  modelUnshare(block);
+  if (!block.inlines || !MODEL_MARK_KINDS.has(kind)) return false;
+  const text = modelInlineText(block.inlines);
+  const start = Math.max(0, Math.min(from, text.length));
+  const end = Math.max(start, Math.min(to, text.length));
+  if (start === end) return false;
+
+  // Every leaf with the containers above it, split at the range's edges. A
+  // container of this kind is not kept in `path`: it is recorded as `mark`,
+  // with how many other containers sat above it, and re-formed below.
+  const leaves = [];
+  let offset = 0;
+  (function walk(nodes, path, mark, depth) {
+    for (const node of nodes) {
+      if (node.children) {
+        if (node.kind === kind) walk(node.children, path, mark || node, mark ? depth : path.length);
+        else walk(node.children, path.concat(node), mark, depth);
+        continue;
+      }
+      const length = modelInlineText([node]).length;
+      const pieces = [];
+      if (node.kind === "text" && (start > offset && start < offset + length ||
+                                   end > offset && end < offset + length)) {
+        const cuts = [0, start - offset, end - offset, length]
+          .filter((cut, i, all) => cut >= 0 && cut <= length && all.indexOf(cut) === i)
+          .sort((a, b) => a - b);
+        for (let i = 0; i + 1 < cuts.length; i++) {
+          if (cuts[i + 1] > cuts[i]) pieces.push([modelTextNode(node.content.slice(cuts[i], cuts[i + 1])), cuts[i], cuts[i + 1]]);
+        }
+      } else pieces.push([node, 0, length]);
+      for (const [piece, a, b] of pieces) {
+        leaves.push({ node: piece, path, mark, markDepth: depth, start: offset + a, end: offset + b });
+      }
+      offset += length;
+    }
+  })(block.inlines, [], null, 0);
+
+  for (const leaf of leaves) {
+    const inside = leaf.end > leaf.start
+      ? leaf.start < end && leaf.end > start
+      : leaf.start > start && leaf.start < end;
+    leaf.want = inside ? on : !!leaf.mark;
+  }
+
+  // Whitespace and breaks at a run's edge go outside it. A text leaf with some
+  // at its edge is split there, the same way the range's edges split one.
+  const blank = (leaf) => leaf.node.kind === "softbreak" || leaf.node.kind === "hardbreak" ||
+    (leaf.node.kind === "text" && !leaf.node.content.trim());
+  const trimEdge = (index, leading) => {
+    const leaf = leaves[index];
+    if (blank(leaf)) { leaf.want = false; return true; }
+    if (leaf.node.kind !== "text") return false;
+    const content = leaf.node.content;
+    const edge = leading ? /^\s+/.exec(content) : /\s+$/.exec(content);
+    if (!edge) return false;
+    const cut = leading ? edge[0].length : content.length - edge[0].length;
+    const head = { ...leaf, node: modelTextNode(content.slice(0, cut)), end: leaf.start + cut, want: !leading };
+    const tail = { ...leaf, node: modelTextNode(content.slice(cut)), start: leaf.start + cut, want: leading };
+    leaves.splice(index, 1, head, tail);
+    return false;
+  };
+  for (let i = 0; i < leaves.length; i++) {
+    if (!leaves[i].want || (i > 0 && leaves[i - 1].want)) continue;
+    while (i < leaves.length && leaves[i].want && trimEdge(i, true)) i++;
+  }
+  for (let i = leaves.length - 1; i >= 0; i--) {
+    if (!leaves[i].want || (i + 1 < leaves.length && leaves[i + 1].want)) continue;
+    while (i >= 0 && leaves[i].want && trimEdge(i, false)) i--;
+  }
+
+  // **The edges are judged on the tree the marks end up in**, not on the flat
+  // run of text, because that is where a mark's neighbours are: the character
+  // either side of a delimiter in the file is often another mark's delimiter or
+  // a link's bracket. Two rules, both CommonMark's:
+  //
+  // - **A delimiter with a letter outside it and punctuation or a space inside
+  //   cannot open or close.** Bolding `.md` in `CLAUDE.md` would write
+  //   `CLAUDE**.md**`, which comes back as literal asterisks. The offending
+  //   character moves outside the mark, one at a time: `CLAUDE.**md**`.
+  // - **Two delimiters of one character side by side are one run.** `*a*`
+  //   followed by `**b**` writes `*a***b**`, which the parser does not split
+  //   back the way it was built. The mark takes the other spelling instead —
+  //   `*` and `_` mean the same — and refuses if neither will do.
+  //
+  // Build, look for the first bad edge, fix it, build again. Each fix either
+  // takes a character out of a mark or settles a spelling, so it ends.
+  const punct = /[\p{P}\p{S}]/u;
+  const space = (ch) => !ch || /\s/.test(ch);
+  const word = (ch) => !space(ch) && !punct.test(ch);
+  const leafFirst = (node) => node.kind === "text" ? node.content[0] || "" :
+    { "code-span": "`", math: "$", image: "!", softbreak: "\n", hardbreak: " " }[node.kind] || "";
+  const leafLast = (node) => node.kind === "text" ? node.content[node.content.length - 1] || "" :
+    { "code-span": "`", math: "$", image: ")", softbreak: "\n", hardbreak: "\n" }[node.kind] || "";
+  const openOf = (node) => node.kind === "link" ? (node.markup === "autolink" ? "<" : "[") : node.markup;
+  const closeOf = (node) => node.kind === "link"
+    ? (node.markup === "autolink" ? ">" : "]" + (node.tail ?? ")")) : node.markup;
+  const firstOut = (node) => node.children ? openOf(node)[0] : leafFirst(node);
+  const lastOut = (node) => node.children ? closeOf(node).slice(-1) : leafLast(node);
+  const firstLeaf = (node) => (node.children ? firstLeaf(node.children[0]) : node);
+  const lastLeaf = (node) => (node.children ? lastLeaf(node.children[node.children.length - 1]) : node);
+  const opens = (c, prev, first) => {
+    if (space(first) || prev === c || first === c) return false;
+    if (punct.test(first) && word(prev)) return false;
+    return !(c === "_" && word(prev));
+  };
+  const closes = (c, last, next) => {
+    if (space(last) || next === c || last === c) return false;
+    if (punct.test(last) && word(next)) return false;
+    return !(c === "_" && word(next));
+  };
+  const OTHER = { "*": "_", "**": "__", "_": "*", "__": "**" };
+
+  function badEdge(list, before, after) {
+    for (let i = 0; i < list.length; i++) {
+      const node = list[i];
+      if (!node.children) continue;
+      const prev = i > 0 ? lastOut(list[i - 1]) : before;
+      const next = i + 1 < list.length ? firstOut(list[i + 1]) : after;
+      if (node.kind === kind && node.children.length) {
+        const c = node.markup[0];
+        const first = firstOut(node.children[0]);
+        const last = lastOut(node.children[node.children.length - 1]);
+        // In this order: a space at the edge is always moved out, a delimiter
+        // touching one of its own character is respelt, and only then does
+        // punctuation move. Respelling first would chase the wrong problem.
+        if (space(first)) return { shed: firstLeaf(node), leading: true };
+        if (space(last)) return { shed: lastLeaf(node), leading: false };
+        if (!opens(c, prev, first) || !closes(c, last, next)) {
+          const crowded = prev === c || first === c || last === c || next === c || c === "_";
+          const other = OTHER[node.markup];
+          if (crowded && other && spellings.get(firstLeaf(node)) !== other) {
+            return { respell: firstLeaf(node), markup: other };
+          }
+          const leading = !opens(c, prev, first);
+          return { shed: leading ? firstLeaf(node) : lastLeaf(node), leading };
+        }
+      }
+      const inner = badEdge(node.children, openOf(node).slice(-1), closeOf(node)[0]);
+      if (inner) return inner;
+    }
+    return null;
+  }
+
+  const spellings = new Map();
+  const shed = (index, leading) => {
+    const leaf = leaves[index];
+    if (leaf.node.kind === "softbreak" || leaf.node.kind === "hardbreak") { leaf.want = false; return true; }
+    if (leaf.node.kind !== "text") return false;
+    const content = leaf.node.content;
+    if (content.length < 2) { leaf.want = false; return true; }
+    const cut = leading ? 1 : content.length - 1;
+    const head = { ...leaf, node: modelTextNode(content.slice(0, cut)), end: leaf.start + cut, want: !leading };
+    const tail = { ...leaf, node: modelTextNode(content.slice(cut)), start: leaf.start + cut, want: leading };
+    leaves.splice(index, 1, head, tail);
+    return true;
+  };
+
+  let refused = false;
+  const charAt = (at) => (at >= 0 && at < text.length ? text[at] : "");
+  const markFor = (run) => {
+    const old = run.find((leaf) => leaf.mark);
+    const first = run[0];
+    const last = run[run.length - 1];
+    const markup = spellings.get(first.node) || modelMarkSpelling(old ? old.mark.markup : spell || MODEL_MARK_FALLBACK[kind],
+      charAt(first.start - 1), charAt(first.start), charAt(last.end - 1), charAt(last.end));
+    const tokens = modelMarkTokens(md, kind, markup);
+    if (!tokens) refused = true;
+    return {
+      kind, markup, content: "", token: tokens && tokens.open, closeToken: tokens && tokens.close,
+      children: null,
+    };
+  };
+
+  function build(items, depth, covered) {
+    const units = [];
+    for (let i = 0; i < items.length;) {
+      const leaf = items[i];
+      if (leaf.path.length === depth) { units.push({ leaves: [leaf], group: null }); i++; continue; }
+      const group = leaf.path[depth];
+      let j = i;
+      while (j < items.length && items[j].path.length > depth && items[j].path[depth] === group) j++;
+      units.push({ leaves: items.slice(i, j), group });
+      i = j;
+    }
+    const emit = (unit, cover) => {
+      if (!unit.group) return [unit.leaves[0].node];
+      unit.group.children = build(unit.leaves, depth + 1, cover);
+      return [unit.group];
+    };
+    const full = (unit) => unit.leaves.every((leaf) => leaf.want);
+    const out = [];
+    for (let i = 0; i < units.length;) {
+      if (covered || !full(units[i])) { out.push(...emit(units[i], covered)); i++; continue; }
+      let j = i;
+      while (j < units.length && full(units[j])) j++;
+      const run = units.slice(i, j);
+      i = j;
+      const only = run.length === 1 && run[0].group ? run[0] : null;
+      if (only && only.leaves.some((leaf) => leaf.mark) &&
+          only.leaves.every((leaf) => !leaf.mark || leaf.markDepth > depth)) {
+        out.push(...emit(only, false));
+        continue;
+      }
+      const mark = markFor(run.flatMap((unit) => unit.leaves));
+      mark.children = run.flatMap((unit) => emit(unit, true));
+      out.push(mark);
+    }
+    return out;
+  }
+
+  const readable = (tree) => {
+    const parsed = md.parseInline(modelInlineSource(tree, md), { references: (env && env.references) || {} });
+    const again = parsed[0] ? modelInlines({ inline: parsed[0] }, md) : [];
+    return modelMarkSignature(again) === modelMarkSignature(tree);
+  };
+
+  let rebuilt = null;
+  for (let guard = 0; ; guard++) {
+    refused = false;
+    rebuilt = build(leaves, 0, false);
+    if (refused) return false;
+    if (readable(rebuilt)) break;
+    const bad = badEdge(rebuilt, "", "");
+    if (!bad) return false;
+    if (guard > leaves.length * 2 + 4) return false;
+    if (bad.respell) {
+      spellings.set(bad.respell, bad.markup);
+      continue;
+    }
+    const index = leaves.findIndex((leaf) => leaf.node === bad.shed);
+    if (index < 0 || !shed(index, bad.leading)) return false;
+  }
+  block.inlines = rebuilt;
+  if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
+  modelTouch(block);
+  return true;
+}
+
+/**
+ * Whether every leaf in `[from, to)` of a block already carries `kind`, or
+ * null when the range holds nothing a mark could carry. Whitespace and breaks
+ * do not count either way, because a mark never covers them at its edge.
+ */
+function modelMarkCovers(block, from, to, kind) {
+  if (!block.inlines) return null;
+  let any = false;
+  for (const span of modelInlineLeafSpans(block.inlines)) {
+    const inside = span.end > span.start ? span.start < to && span.end > from : span.start > from && span.start < to;
+    if (!inside) continue;
+    const node = span.node;
+    if (node.kind === "softbreak" || node.kind === "hardbreak") continue;
+    if (node.kind === "text") {
+      const piece = node.content.slice(Math.max(0, from - span.start), Math.max(0, to - span.start));
+      if (!piece.trim()) continue;
+    }
+    any = true;
+    if (!span.path.some((mark) => mark.kind === kind)) return false;
+  }
+  return any ? true : null;
+}
+
+/**
+ * The leaf blocks a selection touches, each with the part of it selected:
+ * `[{ block, from, to }]`, in document order. A collapsed or one-block
+ * selection is one entry.
+ */
+function modelSelectedRanges(doc, selection) {
+  const from = selection;
+  const to = selection.to || selection;
+  if (from.block === to.block) {
+    return [{ block: from.block, from: Math.min(from.offset, to.offset), to: Math.max(from.offset, to.offset) }];
+  }
+  const flat = modelFlatten(doc).filter((block) => !block.children && block.kind !== "gap");
+  const first = flat.indexOf(from.block);
+  const last = flat.indexOf(to.block);
+  if (first < 0 || last < first) return [];
+  return flat.slice(first, last + 1).map((block, i, all) => ({
+    block,
+    from: i === 0 ? from.offset : 0,
+    to: i === all.length - 1 ? to.offset : modelBlockText(block).length,
+  }));
+}
+
+/**
+ * The format command: bold, italic or strikethrough over a selection.
+ *
+ * Off only when everything the selection holds already carries the mark, and
+ * on otherwise, which is what makes pressing twice a toggle. Marks are
+ * zero-width in the offset space, so the selection the caller had is still the
+ * right one afterwards and needs no remapping. Returns the blocks it changed.
+ */
+function modelToggleMark(doc, selection, kind, md, fallback) {
+  const ranges = modelSelectedRanges(doc, selection).filter((range) => range.block.inlines && range.to > range.from);
+  const covered = ranges.map((range) => modelMarkCovers(range.block, range.from, range.to, kind))
+    .filter((answer) => answer !== null);
+  if (!covered.length) return [];
+  const on = !covered.every(Boolean);
+  const spell = modelMarkPreference(doc, kind, fallback);
+  const env = modelReferenceEnv(doc, md);
+  return ranges.filter((range) => modelSetMark(range.block, range.from, range.to, kind, on, md, spell, env))
+    .map((range) => range.block);
 }
 
 // ── Structure ────────────────────────────────────────────────────────────────

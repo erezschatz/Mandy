@@ -9192,7 +9192,7 @@ what the lockfile adds is the two packages that one pulls in, `playwright` and
 `playwright-core`, at the same version. So every checkout installs the same
 Playwright, and `npm ci` works.
 
-## 2026-10-24 — Slice 7's equation-typing step is closed
+## 2026-10-24 — `97823c2` — Slice 7's equation-typing step is closed
 
 The user ran the "Typing an equation" section of `tests/fixtures/format-check.md`
 in Firefox 158.0.1, and every step was clean. That was the last run step 10 owed:
@@ -9200,3 +9200,51 @@ Chromium and WebKit run it by machine, and Safari's run waits for stage 5. So
 the step is done and tested, and step 3, bold, italic and strikethrough as model
 commands, is next. Equations stay on probation, with both rounds of fixes spent.
 docs/REWRITE.md records the run on the stage line, the slice line and the step.
+
+## 2026-10-24 — Bold, italic and strikethrough are model commands
+
+Slice 7's step 3. Under the model core, the format bar's Bold, Italic and
+Strikethrough and the same three Format-menu items now change the model,
+where until today they did nothing. `modelSetMark` in `model.js` gives or
+takes one mark kind over a range of one block, and `modelToggleMark` runs it
+over a selection: off only when everything selected already has the mark.
+The selection stays selected, and each press is one undo step.
+
+It rebuilds the block's tree from its leaves rather than splicing marks in.
+Every leaf and every other kind of mark keeps its node, so adjacent marks
+merge, a mark split to take out its middle leaves two, and a re-formed mark
+keeps the spelling it had. A new one is spelt the way the document already
+spells that mark, then the sniffed style. **The parser judges every result**:
+the block's new inline source goes back through `md.parseInline`, and a tree
+the parser does not read back exactly is fixed at its edges or refused. The
+fixes run in order: a space or a break moves out of the mark, a delimiter
+touching one of its own character is respelt between `*` and `_`, and
+punctuation moves out, since CommonMark will not open `**` between a letter and
+a full stop. That last rule is the one the plan missed. In the sweep's first
+run, a third of the ranges came back as literal asterisks because of it.
+
+Two input rules came with it. At a bare caret, Bold sets a pending mark that
+the next letters typed take, and moving the caret drops it. Typing over a
+selection keeps what the selection was marked with, which was stage 0's open
+finding.
+
+The `model` suite gives or takes each mark over a spread of ranges in every
+inline-bearing block of the oracle. The parser has to read each one back
+exactly as the model holds it, and each has to have done what was asked,
+moving only whitespace and edge punctuation. The counts are in the labels.
+Hand-written cases cover each rule. Breaking the parser judge, the whitespace
+rule and the `_` rule in turn fails their checks. The two rules that are
+enforced twice fail only when both layers are broken.
+
+The sweep also found a gap that is not this step's. Unbolding `**0. Spike**`
+at the start of a list item leaves `0. Spike`, which the parser reads as a
+list marker. Nothing in the emitter escapes a block marker at a line's start,
+and typing `1. foo` into a new paragraph reaches it too. The sweep counts
+these cases apart, and docs/REWRITE.md records the gap as open and owed before
+stage 4, since no save goes through the emitter until then.
+
+`tests/browser/format-marks.spec.mjs` runs the new "Bold, italic and
+strikethrough" section of `tests/fixtures/format-check.md` in Playwright's
+Chromium and WebKit, and the whole harness passes in both. The typing-over test
+fails with its rule switched off. Firefox owes the section a hand run. The
+keyboard shortcuts are step 8's. `sw.js`'s `VERSION` goes to `v1.76`.

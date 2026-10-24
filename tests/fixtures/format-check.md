@@ -5,9 +5,13 @@ app, follow the steps, and edit the paragraphs written for each one. **Bold** is
 what you do; *italics* is what should (or should not) happen.
 
 It grows with TODO 3.1's slice 7: each step that needs a person adds its
-section here. Today it holds two, both about maths: keeping equations typeset
-(step 2) and typing one (step 10). (It held diagrams too until Mermaid was
-removed on 2026-10-01.)
+section here. Today it holds three: keeping equations typeset (step 2), typing
+one (step 10), and bold, italic and strikethrough (step 3). (It held diagrams
+too until Mermaid was removed on 2026-10-01.)
+
+Chromium and WebKit run the last two sections by machine
+(`tests/browser/equation-typing.spec.mjs` and `format-marks.spec.mjs`), so a
+hand run of those is Firefox's. Safari's waits for stage 5.
 
 ## Before you start
 
@@ -178,6 +182,52 @@ click at the end of the file's last line and press Enter.
    the `$w$` you undid in 4 comes back as an equation, because the old core's
    save does not escape a typed `$`. That is stage 4's; note it, but it is not
    a failure here. Delete the scratch file afterwards.
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors*, with the known Firefox exception from "Before you start".
+
+## Bold, italic and strikethrough (step 3)
+
+The format bar appears over a selection, and the **Format** menu has the same
+three items. Each one toggles: on when anything selected is without it, off
+when all of it already has it. There are no keyboard shortcuts yet; they are
+step 8's.
+
+The paragraphs to work on:
+
+Alpha beta gamma delta.
+
+One _two_ three.
+
+First para here.
+
+Second para here.
+
+1. **Double-click `beta` in "Alpha beta gamma delta." and press Bold on the
+   format bar.** *`beta` turns bold and stays selected.* **Press Bold again.**
+   *It goes back to plain and is still selected.*
+2. **Double-click `gamma` and choose Format → Italic, then double-click
+   `delta` and choose Format → Strikethrough.** *`gamma` is italic and `delta`
+   is struck through.*
+3. **In "One _two_ three.", double-click `three` and press Italic.** *It turns
+   italic.* After a save from stage 4 on it would be written `_three_`, the
+   way this file already writes italics; until then nothing on screen shows the
+   spelling, so there is nothing to check here beyond the italic.
+4. **Click just after `Alpha`, then hold Shift and press Right six times, so
+   the selection is ` beta ` with the spaces either side. Press Bold.** *Only
+   `beta` turns bold; the spaces do not.* (Undo it with Ctrl/Cmd+Z before the
+   next step.)
+5. **Double-click `here` in "First para here.", then hold Shift and press Right
+   until the selection reaches the end of `Second` in the next paragraph.
+   Press Bold.** *`here.` and `Second` turn bold, and nothing else.*
+6. **Press Ctrl/Cmd+Z.** *The bold from step 5 goes, in one press.* **Press
+   Ctrl/Cmd+Shift+Z.** *It comes back.*
+7. **Click at the end of "Alpha beta gamma delta.", type a space, choose
+   Format → Bold, type `bold`, choose Format → Bold again, and type ` plain`.**
+   *`bold` is bold and ` plain` is not.*
+8. **Double-click a bold word and type a new word over it.** *The new word is
+   bold.* **Double-click a plain word just after a bold one and type over it.**
+   *The new word is plain.*
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors*, with the known Firefox exception from "Before you start".

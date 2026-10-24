@@ -89,6 +89,7 @@ export default function run(check) {
     modelInsertBlocks, modelTextBlocks, modelAdoptBlocks,
     modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection, modelBlockById,
     modelMathCandidates, modelMathConvert, modelMathReveal, modelHoldSpaces, modelVerifyRender,
+    modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -113,7 +114,8 @@ export default function run(check) {
       " modelInsertBlocks, modelTextBlocks, modelAdoptBlocks," +
       " modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection," +
       " modelBlockById, modelMathCandidates, modelMathConvert, modelMathReveal," +
-      " modelHoldSpaces, modelVerifyRender };",
+      " modelHoldSpaces, modelVerifyRender," +
+      " modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -3883,5 +3885,210 @@ export default function run(check) {
       modelForkDocument(doc).nextId === doc.nextId);
     check("and so does the prefix", modelForkDocument(doc).prefix === doc.prefix);
 
+  }
+
+  // ── Marks: slice 7's step 3 ───────────────────────────────────────────────
+  //
+  // Bold, italic and strikethrough as commands over a block's inline tree. The
+  // instrument is a re-parse fixpoint, because comparing bytes would be
+  // vacuous: apply a mark, emit the block, parse what came out, and the tree
+  // the parser builds has to carry the mark on exactly the characters it was
+  // given and change nothing else. Whitespace is left out of the comparison,
+  // since a mark never covers it at its edge and that is a rule, not a loss.
+  {
+    const KINDS = ["strong", "em", "strike"];
+    // Which characters of a block's text carry each kind, as a string per
+    // kind: "1" marked, "0" not, " " for whitespace nobody compares.
+    const marksOf = (nodes) => {
+      const out = { strong: "", em: "", strike: "", whole: "" };
+      (function walk(list, path) {
+        for (const node of list || []) {
+          if (node.children) { walk(node.children, path.concat(node.kind)); continue; }
+          const text = modelInlineText([node]);
+          // By UTF-16 unit, the way every offset here counts.
+          for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            for (const kind of KINDS) out[kind] += /\s/.test(ch) ? " " : path.includes(kind) ? "1" : "0";
+            out.whole += node.kind === "text" ? "0" : "1";
+          }
+        }
+      })(nodes, []);
+      return out;
+    };
+    // The top-level block the leaf lives in, emitted and parsed again, with the
+    // document's reference definitions after it so `[text][label]` still
+    // resolves. Not the leaf alone: a list item's second paragraph carries its
+    // continuation indent, and four spaces at the top of a file are code.
+    const reparse = (doc, block) => {
+      let top = block;
+      while (top.parent) top = top.parent;
+      const index = leavesOf({ blocks: [top] }).indexOf(block);
+      const defs = modelFlatten(doc).filter((b) => !b.children && !b.inlines && b.source && /^\s*\[/.test(b.source))
+        .map((b) => b.source.trim());
+      const src = modelSerialise({ prefix: "", blocks: [top] }, (b) => modelEmitLeaf(b, md, doc));
+      const again = parse(src + (defs.length ? "\n\n" + defs.join("\n") : "") + "\n");
+      return leavesOf(again)[index] || null;
+    };
+    const rangesFor = (block) => {
+      const length = modelInlineText(block.inlines).length;
+      if (length < 2) return [];
+      const third = Math.max(1, Math.floor(length / 3));
+      const ranges = [[0, length], [0, third], [length - third, length], [third, Math.max(third + 1, length - third)]];
+      const spans = [];
+      (function walk(list, offset, inMark) {
+        for (const node of list || []) {
+          if (node.children) {
+            if (node.kind === "link" || node.kind === "strong" || node.kind === "em" || node.kind === "strike") spans.push(offset);
+            offset = walk(node.children, offset, true);
+            continue;
+          }
+          offset += modelInlineText([node]).length;
+        }
+        return offset;
+      })(block.inlines, 0, false);
+      for (const edge of spans.slice(0, 2)) ranges.push([Math.max(0, edge - 2), Math.min(length, edge + 2)]);
+      // A selection never ends inside a surrogate pair, so neither does a range.
+      const text = modelInlineText(block.inlines);
+      const low = (at) => /[\uDC00-\uDFFF]/.test(text[at] || "");
+      return ranges.map(([a, b]) => [low(a) ? a + 1 : a, low(b) ? b + 1 : b]).filter(([a, b]) => b > a);
+    };
+
+    // Two questions per range. **Does the file say what the model holds?** —
+    // the re-parsed tree carries exactly the marks the edited tree does, and the
+    // same text. That is the fixpoint, and it is what stops a mark being written
+    // that comes back as literal asterisks. **Did the edit do what was asked,
+    // within the rules?** — outside the range nothing moved, and inside it every
+    // character carries the mark as asked unless it is punctuation the flanking
+    // rule moved to the mark's edge.
+    const punct = /[\p{P}\p{S}\uFFFC`$]/u;
+    let trials = 0;
+    let refusals = 0;
+    const unfaithful = [];
+    const blockStart = [];
+    const refusedSample = [];
+    const unasked = [];
+    for (const file of ORACLE_FILES) {
+      const doc = parse(repoFile(file));
+      const env = modelReferenceEnv(doc, md);
+      for (const leaf of leavesOf(doc).filter((b) => b.inlines)) {
+        for (const kind of KINDS) {
+          for (const [from, to] of rangesFor(leaf)) {
+            for (const on of [true, false]) {
+              const copy = modelForkDocument(doc);
+              const block = modelBlockById(copy, leaf.id);
+              const before = marksOf(block.inlines);
+              const text = modelInlineText(block.inlines);
+              if (!modelSetMark(block, from, to, kind, on, md, undefined, env)) {
+                refusals++;
+                if (refusedSample.length < 6) refusedSample.push(`${kind} ${on ? "on" : "off"} ` +
+                  JSON.stringify(text.slice(Math.max(0, from - 8), to + 8)) + ` [${from},${to})`);
+                continue;
+              }
+              trials++;
+              const held = marksOf(block.inlines);
+              const again = reparse(copy, block);
+              const said = again ? marksOf(again.inlines) : null;
+              const where = `${file} #${leaf.id} ${kind} ${on ? "on" : "off"} [${from},${to}): ` +
+                JSON.stringify(modelEmitLeaf(block, md, copy)).slice(0, 140);
+              if (!again || modelInlineText(again.inlines) !== text || KINDS.some((k) => said[k] !== held[k])) {
+                // A line that now starts with what the parser takes for a block
+                // marker — `0. Spike` once the bold that shielded it is gone —
+                // is the emitter's open gap, named in modelEscapeText's own
+                // comment, rather than this step's. Counted apart, so the check
+                // above it means exactly what it says.
+                let top = block;
+                while (top.parent) top = top.parent;
+                const emitted = modelSerialise({ prefix: "", blocks: [top] }, (b) => modelEmitLeaf(b, md, copy));
+                const chain = (b) => (b.parent ? chain(b.parent) + ">" : "") + b.kind;
+                const shape = (d) => leavesOf(d).map(chain).join(",");
+                if (shape(parse(emitted)) !== shape({ blocks: [top] })) blockStart.push(where);
+                else unfaithful.push(where);
+              }
+              // A code span or an equation is marked whole, and punctuation
+              // moves to whichever side of a delimiter the parser can read.
+              const asked = [...held[kind]].every((c, i) => {
+                if (c === " " || before.whole[i] === "1" || punct.test(text[i])) return true;
+                if (i < from || i >= to) return c === before[kind][i];
+                return c === (on ? "1" : "0");
+              }) && KINDS.filter((k) => k !== kind).every((k) => held[k] === before[k]);
+              if (!asked) unasked.push(where);
+            }
+          }
+        }
+      }
+    }
+    check(`a mark given or taken over ${trials} ranges across the oracle is read back by the parser exactly as the model holds it` +
+      (unfaithful.length ? `, but ${unfaithful.length} were not: ${unfaithful.slice(0, 4).join(" | ")}` : ""),
+      unfaithful.length === 0);
+    check(`and the ${blockStart.length} that change the block structure instead all do so by leaving a block marker at a ` +
+      `line's start, the emitter's open gap: ${blockStart.slice(0, 2).join(" | ")}`,
+      blockStart.every((where) => /\\n|"/.test(where)));
+    check(`and each of those ${trials} did what was asked, moving only whitespace and edge punctuation` +
+      (unasked.length ? `, but ${unasked.length} did not: ${unasked.slice(0, 4).join(" | ")}` : ""),
+      unasked.length === 0);
+    check(`and the sweep measured something: ${trials} ranges changed, ${refusals} refused, such as ${refusedSample.join(" | ")}`,
+      trials > 1000);
+
+    // One case per rule, each a whole document so the emitted bytes are read.
+    const marked = (src, from, to, kind, on, spell) => {
+      const doc = parse(src);
+      const block = modelFlatten(doc).find((b) => !b.children && b.inlines);
+      modelSetMark(block, from, to, kind, on, md, spell ?? modelMarkPreference(doc, kind));
+      return modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    };
+    check("adjacent marks of one kind merge: bolding b in **a**b**c** gives one mark",
+      marked("**a**b**c**\n", 1, 2, "strong", true) === "**abc**\n");
+    check("removing a mark from its middle splits it in two",
+      marked("**abc** d\n", 1, 2, "strong", false) === "**a**b**c** d\n");
+    check("and each half keeps the original spelling",
+      marked("__a b c__\n", 2, 3, "strong", false) === "__a__ b __c__\n");
+    check("a new mark is spelt the way the document already spells that mark",
+      marked("_one_ and two\n", 8, 11, "em", true) === "_one_ and _two_\n");
+    check("a document with none of the mark yet takes the fallback it is given",
+      marked("plain words\n", 0, 5, "em", true, "_") === "_plain_ words\n");
+    check("`_` mid-word is spelt `*`, or it comes back as literal underscores",
+      marked("_x_ foobar\n", 5, 8, "em", true) === "_x_ foo*bar*\n");
+    check("whitespace at a mark's edge moves outside it",
+      marked("a foo b\n", 1, 6, "strong", true) === "a **foo** b\n");
+    check("a mark over a whole link goes outside it",
+      marked("see [the docs](u) now\n", 4, 12, "strong", true) === "see **[the docs](u)** now\n");
+    check("and a mark that sat inside a link stays inside when something else changes",
+      marked("[**b**](u) c\n", 2, 3, "em", true) === "[**b**](u) *c*\n");
+    check("a mark across a link's edge marks each side where it is",
+      marked("a [b c](u)\n", 0, 3, "strong", true) === "**a** [**b** c](u)\n");
+    check("strikethrough is `~~`",
+      marked("gone now\n", 0, 4, "strike", true) === "~~gone~~ now\n");
+    check("a code span is marked whole, never split",
+      marked("run `npm test` now\n", 4, 7, "strong", true) === "run **`npm test`** now\n");
+
+    // The toggle: off only when everything selected already has it.
+    {
+      const doc = parse("one two\n");
+      const block = doc.blocks[0];
+      const sel = { block, offset: 0, to: { block, offset: 3 } };
+      modelToggleMark(doc, sel, "strong", md);
+      const once = modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+      modelToggleMark(doc, sel, "strong", md);
+      const twice = modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+      check("toggling bold on a plain word bolds it", once === "**one** two\n");
+      check("and toggling it again takes it off", twice === "one two\n");
+    }
+    {
+      const doc = parse("**one** two\n");
+      const block = doc.blocks[0];
+      check("a range only partly bold is not covered", modelMarkCovers(block, 0, 7, "strong") === false);
+      modelToggleMark(doc, { block, offset: 0, to: { block, offset: 7 } }, "strong", md);
+      check("so the toggle adds, and the two become one mark",
+        modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc)) === "**one two**\n");
+    }
+    {
+      const doc = parse("first para\n\nsecond para\n");
+      const [a, b] = doc.blocks;
+      const changed = modelToggleMark(doc, { block: a, offset: 6, to: { block: b, offset: 6 } }, "em", md);
+      check("a selection across two blocks marks the part of each it covers",
+        changed.length === 2 && modelSerialise(doc, (x) => modelEmitLeaf(x, md, doc)) === "first *para*\n\n*second* para\n");
+    }
+    check("a selection holding only whitespace has nothing to mark",
+      modelMarkCovers(parse("a  b\n").blocks[0], 1, 3, "strong") === null);
   }
 }

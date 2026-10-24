@@ -233,10 +233,13 @@ function modelInputWrite(doc, span, text, inputType = "") {
     const start = Math.min(target.from.offset, target.to.offset);
     const end = Math.max(target.from.offset, target.to.offset);
     const revise = modelInputRevises(block, start, end);
+    // What the text being replaced was marked with, read before it goes.
+    const inherit = modelBearsSource(block) ? null : modelInputMarksOf(block, start, end);
     const offset = modelBearsSource(block)
       ? modelSourceSplice(block, start, end, text, md)
       : modelInlineSplice(block, start, end, text);
     if (offset === null) return false;
+    if (!modelBearsSource(block)) modelInputMarkTyped(doc, block, start, end, offset, text, inherit);
     // After the splice, so the join is spent on this edit's own announcement
     // and cannot be left standing for some later one if the splice refused.
     if (revise && typeof undoJoin === "function") undoJoin();
@@ -257,6 +260,127 @@ function modelInputWrite(doc, span, text, inputType = "") {
   modelInputShow(doc, landed.block, at, "deleteContentBackward");
   modelInputSettleMath(false);
   return true;
+}
+
+// ── Marks ────────────────────────────────────────────────────────────────────
+//
+// Slice 7's step 3: bold, italic and strikethrough under the model core. The
+// command itself is `modelToggleMark` in model.js; this is when it runs and
+// what the editor shows afterwards.
+
+const MODEL_MARK_INPUT_TYPES = { strong: "formatBold", em: "formatItalic", strike: "formatStrikeThrough" };
+
+// The spelling a document with none of a mark yet should take: the sniffed
+// style app.js keeps, feature-tested because front/input-check.html ships no
+// app.js. Strikethrough has only one spelling, so it never asks.
+function modelInputMarkFallback(kind) {
+  if (typeof markdownStyle !== "object" || !markdownStyle) return undefined;
+  if (kind === "strong") return markdownStyle.strongDelimiter;
+  if (kind === "em") return markdownStyle.emDelimiter;
+  return undefined;
+}
+
+/**
+ * The marks waiting for the next character typed at a bare caret: `{ doc,
+ * block, offset, marks }`, where `marks` maps a kind to whether that text
+ * should carry it. Ctrl+B, type, Ctrl+B gives bold text, which is what all
+ * three engines do natively and so what people already have — decided
+ * 2026-09-28. It is consumed by the next text typed there, and dropped by
+ * anything that moves the caret.
+ */
+let modelPendingMarks = null;
+
+// Whether a mark kind is on at a caret: the marks the next character typed
+// there would carry, which is `modelInlineAt`'s boundary rule — a position
+// belongs to the node that ends there.
+function modelInputCaretHas(block, offset, kind) {
+  if (!block.inlines) return false;
+  return modelInlineAt(block.inlines, offset).path.some((node) => node.kind === kind);
+}
+
+/**
+ * Bold, italic or strikethrough, from the format bar or the Format menu.
+ *
+ * A selection is toggled and stays selected, since marks take no room in the
+ * offset space. A bare caret sets the pending mark instead, or clears one that
+ * is already set. Either way it is one undo step, announced as the
+ * `inputType` the engine itself would use.
+ */
+function modelInputFormat(kind) {
+  const doc = modelCurrentDocument();
+  if (!doc || !MODEL_MARK_KINDS.has(kind)) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+
+  if (!at.to) {
+    const same = modelPendingMarks && modelPendingMarks.doc === doc &&
+      modelPendingMarks.block === at.block && modelPendingMarks.offset === at.offset;
+    const marks = same ? modelPendingMarks.marks : new Map();
+    const now = marks.has(kind) ? marks.get(kind) : modelInputCaretHas(at.block, at.offset, kind);
+    if (marks.has(kind)) marks.delete(kind);
+    else marks.set(kind, !now);
+    modelPendingMarks = marks.size ? { doc, block: at.block, offset: at.offset, marks } : null;
+    return true;
+  }
+
+  const changed = modelToggleMark(doc, at, kind, md, modelInputMarkFallback(kind));
+  if (!changed.length) return true;
+  modelPendingMarks = null;
+  const inputType = MODEL_MARK_INPUT_TYPES[kind];
+  if (changed.length === 1) return modelInputShow(doc, changed[0], at, inputType);
+  modelRender(editor, doc, md, at);
+  modelInputAnnounce(inputType);
+  return true;
+}
+
+// The marks every character of `[start, end)` carries, by kind, or null for an
+// empty range: what text typed over that range should carry.
+function modelInputMarksOf(block, start, end) {
+  if (start === end || !block.inlines) return null;
+  const marks = new Map();
+  for (const kind of MODEL_MARK_KINDS) {
+    const covers = modelMarkCovers(block, start, end, kind);
+    if (covers !== null) marks.set(kind, covers);
+  }
+  return marks.size ? marks : null;
+}
+
+/**
+ * Give text just typed the marks it should have, after the splice.
+ *
+ * **Typing over a selection keeps what the selection was marked with**, which
+ * is stage 0's open finding: a new run inherits from what was deleted when
+ * something was, and from the left otherwise — so typing over a fully bold
+ * word gives bold, where the boundary rule alone would give whatever sits to
+ * the left of the selection. And a bare caret's pending marks are applied
+ * here, to the text typed where they were set.
+ */
+function modelInputMarkTyped(doc, block, start, end, offset, text, inherit) {
+  let marks = inherit;
+  const pending = modelPendingMarks;
+  modelPendingMarks = null;
+  if (!marks && start === end && pending && pending.doc === doc &&
+      pending.block === block && pending.offset === start) marks = pending.marks;
+  if (!marks || offset <= start) return;
+  for (const [kind, want] of marks) {
+    if (modelInputCaretHas(block, offset, kind) === want) continue;
+    modelSetMark(block, start, offset, kind, want, md,
+      modelMarkPreference(doc, kind, modelInputMarkFallback(kind)), modelReferenceEnv(doc, md));
+  }
+  // A mark never starts with a space, so a space typed first leaves the marks
+  // waiting for the letter after it.
+  if (marks === (pending && pending.marks) && !text.trim()) {
+    modelPendingMarks = { doc, block, offset, marks };
+  }
+}
+
+// Anything that moves the caret away from a pending mark drops it.
+function modelInputSelectionMarks() {
+  const pending = modelPendingMarks;
+  if (!pending) return;
+  const doc = modelCurrentDocument();
+  const at = doc === pending.doc ? modelReadSelection(editor, doc) : null;
+  if (!at || at.to || at.block !== pending.block || at.offset !== pending.offset) modelPendingMarks = null;
 }
 
 // ── Equations by typing ──────────────────────────────────────────────────────
@@ -1215,6 +1339,7 @@ function modelInputClipboard(event, cut) {
 function modelInputInstall(root) {
   root.ownerDocument.addEventListener("selectionchange", modelInputLeaveAtom);
   root.ownerDocument.addEventListener("selectionchange", modelInputSelectionMath);
+  root.ownerDocument.addEventListener("selectionchange", modelInputSelectionMarks);
   root.addEventListener("mousedown", (event) => {
     modelInputPress = { x: event.clientX, y: event.clientY, time: performance.now() };
   }, true);
