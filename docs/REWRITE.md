@@ -1851,8 +1851,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     2026-09-28 with steps 1 and 2 of nine done and tested, step 2 by hand in all
     three engines on 2026-10-03; step 10, equations by typing, is done and
     tested, by machine in Chromium and WebKit and by hand in Firefox on
-    2026-10-24; step 3, bold, italic and strikethrough, is done and tested by
-    machine the same day and waits on its Firefox run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    2026-10-24; step 3, bold, italic and strikethrough, is done and tested
+    the same day, by machine and by hand in Firefox. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3743,7 +3743,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         10 is done and tested: by machine in Chromium and WebKit, and by hand
         in Firefox 158 on 2026-10-24, which clears the way for step 3. Step 3
         is done and tested by machine the same day, in the `model` suite and
-        in Playwright's Chromium and WebKit, and waits on its Firefox run.** Every control that edits the
+        in Playwright's Chromium and WebKit, and by hand in Firefox 158.0.1
+        the same day, clean. The Format menu's mark checks, added after that
+        run, are machine-tested and want one Firefox look, step 9 of the
+        protocol.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4091,8 +4094,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             the model as one undo step. Clean by hand in Firefox, Chrome and
             Safari on 2026-10-03, with the rest of the fixture.
 
-        3.  **Inline marks: bold, italic, strikethrough — done and tested by
-            machine 2026-10-24; waiting on its hand run in Firefox.** A pure command over a
+        3.  **Inline marks: bold, italic, strikethrough — done and tested
+            2026-10-24**, by machine in Chromium and WebKit and by hand in
+            Firefox 158.0.1, clean; the menu checks added after the run want
+            one Firefox look (the protocol's step 9). A pure command over a
             block's inline tree, with the range given in model offsets. If every
             leaf in the range carries the mark, the command removes it;
             otherwise it adds it. Marks are zero-width in the offset space, so
@@ -4174,6 +4179,19 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
             The keyboard shortcuts are step 8's, as planned. This step makes the
             commands they will call.
+
+            **Added 2026-10-24 after the Firefox run: the Format menu shows
+            which marks are on.** The user found it in the pending-mark step:
+            with the caret in bold text, or after choosing Bold at a bare caret,
+            nothing in the menu said so. So Bold, Italic and Strikethrough
+            become checkable items. They are stamped when the menu opens rather
+            than tracked as the caret moves, through a new `onMenuOpen` hook in
+            `toolbar.js`. A check means the whole selection, or the caret, has
+            the mark. A faint check means only some of the selection does, the
+            menu's version of the format bar's outlined `.mixed` button. Under
+            the model core the model answers (`modelMarkState`), pending marks
+            included, since a pending mark is invisible on screen. The old core
+            reads the DOM with the format bar's own predicates.
 
             **What the build found.** Three things the plan did not foresee,
             all found by the re-parse sweep on its first runs:

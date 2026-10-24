@@ -516,6 +516,13 @@
         visibility: visible;
       }
 
+      /* Some of the selection has it: the menu's version of the format bar's
+         outlined .mixed button. */
+      .menu-item[aria-pressed="mixed"] .menu-check {
+        visibility: visible;
+        opacity: 0.4;
+      }
+
       .menu-label {
         flex: 1 1 auto;
       }

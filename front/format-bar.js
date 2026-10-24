@@ -308,6 +308,33 @@ function updateActiveButtons() {
   }
 }
 
+// The Format menu's Bold, Italic and Strikethrough say whether the caret or
+// the selection already has the mark, stamped as the menu opens. Under the
+// model core the model answers, pending marks included; otherwise the DOM
+// does, through the same predicates the format bar's own buttons use.
+const MENU_MARKS = { bold: "strong", italic: "em", strikethrough: "strike" };
+
+function formatMenuState(format) {
+  if (modelOwnsInput() && typeof modelInputMarkState === "function") {
+    return modelInputMarkState(MENU_MARKS[format]);
+  }
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return "none";
+  const range = selection.getRangeAt(0);
+  if (!editor.contains(range.commonAncestorContainer)) return "none";
+  const nodes = selection.isCollapsed ? caretNodes(range) : textNodesInRange(range);
+  return formatState(nodes, FORMAT_PREDICATES[format]);
+}
+
+onMenuOpen("formatMenu", (wrapper) => {
+  for (const format of Object.keys(MENU_MARKS)) {
+    const item = wrapper.querySelector(`[data-action="format-${format}"]`);
+    if (!item) continue;
+    const state = formatMenuState(format);
+    item.setAttribute("aria-pressed", state === "all" ? "true" : state === "mixed" ? "mixed" : "false");
+  }
+});
+
 const BLOCK_TAGS = ["P", "H1", "H2", "H3", "LI", "PRE"];
 
 // Never returns #editor. Formatting must not target the editable root: swapping

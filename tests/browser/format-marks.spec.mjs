@@ -176,3 +176,41 @@ test("typing over plain text just after a bold word stays plain", async ({ page 
   await page.keyboard.type("delta");
   expect(await markdown(page)).toBe("Alpha **beta** delta.\n");
 });
+
+// The Format menu says which marks are on where the caret is, stamped as it
+// opens. Found missing by the Firefox hand run on 2026-10-24: with the caret
+// in bold text, or a Bold pending at a bare caret, nothing said so.
+async function menuState(page, format) {
+  await page.locator('[data-menu="formatMenu"]').click();
+  const state = await page.locator(`[data-action="format-${format}"]`).getAttribute("aria-pressed");
+  await page.keyboard.press("Escape");
+  return state;
+}
+
+test("the Format menu checks Bold with the caret in bold text", async ({ page }) => {
+  await open(page, "Alpha **beta** gamma.\n");
+  await doubleClickWord(page, 0, "beta");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowRight");
+  expect(await menuState(page, "bold")).toBe("true");
+  expect(await menuState(page, "italic")).toBe("false");
+});
+
+test("the Format menu checks a pending Bold, and unchecks it again", async ({ page }) => {
+  await open(page, "Alpha\n");
+  await paragraph(page).click();
+  await page.keyboard.press(LINE_END);
+  expect(await menuState(page, "bold")).toBe("false");
+  await menu(page, "bold");
+  expect(await menuState(page, "bold")).toBe("true");
+  await menu(page, "bold");
+  expect(await menuState(page, "bold")).toBe("false");
+});
+
+test("the Format menu shows Bold as mixed for a selection only partly bold", async ({ page }) => {
+  await open(page, "Alpha **beta** gamma.\n");
+  await doubleClickWord(page, 0, "beta");
+  await page.keyboard.press("Shift+ArrowRight");
+  await page.keyboard.press("Shift+ArrowRight");
+  expect(await menuState(page, "bold")).toBe("mixed");
+});

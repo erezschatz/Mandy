@@ -9249,7 +9249,7 @@ Chromium and WebKit, and the whole harness passes in both. The typing-over test
 fails with its rule switched off. Firefox owes the section a hand run. The
 keyboard shortcuts are step 8's. `sw.js`'s `VERSION` goes to `v1.76`.
 
-## 2026-10-24 — The emitter escapes a block marker at a line's start
+## 2026-10-24 — `4350314` — The emitter escapes a block marker at a line's start
 
 The gap the previous entry's sweep found is closed. `modelEmitLeaf` now hands
 an edited leaf's content to `modelEscapeLineStarts` before putting the quote
@@ -9283,3 +9283,28 @@ when switched off alone. Controls check that a `2.`, an HTML start (the parser
 is configured without HTML), an ATX heading's content and a mid-line marker
 are left alone. The sweep that emits every oracle leaf from its tree still
 comes back byte-identical. Nothing reaches a file this way until stage 4.
+
+## 2026-10-24 — The Format menu shows which marks are on
+
+The user ran the "Bold, italic and strikethrough" section of
+`tests/fixtures/format-check.md` in Firefox 158.0.1, with no errors, so slice
+7's step 3 is done and tested. The run also found a gap. With the caret in bold
+text, or after choosing Bold at a bare caret, nothing in the Format menu said
+Bold was on. So Bold, Italic and Strikethrough are checkable items now. A check
+means the caret or the whole selection has the mark, and a faint check means
+only part of the selection does, the menu's version of the format bar's
+outlined button.
+
+The state is read as the menu opens, through a new `onMenuOpen` hook in
+`toolbar.js`, rather than tracked as the caret moves. Under the model core the
+model answers, through `modelMarkState` in `model.js`. A pending mark counts
+too, since the screen cannot show one. The old core reads the DOM with the
+format bar's own predicates, so the check works with the flag off as well.
+
+The `model` suite covers `modelMarkState` at a caret inside, at the end of and
+just before a bold word, and for a selection inside it, half in it and outside
+it. The `format-bar` suite captures the open hook and checks what it stamps.
+`format-marks.spec.mjs` checks the menu in Chromium and WebKit for a caret in
+bold, for a pending Bold set and taken off again, and for a half-bold
+selection, and the harness passes in both. The fixture gains step 9 for
+Firefox to look at the same. `sw.js`'s `VERSION` goes to `v1.77`.

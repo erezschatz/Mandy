@@ -110,9 +110,12 @@ const TOOLBAR_MENUS = [
     { action: "format-h5", label: "Heading 5", variants: ALL },
     { action: "format-h6", label: "Heading 6", variants: ALL },
     { separator: true, variants: ALL },
-    { action: "format-bold", label: "Bold", shortcut: "Ctrl+B", variants: ALL },
-    { action: "format-italic", label: "Italic", shortcut: "Ctrl+I", variants: ALL },
-    { action: "format-strikethrough", label: "Strikethrough", variants: ALL },
+    // Checkable: format-bar.js stamps aria-pressed on these when the menu
+    // opens, so the menu says which marks the caret or the selection already
+    // has — "true" for all of it, "mixed" for some.
+    { action: "format-bold", label: "Bold", shortcut: "Ctrl+B", checkable: true, variants: ALL },
+    { action: "format-italic", label: "Italic", shortcut: "Ctrl+I", checkable: true, variants: ALL },
+    { action: "format-strikethrough", label: "Strikethrough", checkable: true, variants: ALL },
     { separator: true, variants: ALL },
     { action: "format-ul", label: "Bullet list", variants: ALL },
     { action: "format-ol", label: "Numbered list", variants: ALL },
@@ -164,6 +167,17 @@ const TOOLBAR_MENUS = [
 // without it file-api.js would run while the question was still on screen, see
 // a document that is not blank yet, and leave the file association behind.
 const toolbarActions = new Map();
+
+// Handlers to run as a menu opens, by menu id, for items whose state depends on
+// where the caret is: read at the moment someone looks rather than kept up to
+// date on every caret move.
+const menuOpenHandlers = new Map();
+
+function onMenuOpen(id, handler) {
+  const handlers = menuOpenHandlers.get(id);
+  if (handlers) handlers.push(handler);
+  else menuOpenHandlers.set(id, [handler]);
+}
 
 function onToolbarAction(action, handler) {
   const handlers = toolbarActions.get(action);
@@ -310,6 +324,7 @@ function showMenu(trigger) {
   const wrapper = trigger.parentElement;
   if (openMenu && openMenu.wrapper === wrapper) return;
   closeMenu();
+  for (const handler of menuOpenHandlers.get(trigger.getAttribute("data-menu")) || []) handler(wrapper);
   wrapper.setAttribute("data-open", "true");
   trigger.setAttribute("aria-expanded", "true");
   openMenu = { wrapper, trigger };

@@ -36,6 +36,7 @@ function scenario(format, buildSelection) {
       // The Format menu reaches applyFormat through these registrations; this
       // suite drives applyFormat directly and only needs them not to throw.
       onToolbarAction: () => {},
+      onMenuOpen: () => {},
       modelOwnsInput: () => false,
       __format: format,
     },
@@ -124,6 +125,7 @@ function position({
       // The Format menu reaches applyFormat through these registrations; this
       // suite drives applyFormat directly and only needs them not to throw.
       onToolbarAction: () => {},
+      onMenuOpen: () => {},
       modelOwnsInput: () => false,
       __bar: bar,
       __width: barWidth,
@@ -202,6 +204,7 @@ function codeCase(build, { modelCore = false } = {}) {
       Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
       setTimeout: () => {},
       onToolbarAction: () => {},
+      onMenuOpen: () => {},
       modelOwnsInput: () => modelCore,
       notify: (message) => notices.push(message),
     },
@@ -293,6 +296,7 @@ function activeCase(build) {
       Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
       setTimeout: () => {},
       onToolbarAction: () => {},
+      onMenuOpen: () => {},
     },
     "; updateActiveButtons();",
   );
@@ -305,6 +309,47 @@ function activeCase(build) {
       return "none";
     },
   };
+}
+
+// Drives the Format menu's open hook the same way: the handler format-bar.js
+// registers through onMenuOpen is captured and run against a menu holding the
+// three checkable items, with the old core answering from the DOM.
+function menuCase(build) {
+  const { editor, touched } = build();
+  const items = {};
+  for (const format of ["bold", "italic", "strikethrough"]) items[format] = makeEl("button");
+  let opened = null;
+  loadSource(
+    "format-bar.js",
+    {
+      document: {
+        createElement: (t) => makeEl(t),
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener() {},
+        execCommand() {},
+      },
+      runCommand: () => {},
+      modelOwnsInput: () => false,
+      window: {
+        addEventListener() {},
+        getSelection: () => ({
+          rangeCount: 1,
+          isCollapsed: false,
+          getRangeAt: () => ({ intersectsNode: (n) => touched.includes(n), commonAncestorContainer: editor }),
+        }),
+      },
+      editor: Object.assign(editor, { contains: () => true }),
+      formatBar: { classList: { remove() {}, add() {} } },
+      localStorage: { setItem() {} },
+      Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
+      setTimeout: () => {},
+      onToolbarAction: () => {},
+      onMenuOpen: (id, handler) => { if (id === "formatMenu") opened = handler; },
+    },
+  );
+  opened({ querySelector: (sel) => items[(sel.match(/format-([a-z]+)/) || [])[1]] || null });
+  return (format) => items[format].attrs["aria-pressed"];
 }
 
 // Drives showFormatBar at a bare caret, against a bar carrying the same
@@ -372,6 +417,7 @@ function caretCase(build, { windowWidth = 1000, toolbarHeight = 69, barWidth = 2
       Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
       setTimeout: () => {},
       onToolbarAction: () => {},
+      onMenuOpen: () => {},
     },
     "; showFormatBar();",
   );
@@ -749,6 +795,26 @@ export default function run(check) {
     "a selection spanning bold and plain text reads mixed, not active or none",
     r.state("bold") === "mixed",
   );
+
+  // The Format menu says which marks the selection has, stamped as it opens.
+  let pressed = menuCase(() => {
+    const editor = makeEl("div");
+    const p = makeEl("p", { parent: editor });
+    const strong = makeEl("strong", { parent: p });
+    const t = appendText(strong, "hello world");
+    return { editor, touched: [t] };
+  });
+  check("the Format menu checks Bold for a fully bold selection", pressed("bold") === "true");
+  check("and leaves Italic unchecked", pressed("italic") === "false");
+  pressed = menuCase(() => {
+    const editor = makeEl("div");
+    const p = makeEl("p", { parent: editor });
+    const plain = appendText(p, "hello ");
+    const strong = makeEl("strong", { parent: p });
+    const bold = appendText(strong, "world");
+    return { editor, touched: [plain, bold] };
+  });
+  check("and marks Bold as mixed for a selection only partly bold", pressed("bold") === "mixed");
 
   // The anchor is wherever the drag started, which can be either end — so the
   // old check's answer for this exact selection depended on drag direction.

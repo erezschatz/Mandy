@@ -228,6 +228,12 @@ Second para here.
 8. **Double-click a bold word and type a new word over it.** *The new word is
    bold.* **Double-click a plain word just after a bold one and type over it.**
    *The new word is plain.*
+9. **Click inside a bold word and open the Format menu.** *Bold has a check
+   beside it, and Italic and Strikethrough do not.* **Click at the end of a
+   plain line, choose Format → Bold, and open the menu again.** *Bold is
+   checked, though nothing is typed yet.* **Select a range that is half bold
+   and open the menu.** *Bold has a faint check.* Added 2026-10-24, after the
+   first Firefox run of this section asked for it.
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors*, with the known Firefox exception from "Before you start".

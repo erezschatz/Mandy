@@ -3681,6 +3681,35 @@ function modelSelectedRanges(doc, selection) {
 }
 
 /**
+ * Whether a selection has a mark kind: "all", "mixed" or "none". What the
+ * Format menu's checkmark shows. At a bare caret it is the marks the next
+ * character typed there would carry, which is `modelInlineAt`'s boundary rule.
+ */
+function modelMarkState(doc, selection, kind) {
+  if (!selection || !selection.block) return "none";
+  if (!selection.to) {
+    const block = selection.block;
+    if (!block.inlines) return "none";
+    return modelInlineAt(block.inlines, selection.offset).path.some((node) => node.kind === kind) ? "all" : "none";
+  }
+  let counted = false;
+  let all = true;
+  let any = false;
+  for (const range of modelSelectedRanges(doc, selection)) {
+    const covers = modelMarkCovers(range.block, range.from, range.to, kind);
+    if (covers === null) continue;
+    counted = true;
+    if (covers) any = true;
+    else {
+      all = false;
+      any = any || modelInlineLeafSpans(range.block.inlines).some((span) =>
+        span.start < range.to && span.end > range.from && span.path.some((node) => node.kind === kind));
+    }
+  }
+  return !counted ? "none" : all ? "all" : any ? "mixed" : "none";
+}
+
+/**
  * The format command: bold, italic or strikethrough over a selection.
  *
  * Off only when everything the selection holds already carries the mark, and

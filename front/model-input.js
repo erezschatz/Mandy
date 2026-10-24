@@ -333,6 +333,22 @@ function modelInputFormat(kind) {
   return true;
 }
 
+// The state the Format menu shows for a mark kind: the model's answer, with a
+// pending mark at the caret taking precedence, since it is the one thing the
+// screen cannot show.
+function modelInputMarkState(kind) {
+  const doc = modelCurrentDocument();
+  if (!doc) return "none";
+  const at = modelReadSelection(editor, doc);
+  if (!at) return "none";
+  const pending = modelPendingMarks;
+  if (!at.to && pending && pending.doc === doc && pending.block === at.block &&
+      pending.offset === at.offset && pending.marks.has(kind)) {
+    return pending.marks.get(kind) ? "all" : "none";
+  }
+  return modelMarkState(doc, at, kind);
+}
+
 // The marks every character of `[start, end)` carries, by kind, or null for an
 // empty range: what text typed over that range should carry.
 function modelInputMarksOf(block, start, end) {

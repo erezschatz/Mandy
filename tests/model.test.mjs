@@ -89,7 +89,7 @@ export default function run(check) {
     modelInsertBlocks, modelTextBlocks, modelAdoptBlocks,
     modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection, modelBlockById,
     modelMathCandidates, modelMathConvert, modelMathReveal, modelHoldSpaces, modelVerifyRender,
-    modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv,
+    modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -115,7 +115,7 @@ export default function run(check) {
       " modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection," +
       " modelBlockById, modelMathCandidates, modelMathConvert, modelMathReveal," +
       " modelHoldSpaces, modelVerifyRender," +
-      " modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv };",
+      " modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -4075,6 +4075,21 @@ export default function run(check) {
       const changed = modelToggleMark(doc, { block: a, offset: 6, to: { block: b, offset: 6 } }, "em", md);
       check("a selection across two blocks marks the part of each it covers",
         changed.length === 2 && modelSerialise(doc, (x) => modelEmitLeaf(x, md, doc)) === "first *para*\n\n*second* para\n");
+    }
+    {
+      // What the Format menu's checkmark shows.
+      const doc = parse("plain **bold** end\n");
+      const block = doc.blocks[0];
+      check("a caret inside bold text reads bold", modelMarkState(doc, { block, offset: 8 }, "strong") === "all");
+      check("a caret at the end of bold text reads bold, by the boundary rule",
+        modelMarkState(doc, { block, offset: 10 }, "strong") === "all");
+      check("a caret just before it does not", modelMarkState(doc, { block, offset: 6 }, "strong") === "none");
+      check("a selection wholly inside it reads all",
+        modelMarkState(doc, { block, offset: 7, to: { block, offset: 9 } }, "strong") === "all");
+      check("a selection half in it reads mixed",
+        modelMarkState(doc, { block, offset: 3, to: { block, offset: 9 } }, "strong") === "mixed");
+      check("and one outside it reads none",
+        modelMarkState(doc, { block, offset: 0, to: { block, offset: 4 } }, "strong") === "none");
     }
     check("a selection holding only whitespace has nothing to mark",
       modelMarkCovers(parse("a  b\n").blocks[0], 1, 3, "strong") === null);
