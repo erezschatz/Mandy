@@ -5,14 +5,15 @@ app, follow the steps, and edit the paragraphs written for each one. **Bold** is
 what you do; *italics* is what should (or should not) happen.
 
 It grows with TODO 3.1's slice 7: each step that needs a person adds its
-section here. Today it holds four: keeping equations typeset (step 2), typing
-one (step 10), bold, italic and strikethrough (step 3), and inline code and
-links (step 4). (It held diagrams
+section here. Today it holds five: keeping equations typeset (step 2), typing
+one (step 10), bold, italic and strikethrough (step 3), inline code and links
+(step 4), and paragraphs, headings and the code block (step 5). (It held diagrams
 too until Mermaid was removed on 2026-10-01.)
 
-Chromium and WebKit run the last three sections by machine
-(`tests/browser/equation-typing.spec.mjs`, `format-marks.spec.mjs` and
-`inline-code-links.spec.mjs`), so a hand run of those is Firefox's. Safari's waits for stage 5.
+Chromium and WebKit run the last four sections by machine
+(`tests/browser/equation-typing.spec.mjs`, `format-marks.spec.mjs`,
+`inline-code-links.spec.mjs` and `block-kinds.spec.mjs`), so a hand run of
+those is Firefox's. Safari's waits for stage 5.
 
 ## Before you start
 
@@ -274,6 +275,42 @@ Read [the guide](https://a.example) first.
    Code, not Code block, and has a check beside it.* **Hover the format bar's
    code button.** *Its tooltip says Code.* Added 2026-10-24, after the user
    found both missing.
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors*, with the known Firefox exception from "Before you start".
+
+## Paragraphs, headings and the code block (step 5)
+
+Paragraph and Heading 1–6 act on whole blocks, from the Format menu or from the
+bar that appears with the caret at the start of a line. Code over whole blocks,
+or at a bare caret, makes a code block.
+
+The paragraphs to work on:
+
+A title to change
+
+A second line
+
+- a bullet
+- another bullet
+
+npm test
+
+1. **Click in "A title to change" and choose Format → Heading 2.** *It becomes
+   a heading.* **Choose Format → Paragraph.** *It is a paragraph again.*
+2. **Put the caret at the very start of "A title to change".** *The short bar
+   appears.* **Press H1 on it.** *The line becomes a Heading 1.* (Undo it.)
+3. **Select from the start of "A title to change" to the end of "A second
+   line" and choose Format → Heading 3.** *Both become Heading 3.* (Undo it.)
+4. **Click in "a bullet" and choose Format → Heading 1.** *Nothing changes*:
+   a heading inside a bullet is refused.
+5. **Put the caret at the start of "npm test" and press Code on the short
+   bar.** *It becomes a code block.* **Click in it and choose Format → Code.**
+   *It is plain text again.*
+6. **Select both bullets and choose Format → Code.** *A message says to select
+   inside a single block, and nothing changes.*
+7. **Press Ctrl/Cmd+Z after any of the above.** *That change goes, in one
+   press.*
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors*, with the known Firefox exception from "Before you start".

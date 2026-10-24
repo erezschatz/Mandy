@@ -552,8 +552,11 @@ function applyFormat(format) {
   const mark = { bold: "strong", italic: "em", strikethrough: "strike" }[format];
   const modelMark = !!mark && modelOwnsInput() && typeof modelInputFormat === "function";
   if (modelMark) modelInputFormat(mark);
+  // Paragraph and the six headings are model commands too, slice 7's step 5.
+  const modelBlock = /^(p|h[1-6])$/.test(format) && modelOwnsInput() && typeof modelInputBlockFormat === "function";
+  if (modelBlock) modelInputBlockFormat(format);
 
-  switch (modelMark ? null : format) {
+  switch (modelMark || modelBlock ? null : format) {
     case null:
       break;
     case "bold":

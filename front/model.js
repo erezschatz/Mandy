@@ -4089,6 +4089,223 @@ function modelSetLink(block, from, to, href, md, env) {
   return { from, to };
 }
 
+// ── Block kinds and the code block ───────────────────────────────────────────
+//
+// Slice 7's step 5: Paragraph, Heading 1–6, and Code over whole blocks.
+
+// The block-level tokens of a one-line document — `# x` for a heading, `x`
+// for a paragraph — from the parser, cloned so this block owns them.
+function modelBlockTemplate(md, level) {
+  return md.parse(level ? "#".repeat(level) + " x" : "x", {}).map((token) => modelCloneToken(token));
+}
+
+// Whether paragraphs in the list a block sits in are hidden, which is what
+// markdown-it does to every paragraph of a tight list. A block made into a
+// paragraph there has to match, or it renders a `<p>` its siblings lack.
+function modelListHidesParagraphs(block) {
+  const item = modelItemAncestor(block);
+  if (!item || !item.parent) return false;
+  for (const sibling of modelFlatten({ blocks: item.parent.children })) {
+    if (sibling === block || sibling.kind !== "paragraph") continue;
+    const open = sibling.tokens.find((token) => token.type === "paragraph_open");
+    if (open) return !!open.hidden;
+  }
+  return false;
+}
+
+/**
+ * Make a leaf a heading of `level`, or a paragraph when `level` is 0. Returns
+ * whether it changed.
+ *
+ * The block, its id and its inline tree all stay, so the selection resolves
+ * straight back into it; only its block-level tokens are new, from the parser.
+ * **A heading is one line**, so a break becomes a space on the way — one
+ * character for one, which is why the selection needs no remapping — and that
+ * is what the old core's `formatBlock` did too. **A heading inside a list item
+ * is refused**, TODO 1.1.5's answer, and a heading inside a quote is fine.
+ *
+ * The spelling: a setext heading moving between levels 1 and 2 keeps its
+ * underline, at its own length, in the new level's character; everything else
+ * is ATX, since setext has no level 3, and an ATX heading keeps its closing
+ * run.
+ */
+function modelSetHeading(doc, block, level, md) {
+  if (!block || !block.inlines || (block.kind !== "paragraph" && block.kind !== "heading")) return false;
+  const target = level ? "heading" : "paragraph";
+  if (block.kind === target && (target === "paragraph" || block.level === level)) return false;
+  if (level && modelItemAncestor(block)) return false;
+  modelUnshare(block);
+
+  const tokens = modelBlockTemplate(md, level);
+  const inline = tokens.find((token) => token.type === "inline");
+  const old = block.headingShape;
+  const extra = block.kind === "paragraph" ? modelBlockExtra(block) : "";
+
+  if (level) {
+    // A line break can also sit *inside* a leaf's recorded bytes: a code span
+    // or a link's tail written across two lines. On a heading that newline
+    // would end it halfway through, so those bytes are dropped and the leaf is
+    // written afresh — a code span from its content, where the parser already
+    // has a space, a link from its token. An equation's TeX takes a space for
+    // its newline, which TeX reads the same.
+    const breaks = (list) => list.map((node) => {
+      if (node.children) {
+        node.children = breaks(node.children);
+        if (typeof node.tail === "string" && node.tail.includes("\n")) node.tail = null;
+        return node;
+      }
+      if (node.kind === "softbreak" || node.kind === "hardbreak") return modelTextNode(" ");
+      if (node.kind === "code-span" && node.raw && node.raw.includes("\n")) node.raw = null;
+      if ((node.kind === "image") && typeof node.tail === "string" && node.tail.includes("\n")) node.tail = null;
+      if (node.kind === "math" && node.content.includes("\n")) {
+        node.content = node.content.replace(/\n/g, " ");
+        if (node.token) {
+          node.token = modelCloneToken(node.token);
+          node.token.content = node.content;
+        }
+      }
+      return node;
+    });
+    block.inlines = breaks(block.inlines);
+    if (old && old.underline && level <= 2) {
+      const length = old.underline.replace(/\s+$/, "").replace(/^\s+/, "").length;
+      const indent = /^\s*/.exec(old.underline)[0];
+      block.headingShape = { open: old.open, close: "", underline: indent + (level === 1 ? "=" : "-").repeat(length) };
+    } else {
+      const indent = old ? /^\s*/.exec(old.open)[0] : extra;
+      block.headingShape = { open: indent + "#".repeat(level) + " ", close: old && !old.underline ? old.close : "", underline: null };
+    }
+    block.kind = "heading";
+    block.level = level;
+    block.leadingAffix = null;
+  } else {
+    const hidden = modelListHidesParagraphs(block);
+    for (const token of tokens) if (token.type === "paragraph_open" || token.type === "paragraph_close") token.hidden = hidden;
+    block.kind = "paragraph";
+    block.level = 0;
+    block.headingShape = null;
+    modelSetLeadingAffix(block, "");
+  }
+  block.tokens = tokens;
+  block.inline = inline;
+  inline.children = modelInlineTokens(block.inlines);
+  modelTouch(block);
+  return true;
+}
+
+/**
+ * The text a leaf shows, for a code block: what the reader sees, not the
+ * markup, the decision recorded under the slice. An equation goes in as its
+ * `$…$` source and an image as its alt text, the only readable text either
+ * has; a break is a line break.
+ */
+function modelPlainText(nodes) {
+  let out = "";
+  for (const node of nodes || []) {
+    if (node.children) { out += modelPlainText(node.children); continue; }
+    if (node.kind === "math") out += node.markup + node.content + node.markup;
+    else if (node.kind === "softbreak" || node.kind === "hardbreak") out += "\n";
+    else out += node.content;
+  }
+  return out;
+}
+
+// The fence character this document already uses, backtick otherwise.
+function modelFenceChar(doc) {
+  for (const block of modelFlatten(doc)) {
+    if (block.kind !== "fence") continue;
+    const token = block.tokens.find((candidate) => candidate.type === "fence");
+    if (token && token.markup) return token.markup[0];
+  }
+  return "`";
+}
+
+/**
+ * Turn contiguous sibling leaves into one fenced code block, joined by line
+ * breaks, and hand it back — or null when they are not that.
+ *
+ * The fence is parsed from markdown the model writes, never built: its run is
+ * the document's fence character, three or one longer than any run of it at a
+ * line's start inside the content. It is adopted where the first block was,
+ * through `modelAdoptBlocks`, which gives its lines the indent and the quote
+ * chain of where it lands — inside a list item it nests in the item. It keeps
+ * the first block's id, and the last one's separator.
+ */
+function modelMakeFence(doc, blocks, md) {
+  if (!blocks.length || blocks.some((block) => !block.inlines)) return null;
+  const siblings = modelSiblings(doc, blocks[0]);
+  const at = siblings.indexOf(blocks[0]);
+  if (at < 0 || blocks.some((block, i) => siblings[at + i] !== block)) return null;
+
+  const content = blocks.map((block) => modelPlainText(block.inlines)).join("\n");
+  const char = modelFenceChar(doc);
+  let run = 3;
+  for (const match of content.matchAll(new RegExp("^[ \\t]*(\\" + char + "+)", "gm"))) run = Math.max(run, match[1].length + 1);
+  const fence = char.repeat(run);
+  const parsed = modelParse(fence + "\n" + content + "\n" + fence + "\n", md);
+  if (parsed.blocks.length !== 1 || parsed.blocks[0].kind !== "fence") return null;
+  const token = parsed.blocks[0].tokens.find((candidate) => candidate.type === "fence");
+  if (!token || token.content !== content + "\n") return null;
+
+  // Read before the adoption moves anything: whether the first block opens its
+  // item, in which case the fence's first line carries the item's marker where
+  // `modelAdoptBlocks` would put the continuation indent.
+  const affix = modelItemAffix(blocks[0]);
+  const [block] = modelAdoptBlocks(doc, parsed.blocks, blocks[0]);
+  if (affix && affix.first && affix.marker) {
+    const chain = block.quotePrefixes && block.quotePrefixes.length ? block.quotePrefixes[0] : "";
+    const lines = block.source.split("\n");
+    lines[0] = chain + affix.marker + lines[0].slice(chain.length).replace(/^[ \t]*/, "");
+    block.source = lines.join("\n");
+  }
+  block.id = blocks[0].id;
+  block.separator = blocks[blocks.length - 1].separator;
+  siblings.splice(at, blocks.length, block);
+  if (block.parent) modelTouch(block.parent);
+  return block;
+}
+
+/**
+ * Turn a fence back into text: one paragraph per run of lines between blank
+ * lines, each line a softbreak apart, and every character literal — **never
+ * parsed as markdown**, the decision recorded under the slice, so `**x**` in
+ * the code stays two asterisks either side of an x. Hands back the paragraphs.
+ */
+function modelUnfence(doc, block, md) {
+  if (!block || (block.kind !== "fence" && block.kind !== "code")) return null;
+  const token = block.tokens.find((candidate) => candidate.type === "fence" || candidate.type === "code_block");
+  if (!token) return null;
+  const siblings = modelSiblings(doc, block);
+  const at = siblings.indexOf(block);
+  if (at < 0) return null;
+
+  const groups = token.content.replace(/\n$/, "").split(/\n[ \t]*\n/).filter((group) => group.trim());
+  if (!groups.length) groups.push("");
+  const hidden = modelListHidesParagraphs(block);
+  const made = groups.map((group, i) => {
+    const paragraph = modelParagraphBlock(doc, md);
+    if (i === 0) paragraph.id = block.id;
+    for (const t of paragraph.tokens) if (t.type === "paragraph_open" || t.type === "paragraph_close") t.hidden = hidden;
+    paragraph.parent = block.parent;
+    paragraph.quotePrefixes = block.quotePrefixes ? block.quotePrefixes.slice() : null;
+    const lines = group.split("\n");
+    paragraph.inlines = [];
+    lines.forEach((line, n) => {
+      if (n) paragraph.inlines.push({ kind: "softbreak", raw: null, content: "", markup: "", children: null, token: null, closeToken: null });
+      if (line) paragraph.inlines.push(modelTextNode(line.replace(/^[ \t]+/, "")));
+    });
+    modelInlinePrune(paragraph.inlines);
+    paragraph.inline.children = modelInlineTokens(paragraph.inlines);
+    modelSetLeadingAffix(paragraph, "");
+    paragraph.separator = i === groups.length - 1 ? block.separator : modelBlankSeparator(block);
+    return paragraph;
+  });
+  siblings.splice(at, 1, ...made);
+  if (block.parent) modelTouch(block.parent);
+  for (const paragraph of made) modelTouch(paragraph);
+  return made;
+}
+
 // ── Structure ────────────────────────────────────────────────────────────────
 //
 // Stage 2's slice 4. Stage 1 built the tree and only ever read it; slice 3's

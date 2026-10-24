@@ -350,11 +350,12 @@ function modelInputMarkState(kind) {
 }
 
 /**
- * Code from the format bar or the Format menu, slice 7's step 4: the inline
- * half. A range inside one block becomes a code span, and a caret or range
- * inside a code span turns it back into text. **A whole block is step 5's**
- * fenced code block, so it is left alone here, and so is a bare caret outside a
- * code span, which the old core read as the whole block too.
+ * Code from the format bar or the Format menu: one control, and the selection
+ * decides which of markdown's two code constructs it means, as in the old core.
+ * A range inside one block becomes a code span, and one inside a code span
+ * turns back into text — slice 7's step 4. A whole block, several whole blocks
+ * side by side, or a bare caret outside a code span become one fenced code
+ * block, and a caret in a code block turns it back into text — step 5.
  */
 function modelInputCode() {
   const doc = modelCurrentDocument();
@@ -362,10 +363,30 @@ function modelInputCode() {
   const at = modelReadSelection(editor, doc);
   if (!at) return true;
   const to = at.to || at;
-  if (to.block !== at.block) {
+  const refuse = () => {
     if (typeof notify === "function") notify("Select inside a single block to format it as code.", { severity: "info" });
     return true;
+  };
+
+  // A caret or selection in a code block turns it back into text.
+  if (to.block === at.block && (at.block.kind === "fence" || at.block.kind === "code")) {
+    const made = modelUnfence(doc, at.block, md);
+    if (!made) return true;
+    return modelInputBlockShown(doc, { block: made[0], offset: 0 });
   }
+
+  // Several blocks become one code block, when the selection covers them whole
+  // and they sit side by side. Two bullets are two items, so they do not.
+  if (to.block !== at.block) {
+    const ranges = modelSelectedRanges(doc, at);
+    const first = ranges[0];
+    const last = ranges[ranges.length - 1];
+    if (!first || first.from !== 0 || last.to !== modelBlockText(last.block).length) return refuse();
+    const fence = modelMakeFence(doc, ranges.map((range) => range.block), md);
+    if (!fence) return refuse();
+    return modelInputBlockShown(doc, { block: fence, offset: 0 });
+  }
+
   const block = at.block;
   const from = Math.min(at.offset, to.offset);
   const end = Math.max(at.offset, to.offset);
@@ -373,11 +394,48 @@ function modelInputCode() {
   const length = modelInlineText(block.inlines).length;
   const inSpan = modelInlineLeafSpans(block.inlines).some((span) => span.node.kind === "code-span" &&
     span.start <= from && end <= span.end && (from < end || from > span.start));
-  if (!inSpan && (from === end || (from === 0 && end === length))) return true;
+  // A bare caret outside a code span, or the whole block, is the code block —
+  // slice 7's step 5, and the old core's reading of the same selection.
+  if (!inSpan && (from === end || (from === 0 && end === length))) {
+    const fence = modelMakeFence(doc, [block], md);
+    if (!fence) return refuse();
+    return modelInputBlockShown(doc, { block: fence, offset: 0 });
+  }
   const range = modelToggleCode(block, from, end, md, modelReferenceEnv(doc, md));
   if (!range) return true;
   modelPendingMarks = null;
   return modelInputShow(doc, block, { block, offset: range.from, to: { block, offset: range.to } }, "formatCode");
+}
+
+// A change to what kind a block is, shown: the whole document re-rendered,
+// since an element's tag has changed, and one undo step.
+function modelInputBlockShown(doc, at) {
+  modelPendingMarks = null;
+  modelEnsureBlock(doc, md);
+  modelRender(editor, doc, md, at);
+  modelInputAnnounce("formatBlock");
+  return true;
+}
+
+const MODEL_BLOCK_LEVELS = { p: 0, h1: 1, h2: 2, h3: 3, h4: 4, h5: 5, h6: 6 };
+
+/**
+ * Paragraph and Heading 1–6 under the model core, slice 7's step 5: every leaf
+ * the selection touches, whole, since there is no such thing as half a
+ * heading. A table is skipped, because it refuses edits, and a heading inside
+ * a list item is refused, TODO 1.1.5's answer.
+ */
+function modelInputBlockFormat(format) {
+  const doc = modelCurrentDocument();
+  if (!doc || !(format in MODEL_BLOCK_LEVELS)) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  let changed = false;
+  for (const range of modelSelectedRanges(doc, at)) {
+    if (modelSetHeading(doc, range.block, MODEL_BLOCK_LEVELS[format], md)) changed = true;
+  }
+  if (!changed) return true;
+  return modelInputBlockShown(doc, at);
 }
 
 /**

@@ -91,6 +91,7 @@ export default function run(check) {
     modelMathCandidates, modelMathConvert, modelMathReveal, modelHoldSpaces, modelVerifyRender,
     modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState,
     modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState,
+    modelSetHeading, modelMakeFence, modelUnfence, modelPlainText,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -117,7 +118,8 @@ export default function run(check) {
       " modelBlockById, modelMathCandidates, modelMathConvert, modelMathReveal," +
       " modelHoldSpaces, modelVerifyRender," +
       " modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState," +
-      " modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState };",
+      " modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState," +
+      " modelSetHeading, modelMakeFence, modelUnfence, modelPlainText };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -4194,6 +4196,87 @@ export default function run(check) {
         modelCodeState(doc, { block: para, offset: 0, to: { block: para, offset: 8 } }) === "mixed");
       check("a caret in a fenced code block reads as code", modelCodeState(doc, { block: fence, offset: 2 }) === "all");
     }
+    // ── Block kinds and the code block: slice 7's step 5 ─────────────────────
+    {
+      let kinds = 0;
+      let fences = 0;
+      let refusedKind = 0;
+      const wrong = [];
+      for (const file of ORACLE_FILES) {
+        const doc = parse(repoFile(file));
+        for (const leaf of leavesOf(doc).filter((b) => b.inlines && (b.kind === "paragraph" || b.kind === "heading"))) {
+          const text = modelInlineText(leaf.inlines).replace(/\n/g, " ");
+          for (let level = 0; level <= 6; level++) {
+            const copy = modelForkDocument(doc);
+            const block = modelBlockById(copy, leaf.id);
+            if (!modelSetHeading(copy, block, level, md)) { refusedKind++; continue; }
+            kinds++;
+            const again = reparse(copy, block);
+            const kind = level ? "heading" : "paragraph";
+            const back = again ? modelInlineText(again.inlines) : null;
+            if (!again || again.kind !== kind || (level && again.level !== level) ||
+                (level ? back !== text : back.replace(/\n/g, " ") !== text)) {
+              wrong.push(`${file} #${leaf.id} -> ${level ? "h" + level : "p"}: ` + JSON.stringify(modelEmitLeaf(block, md, copy)).slice(0, 120));
+            }
+          }
+          if (leaf.kind !== "paragraph") continue;
+          const copy = modelForkDocument(doc);
+          const block = modelBlockById(copy, leaf.id);
+          const plain = modelPlainText(block.inlines);
+          const fence = modelMakeFence(copy, [block], md);
+          if (!fence) { wrong.push(`${file} #${leaf.id} -> fence refused`); continue; }
+          fences++;
+          let top = fence;
+          while (top.parent) top = top.parent;
+          const src = modelSerialise({ prefix: "", blocks: [top] }, (b) => modelEmitLeaf(b, md, copy));
+          // The fence at the leaf's own position: the block may hold others.
+          const index = leavesOf({ blocks: [top] }).indexOf(fence);
+          const parsedFence = leavesOf(parse(src))[index];
+          const fenceToken = parsedFence && parsedFence.kind === "fence" && parsedFence.tokens.find((t) => t.type === "fence");
+          const fenceText = fenceToken ? fenceToken.content : null;
+          if (fenceText !== plain + "\n") wrong.push(`${file} #${leaf.id} -> fence reads back as ` + JSON.stringify(src).slice(0, 120));
+        }
+      }
+      check(`every paragraph and heading in the oracle made each of the seven kinds, ${kinds} times, and every ` +
+        `paragraph made a code block, ${fences} times, is read back by the parser as that kind with its text` +
+        (wrong.length ? `, but ${wrong.length} were not: ${wrong.slice(0, 4).join(" | ")}` : ""), wrong.length === 0);
+      check(`and the sweep measured something: ${refusedKind} kind changes refused or already that kind`,
+        kinds > 1000 && fences > 300);
+    }
+
+    const blockEdit = (src, f) => {
+      const doc = parse(src);
+      const result = f(doc, modelFlatten(doc).filter((b) => !b.children));
+      return { result, out: modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc)) };
+    };
+    check("a paragraph becomes a heading, its line breaks spaces",
+      blockEdit("Some text\nmore\n", (d, l) => modelSetHeading(d, l[0], 2, md)).out === "## Some text more\n");
+    check("an ATX heading keeps its closing run at a new level",
+      blockEdit("# Title #\n", (d, l) => modelSetHeading(d, l[0], 3, md)).out === "### Title #\n");
+    check("a setext heading keeps its underline between levels 1 and 2",
+      blockEdit("Title\n=====\n", (d, l) => modelSetHeading(d, l[0], 2, md)).out === "Title\n-----\n");
+    check("and becomes ATX at a level setext has not got",
+      blockEdit("Title\n=====\n", (d, l) => modelSetHeading(d, l[0], 4, md)).out === "#### Title\n");
+    check("a heading becomes a paragraph",
+      blockEdit("## Head\n\nnext\n", (d, l) => modelSetHeading(d, l[0], 0, md)).out === "Head\n\nnext\n");
+    check("a heading inside a list item is refused",
+      blockEdit("- item\n", (d, l) => modelSetHeading(d, l[0], 1, md)).result === false);
+    check("and one inside a quote is fine",
+      blockEdit("> quoted\n", (d, l) => modelSetHeading(d, l[0], 1, md)).out === "> # quoted\n");
+    check("whole blocks become one code block of their text, an equation as its source",
+      blockEdit("a **b**\n\nc $x$\n\nafter\n", (d, l) => modelMakeFence(d, [l[0], l[1]], md)).out ===
+        "```\na b\nc $x$\n```\n\nafter\n");
+    check("a bullet's paragraph becomes a code block nested in the bullet, marker and all",
+      blockEdit("- one\n- two\n", (d, l) => modelMakeFence(d, [l[0]], md)).out === "- ```\n  one\n  ```\n- two\n");
+    check("the fence is longer than any run inside the code",
+      blockEdit("```inside\n\n", (d, l) => modelMakeFence(d, [l[0]], md)).out.startsWith("````\n") ||
+      blockEdit("has ``` inside\n", (d, l) => modelMakeFence(d, [l[0]], md)).out === "```\nhas ``` inside\n```\n");
+    check("the fence takes the document's own fence character",
+      blockEdit("~~~\nx\n~~~\n\nnew para\n", (d, l) => modelMakeFence(d, [l[1]], md)).out === "~~~\nx\n~~~\n\n~~~\nnew para\n~~~\n");
+    check("two bullets are not one code block", blockEdit("- one\n- two\n", (d, l) => modelMakeFence(d, [l[0], l[1]], md)).result === null);
+    check("a code block turns back into literal text, a paragraph per run of lines",
+      blockEdit("```\nline **one**\n\nline two\n```\n\nafter\n", (d, l) => modelUnfence(d, l[0], md)).out ===
+        "line \\*\\*one**\n\nline two\n\nafter\n");
     check("the link a caret sits in is found", !!modelLinkAt(parse("a [b](u) c\n").blocks[0], 3, 3));
     check("and none is found outside one", modelLinkAt(parse("a [b](u) c\n").blocks[0], 1, 1) === null);
 

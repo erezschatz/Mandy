@@ -9394,7 +9394,7 @@ closing sequence and two backslash breaks. The heading judge, the respelling,
 the blame for a blank line and the first-line exception each fail their own
 case when switched off. Nothing reaches a file this way until stage 4.
 
-## 2026-10-24 — Slice 7's inline code and links step is closed
+## 2026-10-24 — `1f19186` — Slice 7's inline code and links step is closed
 
 The user ran the "Inline code and links" section of
 `tests/fixtures/format-check.md` in Firefox 158.0.1, and every step was clean,
@@ -9402,3 +9402,41 @@ including the control's new name and its check in the Format menu. Chromium
 and WebKit run it by machine and Safari's run waits for stage 5, so step 4 is
 done and tested. Step 5, paragraphs, headings and the code block, is next.
 docs/REWRITE.md records the run on the stage line, the slice line and the step.
+
+## 2026-10-24 — Paragraphs, headings and the code block are model commands
+
+Slice 7's step 5. Under the model core, Paragraph and Heading 1–6, from the
+Format menu or the bar at a line's start, and Code over whole blocks now change
+the model, where until today they did nothing.
+
+`modelSetHeading` changes a block's kind and keeps the block itself, its id and
+its inline tree, so the selection resolves straight back into it. Only its
+block-level tokens are new, from `md.parse` of `# x` or `x`. A heading is one
+line, so line breaks become spaces, which is what the old core did. A setext
+heading keeps its underline between levels 1 and 2 and becomes ATX at a level
+setext has not got, and an ATX heading keeps its closing run. A heading inside
+a list item is refused, and one inside a quote is fine. A paragraph that a
+heading becomes inside a tight list takes the list's hidden flag.
+
+`modelMakeFence` turns contiguous sibling blocks into one fenced code block of
+their text, an equation as its `$…$` source. The fence is spelt with the
+document's own fence character and a run longer than any inside the code. It
+is adopted into place the way a pasted fence is, so inside a bullet it nests in
+the bullet, marker and all. `modelUnfence` turns a fence back into literal
+text, one paragraph per run of lines, never parsed as markdown. Code picks
+between the two halves the way the old core did. Two bullets at once are
+refused with a notice.
+
+The sweep found two things the plan did not foresee. A code span or a link
+written across two lines keeps the newline in its recorded bytes, which on a
+one-line heading ended the heading halfway through, so those bytes are dropped
+on the way. And a code block made from a bullet's paragraph lost the bullet's
+marker, which `modelMakeFence` now puts back.
+
+The `model` suite makes every paragraph and heading in the oracle each of the
+seven kinds, and every paragraph a code block. The parser has to read each back
+as that kind with its text. There is one hand-written case per rule.
+`tests/browser/block-kinds.spec.mjs` drives the menu, the caret bar and the
+format bar in Chromium and WebKit, and `tests/fixtures/format-check.md` gains a
+section for the Firefox run, which is still owed. `sw.js`'s `VERSION` goes to
+`v1.80`.

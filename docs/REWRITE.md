@@ -1853,7 +1853,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     tested, by machine in Chromium and WebKit and by hand in Firefox on
     2026-10-24; step 3, bold, italic and strikethrough, is done and tested
     the same day, by machine and by hand in Firefox; step 4, inline code and
-    links, is done and tested the same day, by machine and by hand in Firefox. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    links, is done and tested the same day, by machine and by hand in Firefox;
+    step 5, paragraphs, headings and the code block, is done and tested by
+    machine the same day and waits on its Firefox run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3749,7 +3751,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         menu's mark checks, added after that run, are machine-tested in
         Chromium and WebKit; their Firefox look, step 9 of the protocol, was
         not run separately before the close. Step 4, inline code and links,
-        is done and tested the same day, by machine and by hand in Firefox.** Every control that edits the
+        is done and tested the same day, by machine and by hand in Firefox.
+        Step 5, paragraphs, headings and the code block, is done and tested by
+        machine the same day and waits on its Firefox run.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4356,7 +4360,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `modelCodeState`; the old core uses the format bar's `CODE`
             predicate.
 
-        5.  **Block kinds: p, h1–h6 and the code block.** A kind change keeps
+        5.  **Block kinds: p, h1–h6 and the code block — done and tested by
+            machine 2026-10-24; waiting on its hand run in Firefox.** A kind change keeps
             the block's id, so the selection resolves back into it. Its tokens
             come from `md.parse` of a template with the inline children
             replaced, as slice 4 does for a new paragraph.
@@ -4379,6 +4384,56 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
               character is the one the document already uses. A fence turned
               back is a plain-text paragraph, escaped, and never parsed as
               markdown.
+
+            **Build order, written 2026-10-24 before any of it was built.**
+
+            1.  **`modelSetHeading(doc, block, level, md)`** in `model.js`,
+                where level 0 is a paragraph. It keeps the block, its id and
+                its inline tree, and takes new tokens from `md.parse` of
+                `# x` or `x`. Breaks become spaces on the way to a heading,
+                one character for one, so a selection needs no remapping. A
+                setext heading between levels 1 and 2 keeps its underline, its
+                length and the new level's character. Anything else is written
+                ATX, and an ATX heading keeps its closing run. A paragraph
+                that a heading becomes inside a tight list takes the list's
+                hidden flag, or it would render with a `<p>` the list's other
+                items lack.
+            2.  **`modelMakeFence(doc, blocks, md)`** and
+                **`modelUnfence(doc, block, md)`**. The first joins the plain
+                text of contiguous sibling leaves (an equation as its `$…$`,
+                an image as its alt text) and parses it as a fence. The fence
+                is spelt with the document's fence character, with a run
+                longer than any inside the content. It is adopted in their
+                place through `modelAdoptBlocks`, so inside a list item it
+                takes the item's indent and inside a quote its chain. The
+                second turns a fence's lines into literal text: one paragraph
+                per run of lines between blank lines, each line a softbreak
+                apart, since a blank line inside a paragraph would end it.
+            3.  **The input layer**: p and h1–h6 in `applyFormat` under the
+                flag apply to every leaf the selection touches, skipping
+                tables and refusing a heading inside a list item. Code
+                reaches the fence for whole blocks, or a bare caret outside a
+                code span, and the reverse for a caret in a fence. Several
+                bullets at once are refused with a `notify`, as today. Every
+                case re-renders the document and is one undo step.
+            4.  **The `model` suite**: one case per rule, and a sweep that
+                turns every paragraph in the oracle into each heading level and
+                back, and into a fence and back. The parser has to read every
+                result as the kind it was made. Then
+                **`tests/browser/block-kinds.spec.mjs`** for Chromium and
+                WebKit, and a section in `tests/fixtures/format-check.md` for
+                Firefox.
+
+            **What the build found.** Two things, both by the sweep, neither
+            foreseen. **A line break can hide inside a leaf's recorded bytes**:
+            a code span or a link written across two lines keeps the newline
+            in its `raw` or its `tail`, and on a one-line heading that newline
+            ends the heading halfway through. Those bytes are dropped on the
+            way to a heading and the leaf written afresh. And **a code block
+            made from a bullet's paragraph lost the bullet's marker**, because
+            `modelAdoptBlocks` indents every line of a source leaf as a
+            continuation, while the first line of an item's first child has to
+            carry the marker. `modelMakeFence` puts it back.
 
         6.  **Lists: bullet and numbered.** Wrapping contiguous sibling blocks
             makes one list with one item each. The marker is the one the
