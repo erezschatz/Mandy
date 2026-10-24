@@ -312,9 +312,14 @@ function updateActiveButtons() {
 // the selection already has the mark, stamped as the menu opens. Under the
 // model core the model answers, pending marks included; otherwise the DOM
 // does, through the same predicates the format bar's own buttons use.
-const MENU_MARKS = { bold: "strong", italic: "em", strikethrough: "strike" };
+// Code is checked the same way: a caret in a code span or a code block, or a
+// selection that is all code. Not a mark to the model, so it asks its own.
+const MENU_MARKS = { bold: "strong", italic: "em", strikethrough: "strike", code: "code" };
 
 function formatMenuState(format) {
+  if (modelOwnsInput() && format === "code" && typeof modelInputCodeState === "function") {
+    return modelInputCodeState();
+  }
   if (modelOwnsInput() && typeof modelInputMarkState === "function") {
     return modelInputMarkState(MENU_MARKS[format]);
   }

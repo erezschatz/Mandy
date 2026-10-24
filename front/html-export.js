@@ -193,7 +193,7 @@ ${cssContent}
                     <g fill="currentColor" stroke="none" font-size="7" text-anchor="end"><text x="7" y="8.4">1</text><text x="7" y="14.4">2</text><text x="7" y="20.4">3</text></g>
                 </svg>
             </button>
-            <button class="format-btn" data-format="code" title="Code Block">
+            <button class="format-btn" data-format="code" title="Code">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="16 18 22 12 16 6"></polyline>
                     <polyline points="8 6 2 12 8 18"></polyline>

@@ -119,7 +119,10 @@ const TOOLBAR_MENUS = [
     { separator: true, variants: ALL },
     { action: "format-ul", label: "Bullet list", variants: ALL },
     { action: "format-ol", label: "Numbered list", variants: ALL },
-    { action: "format-code", label: "Code block", variants: ALL },
+    // "Code", not "Code block": one control does both, and the selection
+    // decides which — a code span inside a line, a code block for whole lines.
+    // Checkable for the same reason as the three marks above.
+    { action: "format-code", label: "Code", checkable: true, variants: ALL },
     { separator: true, variants: ALL },
     // TODO 1.1.3: the engine-side move (outdentListItem, Tab/Shift+Tab) was
     // already there with no control reaching it outside a keypress, which left

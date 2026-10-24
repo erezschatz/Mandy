@@ -26,7 +26,7 @@ Everything else lives in the six menus:
 - **Insert** — a **Table of contents** built from your headings, or a
   **Horizontal rule**.
 - **Format** — **Paragraph** and **Heading 1**–**6**, **Bold**, **Italic**,
-  **Strikethrough**, **Bullet list**, **Numbered list**, **Code block**, and
+  **Strikethrough**, **Bullet list**, **Numbered list**, **Code**, and
   **Indent**/**Outdent list item** for nesting a bullet without a keyboard.
 - **View** — the **Outline sidebar**, which lists your headings and jumps to
   them.

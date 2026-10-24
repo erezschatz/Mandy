@@ -317,7 +317,7 @@ function activeCase(build) {
 function menuCase(build) {
   const { editor, touched } = build();
   const items = {};
-  for (const format of ["bold", "italic", "strikethrough"]) items[format] = makeEl("button");
+  for (const format of ["bold", "italic", "strikethrough", "code"]) items[format] = makeEl("button");
   let opened = null;
   loadSource(
     "format-bar.js",
@@ -815,6 +815,15 @@ export default function run(check) {
     return { editor, touched: [plain, bold] };
   });
   check("and marks Bold as mixed for a selection only partly bold", pressed("bold") === "mixed");
+  pressed = menuCase(() => {
+    const editor = makeEl("div");
+    const p = makeEl("p", { parent: editor });
+    const code = makeEl("code", { parent: p });
+    const t = appendText(code, "npm test");
+    return { editor, touched: [t] };
+  });
+  check("and checks Code for a selection inside a code span", pressed("code") === "true");
+  check("without claiming Bold for it", pressed("bold") === "false");
 
   // The anchor is wherever the drag started, which can be either end — so the
   // old check's answer for this exact selection depended on drag direction.

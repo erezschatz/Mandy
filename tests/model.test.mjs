@@ -90,7 +90,7 @@ export default function run(check) {
     modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection, modelBlockById,
     modelMathCandidates, modelMathConvert, modelMathReveal, modelHoldSpaces, modelVerifyRender,
     modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState,
-    modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature,
+    modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -117,7 +117,7 @@ export default function run(check) {
       " modelBlockById, modelMathCandidates, modelMathConvert, modelMathReveal," +
       " modelHoldSpaces, modelVerifyRender," +
       " modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState," +
-      " modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature };",
+      " modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -4183,6 +4183,17 @@ export default function run(check) {
         "go [https://e.example](https://e.example)here\n");
     check("a paragraph whose line ends in a space can still be edited and written back",
       edited("Go \n", (b) => modelInlineSplice(b, 2, 2, "x")).out === "Gox\n");
+    {
+      // What the Format menu's check beside Code shows.
+      const doc = parse("run `npm test` now\n\n```\nfenced\n```\n");
+      const [para, fence] = doc.blocks;
+      check("a caret inside a code span reads as code", modelCodeState(doc, { block: para, offset: 6 }) === "all");
+      check("and one at its end too, by the boundary rule", modelCodeState(doc, { block: para, offset: 12 }) === "all");
+      check("a caret just before it does not", modelCodeState(doc, { block: para, offset: 4 }) === "none");
+      check("a selection half in it reads mixed",
+        modelCodeState(doc, { block: para, offset: 0, to: { block: para, offset: 8 } }) === "mixed");
+      check("a caret in a fenced code block reads as code", modelCodeState(doc, { block: fence, offset: 2 }) === "all");
+    }
     check("the link a caret sits in is found", !!modelLinkAt(parse("a [b](u) c\n").blocks[0], 3, 3));
     check("and none is found outside one", modelLinkAt(parse("a [b](u) c\n").blocks[0], 1, 1) === null);
 

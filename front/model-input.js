@@ -426,6 +426,15 @@ async function modelInputLink() {
   return modelInputShow(doc, block, selection, "insertLink");
 }
 
+// The same for Code, which is not a mark: a code span is a leaf, and a code
+// block a kind of block.
+function modelInputCodeState() {
+  const doc = modelCurrentDocument();
+  if (!doc) return "none";
+  const at = modelReadSelection(editor, doc);
+  return at ? modelCodeState(doc, at) : "none";
+}
+
 // The marks every character of `[start, end)` carries, by kind, or null for an
 // empty range: what text typed over that range should carry.
 function modelInputMarksOf(block, start, end) {

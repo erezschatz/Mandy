@@ -4325,6 +4325,18 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             on its first edit. Fixed the same day: the line is also compared
             with its trailing whitespace trimmed.
 
+            **Two more, found by the user the same day, before the Firefox
+            run.** The control was called "Code block" in the Format menu and
+            "Code Block" on the format bar's tooltip, where the protocol said
+            "Code", and the menu gave no sign that the caret was in code. One
+            control makes both a code span and, from step 5, a code block, with
+            the selection deciding which, so it is **"Code"** everywhere now,
+            in the welcome document too. It is also checkable like the marks:
+            checked with the caret in a code span or a code block, faint for a
+            selection only partly code. The model answers with
+            `modelCodeState`; the old core uses the format bar's `CODE`
+            predicate.
+
         5.  **Block kinds: p, h1–h6 and the code block.** A kind change keeps
             the block's id, so the selection resolves back into it. Its tokens
             come from `md.parse` of a template with the inline children

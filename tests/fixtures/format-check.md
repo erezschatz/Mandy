@@ -270,6 +270,10 @@ Read [the guide](https://a.example) first.
    link.*
 7. **Press Ctrl/Cmd+Z after any of the above.** *That one change goes, in one
    press.*
+8. **Click inside a code span and open the Format menu.** *The item reads
+   Code, not Code block, and has a check beside it.* **Hover the format bar's
+   code button.** *Its tooltip says Code.* Added 2026-10-24, after the user
+   found both missing.
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors*, with the known Firefox exception from "Before you start".

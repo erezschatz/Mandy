@@ -91,3 +91,18 @@ test("one undo takes a link back", async ({ page }) => {
   await page.keyboard.press("ControlOrMeta+z");
   expect(await markdown(page)).toBe("See the docs now.\n");
 });
+
+// Code is checkable in the Format menu, like the marks: found missing by the
+// user on 2026-10-24, along with the control's name, which is "Code" now and
+// not "Code block", since one control makes both.
+test("the Format menu checks Code with the caret in a code span", async ({ page }) => {
+  await open(page, "Run `npm` now.\n");
+  await page.locator("#editor code").click();
+  await page.locator('[data-menu="formatMenu"]').click();
+  const item = page.locator('[data-action="format-code"]');
+  await expect(item).toHaveText(/^Code$/);
+  await expect(item).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await expect(page.locator('#formatBar [data-format="code"]')).toHaveAttribute("title", "Code");
+});
+

@@ -9309,7 +9309,7 @@ bold, for a pending Bold set and taken off again, and for a half-bold
 selection, and the harness passes in both. The fixture gains step 9 for
 Firefox to look at the same. `sw.js`'s `VERSION` goes to `v1.77`.
 
-## 2026-10-24 — Inline code and links are model commands
+## 2026-10-24 — `bd5f0d3` — Inline code and links are model commands
 
 The user closed slice 7's step 3, and step 4 is built. docs/REWRITE.md records
 that step 9 of the bold/italic/strikethrough protocol, the Format menu's
@@ -9349,3 +9349,22 @@ menu and the dialog in Chromium and WebKit, and the harness passes in both.
 Its helpers are shared with `format-marks.spec.mjs` through a new
 `model-page.mjs`. `tests/fixtures/format-check.md` gains a section for the
 Firefox run, which is still owed. `sw.js`'s `VERSION` goes to `v1.78`.
+
+## 2026-10-24 — Code is called Code, and the menu shows when it is on
+
+Two things the user found in step 4 before the Firefox run. The control was
+"Code block" in the Format menu and "Code Block" in the format bar's tooltip,
+while the protocol called it "Code". One control makes both a code span and,
+from step 5, a code block, with the selection deciding which, so it is "Code"
+in all three places and in the welcome document. And the Format menu gave no
+sign that the caret was in code. Code is now checkable the way the three
+marks are: checked with the caret in a code span or a code block, and faint
+for a selection only partly code. Under the model core `modelCodeState`
+answers, and the old core uses the format bar's own `CODE` predicate.
+
+The `model` suite checks the state at a caret inside a code span, at its end,
+just before it, in a fenced block, and for a half-code selection. The
+`format-bar` suite checks what the menu stamps.
+`inline-code-links.spec.mjs` checks the item's name, its check and the
+tooltip in Chromium and WebKit, and the harness passes in both. The fixture's
+step 4 section gains the same for Firefox. `sw.js`'s `VERSION` goes to `v1.79`.

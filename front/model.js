@@ -3728,6 +3728,44 @@ function modelMarkState(doc, selection, kind) {
 }
 
 /**
+ * Whether a selection is code: "all", "mixed" or "none". What the Format menu's
+ * check beside Code shows. A fence or an indented code block is code
+ * throughout; inside a paragraph, a character is code when it is in a code
+ * span, and a caret is when it sits inside one.
+ */
+function modelCodeState(doc, selection) {
+  if (!selection || !selection.block) return "none";
+  const ranges = modelSelectedRanges(doc, selection);
+  let counted = false;
+  let all = true;
+  let any = false;
+  for (const range of ranges) {
+    const block = range.block;
+    if (block.kind === "fence" || block.kind === "code") { counted = true; any = true; continue; }
+    if (!block.inlines) continue;
+    const spans = modelInlineLeafSpans(block.inlines);
+    if (range.from === range.to) {
+      counted = true;
+      const inside = spans.some((span) => span.node.kind === "code-span" &&
+        span.start < range.from && range.from <= span.end);
+      if (inside) any = true;
+      else all = false;
+      continue;
+    }
+    for (const span of spans) {
+      if (span.end <= range.from || span.start >= range.to) continue;
+      if (span.node.kind === "text" &&
+          !span.node.content.slice(Math.max(0, range.from - span.start), range.to - span.start).trim()) continue;
+      if (span.node.kind === "softbreak" || span.node.kind === "hardbreak") continue;
+      counted = true;
+      if (span.node.kind === "code-span") any = true;
+      else all = false;
+    }
+  }
+  return !counted ? "none" : all && any ? "all" : any ? "mixed" : "none";
+}
+
+/**
  * The format command: bold, italic or strikethrough over a selection.
  *
  * Off only when everything the selection holds already carries the mark, and
