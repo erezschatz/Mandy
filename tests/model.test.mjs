@@ -3964,7 +3964,6 @@ export default function run(check) {
     let trials = 0;
     let refusals = 0;
     const unfaithful = [];
-    const blockStart = [];
     const refusedSample = [];
     const unasked = [];
     for (const file of ORACLE_FILES) {
@@ -3990,19 +3989,11 @@ export default function run(check) {
               const said = again ? marksOf(again.inlines) : null;
               const where = `${file} #${leaf.id} ${kind} ${on ? "on" : "off"} [${from},${to}): ` +
                 JSON.stringify(modelEmitLeaf(block, md, copy)).slice(0, 140);
+              // This includes a line left starting with a block marker —
+              // `0. Spike` once the bold that shielded it is gone — which was
+              // counted apart until modelEscapeLineStarts closed it.
               if (!again || modelInlineText(again.inlines) !== text || KINDS.some((k) => said[k] !== held[k])) {
-                // A line that now starts with what the parser takes for a block
-                // marker — `0. Spike` once the bold that shielded it is gone —
-                // is the emitter's open gap, named in modelEscapeText's own
-                // comment, rather than this step's. Counted apart, so the check
-                // above it means exactly what it says.
-                let top = block;
-                while (top.parent) top = top.parent;
-                const emitted = modelSerialise({ prefix: "", blocks: [top] }, (b) => modelEmitLeaf(b, md, copy));
-                const chain = (b) => (b.parent ? chain(b.parent) + ">" : "") + b.kind;
-                const shape = (d) => leavesOf(d).map(chain).join(",");
-                if (shape(parse(emitted)) !== shape({ blocks: [top] })) blockStart.push(where);
-                else unfaithful.push(where);
+                unfaithful.push(where);
               }
               // A code span or an equation is marked whole, and punctuation
               // moves to whichever side of a delimiter the parser can read.
@@ -4020,9 +4011,6 @@ export default function run(check) {
     check(`a mark given or taken over ${trials} ranges across the oracle is read back by the parser exactly as the model holds it` +
       (unfaithful.length ? `, but ${unfaithful.length} were not: ${unfaithful.slice(0, 4).join(" | ")}` : ""),
       unfaithful.length === 0);
-    check(`and the ${blockStart.length} that change the block structure instead all do so by leaving a block marker at a ` +
-      `line's start, the emitter's open gap: ${blockStart.slice(0, 2).join(" | ")}`,
-      blockStart.every((where) => /\\n|"/.test(where)));
     check(`and each of those ${trials} did what was asked, moving only whitespace and edge punctuation` +
       (unasked.length ? `, but ${unasked.length} did not: ${unasked.slice(0, 4).join(" | ")}` : ""),
       unasked.length === 0);
@@ -4090,5 +4078,69 @@ export default function run(check) {
     }
     check("a selection holding only whitespace has nothing to mark",
       modelMarkCovers(parse("a  b\n").blocks[0], 1, 3, "strong") === null);
+
+    // ── A block marker at a line's start ──
+    //
+    // modelEscapeLineStarts: an edited leaf whose content would start a block
+    // gets one backslash at the line the parser blames. Each case is a whole
+    // document, so the affixes are in the bytes, and each case that expects an
+    // escape was confirmed to fail with it disabled; the ones that expect none
+    // are controls against escaping too much. `edits` are [from, to, text],
+    // applied last first so earlier offsets hold.
+    const typed = (src, ...edits) => {
+      const doc = parse(src);
+      const block = modelFlatten(doc).find((b) => !b.children && b.inlines);
+      for (const [from, to, text] of edits.reverse()) modelInlineSplice(block, from, to, text);
+      return modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    };
+    check("unbolding `**0. Spike**` at an item's start escapes the ordered marker's dot",
+      marked("- **0. Spike** done\n", 0, 8, "strong", false) === "- 0\\. Spike done\n");
+    check("typing `1. foo` into a paragraph escapes the dot, not the digit",
+      typed("x\n", [0, 1, "1. foo"]) === "1\\. foo\n");
+    check("and the `)` spelling of an ordered marker escapes the `)`",
+      typed("x\n", [0, 1, "1) foo"]) === "1\\) foo\n");
+    check("an ATX heading marker is escaped", typed("x\n", [0, 1, "# h"]) === "\\# h\n");
+    check("a blockquote marker is escaped", typed("x\n", [0, 1, "> q"]) === "\\> q\n");
+    check("a `-` bullet is escaped", typed("x\n", [0, 1, "- a"]) === "\\- a\n");
+    check("a `+` bullet is escaped", typed("x\n", [0, 1, "+ a"]) === "\\+ a\n");
+    check("a `*` bullet is escaped", typed("x\n", [0, 1, "* a"]) === "\\* a\n");
+    check("a bare bullet marker with nothing after it is escaped", typed("x\n", [0, 1, "-"]) === "\\-\n");
+    check("a `---` rule is escaped", typed("x\n", [0, 1, "---"]) === "\\---\n");
+    check("a `***` rule is escaped", typed("x\n", [0, 1, "***"]) === "\\***\n");
+    check("a `___` rule is escaped", typed("x\n", [0, 1, "___"]) === "\\___\n");
+    check("a `===` setext underline on a continuation line is escaped",
+      typed("foo\nbar\n", [4, 7, "==="]) === "foo\n\\===\n");
+    check("and so is a `---` one, which would make a heading rather than a rule",
+      typed("foo\nbar\n", [4, 7, "---"]) === "foo\n\\---\n");
+    check("a backtick fence is escaped at its first backtick", typed("x\n", [0, 1, "```js"]) === "\\```js\n");
+    check("a tilde fence is escaped", typed("x\n", [0, 1, "~~~"]) === "\\~~~\n");
+    check("four spaces of indent left at the start are dropped, or the paragraph is code",
+      typed("a    code\n", [0, 1, ""]) === "code\n");
+    check("a bullet on a continuation line is escaped, which would otherwise interrupt the paragraph",
+      typed("foo\nbar\n", [4, 7, "- x"]) === "foo\n\\- x\n");
+    check("an ordered marker on a continuation line is escaped when it could interrupt",
+      typed("foo\nbar\n", [4, 7, "1. x"]) === "foo\n1\\. x\n");
+    check("and left alone when it could not — only `1.` interrupts a paragraph",
+      typed("foo\nbar\n", [4, 7, "2. x"]) === "foo\n2. x\n");
+    check("a table's delimiter row is escaped, since that is the line that makes it a table",
+      typed("a\nb\nc\n", [2, 3, "x | y"], [4, 5, "--|--"]) === "a\nx | y\n\\--|--\n");
+    check("a reference definition is escaped at its bracket",
+      typed("x\n", [0, 1, "[a]: /u"]) === "\\[a]: /u\n");
+    check("an HTML block start is left alone, because the parser is configured without HTML",
+      typed("x\n", [0, 1, "<div>"]) === "<div>\n");
+    check("a marker inside a quote is escaped after the chain",
+      typed("> q\n", [0, 1, "# h"]) === "> \\# h\n");
+    check("a marker opening an item's content is escaped after the item's own marker",
+      typed("- a\n", [0, 1, "- b"]) === "- \\- b\n");
+    check("a setext heading's content lines are judged as a paragraph's",
+      typed("Title\n=====\n", [0, 5, "- x"]) === "\\- x\n=====\n");
+    check("an ATX heading's content is not at a line's start and is left alone",
+      typed("# T\n", [0, 1, "- x"]) === "# - x\n");
+    // An edit clears the text node's `raw`, so the author's backslash is gone
+    // from what modelInlineSource writes and this function is what puts it back.
+    check("a marker the author escaped stays escaped once its line is edited, and only once",
+      typed("\\- a\n", [3, 3, "b"]) === "\\- ab\n");
+    check("a marker that is not at a line's start is left alone",
+      typed("x\n", [0, 1, "a - b # c"]) === "a - b # c\n");
   }
 }

@@ -9201,7 +9201,7 @@ the step is done and tested, and step 3, bold, italic and strikethrough as model
 commands, is next. Equations stay on probation, with both rounds of fixes spent.
 docs/REWRITE.md records the run on the stage line, the slice line and the step.
 
-## 2026-10-24 — Bold, italic and strikethrough are model commands
+## 2026-10-24 — `9794c3d` — Bold, italic and strikethrough are model commands
 
 Slice 7's step 3. Under the model core, the format bar's Bold, Italic and
 Strikethrough and the same three Format-menu items now change the model,
@@ -9248,3 +9248,38 @@ strikethrough" section of `tests/fixtures/format-check.md` in Playwright's
 Chromium and WebKit, and the whole harness passes in both. The typing-over test
 fails with its rule switched off. Firefox owes the section a hand run. The
 keyboard shortcuts are step 8's. `sw.js`'s `VERSION` goes to `v1.76`.
+
+## 2026-10-24 — The emitter escapes a block marker at a line's start
+
+The gap the previous entry's sweep found is closed. `modelEmitLeaf` now hands
+an edited leaf's content to `modelEscapeLineStarts` before putting the quote
+chain and the item marker back. So unbolding `**0. Spike**` at the start of a
+list item writes `0\. Spike`, and typing `1. foo` into a paragraph writes
+`1\. foo`, where both used to write a list.
+
+The parser judges, the way it does for `modelEscapeText`. The content lines,
+with every affix still off, have to parse as one paragraph. That is the same
+question the container asks, because what a quote or an item strips from a
+line is exactly what the emitter puts back. When they do not, the line the
+parser blames gets one backslash and the content is judged again. The
+backslash goes before the `.` or `)` of an ordered marker, since one before a
+digit is literal, and before the first character of anything else. A setext
+heading blames its underline, a table its delimiter row, and a line taken by a
+reference definition its bracket. Leading whitespace on the first line is
+dropped, because a backslash cannot escape a space and four of them would make
+the paragraph an indented code block. A setext heading's content lines are
+judged like a paragraph's, and an ATX heading's are not at a line's start at
+all.
+
+The `model` suite's mark sweep no longer counts these cases apart. They fold
+back into its fidelity check, which passes with none. Hand-written cases cover
+each construct: both ordered spellings, `#`, `>`, the three bullets and a bare
+one, the three rules, both setext underlines, both fences, the indent, a
+bullet and an ordered marker on a continuation line, a table, a reference
+definition, and a marker inside a quote, inside an item and in a setext
+heading. Each fails with the escape disabled, and the setext, table,
+whitespace, reference and ordered-delimiter rules each fail their own cases
+when switched off alone. Controls check that a `2.`, an HTML start (the parser
+is configured without HTML), an ATX heading's content and a mid-line marker
+are left alone. The sweep that emits every oracle leaf from its tree still
+comes back byte-identical. Nothing reaches a file this way until stage 4.

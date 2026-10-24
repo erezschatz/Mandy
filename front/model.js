@@ -718,7 +718,7 @@ function modelFirstConstruct(md, candidate) {
  * is judged on this node's own text alone, and a leading block marker (`#`,
  * `>`, a list marker) is not this function's question at all — only the
  * block emitter that places a leaf at a block's true start can answer that,
- * and it does not exist yet.
+ * which is `modelEscapeLineStarts`, called from `modelEmitLeaf`.
  */
 function modelEscapeText(md, text) {
   let candidate = modelEscapeSilentTriggers(text);
@@ -1467,6 +1467,77 @@ function modelReferenceEnv(doc, md) {
   return env;
 }
 
+// The line a block-level parse blames for not being one paragraph, or -1 when
+// it is one. `count` is how many lines the content has. A setext heading
+// blames its underline and a table its delimiter row, because those are the
+// lines that made it one; everything else blames the line it starts on. A
+// paragraph that stops short blames whatever starts where it stopped, and
+// nothing at line 0 at all means a reference definition took that line.
+function modelBlockStartCulprit(md, content, count) {
+  const tops = md.parse(content, {}).filter((t) => t.level === 0 && t.nesting !== -1);
+  const blame = (t) => {
+    if (t.type === "heading_open" && (t.markup === "=" || t.markup === "-")) return t.map[1] - 1;
+    if (t.type === "table_open") return t.map[0] + 1;
+    return t.map[0];
+  };
+  if (!tops.length || tops[0].map[0] !== 0) return 0;
+  if (tops[0].type !== "paragraph_open") return blame(tops[0]);
+  if (tops[0].map[1] >= count) return -1;
+  return tops.length > 1 ? blame(tops[1]) : tops[0].map[1];
+}
+
+/**
+ * An edited leaf's content with every block marker at a line's start escaped —
+ * the half of escaping `modelEscapeText` says it cannot answer, because only
+ * the emitter knows where a leaf's lines really start. Closed 2026-10-24.
+ *
+ * Unbolding `**0. Spike**` at the start of a list item leaves `0. Spike`, which
+ * the parser reads as a nested list; typing `1. foo` into a new paragraph
+ * writes a list. Both look right on screen, and the file stops holding the
+ * block the editor shows.
+ *
+ * **Judged with every affix still off**, which is the same question the
+ * container asks: what a quote or an item strips from each line is exactly the
+ * chain and indent `modelEmitLeaf` puts back, so the content lines parse in
+ * isolation the way they parse inside it. The parser is the judge, as it is for
+ * `modelEscapeText`, rather than a list of markers kept here: the content has
+ * to come back as exactly one paragraph over all its lines.
+ *
+ * When it does not, the line the parser blames gets one backslash and the
+ * content is judged again, so only the markers that were responsible are
+ * touched. **Before the `.` or `)` of an ordered marker** (`0\. Spike`), since
+ * the digits are not punctuation and a backslash before a letter or digit is
+ * literal; **before the first character of anything else**, all of which is
+ * punctuation. A line that does not start with punctuation cannot be escaped
+ * that way, and is left as it is — a blank line inside a paragraph is the only
+ * such shape, and it is not a marker.
+ *
+ * Leading whitespace on the first line is **dropped** rather than escaped,
+ * because a backslash cannot escape a space: a paragraph's first line never
+ * holds any — the parser strips it — and four spaces of it would make the
+ * paragraph an indented code block. Slice 4's split already trims it at the
+ * cut; this is the same rule for every other edit that can leave some there.
+ *
+ * An unedited leaf never reaches this, and an edited one whose author already
+ * escaped a marker parses as one paragraph and is handed back untouched — which
+ * the suite's from-the-tree sweep is the proof of.
+ */
+function modelEscapeLineStarts(md, content) {
+  let candidate = content.replace(/^[ \t]+/, "");
+  const lines = candidate.split("\n");
+  for (let guard = 0; guard <= candidate.length; guard++) {
+    const at = modelBlockStartCulprit(md, lines.join("\n"), lines.length);
+    if (at < 0 || at >= lines.length) break;
+    const line = lines[at];
+    const lead = line.match(/^[ \t]*/)[0].length;
+    const ordered = /^\d{1,9}[.)]/.exec(line.slice(lead));
+    const where = ordered ? lead + ordered[0].length - 1 : lead;
+    if (!/[!-/:-@[-`{-~]/.test(line[where] || "")) break;
+    lines[at] = line.slice(0, where) + "\\" + line.slice(where);
+  }
+  return lines.join("\n");
+}
+
 /**
  * The item affix a leaf's lines carry: the marker its first line opens with and
  * the indent the rest sit under, taken off the **nearest** item ancestor.
@@ -1583,6 +1654,11 @@ function modelEmitLeaf(block, md, doc, width = 0) {
   };
 
   let content = modelInlineSource(block.inlines, md, defines);
+  // An ATX heading is one line that starts after its own `#`, so nothing in it
+  // is at a line's start. A setext heading's content lines are a paragraph's.
+  if (block.kind !== "heading" || (block.headingShape && block.headingShape.underline !== null)) {
+    content = modelEscapeLineStarts(md, content);
+  }
   let item = modelItemAffix(block);
 
   if (block.kind === "heading") {

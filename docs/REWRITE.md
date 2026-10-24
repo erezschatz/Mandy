@@ -4201,10 +4201,35 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
               `0. Spike`, which the parser reads as a nested list. That is the
               emitter's open gap, which `modelEscapeText`'s own comment names:
               nothing escapes a block marker at a line's start, and typing
-              `1. foo` into a new paragraph reaches it too. **Open, and owed
-              before stage 4**, since until then no save goes through the
-              emitter. The sweep counts these apart and asserts that they are
-              the only cases the parser reads differently.
+              `1. foo` into a new paragraph reaches it too. It was owed before
+              stage 4, since until then no save goes through the emitter, and
+              the sweep counted these cases apart. **Closed the same day, done
+              and tested**: the sweep folds them back into its fidelity check,
+              which passes with none, and the hand-written cases are in the
+              `model` suite beside the marks'.
+
+              **The plan for closing it, written 2026-10-24 before building.**
+              `modelEmitLeaf` is the one place that knows where a leaf's lines
+              really start, so the escape goes there, between
+              `modelInlineSource` and the affixes. The judge is the parser, as
+              in `modelEscapeText`: the content lines, with every affix still
+              off, have to parse as exactly one paragraph. That is the same
+              question the container asks, because what a container strips from
+              a line is exactly the affix the emitter puts back. When they do
+              not, the line the parser blames gets one backslash and the content
+              is parsed again: before the `.` or `)` of an ordered marker
+              (`0\. Spike`), before the first character of anything else (`#`,
+              `>`, `-`, `+`, `*`, `=`, `_`, a fence's first backtick or tilde),
+              and before the delimiter row of a table. Leading whitespace on the
+              first line is dropped instead, since a backslash cannot escape a
+              space and the parser strips it anyway; four spaces of it would
+              otherwise make an indented code block. A setext heading's content
+              lines are judged the same way. Three things done means: the
+              sweep's block-structure count is an assertion of zero, a
+              hand-written case per construct fails with the escape removed, and
+              the sweep that emits every oracle leaf from its tree alone still
+              comes back byte-identical, which is the proof that no marker the
+              author's own bytes hold is escaped.
 
         4.  **Inline code and the link.** Both act inside one block.
             - **Code** over a partial selection builds a code span from the
