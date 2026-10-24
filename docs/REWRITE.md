@@ -1853,8 +1853,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     tested, by machine in Chromium and WebKit and by hand in Firefox on
     2026-10-24; step 3, bold, italic and strikethrough, is done and tested
     the same day, by machine and by hand in Firefox; step 4, inline code and
-    links, is done and tested by machine the same day and waits on its Firefox
-    run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    links, is done and tested the same day, by machine and by hand in Firefox. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3750,8 +3749,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         menu's mark checks, added after that run, are machine-tested in
         Chromium and WebKit; their Firefox look, step 9 of the protocol, was
         not run separately before the close. Step 4, inline code and links,
-        is done and tested by machine the same day and waits on its Firefox
-        run.** Every control that edits the
+        is done and tested the same day, by machine and by hand in Firefox.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4275,8 +4273,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
               rather than dropped as leading whitespace, since dropping it wrote
               a blank line before the block.
 
-        4.  **Inline code and the link — done and tested by machine
-            2026-10-24; waiting on its hand run in Firefox.** Both act inside
+        4.  **Inline code and the link — done and tested 2026-10-24**, by
+            machine in Chromium and WebKit and by hand in Firefox 158.0.1,
+            every step clean, the name and the menu check included. Both act inside
             one block.
             - **Code** over a partial selection builds a code span from the
               rendered text of the range (marks dropped, as today), and a

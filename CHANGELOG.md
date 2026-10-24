@@ -9369,7 +9369,7 @@ just before it, in a fenced block, and for a half-code selection. The
 tooltip in Chromium and WebKit, and the harness passes in both. The fixture's
 step 4 section gains the same for Firefox. `sw.js`'s `VERSION` goes to `v1.79`.
 
-## 2026-10-24 — A closing hash and a blank break line are escaped too
+## 2026-10-24 — `9573f2d` — A closing hash and a blank break line are escaped too
 
 Two neighbours of the block-marker gap, both measured on the model before they
 were fixed, and both judged by the parser.
@@ -9393,3 +9393,12 @@ The `model` suite has a case for each, plus three controls: `C#`, a shielded
 closing sequence and two backslash breaks. The heading judge, the respelling,
 the blame for a blank line and the first-line exception each fail their own
 case when switched off. Nothing reaches a file this way until stage 4.
+
+## 2026-10-24 — Slice 7's inline code and links step is closed
+
+The user ran the "Inline code and links" section of
+`tests/fixtures/format-check.md` in Firefox 158.0.1, and every step was clean,
+including the control's new name and its check in the Format menu. Chromium
+and WebKit run it by machine and Safari's run waits for stage 5, so step 4 is
+done and tested. Step 5, paragraphs, headings and the code block, is next.
+docs/REWRITE.md records the run on the stage line, the slice line and the step.
