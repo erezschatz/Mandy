@@ -1849,8 +1849,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     Slices 1 to 6 of seven are done and tested, slices 4 to 6 driven by hand
     in all three engines; slice 7, the formats, is in progress, planned
     2026-09-28 with steps 1 and 2 of nine done and tested, step 2 by hand in all
-    three engines on 2026-10-03; step 10, equations by typing, is built and
-    machine-tested, waiting on its hand run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    three engines on 2026-10-03; step 10, equations by typing, is done and
+    tested, by machine in Chromium and WebKit and by hand in Firefox on
+    2026-10-24. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3738,8 +3739,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         2026-09-28 before any of it was built. Step 1 is done and tested the
         same day; step 2 is done and tested, by machine on 2026-09-29 and by
         hand in all three engines on 2026-10-03, copy and cut included. Step
-        10 is done and tested by machine the same day, and waits on its hand
-        run in three engines before step 3 starts.** Every control that edits the
+        10 is done and tested: by machine in Chromium and WebKit, and by hand
+        in Firefox 158 on 2026-10-24, which clears the way for step 3.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4235,9 +4236,11 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             measurement** — Gecko on macOS gave the key to its bookmarks sidebar
             on 2026-09-10 — and no script can answer it.
 
-        10. **Equations by typing — planned 2026-10-01; done and tested by
-            machine 2026-10-03, waiting on its hand run in Chrome and Firefox
-            (Safari's moved to stage 5 on 2026-10-17 — see that line); on
+        10. **Equations by typing — planned 2026-10-01; done and tested.
+            By machine since 2026-10-03, and in Playwright's Chromium and
+            WebKit since 2026-10-21; by hand in Firefox 158.0.1 on 2026-10-24,
+            every step of the protocol clean. Safari's run moved to stage 5 on
+            2026-10-17 (see that line). Still on
             probation, with two rounds of fixes spent, which is its limit: a
             third means proposing maths for removal instead. Round one was
             `233af6a`, a click after a one-glyph equation, found by hand in
@@ -4249,9 +4252,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `modelInputAtomAhead` now recognises it. It was found by
             `tests/browser/equation-typing.spec.mjs`, which since that day runs
             the protocol in Playwright's Chromium and WebKit (TODO 6.8) and
-            stands in for Chrome's typing pass. Owed: a Firefox re-run by hand,
-            since both rounds changed click handling Firefox's clean run had
-            passed.** Added after the plan above, when Mermaid was removed
+            stands in for Chrome's typing pass.** Added after the plan above, when Mermaid was removed
             and the question became whether maths stays at all. Under the
             model core typed text is literal by design, so a typed `$x^2$` is
             written to the file as `\$x^2$` — measured — and from stage 4 there

@@ -9183,7 +9183,7 @@ front of it. This fix only ever moves a caret forward past an equation, so it
 cannot be the cause. `sw.js`'s `VERSION` goes to `v1.75`. Firefox still owes
 step 10 a hand run.
 
-## 2026-10-22 — The harness's lockfile is committed
+## 2026-10-22 — `a019dda` — The harness's lockfile is committed
 
 `tests/browser/package-lock.json` was written by `npm install` when Playwright
 1.64.1 was first installed in the main checkout, and it had never been
@@ -9191,3 +9191,12 @@ committed. It is now. `package.json` already pins `@playwright/test` exactly, so
 what the lockfile adds is the two packages that one pulls in, `playwright` and
 `playwright-core`, at the same version. So every checkout installs the same
 Playwright, and `npm ci` works.
+
+## 2026-10-24 — Slice 7's equation-typing step is closed
+
+The user ran the "Typing an equation" section of `tests/fixtures/format-check.md`
+in Firefox 158.0.1, and every step was clean. That was the last run step 10 owed:
+Chromium and WebKit run it by machine, and Safari's run waits for stage 5. So
+the step is done and tested, and step 3, bold, italic and strikethrough as model
+commands, is next. Equations stay on probation, with both rounds of fixes spent.
+docs/REWRITE.md records the run on the stage line, the slice line and the step.
