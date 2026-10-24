@@ -4260,5 +4260,26 @@ export default function run(check) {
       typed("\\- a\n", [3, 3, "b"]) === "\\- ab\n");
     check("a marker that is not at a line's start is left alone",
       typed("x\n", [0, 1, "a - b # c"]) === "a - b # c\n");
+
+    // The two neighbours: a closing sequence the content wrote by accident, and
+    // a blank line two hard breaks wrote.
+    check("an ATX heading's content ending in ` #` escapes the run, or it is a closing sequence",
+      typed("# T\n", [1, 1, " #"]) === "# T \\#\n");
+    check("and a `#` the parser does not read as one is left alone",
+      typed("# C\n", [1, 1, "#"]) === "# C#\n");
+    check("and so is one a recorded closing sequence already shields",
+      typed("# T #\n", [1, 1, " #"]) === "# T # #\n");
+    const broken = (src, ...breaks) => {
+      const doc = parse(src);
+      const block = doc.blocks[0];
+      for (const [at, spelling] of breaks) modelInsertBreak(block, at, spelling);
+      return modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    };
+    check("two two-space hard breaks in a row respell the second as a backslash, or the line between is blank",
+      broken("ab\n", [1, "  "], [2, "  "]) === "a  \n\\\nb\n");
+    check("and so does one opening the paragraph, which is not an indent to drop",
+      broken("ab\n", [0, "  "]) === "\\\nab\n");
+    check("and two backslash breaks are left as they are",
+      broken("ab\n", [1, "\\"], [2, "\\"]) === "a\\\n\\\nb\n");
   }
 }

@@ -9350,7 +9350,7 @@ Its helpers are shared with `format-marks.spec.mjs` through a new
 `model-page.mjs`. `tests/fixtures/format-check.md` gains a section for the
 Firefox run, which is still owed. `sw.js`'s `VERSION` goes to `v1.78`.
 
-## 2026-10-24 — Code is called Code, and the menu shows when it is on
+## 2026-10-24 — `821e65c` — Code is called Code, and the menu shows when it is on
 
 Two things the user found in step 4 before the Firefox run. The control was
 "Code block" in the Format menu and "Code Block" in the format bar's tooltip,
@@ -9368,3 +9368,28 @@ just before it, in a fenced block, and for a half-code selection. The
 `inline-code-links.spec.mjs` checks the item's name, its check and the
 tooltip in Chromium and WebKit, and the harness passes in both. The fixture's
 step 4 section gains the same for Firefox. `sw.js`'s `VERSION` goes to `v1.79`.
+
+## 2026-10-24 — A closing hash and a blank break line are escaped too
+
+Two neighbours of the block-marker gap, both measured on the model before they
+were fixed, and both judged by the parser.
+
+An ATX heading whose content ends in ` #` wrote `# T #`. The parser reads that
+as a closing sequence, so the heading came back as `T`. `modelEmitLeaf` now
+parses the line it is about to write and compares the parser's content with the
+model's. When they differ, the final run of `#` gets a backslash before its
+first character, giving `# T \#`. A `#` the parser never takes as a closing
+sequence, such as `C#`, is left alone, and so is one a recorded closing sequence
+already shields.
+
+Two hard breaks in a row in the two-space spelling wrote `a  \n  \nb`. The
+middle line holds only spaces, so it is blank and the paragraph split in two.
+`modelEscapeLineStarts` now blames that line, and respells it as a backslash
+break, which means the same and carries no trailing whitespace. A break opening
+the paragraph gets the same treatment rather than being dropped as an indent.
+The last line is never respelt, since a backslash there is literal.
+
+The `model` suite has a case for each, plus three controls: `C#`, a shielded
+closing sequence and two backslash breaks. The heading judge, the respelling,
+the blame for a blank line and the first-line exception each fail their own
+case when switched off. Nothing reaches a file this way until stage 4.

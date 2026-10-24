@@ -4255,6 +4255,26 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
               comes back byte-identical, which is the proof that no marker the
               author's own bytes hold is escaped.
 
+              **Two neighbours, planned 2026-10-24 once that landed**, both
+              measured rather than supposed. An ATX heading whose content ends
+              in ` #` writes `# T #`, which the parser reads as a closing
+              sequence, so the ` #` is lost. And two hard breaks in a row in the
+              two-space spelling write a line holding only spaces, which is a
+              blank line and splits the paragraph in two. The parser judges
+              both. For the heading, the composed line is parsed and its
+              content compared with the model's; when they differ, the final
+              run of `#` gets a backslash before its first character. For the
+              break, a line the parser blames that holds only whitespace is the
+              second break's own spelling with no text in front of it, so it is
+              respelt as a backslash break, which carries no trailing
+              whitespace. Not on the last line, where a backslash would be
+              literal and the trailing-whitespace trim already drops a break
+              markdown cannot hold. One hand-written case each, broken on
+              purpose first. **Done and tested the same day.** One thing the
+              build added: a break that opens the paragraph is respelt too,
+              rather than dropped as leading whitespace, since dropping it wrote
+              a blank line before the block.
+
         4.  **Inline code and the link — done and tested by machine
             2026-10-24; waiting on its hand run in Firefox.** Both act inside
             one block.

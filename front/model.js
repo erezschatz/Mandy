@@ -1489,8 +1489,9 @@ function modelReferenceEnv(doc, md) {
 // it is one. `count` is how many lines the content has. A setext heading
 // blames its underline and a table its delimiter row, because those are the
 // lines that made it one; everything else blames the line it starts on. A
-// paragraph that stops short blames whatever starts where it stopped, and
-// nothing at line 0 at all means a reference definition took that line.
+// paragraph that stops short blames whatever starts where it stopped — or, when
+// nothing does, the blank line it stopped at — and nothing at line 0 at all
+// means a reference definition or a blank line took that line.
 function modelBlockStartCulprit(md, content, count) {
   const tops = md.parse(content, {}).filter((t) => t.level === 0 && t.nesting !== -1);
   const blame = (t) => {
@@ -1500,8 +1501,9 @@ function modelBlockStartCulprit(md, content, count) {
   };
   if (!tops.length || tops[0].map[0] !== 0) return 0;
   if (tops[0].type !== "paragraph_open") return blame(tops[0]);
-  if (tops[0].map[1] >= count) return -1;
-  return tops.length > 1 ? blame(tops[1]) : tops[0].map[1];
+  const stop = tops[0].map[1];
+  if (stop >= count) return -1;
+  return tops.length > 1 && tops[1].map[0] === stop ? blame(tops[1]) : stop;
 }
 
 /**
@@ -1527,8 +1529,17 @@ function modelBlockStartCulprit(md, content, count) {
  * the digits are not punctuation and a backslash before a letter or digit is
  * literal; **before the first character of anything else**, all of which is
  * punctuation. A line that does not start with punctuation cannot be escaped
- * that way, and is left as it is — a blank line inside a paragraph is the only
- * such shape, and it is not a marker.
+ * that way, and is left as it is.
+ *
+ * **A line holding only whitespace is a hard break with no text in front of
+ * it**, and it is the one blamed line that is not a marker. Two breaks in a row
+ * in the two-space spelling write `a  \n  \nb`, and the middle line is blank, so
+ * the paragraph splits in two. It is respelt as a backslash break, which carries
+ * no trailing whitespace and means the same thing. Only for two or more
+ * characters, which is the break's own spelling — anything shorter is not a
+ * break and has no spelling that keeps its meaning — and never on the last
+ * line, where a backslash is literal and the emitter's trailing-whitespace trim
+ * already drops a break markdown cannot end a paragraph with.
  *
  * Leading whitespace on the first line is **dropped** rather than escaped,
  * because a backslash cannot escape a space: a paragraph's first line never
@@ -1541,11 +1552,17 @@ function modelBlockStartCulprit(md, content, count) {
  * the suite's from-the-tree sweep is the proof of.
  */
 function modelEscapeLineStarts(md, content) {
-  let candidate = content.replace(/^[ \t]+/, "");
-  const lines = candidate.split("\n");
-  for (let guard = 0; guard <= candidate.length; guard++) {
+  const lines = content.split("\n");
+  // A first line that is only a break's spaces is a break, not an indent.
+  const breakLine = (i) => i < lines.length - 1 && /^[ \t]{2,}$/.test(lines[i]);
+  if (!breakLine(0)) lines[0] = lines[0].replace(/^[ \t]+/, "");
+  for (let guard = 0; guard <= content.length; guard++) {
     const at = modelBlockStartCulprit(md, lines.join("\n"), lines.length);
     if (at < 0 || at >= lines.length) break;
+    if (breakLine(at)) {
+      lines[at] = "\\";
+      continue;
+    }
     const line = lines[at];
     const lead = line.match(/^[ \t]*/)[0].length;
     const ordered = /^\d{1,9}[.)]/.exec(line.slice(lead));
@@ -1695,6 +1712,19 @@ function modelEmitLeaf(block, md, doc, width = 0) {
     const atx = underline === null && /#$/.test(open);
     const opened = atx && content ? open + " " : open;
     const closed = atx && !content ? close.replace(/^[ \t]+/, "") : close;
+    // **Content ending in ` #` is a closing sequence to the parser**, so
+    // `# T #` comes back as the heading `T`. Judged by parsing the line as it
+    // will be written; when the parser's content is not the model's, the final
+    // run of `#` gets a backslash before its first, which no closing sequence
+    // can follow. Only the last run, and only when the parser disagrees: a
+    // recorded close already shields the content, and `C#` was never one.
+    if (underline === null && content) {
+      const run = /#+[ \t]*$/.exec(content);
+      const parsed = md.parse(opened + content + closed, {})[1];
+      if (run && parsed && parsed.type === "inline" && parsed.content !== content.trim()) {
+        content = content.slice(0, run.index) + "\\" + content.slice(run.index);
+      }
+    }
     content = underline === null
       ? (content ? opened + content + closed : (opened + closed).replace(/[ \t]+$/, ""))
       : open + content + "\n" + underline;
