@@ -1852,7 +1852,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     three engines on 2026-10-03; step 10, equations by typing, is done and
     tested, by machine in Chromium and WebKit and by hand in Firefox on
     2026-10-24; step 3, bold, italic and strikethrough, is done and tested
-    the same day, by machine and by hand in Firefox. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    the same day, by machine and by hand in Firefox; step 4, inline code and
+    links, is done and tested by machine the same day and waits on its Firefox
+    run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3744,9 +3746,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         in Firefox 158 on 2026-10-24, which clears the way for step 3. Step 3
         is done and tested by machine the same day, in the `model` suite and
         in Playwright's Chromium and WebKit, and by hand in Firefox 158.0.1
-        the same day, clean. The Format menu's mark checks, added after that
-        run, are machine-tested and want one Firefox look, step 9 of the
-        protocol.** Every control that edits the
+        the same day, clean, and closed by the user the same day. The Format
+        menu's mark checks, added after that run, are machine-tested in
+        Chromium and WebKit; their Firefox look, step 9 of the protocol, was
+        not run separately before the close. Step 4, inline code and links,
+        is done and tested by machine the same day and waits on its Firefox
+        run.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4094,10 +4099,11 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             the model as one undo step. Clean by hand in Firefox, Chrome and
             Safari on 2026-10-03, with the rest of the fixture.
 
-        3.  **Inline marks: bold, italic, strikethrough — done and tested
+        3.  **Inline marks: bold, italic, strikethrough — closed
             2026-10-24**, by machine in Chromium and WebKit and by hand in
-            Firefox 158.0.1, clean; the menu checks added after the run want
-            one Firefox look (the protocol's step 9). A pure command over a
+            Firefox 158.0.1, clean. The menu checks added after that run are
+            machine-tested; their Firefox look, the protocol's step 9, was not
+            run separately before the user closed the step. A pure command over a
             block's inline tree, with the range given in model offsets. If every
             leaf in the range carries the mark, the command removes it;
             otherwise it adds it. Marks are zero-width in the offset space, so
@@ -4249,7 +4255,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
               comes back byte-identical, which is the proof that no marker the
               author's own bytes hold is escaped.
 
-        4.  **Inline code and the link.** Both act inside one block.
+        4.  **Inline code and the link — done and tested by machine
+            2026-10-24; waiting on its hand run in Firefox.** Both act inside
+            one block.
             - **Code** over a partial selection builds a code span from the
               rendered text of the range (marks dropped, as today), and a
               selection inside a code span turns it back into text. **The
@@ -4269,6 +4277,53 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
               stamp**, per the decision above. Unlinking replaces the node with
               its children. The dialog, `normaliseLinkHref` and Ctrl+K stay as
               they are.
+
+            **Build order, written 2026-10-24 before any of it was built.**
+
+            1.  **`modelCodeSpanFence(content)`**: the backtick run and padding
+                a code span needs, computed from its content. `modelInlineSource`
+                calls it for a code span whose `raw` an edit has cleared, which
+                closes the latent bug above.
+            2.  **`modelToggleCode(block, from, to, md)`**: inside a code span,
+                unwrap it into text; otherwise replace the range's rendered text
+                with one new code span. Refused across two blocks, for a range
+                holding an image, an equation or a hard break (none of which a
+                code span can hold), and for one that is only whitespace. A
+                range covering a whole block is step 5's fence, so the input
+                layer does not send one here.
+            3.  **`modelSetLink(doc, selection, href, md)`**: inside a link,
+                retarget it (a changed `href` drops the reference stamp and the
+                recorded tail) or, given no address, unwrap it. Over a range,
+                unwrap any link inside it and wrap the range in a new one,
+                placed just inside the deepest mark that covers all of it, so a
+                link inside bold text does not split the bold. A mark the range
+                only partly covers is split at the link's edge. At a bare caret,
+                insert the address as its own link text. The tokens come from
+                `md.parseInline` of a template, and **the parser judges the
+                result**, as it does for marks: text, marks and which characters
+                are linked have to read back exactly, or the command refuses.
+            4.  **The input layer**: Code in `applyFormat` and Link… in `app.js`
+                gain model branches, reading the selection in model coordinates,
+                re-rendering, and announcing their own undo step. The link
+                dialog is pre-filled from the model's link, not the DOM's.
+            5.  **The `model` suite** (one case per rule above, plus a sweep that
+                wraps a spread of ranges in every oracle block in a link and
+                checks the parser reads it back) and
+                **`tests/browser/inline-code-links.spec.mjs`** for Chromium and
+                WebKit, with a new section in `tests/fixtures/format-check.md`
+                for Firefox.
+
+            **What the build found.** The link sweep wraps a spread of ranges
+            in every oracle block, and the parser judge refuses a few dozen
+            of them, each one a mark the new link only partly covers, where
+            splitting the mark leaves a delimiter against a space. Refusing
+            leaves the block as it was, and the count is in the sweep's label.
+            And the spec found a bug that was not this step's: **a paragraph
+            whose line ends in a space recorded no `leadingAffix`**, because
+            markdown-it trims that space from the content and the check
+            compared the untrimmed line, so the emitter refused the paragraph
+            on its first edit. Fixed the same day: the line is also compared
+            with its trailing whitespace trimmed.
 
         5.  **Block kinds: p, h1–h6 and the code block.** A kind change keeps
             the block's id, so the selection resolves back into it. Its tokens

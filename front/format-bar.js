@@ -570,13 +570,16 @@ function applyFormat(format) {
       runCommand("insertOrderedList");
       break;
     case "code":
-      // Shut under the model core until slice 7's step 5 makes Code a model
-      // command. Every other case here goes through `runCommand`, which already
-      // refuses there; this one is DOM surgery by hand, so the refusal never
-      // reached it and the screen changed under a model that did not — the next
-      // render put the old block back. Doing nothing is the input layer's rule
-      // for anything it cannot yet carry out.
-      if (modelOwnsInput()) break;
+      // Under the model core, slice 7's step 4 makes the inline half a model
+      // command: a code span over a range inside one block, and back to text
+      // inside one. The whole-block half is step 5's fence, and until then a
+      // whole block does nothing. The DOM surgery below must never run there:
+      // the screen would change under a model that did not, and the next
+      // render would put the old block back.
+      if (modelOwnsInput()) {
+        if (typeof modelInputCode === "function") modelInputCode();
+        break;
+      }
       toggleCode(range);
       // The one branch that raises no input event of its own. Every execCommand
       // above raises one, and autosave, the dirty flag, the outline and the undo

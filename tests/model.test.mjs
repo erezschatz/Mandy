@@ -90,6 +90,7 @@ export default function run(check) {
     modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection, modelBlockById,
     modelMathCandidates, modelMathConvert, modelMathReveal, modelHoldSpaces, modelVerifyRender,
     modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState,
+    modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -115,7 +116,8 @@ export default function run(check) {
       " modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection," +
       " modelBlockById, modelMathCandidates, modelMathConvert, modelMathReveal," +
       " modelHoldSpaces, modelVerifyRender," +
-      " modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState };",
+      " modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState," +
+      " modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -4093,6 +4095,96 @@ export default function run(check) {
     }
     check("a selection holding only whitespace has nothing to mark",
       modelMarkCovers(parse("a  b\n").blocks[0], 1, 3, "strong") === null);
+
+    // ── Inline code and links: slice 7's step 4 ─────────────────────────────
+    //
+    // The same instrument as the marks: wrap a spread of ranges in every
+    // inline-bearing block of the oracle in a link, and separately in a code
+    // span, and the parser has to read each back with the same text, marks and
+    // links the model holds.
+    {
+      let linked = 0;
+      let coded = 0;
+      let refusedLink = 0;
+      let refusedCode = 0;
+      const misread = [];
+      for (const file of ORACLE_FILES) {
+        const doc = parse(repoFile(file));
+        const env = modelReferenceEnv(doc, md);
+        for (const leaf of leavesOf(doc).filter((b) => b.inlines)) {
+          for (const [from, to] of rangesFor(leaf)) {
+            for (const what of ["link", "code"]) {
+              const copy = modelForkDocument(doc);
+              const block = modelBlockById(copy, leaf.id);
+              const result = what === "link"
+                ? modelSetLink(block, from, to, "https://x.example/", md, env)
+                : modelToggleCode(block, from, to, md, env);
+              if (!result) { if (what === "link") refusedLink++; else refusedCode++; continue; }
+              if (what === "link") linked++; else coded++;
+              const again = reparse(copy, block);
+              if (!again || modelInlineSignature(again.inlines) !== modelInlineSignature(block.inlines)) {
+                misread.push(`${file} #${leaf.id} ${what} [${from},${to}): ` +
+                  JSON.stringify(modelEmitLeaf(block, md, copy)).slice(0, 140));
+              }
+            }
+          }
+        }
+      }
+      check(`a link made over ${linked} ranges and a code span over ${coded} across the oracle are read back ` +
+        `by the parser exactly as the model holds them` +
+        (misread.length ? `, but ${misread.length} were not: ${misread.slice(0, 4).join(" | ")}` : ""),
+        misread.length === 0);
+      check(`and the sweep measured something: ${refusedLink} links and ${refusedCode} code spans refused`,
+        linked > 1000 && coded > 500);
+    }
+
+    const edited = (src, f) => {
+      const doc = parse(src);
+      const block = modelFlatten(doc).find((b) => !b.children && b.inlines);
+      const result = f(block, doc);
+      return { result, out: modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc)) };
+    };
+    // The fence is computed, which closes the latent bug the plan named.
+    check("a code span's run is longer than any run inside it", modelCodeSpanFence("a`b").markup === "``");
+    check("and padded when its content starts or ends with a backtick", modelCodeSpanFence("`a").raw === " `a ");
+    check("and when it starts and ends with a space", modelCodeSpanFence(" a ").raw === "  a  ");
+    check("typing a backtick into a code span writes a span that still fences it",
+      edited("`a`\n", (b) => modelInlineSplice(b, 1, 1, "`")).out === "`` a` ``\n");
+    check("Code over a range makes a code span of its text",
+      edited("run npm test now\n", (b) => modelToggleCode(b, 4, 12, md)).out === "run `npm test` now\n");
+    check("and drops the marks inside it, which a code span cannot hold",
+      edited("a *b* c\n", (b) => modelToggleCode(b, 0, 5, md)).out === "`a b c`\n");
+    check("a caret inside a code span turns it back into text",
+      edited("run `npm test` now\n", (b) => modelToggleCode(b, 6, 6, md)).out === "run npm test now\n");
+    check("a code span is refused over an equation, which it cannot hold",
+      edited("a $x$ b\n", (b) => modelToggleCode(b, 0, 3, md)).result === null);
+    check("and over a range that is only whitespace",
+      edited("a  b\n", (b) => modelToggleCode(b, 1, 3, md)).result === null);
+    check("a link over a range wraps it, with tokens from the parser",
+      edited("see the docs now\n", (b) => modelSetLink(b, 4, 12, "https://x.example", md)).out ===
+        "see [the docs](https://x.example) now\n");
+    check("a link inside bold text stays inside the bold",
+      edited("**bold words here**\n", (b) => modelSetLink(b, 5, 10, "u", md)).out === "**bold [words](u) here**\n");
+    check("a mark the link only partly covers is split at its edge",
+      edited("**ab** cd\n", (b) => modelSetLink(b, 1, 5, "u", md)).out === "**a**[**b** cd](u)\n");
+    check("a link over a range holding a link replaces it, since links cannot nest",
+      edited("x [a](u) y z\n", (b) => modelSetLink(b, 0, 10, "v", md)).out === "[x a y z](v)\n");
+    check("a new address retargets the link the caret is in",
+      edited("see [docs](a) now\n", (b) => modelSetLink(b, 5, 5, "b", md)).out === "see [docs](b) now\n");
+    check("an empty one unwraps it",
+      edited("see [docs](a) now\n", (b) => modelSetLink(b, 5, 5, "", md)).out === "see docs now\n");
+    check("retargeting a reference link writes it inline and leaves the definition alone",
+      edited("see [docs][d] now\n\n[d]: a\n", (b, doc) => modelSetLink(b, 5, 5, "b", md, modelReferenceEnv(doc, md))).out ===
+        "see [docs](b) now\n\n[d]: a\n");
+    check("the same address leaves a link exactly as it was",
+      edited("see [docs][d] now\n\n[d]: a\n", (b, doc) => modelSetLink(b, 5, 5, "a", md, modelReferenceEnv(doc, md))).result === null);
+    check("at a bare caret the address is inserted as its own link text",
+      edited("go here\n", (b) => modelSetLink(b, 3, 3, "https://e.example", md)).out ===
+        "go [https://e.example](https://e.example)here\n");
+    check("a paragraph whose line ends in a space can still be edited and written back",
+      edited("Go \n", (b) => modelInlineSplice(b, 2, 2, "x")).out === "Gox\n");
+    check("the link a caret sits in is found", !!modelLinkAt(parse("a [b](u) c\n").blocks[0], 3, 3));
+    check("and none is found outside one", modelLinkAt(parse("a [b](u) c\n").blocks[0], 1, 1) === null);
 
     // ── A block marker at a line's start ──
     //

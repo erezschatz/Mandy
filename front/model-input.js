@@ -349,6 +349,83 @@ function modelInputMarkState(kind) {
   return modelMarkState(doc, at, kind);
 }
 
+/**
+ * Code from the format bar or the Format menu, slice 7's step 4: the inline
+ * half. A range inside one block becomes a code span, and a caret or range
+ * inside a code span turns it back into text. **A whole block is step 5's**
+ * fenced code block, so it is left alone here, and so is a bare caret outside a
+ * code span, which the old core read as the whole block too.
+ */
+function modelInputCode() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  const to = at.to || at;
+  if (to.block !== at.block) {
+    if (typeof notify === "function") notify("Select inside a single block to format it as code.", { severity: "info" });
+    return true;
+  }
+  const block = at.block;
+  const from = Math.min(at.offset, to.offset);
+  const end = Math.max(at.offset, to.offset);
+  if (!block.inlines) return true;
+  const length = modelInlineText(block.inlines).length;
+  const inSpan = modelInlineLeafSpans(block.inlines).some((span) => span.node.kind === "code-span" &&
+    span.start <= from && end <= span.end && (from < end || from > span.start));
+  if (!inSpan && (from === end || (from === 0 && end === length))) return true;
+  const range = modelToggleCode(block, from, end, md, modelReferenceEnv(doc, md));
+  if (!range) return true;
+  modelPendingMarks = null;
+  return modelInputShow(doc, block, { block, offset: range.from, to: { block, offset: range.to } }, "formatCode");
+}
+
+/**
+ * Insert → Link…, slice 7's step 4. The same dialog and the same four cases as
+ * the old core — wrap a selection, insert the address at a bare caret,
+ * retarget the link the caret is in, or unlink it when the address is left
+ * empty — with the model doing each. The selection is read in model
+ * coordinates **before** the dialog takes focus, and the document is checked
+ * to be the same one after it closes.
+ */
+async function modelInputLink() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  const to = at.to || at;
+  if (to.block !== at.block) {
+    if (typeof notify === "function") notify("Select inside a single block to make a link.", { severity: "info" });
+    return true;
+  }
+  const block = at.block;
+  if (!block.inlines) return true;
+  const from = Math.min(at.offset, to.offset);
+  const end = Math.max(at.offset, to.offset);
+  const existing = modelLinkAt(block, from, end);
+  const current = existing ? existing.node.token.attrGet("href") || "" : "";
+  const answer = typeof askForInput === "function"
+    ? await askForInput("Link address", {
+      title: existing ? "Edit link" : "Insert link",
+      placeholder: "https://example.com",
+      value: current,
+      confirmLabel: existing ? "Update" : "Insert",
+    })
+    : null;
+  if (answer === null) return true;
+  if (modelCurrentDocument() !== doc) return true;
+  const href = typeof normaliseLinkHref === "function" ? normaliseLinkHref(answer) : answer.trim();
+  if (!existing && !href) return true;
+  editor.focus();
+  const range = modelSetLink(block, from, end, href, md, modelReferenceEnv(doc, md));
+  if (!range) return true;
+  modelPendingMarks = null;
+  const selection = from === end && !existing
+    ? { block, offset: range.to }
+    : { block, offset: range.from, to: { block, offset: range.to } };
+  return modelInputShow(doc, block, selection, "insertLink");
+}
+
 // The marks every character of `[start, end)` carries, by kind, or null for an
 // empty range: what text typed over that range should carry.
 function modelInputMarksOf(block, start, end) {

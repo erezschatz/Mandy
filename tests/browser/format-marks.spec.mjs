@@ -10,79 +10,10 @@
 // the old core. Every test fails on a render divergence or a console error.
 
 import { test, expect } from "@playwright/test";
+import { useModelPage, open, markdown, selected, paragraph, doubleClickWord, bar, menu, LINE_START, LINE_END }
+  from "./model-page.mjs";
 
-// The start and end of a line. On macOS WebKit takes Home and End to scroll
-// the page and leave the caret alone, which is the platform's own convention.
-const LINE_START = process.platform === "darwin" ? "Meta+ArrowLeft" : "Home";
-const LINE_END = process.platform === "darwin" ? "Meta+ArrowRight" : "End";
-
-test.beforeEach(async ({ page }, testInfo) => {
-  const problems = [];
-  page.on("console", (msg) => {
-    if (msg.type() === "error" || /render diverged/.test(msg.text())) problems.push(`${msg.type()}: ${msg.text()}`);
-  });
-  page.on("pageerror", (err) => problems.push(`pageerror: ${err.message}`));
-  testInfo.problems = problems;
-  await page.goto("/?core=model");
-  await page.waitForFunction(() =>
-    typeof loadDocumentMarkdown === "function" && typeof modelCoreEnabled === "function");
-  expect(await page.evaluate(() => modelCoreEnabled()), "the model core is on").toBe(true);
-});
-
-test.afterEach(async ({}, testInfo) => {
-  expect(testInfo.problems, "console errors or render divergences").toEqual([]);
-});
-
-async function open(page, markdown) {
-  await page.evaluate((src) => {
-    modelVerifySetEnabled(true);
-    loadDocumentMarkdown(src);
-    // What File → Open does after the door: a fresh history, so an undo
-    // cannot reach back past the document into the welcome page.
-    undoReset();
-  }, markdown);
-}
-
-// The markdown the model holds: what a save will write from stage 4 on.
-const markdown = (page) => page.evaluate(() => {
-  const doc = modelCurrentDocument();
-  return modelSerialise(doc, (block) => modelEmitLeaf(block, md, doc));
-});
-
-const selected = (page) => page.evaluate(() => getSelection().toString());
-
-const paragraph = (page, n = 0) => page.locator("#editor > p").nth(n);
-
-async function doubleClickWord(page, n, word) {
-  const box = await paragraph(page, n).evaluate((p, word) => {
-    const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      const at = node.data.indexOf(word);
-      if (at < 0) continue;
-      const range = document.createRange();
-      range.setStart(node, at);
-      range.setEnd(node, at + word.length);
-      const r = range.getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-    }
-    return null;
-  }, word);
-  await page.mouse.dblclick(box.x, box.y);
-  await expect.poll(() => selected(page)).toBe(word);
-}
-
-// The format bar shows itself for a selection; its buttons are what a person
-// presses. The menu is the second route to the same command.
-async function bar(page, format) {
-  const button = page.locator(`#formatBar [data-format="${format}"]`);
-  await expect(button).toBeVisible();
-  await button.click();
-}
-
-async function menu(page, format) {
-  await page.locator('[data-menu="formatMenu"]').click();
-  await page.locator(`[data-action="format-${format}"]`).click();
-}
+useModelPage(test);
 
 test("bold from the format bar goes on, stays selected, and comes off again", async ({ page }) => {
   await open(page, "Alpha beta gamma.\n");

@@ -5,13 +5,14 @@ app, follow the steps, and edit the paragraphs written for each one. **Bold** is
 what you do; *italics* is what should (or should not) happen.
 
 It grows with TODO 3.1's slice 7: each step that needs a person adds its
-section here. Today it holds three: keeping equations typeset (step 2), typing
-one (step 10), and bold, italic and strikethrough (step 3). (It held diagrams
+section here. Today it holds four: keeping equations typeset (step 2), typing
+one (step 10), bold, italic and strikethrough (step 3), and inline code and
+links (step 4). (It held diagrams
 too until Mermaid was removed on 2026-10-01.)
 
-Chromium and WebKit run the last two sections by machine
-(`tests/browser/equation-typing.spec.mjs` and `format-marks.spec.mjs`), so a
-hand run of those is Firefox's. Safari's waits for stage 5.
+Chromium and WebKit run the last three sections by machine
+(`tests/browser/equation-typing.spec.mjs`, `format-marks.spec.mjs` and
+`inline-code-links.spec.mjs`), so a hand run of those is Firefox's. Safari's waits for stage 5.
 
 ## Before you start
 
@@ -234,6 +235,41 @@ Second para here.
    checked, though nothing is typed yet.* **Select a range that is half bold
    and open the menu.** *Bold has a faint check.* Added 2026-10-24, after the
    first Firefox run of this section asked for it.
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors*, with the known Firefox exception from "Before you start".
+
+## Inline code and links (step 4)
+
+Code on the format bar, Insert → Link… and Ctrl/Cmd+K. Code acts inside one
+block; a whole block is step 5's code block and does nothing yet.
+
+The paragraphs to work on:
+
+Run npm now.
+
+See the docs now.
+
+Read [the guide](https://a.example) first.
+
+1. **Double-click `npm` and press Code on the format bar.** *It becomes a code
+   span and stays selected.* **Press Code again.** *It is plain text again.*
+2. **Triple-click "Run npm now." to select the whole paragraph and press
+   Code.** *Nothing changes.* That is step 5's.
+3. **Double-click `docs` and choose Insert → Link…. Type `example.com/docs`
+   and press Insert.** *`docs` becomes a link.* **Hover it.** *The hint says
+   Ctrl/Cmd+click opens it.*
+4. **Click inside "the guide" and press Ctrl/Cmd+K.** *The dialog says Edit
+   link and holds `https://a.example`.* **Change it to `https://b.example` and
+   press Update.** *The link still reads "the guide"; Ctrl/Cmd+click goes to the
+   new address.*
+5. **Click inside "the guide" again, press Ctrl/Cmd+K, clear the field and press
+   Update.** *The link is gone and the words stay.*
+6. **Click at the end of "Run npm now.", type a space, press Ctrl/Cmd+K, type
+   `https://e.example` and press Insert.** *The address appears as its own
+   link.*
+7. **Press Ctrl/Cmd+Z after any of the above.** *That one change goes, in one
+   press.*
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors*, with the known Firefox exception from "Before you start".

@@ -840,12 +840,14 @@ function normaliseLinkHref(value) {
 }
 
 async function insertLink() {
-  // Shut under the model core until slice 7's step 4 makes the link a model
-  // command. Two of the four cases below reach `runCommand`, which refuses
-  // there, and the other two — retarget and unlink — edit the `<a>` directly,
-  // which the model never hears about. Returning before the dialog, rather than
-  // after it, so nobody is asked for an address that is then thrown away.
-  if (modelOwnsInput()) return;
+  // Under the model core the link is a model command, slice 7's step 4, with
+  // the same dialog and the same four cases. None of what follows may run
+  // there: two of its cases reach `runCommand`, which refuses, and the other
+  // two edit the `<a>` directly, which the model would never hear about.
+  if (modelOwnsInput()) {
+    if (typeof modelInputLink === "function") await modelInputLink();
+    return;
+  }
 
   const selection = window.getSelection();
   if (!selection.rangeCount) return;

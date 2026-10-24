@@ -823,7 +823,13 @@ function modelInlineSource(nodes, md, defines) {
         out += node.raw ?? modelEscapeText(md, node.content);
         break;
       case "code-span":
-        out += node.markup + (node.raw ?? node.content) + node.markup;
+        // An edited span has lost its `raw`, and its old run may no longer
+        // fence what it holds: typing a backtick into `` `a` `` would write
+        // `` `a`b` ``. So the run and the padding are computed afresh.
+        if (node.raw == null) {
+          const fence = modelCodeSpanFence(node.content);
+          out += fence.markup + fence.raw + fence.markup;
+        } else out += node.markup + node.raw + node.markup;
         break;
       case "softbreak":
         out += node.raw ?? "\n";
@@ -1243,11 +1249,23 @@ function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
     //
     // Not for a heading: `modelHeadingShape`'s `open` already runs from the
     // chain-stripped column 0 and so carries the indent with it.
+    //
+    // **The line is compared with its trailing whitespace trimmed as well**,
+    // because markdown-it trims a paragraph's content and so `Go ` holds `Go`.
+    // Until 2026-10-24 such a paragraph recorded no affix at all, and the
+    // emitter refused it on the first edit — found by step 4's spec, typing a
+    // link at the end of a line that ended in a space. A hard break's two
+    // spaces are kept in the content and still match the first way. Nothing is
+    // lost by trimming: the trailing space is whitespace nobody can see, which
+    // D3 leaves out of fidelity, and an untouched block keeps its bytes anyway.
     if (piece.block.inline && piece.block.kind !== "heading") {
       const first = unquote(lines[piece.start]);
       const content = piece.block.inline.content.split("\n")[0];
+      const trimmed = first.replace(/[ \t]+$/, "");
       if (first.endsWith(content)) {
         piece.block.leadingAffix = first.slice(0, first.length - content.length);
+      } else if (trimmed.endsWith(content)) {
+        piece.block.leadingAffix = trimmed.slice(0, trimmed.length - content.length);
       }
     }
 
@@ -3727,6 +3745,280 @@ function modelToggleMark(doc, selection, kind, md, fallback) {
   const env = modelReferenceEnv(doc, md);
   return ranges.filter((range) => modelSetMark(range.block, range.from, range.to, kind, on, md, spell, env))
     .map((range) => range.block);
+}
+
+// ── Inline code and links ────────────────────────────────────────────────────
+//
+// Slice 7's step 4. Both act inside one block, and both are built on one
+// primitive: `modelWrapRange` puts a new container around a range of leaves.
+// A link is that container; a code span is that container's text, made one
+// leaf.
+
+/**
+ * The backtick run and padding a code span needs: `{ markup, raw }`, where
+ * `raw` is what goes between the runs.
+ *
+ * The run is one longer than the longest run inside the content, or a backtick
+ * there would close the span early. The padding is CommonMark's: a space each
+ * side when the content starts or ends with a backtick, which would otherwise
+ * join the delimiter, and when it starts *and* ends with a space, which the
+ * parser would strip one of from each side.
+ */
+function modelCodeSpanFence(content) {
+  let longest = 0;
+  for (const run of content.match(/`+/g) || []) longest = Math.max(longest, run.length);
+  const markup = "`".repeat(longest + 1);
+  const pad = content.startsWith("`") || content.endsWith("`") ||
+    (content.length > 1 && content.startsWith(" ") && content.endsWith(" ") && content.trim() !== "")
+    ? " " : "";
+  return { markup, raw: pad + content + pad };
+}
+
+// What the parser can tell about an inline tree, links included: its text,
+// which characters each mark covers, and the address each character links to.
+function modelInlineSignature(nodes) {
+  let links = "";
+  (function walk(list, href) {
+    for (const node of list || []) {
+      if (node.children) {
+        walk(node.children, node.kind === "link" ? (node.token && node.token.attrGet("href")) || "" : href);
+        continue;
+      }
+      links += (href === null ? "\u0002" : href + "\u0001").repeat(modelInlineText([node]).length);
+    }
+  })(nodes, null);
+  return modelMarkSignature(nodes) + "\u0000" + links;
+}
+
+// Whether the parser reads `tree`'s source back as the same text, marks and
+// links. The judge every command here answers to.
+function modelInlineReadable(tree, md, env) {
+  const parsed = md.parseInline(modelInlineSource(tree, md), { references: (env && env.references) || {} });
+  const again = parsed[0] ? modelInlines({ inline: parsed[0] }, md) : [];
+  return modelInlineSignature(again) === modelInlineSignature(tree);
+}
+
+/**
+ * Rebuild a block's tree with `container` around `[from, to)`, and hand back
+ * the new tree — the block itself is not changed. Null when the range is empty.
+ *
+ * The container goes just inside the deepest containers that cover the whole
+ * range, so a link made inside bold text stays inside the bold rather than
+ * splitting it. A container the range covers only part of is split at the
+ * edge, its second half a copy carrying the same tokens and spelling.
+ * `drop(node)` names containers to take out of the range first: a link may not
+ * hold a link, so the link command drops every link it wraps.
+ */
+function modelWrapRange(block, from, to, container, drop = () => false) {
+  const text = modelInlineText(block.inlines);
+  const start = Math.max(0, Math.min(from, text.length));
+  const end = Math.max(start, Math.min(to, text.length));
+  if (start === end) return null;
+
+  const leaves = [];
+  let offset = 0;
+  (function walk(nodes, path) {
+    for (const node of nodes) {
+      if (node.children) { walk(node.children, path.concat(node)); continue; }
+      const length = modelInlineText([node]).length;
+      const cuts = node.kind === "text"
+        ? [0, start - offset, end - offset, length].filter((cut, i, all) => cut >= 0 && cut <= length && all.indexOf(cut) === i).sort((a, b) => a - b)
+        : [0, length];
+      for (let i = 0; i + 1 < cuts.length; i++) {
+        if (cuts[i + 1] <= cuts[i]) continue;
+        const piece = cuts.length > 2 ? modelTextNode(node.content.slice(cuts[i], cuts[i + 1])) : node;
+        leaves.push({ node: piece, path, start: offset + cuts[i], end: offset + cuts[i + 1] });
+      }
+      offset += length;
+    }
+  })(block.inlines, []);
+
+  const inside = leaves.filter((leaf) => leaf.start < end && leaf.end > start);
+  if (!inside.length) return null;
+  for (const leaf of inside) leaf.path = leaf.path.filter((node) => !drop(node));
+  let depth = 0;
+  while (inside.every((leaf) => leaf.path.length > depth && leaf.path[depth] === inside[0].path[depth])) depth++;
+  for (const leaf of inside) leaf.path = [...leaf.path.slice(0, depth), container, ...leaf.path.slice(depth)];
+
+  const used = new Set();
+  function build(items, level) {
+    const out = [];
+    for (let i = 0; i < items.length;) {
+      const leaf = items[i];
+      if (leaf.path.length === level) { out.push(leaf.node); i++; continue; }
+      const group = leaf.path[level];
+      let j = i;
+      while (j < items.length && items[j].path.length > level && items[j].path[level] === group) j++;
+      const node = used.has(group) ? { ...group } : group;
+      used.add(group);
+      node.children = build(items.slice(i, j), level + 1);
+      out.push(node);
+      i = j;
+    }
+    return out;
+  }
+  return build(leaves, 0);
+}
+
+// Put a rebuilt tree in place: the tokens re-derived, the emptied pruned, the
+// block touched.
+function modelInstallInlines(block, tree) {
+  modelInlinePrune(tree);
+  block.inlines = tree;
+  if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
+  modelTouch(block);
+}
+
+/**
+ * Code over a range of one block: `{ from, to }` for the selection afterwards,
+ * or null for a refusal.
+ *
+ * **Inside a code span it turns it back into text**, and a caret anywhere in
+ * one counts as inside. Otherwise the range's rendered text becomes one code
+ * span, marks and links dropped, since a code span can hold neither — the old
+ * core's behaviour too. A range holding an image, an equation or a hard break
+ * is refused, since none of those has a spelling inside a code span; so is one
+ * that is only whitespace.
+ */
+function modelToggleCode(block, from, to, md, env) {
+  modelUnshare(block);
+  if (!block.inlines) return null;
+  const spans = modelInlineLeafSpans(block.inlines);
+  const span = spans.find((candidate) => candidate.node.kind === "code-span" &&
+    candidate.start <= from && to <= candidate.end && (from < to || from > candidate.start));
+  if (span) {
+    const tree = block.inlines;
+    span.list.splice(span.list.indexOf(span.node), 1, modelTextNode(span.node.content));
+    modelInstallInlines(block, tree);
+    return { from: span.start, to: span.end };
+  }
+  if (from >= to) return null;
+  for (const candidate of spans) {
+    if (candidate.end <= from || candidate.start >= to) continue;
+    const kind = candidate.node.kind;
+    if (MODEL_ATOM_KINDS.has(kind) || kind === "hardbreak" || kind === "html") return null;
+  }
+
+  const holder = { kind: "code-holder", children: null };
+  const tree = modelWrapRange(block, from, to, holder);
+  if (!tree) return null;
+  const replace = (list) => {
+    for (let i = 0; i < list.length; i++) {
+      const node = list[i];
+      if (node === holder) {
+        const content = modelInlineText(node.children).replace(/\n/g, " ");
+        if (!content.trim()) return false;
+        const fence = modelCodeSpanFence(content);
+        list[i] = { kind: "code-span", markup: fence.markup, content, raw: fence.raw, token: null, closeToken: null, children: null };
+        return true;
+      }
+      if (node.children && replace(node.children)) return true;
+    }
+    return null;
+  };
+  if (!replace(tree)) return null;
+  if (!modelInlineReadable(tree, md, env)) return null;
+  modelInstallInlines(block, tree);
+  // The span's text is the range's, character for character, and marks take no
+  // room, so the selection the caller had is still the right one.
+  return { from, to };
+}
+
+/**
+ * The link a selection sits in, or null: a caret anywhere inside one, or a
+ * range wholly inside one. `{ node, list, start, end }` in block offsets.
+ */
+function modelLinkAt(block, from, to) {
+  if (!block || !block.inlines) return null;
+  let found = null;
+  (function walk(nodes, offset) {
+    for (const node of nodes) {
+      const length = modelInlineText([node]).length;
+      if (node.children && node.kind === "link" &&
+          offset <= from && to <= offset + length && (from < to || (from > offset && from <= offset + length))) {
+        found = { node, list: nodes, start: offset, end: offset + length };
+      }
+      if (node.children) walk(node.children, offset);
+      offset += length;
+    }
+  })(block.inlines, 0);
+  return found;
+}
+
+// A link's open and close tokens for `href`, from the parser.
+function modelLinkTokens(md, href) {
+  const parsed = md.parseInline("[x](" + modelEscapeLinkDestination(href) + ")", {});
+  const tokens = (parsed[0]?.children || []).filter((token) => !(token.type === "text" && token.content === ""));
+  if (tokens.length !== 3 || tokens[0].type !== "link_open" || tokens[2].type !== "link_close") return null;
+  return { open: modelCloneToken(tokens[0]), close: modelCloneToken(tokens[2]) };
+}
+
+/**
+ * Link… over a selection in one block: `{ from, to }` for the selection after,
+ * or null for a refusal or nothing to do.
+ *
+ * - **Inside a link, a new address retargets it** and an empty one unwraps it.
+ *   A changed address drops the `data-ref-label` stamp and the recorded tail,
+ *   so this one link is written inline and any other link using the label is
+ *   left alone — the decision recorded under the slice.
+ * - **Over a range, the range becomes a link**, any link inside it unwrapped
+ *   first because links cannot nest.
+ * - **At a bare caret the address is inserted as its own link text.**
+ *
+ * The tokens come from the parser, and the parser judges the result.
+ */
+function modelSetLink(block, from, to, href, md, env) {
+  modelUnshare(block);
+  if (!block.inlines) return null;
+  const existing = modelLinkAt(block, from, to);
+  if (existing) {
+    const tree = block.inlines;
+    const node = existing.node;
+    if (!href) {
+      existing.list.splice(existing.list.indexOf(node), 1, ...node.children);
+    } else {
+      if ((node.token.attrGet("href") || "") === href) return null;
+      const token = modelCloneToken(node.token);
+      token.attrSet("href", href);
+      if (Array.isArray(token.attrs)) token.attrs = token.attrs.filter(([name]) => name !== "data-ref-label");
+      node.token = token;
+      node.tail = null;
+      if (node.markup === "autolink") node.markup = "";
+    }
+    if (!modelInlineReadable(tree, md, env)) return null;
+    modelInstallInlines(block, tree);
+    return { from: existing.start, to: existing.start + modelInlineText(node.children).length };
+  }
+  if (!href) return null;
+  const tokens = modelLinkTokens(md, href);
+  if (!tokens) return null;
+  const link = () => ({ kind: "link", markup: "", content: "", token: tokens.open, closeToken: tokens.close, tail: null, children: null });
+
+  if (from === to) {
+    const label = modelTextNode(href);
+    const node = link();
+    node.children = [label];
+    const tree = block.inlines;
+    const at = modelInlineAt(tree, from);
+    if (!at.node) tree.push(node);
+    else {
+      const span = modelInlineLeafSpans(tree).find((candidate) => candidate.node === at.node);
+      const list = span ? span.list : tree;
+      const index = list.indexOf(at.node);
+      if (at.node.kind === "text" && at.offset > 0 && at.offset < at.node.content.length) {
+        list.splice(index, 1, modelTextNode(at.node.content.slice(0, at.offset)), node,
+          modelTextNode(at.node.content.slice(at.offset)));
+      } else list.splice(index + (at.offset > 0 ? 1 : 0), 0, node);
+    }
+    if (!modelInlineReadable(tree, md, env)) return null;
+    modelInstallInlines(block, tree);
+    return { from, to: from + href.length };
+  }
+
+  const tree = modelWrapRange(block, from, to, link(), (node) => node.kind === "link");
+  if (!tree || !modelInlineReadable(tree, md, env)) return null;
+  modelInstallInlines(block, tree);
+  return { from, to };
 }
 
 // ── Structure ────────────────────────────────────────────────────────────────

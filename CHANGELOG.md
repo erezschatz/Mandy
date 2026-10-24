@@ -9284,7 +9284,7 @@ is configured without HTML), an ATX heading's content and a mid-line marker
 are left alone. The sweep that emits every oracle leaf from its tree still
 comes back byte-identical. Nothing reaches a file this way until stage 4.
 
-## 2026-10-24 — The Format menu shows which marks are on
+## 2026-10-24 — `40faa2e` — The Format menu shows which marks are on
 
 The user ran the "Bold, italic and strikethrough" section of
 `tests/fixtures/format-check.md` in Firefox 158.0.1, with no errors, so slice
@@ -9308,3 +9308,44 @@ it. The `format-bar` suite captures the open hook and checks what it stamps.
 bold, for a pending Bold set and taken off again, and for a half-bold
 selection, and the harness passes in both. The fixture gains step 9 for
 Firefox to look at the same. `sw.js`'s `VERSION` goes to `v1.77`.
+
+## 2026-10-24 — Inline code and links are model commands
+
+The user closed slice 7's step 3, and step 4 is built. docs/REWRITE.md records
+that step 9 of the bold/italic/strikethrough protocol, the Format menu's
+checks, was not run separately in Firefox before the close.
+
+Under the model core, Code on the format bar and Insert → Link… with its
+Ctrl/Cmd+K now change the model, where until today they did nothing. Code
+over a range inside one block makes a code span of its text, and inside one
+turns it back. A whole block is step 5's fenced code block and is left alone
+until then. Link… keeps its dialog and its four cases: wrap a selection, insert
+the address at a bare caret, retarget the link the caret is in, or unlink it
+when the address is left empty. A retarget drops the reference stamp, as
+decided under the slice. The dialog is filled from the model's link.
+
+Both are built on one new primitive, `modelWrapRange`. It puts a new container
+around a range, just inside the marks that cover all of it, so a link made
+inside bold text stays inside the bold, and it splits a mark it only partly
+covers. A code span is that container's text made one leaf. The tokens come
+from the parser, and the parser judges every result, links included:
+`modelInlineReadable` compares the text, the marks and each character's link
+address. A code span's backtick run is now computed from its content, so typing
+a backtick into one no longer writes a span that ends early. That was a latent
+bug the plan named.
+
+The spec found a bug that was not this step's. A paragraph whose line ended in
+a space recorded no `leadingAffix`, because markdown-it trims that space from
+the content and the check compared the untrimmed line. So the emitter refused
+such a paragraph on its first edit. The check now also tries the line with its
+trailing whitespace trimmed.
+
+The `model` suite has one case per rule and a sweep that turns a spread of
+ranges in every oracle block into a link and, separately, a code span. The
+parser has to read each back exactly. Switching off the link command's judge
+fails the sweep, so the judge is what keeps the few dozen it refuses out of
+the file. `tests/browser/inline-code-links.spec.mjs` drives the format bar, the
+menu and the dialog in Chromium and WebKit, and the harness passes in both.
+Its helpers are shared with `format-marks.spec.mjs` through a new
+`model-page.mjs`. `tests/fixtures/format-check.md` gains a section for the
+Firefox run, which is still owed. `sw.js`'s `VERSION` goes to `v1.78`.
