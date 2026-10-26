@@ -34,8 +34,10 @@ core
 
 certs
 
-# Claude Code local config
-.claude
+# Claude Code local config, except the Unities hooks, which are part of the work
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
 
 # The stage 2 scratch harness (TODO 3.1). Untracked on purpose: it measures our
 # own render code in a real DOM, which is a harness rather than a check page,

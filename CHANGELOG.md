@@ -8955,6 +8955,27 @@ started. The plan is in `docs/REWRITE.md` under slice 3. The fixture's first
 typing step now says spaces must land where typed. `sw.js`'s `VERSION` goes to
 `v1.72`.
 
+## 2026-10-05 — `1722d17` — Clicking outside the sheet no longer strands the keyboard
+
+**A click on the page beside the document blurred the editor and left typing
+going nowhere.** `#editor` is a measured column, so everything either side of it
+(and below a short document) is `.container`, which is not editable: the click
+moved focus off the editor and every keystroke after it was dropped with nothing
+on screen to say so. Worst on a new document, which has no text to click back
+into. A `mousedown` listener in `app.js` now treats a click on the bare page —
+the root, `body` or `.container` itself, never the chrome, a dialog or the
+outline — as a click into the document: default prevented, editor focused, caret
+at the end.
+
+**The column is now `width: 100%` up to its `68ch` cap.** With the outline open
+`.container` is a grid, and a grid item with `margin: 0 auto` and no width
+shrink-wraps to its content, so an empty document was its 64px of padding and
+grew as you typed. `sw.js` goes to `v1.40`, past the merged-in `v1.39`.
+
+Not covered by any suite: both halves need a real layout engine and a real
+click. To verify, run `npm run serve`, open the outline, start a new tab and
+check the sheet is full column width, then click the margin beside it and type.
+
 ## 2026-10-10 — `233af6a` — A click after a typed equation lands after it
 
 Found by hand in Chrome, in the typing-an-equation step of
@@ -8997,6 +9018,49 @@ the equation, before it and another line did not. **A person is needed for
 Safari again**, and for Chrome on the fixture. `sw.js`'s `VERSION` goes to
 `v1.74`.
 
+## 2026-10-12 — `89610e2` — Open in new tab
+
+**File → Open in new tab… is New and Open as one action.** Opening a file
+without losing the one on screen used to be two: New for a blank tab, then Open
+into it. The new item makes the tab and shows the open dialog in one click, and
+the file picked opens into that tab. **Cancelling the dialog closes the tab
+again**, so backing out of the action leaves the bar as it was rather than
+holding an Untitled tab nobody asked for; a plain Open's cancel closes nothing.
+If the tab cannot be made — a file operation is in flight — the dialog is not
+shown either, since an Open then would replace the document still on screen.
+The item is app-only, like Open, and is disabled with it when the file server
+is down. It has no shortcut: Ctrl+Shift+O is claimed by Chrome's bookmark
+manager and Firefox's Library, and whether either gives it up to a page is
+unmeasured. The `tabs` suite drives both the pick and the cancel. `sw.js` goes
+to `v1.41`.
+
+CLAUDE.md names the new action among the app's file-server items, and its count
+of menu items goes from 30 to 40 — it was already 39 before this, having gone
+stale as items were added.
+
+Not covered by any suite: the dialog in a real browser. To verify, run
+`npm run serve`, open a file, then File → Open in new tab…: pick a file and
+check it opens in a second tab with the first untouched; repeat and press
+Escape, and check the bar is back to the tabs it had.
+
+## 2026-10-12 — `8d20745` — The file dialog stays still while you climb a tree
+
+**The open and save dialog's list is a fixed ten rows high now**, where it used
+to size itself to the directory on screen. The dialog is centred, so every step
+up into a directory with a different number of entries moved the "parent
+directory" row out from under the pointer, and going up four levels meant
+finding it again four times. The list scrolls when a directory holds more than
+fits and leaves blank space when it holds fewer, and it still shrinks on a
+window too short for it. Its scroll offset is reset with each directory, since
+a list that keeps its height also keeps its scroll position, and a long
+directory left scrolled would hide the next one's parent row. Moving the
+pointer back onto the row was the other option, but a page cannot move the
+pointer. `sw.js` goes to `v1.42`.
+
+Not covered by any suite: this is layout. To verify, run `npm run serve`, open
+File → Open… in a directory a few levels deep, and click the parent row
+repeatedly without moving the mouse. Each click should go up one level all the
+way to `/`.
 
 ## 2026-10-13 — `99c0600` — The check pages run under a machine
 
@@ -9071,6 +9135,36 @@ The probe's branch, `claude/heuristic-golick-bcf04e`, joins `rewrite`: the
 measurement in TODO 6.8 and the line in CLAUDE.md, both documentation. Its
 CHANGELOG entry and the Safari deferral's had both been appended at the end of
 the file, and both are kept, in date order.
+
+## 2026-10-19 — `102f738` — Adopt the Unities, as an evaluation
+
+**Work now arrives as a task file in [tasks/](tasks/), and a change to the code
+is refused at commit unless its doc line and its task record come with it** —
+[docs/UNITIES.md](docs/UNITIES.md) carried out, with the rules deliberately
+lenient while it is tried against how this project already works.
+[tasks/adopt-unities.md](tasks/adopt-unities.md) is the full record: what was
+installed, what was left out on purpose, and why.
+
+The 25 open items in docs/TODO.md are now one file each, keeping their numbers
+so every "TODO 3.1" in the code and the docs still names something; the file
+itself is retired in place with its content below a pointer.
+`.claude/hooks/check-unit.mjs` refuses a staged change to `front/` or
+`server/src/` with no doc line or no task file — as a Claude Code `PreToolUse`
+hook on `git commit` and as `.githooks/pre-commit` (`deno task hooks` once per
+clone) — and only reports at the end of a turn, since stopping mid-change to
+ask a design question is how work goes here. A missing test is a note, never a
+refusal. This file stays hand-written and counts as the doc line; compiling it
+from task records at release waits until there is more than one developer or a
+release schedule. CLAUDE.md gains "The Unities" section.
+
+The hook a previous attempt left on 2026-10-18 had never run: it was gitignored,
+and under Deno `node:child_process` also needs `--allow-env`, so every git call
+threw and the Stop hook failed silently on every turn. The new one is
+Deno-native and committed, and refuses at commit if it cannot run at all.
+
+Not covered by any suite: this is tooling. Verified in a scratch clone by
+staging a probe file in `front/` and committing — refused by both hooks, passed
+once a CHANGELOG change and a task file were staged beside it.
 
 ## 2026-10-21 — `b8feba9` — Playwright 1.64.1, and Firefox still does not launch
 
@@ -9670,7 +9764,7 @@ harness passed twice in Chromium and WebKit, each test run twice on six
 workers. Stage 2 closes with this step's Firefox run, minus the table, which
 stays refused until stage 3.
 
-## 2026-10-26 — Stage 2 is closed
+## 2026-10-26 — `9e868a1` — Stage 2 is closed
 
 The user ran slice 7's final hand pass in Firefox 158.0.1, and it was clean:
 the whole of `tests/fixtures/format-check.md` on one open document, the
@@ -9684,3 +9778,36 @@ on the new core, minus typing into a table, which stays refused until stage 3
 as the criterion always said. docs/REWRITE.md records it on the stage line,
 the slice line and the step. Stage 3, the 1.1 items, is next, and the merge to
 `main` is still stage 4's.
+
+## 2026-10-26 — Merge `main`: the Unities, Open in new tab and two fixes reach the branch
+
+`origin/main`'s five commits since the branches last met join `rewrite`: the
+keyboard no longer stranded by a click outside the sheet, the file dialog that
+stays still while a tree is climbed, Open in new tab, and the Unities, adopted on
+`main` on 2026-10-19 as an evaluation. `marky-main`, the worktree holding
+`main`, was fast-forwarded to `origin/main` first.
+
+The Unities retired docs/TODO.md into `tasks/`, one file per item, while this
+branch went on writing to it. So the branch's edits to it since the last merge
+are carried to `tasks/` instead of merged into the retired file, which is left
+exactly as `main` has it. 6.8, the check pages under a machine, and 4.13, a tab
+switch always coming back to the top, were raised here and are new task files,
+their text carried verbatim. 1.1.8's note that a table refuses edits until
+stage 3 goes into `tasks/1.1-formats.md` where the item stands. 1.6, closed by
+3.1's slice 6, keeps its file and gains a "What was done" saying so. 3.1 loses
+1.6 from its unblocks line and gains a "What was done" for stage 2. Links in the
+carried text that were relative to `docs/` point there from `tasks/` now.
+
+Three files conflicted. `.gitignore` takes `main`'s rule that ignores `.claude/`
+except the Unities hooks, and keeps the branch's entry for the stage 2 scratch
+harness. That entry says to delete it, and `front/render-scratch.html`, now that
+stage 2 is closed. That is left for the user to decide, since the file is
+untracked. `sw.js` had `v1.84` here and `v1.42` on `main`, and the merged shell
+is neither, so it takes `v1.85`. This file's two blocks are interleaved by date.
+`main`'s 2026-10-19 entry gets its hash, `102f738`, and the previous entry here
+gets `9e868a1`.
+
+`npm test` passes on the merged tree, and the browser harness passed twice in
+Chromium and WebKit, each test run twice on six workers. From here every commit
+on this branch is checked by the Unities hook: source needs a doc line and a
+task record beside it.

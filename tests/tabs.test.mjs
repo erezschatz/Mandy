@@ -45,7 +45,7 @@ const DIALOG_IDS = [
 // than racing it.
 function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   quiet = false, hold = null, disk = new Map(), fakeTimers = false,
-  failRender = false, answers = [] } = {}) {
+  failRender = false, answers = [], entries = [] } = {}) {
   const store = new Map();
   for (const [key, value] of Object.entries(seed)) store.set(key, value);
   // Every localStorage write, in order. Park and adopt must add none of their
@@ -172,7 +172,7 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
           };
         }
         if (url.startsWith("/api/browse")) {
-          return { ok: true, json: async () => ({ path: HOME, parent: null, entries: [] }) };
+          return { ok: true, json: async () => ({ path: HOME, parent: null, entries }) };
         }
         return { ok: true, json: async () => ({ home: HOME }), text: async () => "" };
       },
@@ -272,6 +272,16 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       for (const fn of listeners[event] || []) fn(arg);
     },
     asked,
+    // A click on a file in the open dialog. The name is in a child span, and
+    // the stub's innerHTML = "" does not empty `children`, so rows pile up
+    // across showings -- hence the last match.
+    pick: async (name) => {
+      const row = extra.get("dialogEntries").children
+        .filter((n) => (n.children || []).some((c) => c.textContent === name))
+        .at(-1);
+      if (!row) throw new Error(`no dialog row for ${name}`);
+      await row.listeners.click[0]();
+    },
     // What a click on the bar looks like: the listener is delegated onto the
     // strip and reads event.target, so the target is the thing under the mouse
     // rather than the thing the handler acts on.
@@ -1298,6 +1308,52 @@ export default async function run(check) {
     // clear is a fresh one that never had a file.
     check("the old association went with the tab it belongs to",
       app.tabRecord(1).file.currentFilePath === "/home/x/notes/plan.md");
+  }
+
+  // --- Open in new tab ------------------------------------------------------
+
+  // New then Open as one action: the tab is made first, so the dialog's Open
+  // fills it rather than replacing the document the action was called from.
+  {
+    const app = boot({
+      withTabs: true, seed: LEGACY,
+      entries: [{ name: "f.md", isDir: false }],
+      disk: new Map([[`${HOME}/f.md`, "hi\n"]]),
+    });
+    await app.runToolbarAction("open-file-tab");
+    check("Open in new tab makes a tab and shows the open dialog",
+      same(app.tabIds(), [1, 2]) && app.activeTab() === 2 &&
+        app.fileOperationInFlight() === true);
+
+    await app.pick("f.md");
+    // The row click starts openFile without awaiting it.
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    check("the picked file opens into the new tab",
+      app.tabIds().length === 2 && app.label() === "f.md");
+    check("and the document it was called from keeps its own",
+      app.tabRecord(1).file.currentFilePath === "/home/x/notes/plan.md");
+  }
+
+  // Backing out of the dialog backs out of the whole action, so the bar is left
+  // as it was rather than holding an Untitled tab nobody asked for.
+  {
+    const app = boot({ withTabs: true, seed: LEGACY });
+    await app.runToolbarAction("open-file-tab");
+    app.closeDialog();
+    check("cancelling the dialog closes the tab it made",
+      same(app.tabIds(), [1]) && app.activeTab() === 1);
+    check("and puts back the document it was called from",
+      /^plan\.md\b/.test(app.label()) && app.tabsSwitchAllowed() === true);
+  }
+
+  // A plain Open's cancel must not close anything: the tab it is in was not
+  // made for it.
+  {
+    const app = boot({ withTabs: true, seed: LEGACY });
+    app.newTab();
+    await app.showOpenDialog();
+    app.closeDialog();
+    check("cancelling a plain Open leaves every tab alone", same(app.tabIds(), [1, 2]));
   }
 
   // --- stage 5: the document with no list ---------------------------------

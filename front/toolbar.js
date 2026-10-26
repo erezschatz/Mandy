@@ -55,6 +55,9 @@ const TOOLBAR_MENUS = [
     { id: "newBtn", action: "new", label: "New document", variants: ALL },
     { separator: true, variants: ALL },
     { id: "openBtn", action: "open-file", label: "Open\u2026", shortcut: "Ctrl+O", variants: ["app"] },
+    // No shortcut: Ctrl+Shift+O is the bookmark manager in Chrome and the
+    // Library in Firefox, and nobody has measured whether either lets it go.
+    { action: "open-file-tab", label: "Open in new tab\u2026", variants: ["app"] },
     { action: "reload-file", label: "Reload from disk", variants: ["app"] },
     { id: "uploadBtn", action: "upload-md", label: "Open\u2026", shortcut: "Ctrl+O", variants: ["export"] },
     { separator: true, variants: ALL },
