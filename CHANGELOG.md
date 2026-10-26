@@ -9630,7 +9630,7 @@ the new section in `tests/fixtures/format-check.md` is still owed. It is also
 the real answer to whether a menu click may write the clipboard without a
 prompt. `sw.js`'s `VERSION` goes to `v1.84`.
 
-## 2026-10-26 — Slice 7's keys and clipboard step is closed
+## 2026-10-26 — `b6f1ce0` — Slice 7's keys and clipboard step is closed
 
 The user ran the "The keys and the clipboard" section of
 `tests/fixtures/format-check.md` in Firefox 158.0.1, and every step was clean.
@@ -9640,3 +9640,32 @@ word back. Chromium and WebKit run the section by machine and Safari's run
 waits for stage 5, so step 8 is done and tested. Step 9, the hand pass over the
 whole of slice 7, is the last of the slice and of stage 2's build.
 docs/REWRITE.md records the run on the stage line, the slice line and the step.
+
+## 2026-10-26 — Slice 7's final hand pass is planned
+
+Step 9 is planned in docs/REWRITE.md. Every earlier step had its own run, each
+section on its own and undone step by step. This pass uses the slice as a
+person does: the whole of `tests/fixtures/format-check.md` top to bottom on one
+open document, in Firefox. It ends in a new section, "Everything together",
+for the plan's items no section had: formats combined on one word, a numbered
+list switched back to bullets, a reference link retargeted, and a Save As and
+reopen of what the pass leaves. `front/input-check.html` gains the keyboard
+step TODO 1.7 wanted. A second listener, after the handler, logs whether
+Ctrl/Cmd+B or I was taken from the browser. A red line means it was not. The
+step before it no longer says the formats do nothing under the model core.
+
+The plan narrows one thing on purpose. It named a hand pass in Chrome too,
+written when nothing else could run there. Every section now has a spec in
+Playwright's Chromium, which is Blink, and since 2026-10-17 a person runs only
+what a machine cannot. So the hand pass is Firefox's, and Safari's waits for
+stage 5.
+
+`tests/browser/final-pass.spec.mjs` drives the new section's items in Chromium
+and WebKit, and checks that `input-check.html`'s new step reports the key as
+taken before a person relies on it. Adding a reference definition to the fixture
+broke two `equation-typing` checks. The old core's save path collects every
+definition at the end of the file, so "the file ends with what was typed" now
+reads past it. Those checks set the collected definitions aside. The whole
+harness passed twice in Chromium and WebKit, each test run twice on six
+workers. Stage 2 closes with this step's Firefox run, minus the table, which
+stays refused until stage 3.

@@ -89,7 +89,11 @@ async function shown(page, id) {
 const equations = (page, id) =>
   page.locator(`#editor [data-block="${id}"] mjx-container`);
 
-const saved = (page) => page.evaluate(() => htmlToMarkdown(editor.innerHTML));
+// What the save path writes, without the reference definitions it collects at
+// the end of the file wherever the source put them — so "the document's last
+// lines" are the last lines the steps typed, whatever the fixture defines.
+const saved = (page) => page.evaluate(() => htmlToMarkdown(editor.innerHTML)
+  .replace(/(\n\[[^\]\n]+\]:[^\n]*)+\n*$/, "\n"));
 
 test("1. an equation forms at the space after it, and typing carries on", async ({ page }) => {
   const id = await newParagraph(page);

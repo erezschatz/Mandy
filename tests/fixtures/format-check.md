@@ -8,8 +8,8 @@ It grows with TODO 3.1's slice 7: each step that needs a person adds its
 section here. Today it holds seven: keeping equations typeset (step 2), typing
 one (step 10), bold, italic and strikethrough (step 3), inline code and links
 (step 4), paragraphs, headings and the code block (step 5), lists (step 6), the
-rule, the table of contents and Clear (step 7), and the keys and the clipboard
-(step 8). (It held diagrams
+rule, the table of contents and Clear (step 7), the keys and the clipboard
+(step 8), and everything together (step 9). (It held diagrams
 too until Mermaid was removed on 2026-10-01.)
 
 Chromium and WebKit run the last seven sections by machine
@@ -409,6 +409,43 @@ Paste here:
    at the end of "Paste here:" and press Ctrl/Cmd+V.** *`gamma` appears there.*
 5. **Press Ctrl/Cmd+Z after any of the above.** *That change goes, in one
    press.*
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors.*
+
+## Everything together (step 9)
+
+The last pass of slice 7. **Run this whole file top to bottom on one open
+document first**, undoing only where a step says so, so the formats meet the
+way they do in real use. Then this section, for what no section above has done.
+
+The paragraphs to work on:
+
+A word to dress up here.
+
+1. first number
+2. second number
+
+Read the [field notes][notes] first.
+
+[notes]: https://example.org/notes
+
+1. **Double-click `dress`, press Ctrl/Cmd+B, then Ctrl/Cmd+I, then choose
+   Format → Strikethrough.** *`dress` is bold, italic and struck through at
+   once.* **Open the Format menu.** *Bold, Italic and Strikethrough all have
+   a check.* (Close the menu with Escape.)
+2. **Double-click `word` in the same line and press Code on the format bar.**
+   *It becomes a code span, and `dress` keeps all three of its marks.*
+3. **Click in "first number" and choose Format → Bullet list.** *Both numbered
+   items become bullets.*
+4. **Click in "field notes" and press Ctrl/Cmd+K.** *The dialog says Edit link
+   and holds `https://example.org/notes`.* **Change it to
+   `https://example.org/elsewhere` and press Update.** *The link still reads
+   "field notes", and Ctrl/Cmd+click goes to the new address.*
+5. **Save As to a scratch name** (never over this file), **then open the
+   scratch file.** *Everything you did in this whole pass comes back as you
+   left it*: the marks, the code, the lists, the links, the headings, and every
+   equation typeset. **Delete the scratch file afterwards.**
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors.*

@@ -4686,6 +4686,38 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             measurement** — Gecko on macOS gave the key to its bookmarks sidebar
             on 2026-09-10 — and no script can answer it.
 
+            **Planned 2026-10-26, now that steps 1 to 8 and 10 have each had
+            their own run.** Every one of those runs took its section on its
+            own and undid each step before the next. What none of them did was
+            use the slice as a person does, one document and one sitting, with
+            everything left in place and the formats meeting. So this pass is
+            that, and four things:
+
+            1.  **Firefox, the whole of `tests/fixtures/format-check.md`, top to
+                bottom on one open document**, undoing only where a step says
+                so, and then a new last section, **"Everything together (step
+                9)"**, for the plan's items no section has yet: formats combined
+                on one word, a numbered list switched back to bullets, a
+                reference link retargeted, and a Save As and reopen of the
+                document as the pass leaves it. That last one goes through the
+                old core's save path, which is what anyone using the branch gets
+                until stage 4, so it is the check that nothing the model core
+                drew is lost on the way to a file.
+            2.  **Firefox, `front/input-check.html`'s new keyboard step**, TODO
+                1.7's measurement: the page logs whether Ctrl/Cmd+B's keydown
+                arrived and whether it was taken from the browser.
+            3.  **By machine, `tests/browser/final-pass.spec.mjs`** for the new
+                section's items in Chromium and WebKit, and the whole harness.
+            4.  **Not Chrome by hand, which narrows the plan.** It was named
+                because nothing else could run there when this was written.
+                Every section now has a spec that runs in Playwright's Chromium,
+                which is Blink, so a Chrome hand pass would repeat what a
+                machine already checks, and the rule since 2026-10-17 is that a
+                person runs only what a machine cannot. Safari is stage 5's.
+
+            **Stage 2 closes with this step**, minus the table, which stays
+            refused until stage 3 as the criterion always said.
+
         10. **Equations by typing — planned 2026-10-01; done and tested.
             By machine since 2026-10-03, and in Playwright's Chromium and
             WebKit since 2026-10-21; by hand in Firefox 158.0.1 on 2026-10-24,
