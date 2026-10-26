@@ -341,7 +341,9 @@ Plain line two
    the list as a plain paragraph, and the bullets above and below it stay
    bullets.* (Undo it.)
 4. **Click in "second bullet" and choose Format → Numbered list.** *All three
-   become numbered, 1 to 3.* (Undo it.)
+   become numbered and join the numbered list of steps below them*, because to
+   markdown a numbered list right after another one is the same list. (Undo
+   it.) Until 2026-10-26 this was refused with a notice instead.
 5. **Click in a heading and choose Format → Bullet list.** *A message says to
    select paragraphs or items of one list, and nothing changes.*
 6. **Press Ctrl/Cmd+Z after any of the above.** *That change goes, in one

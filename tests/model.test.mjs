@@ -93,6 +93,7 @@ export default function run(check) {
     modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState,
     modelSetHeading, modelMakeFence, modelUnfence, modelPlainText,
     modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered,
+    modelJoinAdjacentList,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -121,7 +122,8 @@ export default function run(check) {
       " modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState," +
       " modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState," +
       " modelSetHeading, modelMakeFence, modelUnfence, modelPlainText," +
-      " modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered };",
+      " modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered," +
+      " modelJoinAdjacentList };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -4364,6 +4366,11 @@ export default function run(check) {
     check("switching a list switches every one of its items, and leaves a nested list alone",
       listEdit("- a\n- b\n  - nested\n", (d, l, lists) => modelSwitchList(d, lists[0], true, md) && lists[0]).out ===
         "1. a\n2. b\n   - nested\n");
+    check("a switched list beside a list of its new kind joins it, and the numbers it joined stay as written",
+      listEdit("- a\n- b\n\n1. x\n1. y\n", (d, l, lists) => {
+        modelSwitchList(d, lists[0], true, md);
+        return modelJoinAdjacentList(d, lists[0], md, true);
+      }).out === "1. a\n1. b\n\n1. x\n1. y\n");
     check("and a wider marker moves what is under it",
       listEdit("- a\n\n  more\n- b\n", (d, l, lists) => modelSwitchList(d, lists[0], true, md) && lists[0]).out ===
         "1. a\n\n   more\n2. b\n");

@@ -1856,7 +1856,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     links, is done and tested the same day, by machine and by hand in Firefox;
     step 5, paragraphs, headings and the code block, is done and tested, by
     machine and by hand in Firefox on 2026-10-26; step 6, lists, is done and
-    tested by machine the same day and waits on its Firefox run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    tested by machine the same day, and its Firefox run is clean but for one
+    step, since fixed, which wants a second look. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3755,8 +3756,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         is done and tested the same day, by machine and by hand in Firefox.
         Step 5, paragraphs, headings and the code block, is done and tested,
         by machine on 2026-10-24 and by hand in Firefox 158.0.1 on 2026-10-26.
-        Step 6, lists, is done and tested by machine on 2026-10-26 and waits on
-        its Firefox run.** Every control that edits the
+        Step 6, lists, is done and tested by machine on 2026-10-26 and run by
+        hand in Firefox the same day; one step, since fixed, wants a second
+        look.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4440,7 +4442,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             carry the marker. `modelMakeFence` puts it back.
 
         6.  **Lists: bullet and numbered — done and tested by machine
-            2026-10-26; waiting on its hand run in Firefox.** Wrapping contiguous sibling blocks
+            2026-10-26; run by hand in Firefox 158.0.1 the same day, clean
+            but for one step, since fixed, which wants a second look.** Wrapping contiguous sibling blocks
             makes one list with one item each. The marker is the one the
             document uses at that depth, falling back to the sniff, and
             numbering starts at 1 or follows the document's all-`1.` habit.
@@ -4517,6 +4520,18 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             the item's marker in front of the list's. That is refused on
             purpose, and the input layer never asks: a paragraph in an item
             takes the unwrap-or-switch path.
+
+            **The Firefox run found the fifth**, and it was not Firefox's: in
+            `format-check.md` the bullet list sits above the protocol's own
+            numbered list, and switching the bullets to numbers made the two
+            one list to the parser. The settle step saw a different shape and
+            refused, with a notice that said nothing about why. **A switched
+            list now joins its neighbour**, as a wrapped one already did. It
+            keeps the separator the author wrote between the two, blank line
+            and all, so the joined list is loose, which is what the file says.
+            Only the switched list's own items are renumbered: markdown takes
+            a list's numbering from its first item, so the items it joins keep
+            their numbers as written. The spec now has this case.
 
         7.  **Insert and Clear.** **The rule** splits the block at the caret and
             puts an `hr` between the two halves, spelt the way the document

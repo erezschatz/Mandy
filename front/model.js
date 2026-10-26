@@ -4462,13 +4462,22 @@ function modelListsJoin(a, b) {
 
 // Join a list to the list just before it and the one just after it, where they
 // would read as one, and hand back the list that holds the items.
-function modelJoinAdjacentList(doc, list, md) {
+//
+// `keep` keeps the separator that was between them in the file, blank line and
+// all, so a list switched to sit beside another leaves the author's bytes
+// alone — the joined list is then loose, which is what the file says. Without
+// it the join is tight, which is right for a list just made by wrapping, the
+// way a new item joins the list it is added to.
+function modelJoinAdjacentList(doc, list, md, keep = false) {
   let host = list;
+  const moved = list.children.slice();
+  let offset = 0;
   const siblings = modelSiblings(doc, list);
   const at = siblings.indexOf(list);
   const before = at > 0 ? siblings[at - 1] : null;
   if (modelListsJoin(before, list)) {
-    const between = modelSiblingSeparator(doc, before.children[0]) ?? "\n";
+    offset = before.children.length;
+    const between = keep ? before.separator : modelSiblingSeparator(doc, before.children[0]) ?? "\n";
     before.children[before.children.length - 1].separator = between;
     for (const item of list.children) {
       item.parent = before;
@@ -4481,7 +4490,7 @@ function modelJoinAdjacentList(doc, list, md) {
   const index = siblings.indexOf(host);
   const after = siblings[index + 1];
   if (modelListsJoin(host, after)) {
-    const between = modelSiblingSeparator(doc, host.children[0]) ?? "\n";
+    const between = keep ? host.separator : modelSiblingSeparator(doc, host.children[0]) ?? "\n";
     host.children[host.children.length - 1].separator = between;
     for (const item of after.children) {
       item.parent = host;
@@ -4490,14 +4499,16 @@ function modelJoinAdjacentList(doc, list, md) {
     host.separator = after.separator;
     siblings.splice(index + 1, 1);
   }
-  if (host !== list) {
-    // Numbering carries on from the list it joined, unless the document
-    // writes every number as 1.
-    if (modelListOrdered(host)) {
+  if (host !== list || host.children.length !== moved.length) {
+    // Numbering carries on from a list this one joined the end of, unless the
+    // document writes every number as 1. **Only this list's own items are
+    // renumbered**: markdown takes a list's numbering from its first item, so
+    // the numbers on the items it joined are left exactly as written.
+    if (modelListOrdered(host) && offset) {
       const style = modelListStyle(doc, true);
-      host.children.forEach((item, i) => {
+      moved.forEach((item, i) => {
         const lead = /^[ \t]*/.exec(item.marker || "")[0];
-        const marker = lead + modelListMarker(style, true, i);
+        const marker = lead + modelListMarker(style, true, offset + i);
         if (marker === item.marker) return;
         const leaves = modelFlatten({ blocks: item.children || [] }).filter((node) => !node.children);
         const extras = new Map(leaves.map((leaf) => [leaf, modelBlockExtra(leaf)]));
@@ -4507,7 +4518,9 @@ function modelJoinAdjacentList(doc, list, md) {
         for (const child of item.children || []) modelShiftUnder(child, columns, extras);
       });
     }
-    for (const item of host.children) modelTouch(item);
+    // The items that moved, and the list itself; the ones it joined keep their
+    // bytes.
+    for (const item of moved) modelTouch(item);
     modelTouch(host);
   }
   return host;

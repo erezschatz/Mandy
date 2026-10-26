@@ -57,6 +57,21 @@ test("Numbered list in a bullet switches the whole list", async ({ page }) => {
   expect(await markdown(page)).toBe("1. a\n2. b\n3. c\n");
 });
 
+// Found by the Firefox hand run on 2026-10-26, and not Firefox's: the fixture's
+// bullet list sits above a numbered list, and once switched the two are one
+// list to the parser. The switch was refused, with a message that said
+// nothing about why; it now joins the list below, as markdown reads it.
+test("a switched list beside a numbered list joins it", async ({ page }) => {
+  await open(page, "- a\n- b\n\n1. x\n1. y\n");
+  await page.locator("#editor li").first().click();
+  await menu(page, "ol");
+  await expect(page.locator("#editor ol")).toHaveCount(1);
+  await expect(page.locator("#editor ol li")).toHaveCount(4);
+  // Numbered 1 and 1: the list it joins writes every number as 1, and new
+  // numbering follows the document's habit.
+  expect(await markdown(page)).toBe("1. a\n1. b\n\n1. x\n1. y\n");
+});
+
 test("a heading cannot go into a list, and says so", async ({ page }) => {
   await open(page, "# Title\n");
   await page.locator("#editor h1").click();

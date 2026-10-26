@@ -9463,7 +9463,7 @@ Chromium and WebKit run it by machine and Safari's run waits for stage 5, so
 step 5 is done and tested. Step 6, bullet and numbered lists, is next.
 docs/REWRITE.md records the run on the stage line, the slice line and the step.
 
-## 2026-10-26 — Bullet and numbered lists are model commands
+## 2026-10-26 — `4e36da7` — Bullet and numbered lists are model commands
 
 Slice 7's step 6. Under the model core, Bullet list and Numbered list, from the
 Format menu or the bar at a line's start, now change the model. What they do
@@ -9501,3 +9501,25 @@ could land in the undo history. It now waits for startup to finish. The whole
 harness then passed three times in a row in both engines, each test run twice,
 on six workers. `tests/fixtures/format-check.md` gains a section for the
 Firefox run, which is still owed. `sw.js`'s `VERSION` goes to `v1.81`.
+
+## 2026-10-26 — A list switched beside another list joins it
+
+The user ran the "Lists" section of `tests/fixtures/format-check.md` in
+Firefox 158.0.1. Every step was clean but one. Choosing Numbered list in a
+bullet was refused with "Select paragraphs, or items of one list, to make a
+list." That was not Firefox's. In the fixture the bullet list sits above the
+protocol's own numbered list, and once switched, the two are one list to the
+parser. The settle step saw a different shape and refused, with a notice that
+said nothing about why. The spec missed it because its document had no list
+beside the one it switched.
+
+A switched list now joins its neighbour, as a list made by wrapping already
+did. It keeps the separator the author wrote between the two, blank line and
+all, so the joined list is loose, which is what the file says; a wrapped list
+still joins tight, the way a new item does. Only the switched list's own items
+are renumbered. Markdown takes a list's numbering from its first item, so the
+items it joins keep their numbers as written, and new numbering follows the
+document's all-`1.` habit. The `model` suite and `lists.spec.mjs` have the
+case. The harness passed in Chromium and WebKit twice, each test run twice on
+six workers. The fixture's step says what now happens. The step wants a second
+Firefox look before step 6 is closed.

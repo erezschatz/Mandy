@@ -468,7 +468,9 @@ function modelInputList(ordered) {
         const moved = modelUnwrapItems(d, target, chosen.map((item) => modelBlockById(d, item.id)), md);
         return moved && moved[0];
       }
-      return modelSwitchList(d, target, ordered, md, fallback) ? target : null;
+      // A switched list beside a list of its new kind is one list to the
+      // parser, so it joins it, the way a new list does.
+      return modelSwitchList(d, target, ordered, md, fallback) ? modelJoinAdjacentList(d, target, md, true) : null;
     };
   } else if (leaves.every((leaf) => leaf.kind === "paragraph")) {
     run = (d) => modelWrapList(d, leaves.map((leaf) => modelBlockById(d, leaf.id)), ordered, md, fallback);
