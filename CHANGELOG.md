@@ -9641,7 +9641,7 @@ waits for stage 5, so step 8 is done and tested. Step 9, the hand pass over the
 whole of slice 7, is the last of the slice and of stage 2's build.
 docs/REWRITE.md records the run on the stage line, the slice line and the step.
 
-## 2026-10-26 — Slice 7's final hand pass is planned
+## 2026-10-26 — `df075ea` — Slice 7's final hand pass is planned
 
 Step 9 is planned in docs/REWRITE.md. Every earlier step had its own run, each
 section on its own and undone step by step. This pass uses the slice as a
@@ -9669,3 +9669,18 @@ reads past it. Those checks set the collected definitions aside. The whole
 harness passed twice in Chromium and WebKit, each test run twice on six
 workers. Stage 2 closes with this step's Firefox run, minus the table, which
 stays refused until stage 3.
+
+## 2026-10-26 — Stage 2 is closed
+
+The user ran slice 7's final hand pass in Firefox 158.0.1, and it was clean:
+the whole of `tests/fixtures/format-check.md` on one open document, the
+"Everything together" section, and the Save As and reopen that checks nothing
+the model core drew is lost on the way to a file. `front/input-check.html`'s
+new keyboard step reported Cmd+B and Cmd+I taken from the browser, with no
+bookmarks sidebar. That is TODO 1.7's own measurement for the model core.
+
+So slice 7 is done and tested, and with it stage 2: everything the app does,
+on the new core, minus typing into a table, which stays refused until stage 3
+as the criterion always said. docs/REWRITE.md records it on the stage line,
+the slice line and the step. Stage 3, the 1.1 items, is next, and the merge to
+`main` is still stage 4's.

@@ -1845,7 +1845,11 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     [DECISIONS.md](DECISIONS.md)** is there because this sentence used to claim
     the second thing, and slice 2 opens by moving two rules out of `app.js` on
     the strength of it.
-*   **2. Core to parity — in progress; planned 2026-09-18, started 2026-09-20.**
+*   **2. Core to parity — done and tested 2026-10-26, minus the table, as the
+    criterion always said; planned 2026-09-18, started 2026-09-20.** Slice 7's
+    final hand pass in Firefox 158.0.1 was clean, everything together on one
+    document, the save and reopen included, and TODO 1.7's keyboard
+    measurement with it. The history of how it got there follows.
     Slices 1 to 6 of seven are done and tested, slices 4 to 6 driven by hand
     in all three engines; slice 7, the formats, is in progress, planned
     2026-09-28 with steps 1 and 2 of nine done and tested, step 2 by hand in all
@@ -3744,7 +3748,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         here but a state carrying the wrong caret, fixed in both cores — and
         TODO 1.6 has left TODO.md.
 
-    *   **7. Formats, the keyboard, and the renderers — in progress; planned
+    *   **7. Formats, the keyboard, and the renderers — done and tested
+        2026-10-26, closing stage 2. Planned
         2026-09-28 before any of it was built. Step 1 is done and tested the
         same day; step 2 is done and tested, by machine on 2026-09-29 and by
         hand in all three engines on 2026-10-03, copy and cut included. Step
@@ -4672,7 +4677,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             clipboard without a prompt, is answered for real by the Firefox
             run.
 
-        9.  **By hand, in Chrome and Firefox**, and in WebKit by machine —
+        9.  **Done and tested 2026-10-26**: the whole protocol on one document
+            in Firefox 158.0.1, clean, the save and reopen included, and
+            `input-check.html`'s keyboard step reporting both keys taken from
+            the browser with no bookmarks sidebar. **By hand, in Chrome and Firefox**, and in WebKit by machine —
             Safari's own run moved to stage 5 on 2026-10-17. A fixture document,
             `tests/fixtures/format-check.md`, with the protocol and the text to
             run it on in one file, the way `undo-check.md` does it: every format
