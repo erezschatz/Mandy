@@ -5,15 +5,16 @@ app, follow the steps, and edit the paragraphs written for each one. **Bold** is
 what you do; *italics* is what should (or should not) happen.
 
 It grows with TODO 3.1's slice 7: each step that needs a person adds its
-section here. Today it holds six: keeping equations typeset (step 2), typing
+section here. Today it holds seven: keeping equations typeset (step 2), typing
 one (step 10), bold, italic and strikethrough (step 3), inline code and links
-(step 4), paragraphs, headings and the code block (step 5), and lists (step 6). (It held diagrams
+(step 4), paragraphs, headings and the code block (step 5), lists (step 6), and
+the rule, the table of contents and Clear (step 7). (It held diagrams
 too until Mermaid was removed on 2026-10-01.)
 
-Chromium and WebKit run the last five sections by machine
+Chromium and WebKit run the last six sections by machine
 (`tests/browser/equation-typing.spec.mjs`, `format-marks.spec.mjs`,
-`inline-code-links.spec.mjs`, `block-kinds.spec.mjs` and `lists.spec.mjs`), so
-a hand run of those is Firefox's. Safari's waits for stage 5.
+`inline-code-links.spec.mjs`, `block-kinds.spec.mjs`, `lists.spec.mjs` and
+`insert-clear.spec.mjs`), so a hand run of those is Firefox's. Safari's waits for stage 5.
 
 ## Before you start
 
@@ -348,6 +349,32 @@ Plain line two
    select paragraphs or items of one list, and nothing changes.*
 6. **Press Ctrl/Cmd+Z after any of the above.** *That change goes, in one
    press.*
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors*, with the known Firefox exception from "Before you start".
+
+## The rule, the table of contents and Clear (step 7)
+
+Insert → Horizontal rule, Insert → Table of contents, and Edit → Clear
+document. This section uses the whole file, so undo each step before the next.
+
+The paragraph to work on:
+
+Alpha beta gamma
+
+- a bullet for the rule
+
+1. **Click between `beta` and `gamma` in "Alpha beta gamma" and choose Insert →
+   Horizontal rule.** *A rule appears there, splitting the line in two.*
+   (Undo it.)
+2. **Put the caret at the very start of "a bullet for the rule" and choose
+   Insert → Horizontal rule.** *A message says a rule cannot go at the start of
+   a list item, and nothing changes.*
+3. **Click in this section's heading and choose Insert → Table of contents.**
+   *A nested list of this file's headings appears under the heading, and each
+   entry Ctrl/Cmd+clicks to its heading.* (Undo it.)
+4. **Choose Edit → Clear document.** *The whole document empties.* **Press
+   Ctrl/Cmd+Z.** *All of it comes back, in one press.*
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors*, with the known Firefox exception from "Before you start".

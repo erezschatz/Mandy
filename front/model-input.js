@@ -490,6 +490,84 @@ function modelInputList(ordered) {
   return true;
 }
 
+// ── Insert and Clear ─────────────────────────────────────────────────────────
+//
+// Slice 7's step 7. Each structural insertion runs on a fork first and asks
+// the parser through the same shape check the lists use, so what would read
+// as something else — a rule under a line of text is a setext underline — is
+// refused before the live document is touched. `run(doc)` does the edit on
+// the document it is given and hands back `{ block, at }`: a block to check
+// around, and where the caret goes.
+function modelInputGuarded(run, inputType) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const trial = modelForkDocument(doc);
+  const tried = run(trial);
+  if (!tried || !modelSettleShape(trial, tried.block, md)) return false;
+  const done = run(doc);
+  if (!done || !modelSettleShape(doc, done.block, md)) return false;
+  modelPendingMarks = null;
+  modelEnsureBlock(doc, md);
+  modelRender(editor, doc, md, done.at);
+  modelInputAnnounce(inputType);
+  return true;
+}
+
+/**
+ * Insert → Horizontal rule: a rule at the caret, splitting the block there. A
+ * selection is not replaced — the rule goes in at its start — because the
+ * deletion that would take the selection out has to happen on the fork as
+ * well, and a rule over a selection is rare enough not to earn that.
+ */
+function modelInputRule() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at || !at.block.inlines) return true;
+  const fallback = typeof markdownStyle === "object" && markdownStyle ? markdownStyle.hr : undefined;
+  const ok = modelInputGuarded((d) => {
+    const block = modelBlockById(d, at.block.id);
+    const made = block && modelInsertRule(d, block, at.offset, md, fallback);
+    return made && { block: made.rule, at: made.at };
+  }, "insertHorizontalRule");
+  // The one place it is refused in practice: the start of a bullet, where the
+  // bullet would be left empty and the rule read as outside the list.
+  if (!ok && typeof notify === "function") {
+    const opening = at.offset === 0 && modelItemAffix(at.block);
+    notify(opening && opening.first ? "A rule cannot go at the start of a list item." : "A rule cannot go there.",
+      { severity: "info" });
+  }
+  return true;
+}
+
+/**
+ * Insert → Table of contents: `markdown`, which outline.js builds from its own
+ * nested list, goes in after the caret's top-level block, or at the start of
+ * the document when the caret is not in it.
+ */
+function modelInputToc(markdown) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  return modelInputGuarded((d) => {
+    const block = at ? modelBlockById(d, at.block.id) : null;
+    const first = modelInsertAfter(d, block, modelParse(markdown, md).blocks);
+    const caret = at && block ? { block, offset: at.offset } : null;
+    return first && { block: first, at: caret };
+  }, "insertFromPaste");
+}
+
+// Edit → Clear document: everything gone, one ordinary undo step.
+function modelInputClear() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const paragraph = modelClearDocument(doc, md);
+  modelPendingMarks = null;
+  modelRender(editor, doc, md, paragraph ? { block: paragraph, offset: 0 } : null);
+  modelInputAnnounce("deleteContent");
+  return true;
+}
+
 const MODEL_BLOCK_LEVELS = { p: 0, h1: 1, h2: 2, h3: 3, h4: 4, h5: 5, h6: 6 };
 
 /**

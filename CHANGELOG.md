@@ -9532,7 +9532,7 @@ the app before could have gone on serving the old copies from its cache, and a
 Firefox re-check of the fix would have tested the code it replaced. `VERSION`
 goes to `v1.82`.
 
-## 2026-10-26 — Slice 7's lists step is closed
+## 2026-10-26 — `3cbb0ec` — Slice 7's lists step is closed
 
 The user looked at the fixed step again in Firefox 158.0.1, and the whole
 "Lists" section of `tests/fixtures/format-check.md` is clean. Chromium and
@@ -9540,3 +9540,39 @@ WebKit run it by machine and Safari's run waits for stage 5, so step 6 is done
 and tested. Step 7, the horizontal rule, the table of contents and Clear, is
 next. docs/REWRITE.md records the run on the stage line, the slice line and the
 step.
+
+## 2026-10-26 — The rule, the table of contents and Clear are model commands
+
+Slice 7's step 7. Under the model core, Insert → Horizontal rule, Insert →
+Table of contents and Edit → Clear document now change the model, where until
+today they did nothing.
+
+`modelInsertRule` puts a rule in at the caret through the paste pipeline, which
+splits the block. The rule is spelt the way the document already writes one,
+always has a blank line above it so it cannot read as a setext underline, and
+keeps a paragraph after it for the caret when it is last, since
+`modelEnsureBlock` now treats a rule the way it treats a table. A selection is
+not replaced; the rule goes in at its start. `modelInsertAfter` puts the table
+of contents in after the caret's top-level block. That is what the old core
+did, and it narrows the plan, which would have nested it in a list item the
+caret was in. The list is outline.js's own, through the conversion a save of it
+already makes. `modelClearDocument` empties the document to the one paragraph a
+caret needs. That is what Backspace over everything would leave, by a route
+that cannot be refused by a table or a fence. All three are one undo step. The
+rule and the table of contents run on a fork first, through the shape check the
+lists use.
+
+The sweep found three things. A rule's split has to be trimmed at the cut, line
+breaks included, because the paste pipeline keeps whitespace there for halves
+that rejoin. The empty paragraph the model keeps for a caret writes nothing, so
+the shape check now leaves it out. And a rule at the start of a bullet would
+leave the bullet empty, so it is refused with a notice that says so. That case
+is nearly all the sweep's refusals.
+
+The `model` suite puts a rule at the start, middle and end of every paragraph
+in the oracle, and a table of contents after every top-level block, and each
+has to render as the parser reads it back. There is one case per rule.
+`tests/browser/insert-clear.spec.mjs` drives the menus in Chromium and WebKit,
+and the whole harness passed twice, each test run twice on six workers.
+`tests/fixtures/format-check.md` gains a section for the Firefox run, which is
+still owed. `sw.js`'s `VERSION` goes to `v1.83`.

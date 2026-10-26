@@ -93,7 +93,7 @@ export default function run(check) {
     modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState,
     modelSetHeading, modelMakeFence, modelUnfence, modelPlainText,
     modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered,
-    modelJoinAdjacentList,
+    modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -123,7 +123,7 @@ export default function run(check) {
       " modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState," +
       " modelSetHeading, modelMakeFence, modelUnfence, modelPlainText," +
       " modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered," +
-      " modelJoinAdjacentList };",
+      " modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -4303,6 +4303,52 @@ export default function run(check) {
       check(`and the sweep measured something: ${refused} refused by the parser's own reading`, done > 800);
     }
 
+    // ── Insert and Clear: slice 7's step 7 ───────────────────────────────────
+    {
+      // The model's rendering of the touched blocks, with the empty paragraphs
+      // it keeps for a caret left out, against the parser's reading of what it
+      // writes — the document's reference definitions included.
+      const agrees = (doc, block) => {
+        let top = block;
+        while (top.parent) top = top.parent;
+        const index = doc.blocks.indexOf(top);
+        const chunk = doc.blocks.slice(Math.max(0, index - 1), index + 2);
+        const src = modelSerialise({ prefix: "", blocks: chunk }, (b) => modelEmitLeaf(b, md, doc));
+        const env = modelReferenceEnv(doc, md);
+        const mine = modelRenderDocument({ blocks: chunk }, md, {}).replace(/<p><\/p>\n?/g, "");
+        return mine === md.renderer.render(md.parse(src, env), md.options, env);
+      };
+      let rules = 0;
+      let tocs = 0;
+      let refused = 0;
+      const wrong = [];
+      const toc = "- [One](#one)\n  - [Two](#two)\n";
+      for (const file of ORACLE_FILES) {
+        const doc = parse(repoFile(file));
+        for (const leaf of leavesOf(doc).filter((b) => b.kind === "paragraph" && b.inlines)) {
+          const length = modelInlineText(leaf.inlines).length;
+          for (const offset of [0, Math.floor(length / 2), length]) {
+            const copy = modelForkDocument(doc);
+            const made = modelInsertRule(copy, modelBlockById(copy, leaf.id), offset, md);
+            if (!made || !modelSettleShape(copy, made.rule, md)) { refused++; continue; }
+            rules++;
+            if (!agrees(copy, made.rule)) wrong.push(`${file} rule in #${leaf.id} at ${offset}`);
+          }
+        }
+        for (const top of doc.blocks.filter((b) => b.kind !== "gap")) {
+          const copy = modelForkDocument(doc);
+          const first = modelInsertAfter(copy, modelBlockById(copy, top.id), parse(toc).blocks);
+          if (!first || !modelSettleShape(copy, first, md)) { refused++; continue; }
+          tocs++;
+          if (!agrees(copy, first)) wrong.push(`${file} toc after #${top.id}`);
+        }
+      }
+      check(`a rule at the start, middle and end of every paragraph in the oracle, ${rules} times, and a table ` +
+        `of contents after every top-level block, ${tocs} times, render as the parser reads them back` +
+        (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 5).join(" | ")}` : ""), wrong.length === 0);
+      check(`and the sweep measured something: ${refused} refused by the parser's own reading`, rules > 1500 && tocs > 100);
+    }
+
     const blockEdit = (src, f) => {
       const doc = parse(src);
       const result = f(doc, modelFlatten(doc).filter((b) => !b.children));
@@ -4374,6 +4420,28 @@ export default function run(check) {
     check("and a wider marker moves what is under it",
       listEdit("- a\n\n  more\n- b\n", (d, l, lists) => modelSwitchList(d, lists[0], true, md) && lists[0]).out ===
         "1. a\n\n   more\n2. b\n");
+    check("a rule at the caret splits the paragraph, trimmed at the cut, with a blank line above",
+      blockEdit("Alpha beta\n", (d, l) => modelInsertRule(d, l[0], 6, md)).out === "Alpha\n\n---\n\nbeta\n");
+    check("a rule is spelt the way the document already spells one",
+      blockEdit("***\n\nAlpha\n", (d, l) => modelInsertRule(d, l[1], 5, md)).out === "***\n\nAlpha\n\n***\n");
+    check("and a rule as the last block keeps a paragraph after it for the caret",
+      (() => { const d = parse("Alpha\n"); modelInsertRule(d, d.blocks[0], 5, md);
+        return d.blocks[d.blocks.length - 1].kind === "paragraph"; })());
+    check("a rule at the start of a bullet is refused, since it would empty the bullet",
+      (() => { const d = parse("- one\n- two\n"); const leaf = modelFlatten(d).find((b) => b.kind === "paragraph");
+        const made = modelInsertRule(d, leaf, 0, md); return !made || !modelSettleShape(d, made.rule, md); })());
+    check("but one in the middle of a bullet is fine",
+      (() => { const d = parse("- one two\n- three\n"); const leaf = modelFlatten(d).find((b) => b.kind === "paragraph");
+        const made = modelInsertRule(d, leaf, 4, md); return !!made && modelSettleShape(d, made.rule, md); })());
+    check("a table of contents goes in after the caret's top-level block",
+      blockEdit("# A\n\ntext\n", (d, l) => modelInsertAfter(d, l[0], parse("- [A](#a)\n").blocks)).out ===
+        "# A\n\n- [A](#a)\n\ntext\n");
+    check("and at the start when the caret is not in the document",
+      blockEdit("# A\n", (d) => modelInsertAfter(d, null, parse("- [A](#a)\n").blocks)).out === "- [A](#a)\n\n# A\n");
+    check("clearing leaves one empty paragraph and writes nothing",
+      (() => { const d = parse("# A\n\n| a |\n|---|\n| 1 |\n"); modelClearDocument(d, md);
+        return d.blocks.length === 1 && d.blocks[0].kind === "paragraph" &&
+          modelSerialise(d, (b) => modelEmitLeaf(b, md, d)) === ""; })());
     check("a code block turns back into literal text, a paragraph per run of lines",
       blockEdit("```\nline **one**\n\nline two\n```\n\nafter\n", (d, l) => modelUnfence(d, l[0], md)).out ===
         "line \\*\\*one**\n\nline two\n\nafter\n");

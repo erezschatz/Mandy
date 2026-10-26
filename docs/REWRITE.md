@@ -1856,7 +1856,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     links, is done and tested the same day, by machine and by hand in Firefox;
     step 5, paragraphs, headings and the code block, is done and tested, by
     machine and by hand in Firefox on 2026-10-26; step 6, lists, is done and
-    tested the same day, by machine and by hand in Firefox. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    tested the same day, by machine and by hand in Firefox; step 7, the rule,
+    the table of contents and Clear, is done and tested by machine the same
+    day and waits on its Firefox run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3756,7 +3758,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         Step 5, paragraphs, headings and the code block, is done and tested,
         by machine on 2026-10-24 and by hand in Firefox 158.0.1 on 2026-10-26.
         Step 6, lists, is done and tested on 2026-10-26, by machine and by
-        hand in Firefox.** Every control that edits the
+        hand in Firefox. Step 7, the rule, the table of contents and Clear, is
+        done and tested by machine the same day and waits on its Firefox run.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4532,7 +4535,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             a list's numbering from its first item, so the items it joins keep
             their numbers as written. The spec now has this case.
 
-        7.  **Insert and Clear.** **The rule** splits the block at the caret and
+        7.  **Insert and Clear — done and tested by machine 2026-10-26; waiting
+            on its hand run in Firefox.** **The rule** splits the block at the caret and
             puts an `hr` between the two halves, spelt the way the document
             spells one. It always gets a blank separator above it, because `---`
             directly under a line of text is a setext underline. If the rule
@@ -4545,6 +4549,57 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             allowlist in one place, and it is the conversion a save of today's
             TOC already makes. **Clear** is the deletion Backspace would run over
             the whole document, one step, with no second implementation.
+
+            **Build order, written 2026-10-26 before any of it was built.**
+
+            1.  **`modelInsertRule(doc, block, offset, md, spelling)`**: a rule
+                parsed from the document's own spelling (an existing rule's
+                bytes, then the sniffed style, then `---`), put in at the caret
+                through `modelInsertBlocks`, which splits the block the way a
+                paste does. `modelEnsureBlock` keeps a paragraph after a
+                trailing rule as it does after a trailing table, since a caret
+                cannot sit in either.
+            2.  **`modelInsertAfter(doc, block, blocks)`**: blocks put in after
+                a top-level block, adopted the way a paste adopts them, and the
+                TOC's way in. **This narrows the plan**: the TOC goes after the
+                caret's *top-level* block, which is what the old core's
+                `blockAtCaret` does, where the paste pipeline would have nested
+                it inside a list item the caret was in. The list itself is
+                `buildNestedList`'s DOM through `htmlFragmentToMarkdown`, as
+                planned.
+            3.  **`modelClearDocument(doc, md)`**: every block gone, and
+                `modelEnsureBlock`'s empty paragraph left for the caret. **This
+                is the plan's outcome by a shorter route**: the merge that
+                Backspace runs refuses across a table or a fence, so a deletion
+                over the whole document could not be relied on to empty one.
+                Emptying the block list is the same document either way, and it
+                is still one ordinary undo step.
+            4.  **The input layer**: the three handlers' model-core gates
+                become model branches. Each runs on a fork first and asks the
+                parser through the same shape check the lists use, so a rule
+                that would read as a setext underline is refused rather than
+                written. Each is one undo step.
+            5.  **The `model` suite** (a rule at every paragraph's start, middle
+                and end across the oracle, and a TOC after every top-level block
+                of a file with headings, each read back by the parser in the
+                shape the model holds, plus one case per rule) and
+                **`tests/browser/insert-clear.spec.mjs`**, with a section in
+                `tests/fixtures/format-check.md` for Firefox.
+
+            **What the build found.** **A rule's split has to be trimmed at the
+            cut**, slice 4's rule, because the paste pipeline it goes through
+            keeps the whitespace there for two halves that will rejoin, and a
+            rule leaves them apart. A line break at the cut goes too, or it
+            writes a blank line of its own. **The empty paragraph the model
+            keeps for a caret writes nothing**, so the parser cannot see it,
+            and the shape check now leaves it out of the comparison. Without
+            that, every rule at a document's end, and every Clear, read as a
+            different shape. **A rule at the very start of a bullet is
+            refused**, and says so: it would leave the bullet empty, which
+            the parser reads as an empty item and a rule outside the list.
+            Putting the rule before the bullet would mean splitting the list,
+            and that is not worth it for an edge this narrow. It is nearly all
+            of the sweep's refusals.
 
         8.  **The keyboard, and Cut and Copy.** Ctrl/Cmd+B and Ctrl/Cmd+I are
             bound as a `keydown` on the editable under the flag, calling the

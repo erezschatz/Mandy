@@ -353,8 +353,8 @@ builds and judges the JSON each one POSTs to `/report` — the same report a han
 run prints to the server log, so nothing is asserted that the page does not
 already say. Since 2026-10-21 it also drives hand protocols itself:
 `equation-typing.spec.mjs` and, since 2026-10-24, `format-marks.spec.mjs`,
-`inline-code-links.spec.mjs`, `block-kinds.spec.mjs` and `lists.spec.mjs` type
-and select their way through
+`inline-code-links.spec.mjs`, `block-kinds.spec.mjs`, `lists.spec.mjs` and
+`insert-clear.spec.mjs` type and select their way through
 `tests/fixtures/format-check.md`'s sections for slice 7 in the running app, with
 Playwright's keyboard and mouse, which are trusted (TODO 6.8 has the
 measurement), and stand in for those runs in Chromium and WebKit. `npm run test:browser` from the root. It is not part of `npm test`
@@ -1575,8 +1575,9 @@ blocks into one fence and back, adopted into place the way a pasted fence is.
 **Step 6 did the lists**: `modelWrapList`, `modelUnwrapItems` and
 `modelSwitchList` keep the paragraphs they move as the same blocks, and
 **`modelSettleLists` lets the parser decide what is tight or loose**, refusing
-any operation it would read as a different shape. Insert and Clear, and the
-keyboard, are the rest of slice 7.
+any operation it would read as a different shape. **Step 7 did the rule, the
+table of contents and Clear**, the first two run on a fork through the same
+shape check. The keyboard and Cut and Copy are the rest of slice 7.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.

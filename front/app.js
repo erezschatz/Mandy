@@ -780,6 +780,12 @@ onToolbarAction("new", async () => {
 // guarantee focus was ever inside #editor this session. selectNodeContents
 // pins the range to the editor regardless.
 onToolbarAction("clear", () => {
+  // Under the model core, Clear is a model edit, slice 7's step 7; the
+  // `runCommand` below refuses there.
+  if (modelOwnsInput()) {
+    if (typeof modelInputClear === "function") modelInputClear();
+    return;
+  }
   editor.focus();
   const range = document.createRange();
   range.selectNodeContents(editor);
@@ -793,7 +799,14 @@ onToolbarAction("clear", () => {
 // id="null" Chrome leaves on it, which normaliseEditorMarkup already strips
 // for any <hr> regardless of how it got there — so this needs nothing beyond
 // the command itself. execCommand raises input for free.
-onToolbarAction("insert-hr", () => runCommand("insertHorizontalRule"));
+onToolbarAction("insert-hr", () => {
+  // Under the model core, a model insertion, slice 7's step 7.
+  if (modelOwnsInput()) {
+    if (typeof modelInputRule === "function") modelInputRule();
+    return;
+  }
+  runCommand("insertHorizontalRule");
+});
 
 // Insert / edit a link. Four cases, and only the first has an execCommand:
 //

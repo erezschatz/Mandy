@@ -279,12 +279,6 @@ function blockAtCaret() {
 }
 
 function insertToc() {
-  // Shut under the model core until slice 7's step 7 inserts the list as model
-  // blocks. What follows writes to the editor directly, which there is a
-  // divergence rather than an edit: the model never hears of the list, and the
-  // next render throws it away.
-  if (modelOwnsInput()) return;
-
   const entries = outlineEntries(editor);
   if (!entries.length) {
     notify("This document has no headings to build a table of contents from.", {
@@ -294,6 +288,19 @@ function insertToc() {
   }
 
   const list = buildNestedList(entries);
+
+  // Under the model core the list goes in as model blocks, slice 7's step 7:
+  // the same list, through the conversion a save of it already makes, so its
+  // shape and its inline allowlist stay in one place. Writing to the editor
+  // directly, as below, would be a divergence rather than an edit there — the
+  // model would never hear of the list, and the next render would throw it
+  // away.
+  if (modelOwnsInput()) {
+    if (typeof modelInputToc === "function" && typeof htmlFragmentToMarkdown === "function") {
+      modelInputToc(htmlFragmentToMarkdown(list.outerHTML));
+    }
+    return;
+  }
   const block = blockAtCaret();
 
   // No dedupe on a second invocation. A marker class would not survive a save

@@ -4548,10 +4548,13 @@ function modelSettleLists(doc, block, md) {
     return false;
   }
   const parsed = modelParse(src, md);
-  const shape = (blocks) => modelFlatten({ blocks }).map((b) => b.kind + (b.children ? b.children.length : ""));
-  const mine = modelFlatten({ blocks: chunk });
+  // An empty paragraph is the model's place for a caret and writes nothing, so
+  // the parser cannot see it; it is left out of the comparison on this side.
+  const writes = (b) => !(!b.children && b.inlines && modelIsEmptyBlock(b));
+  const shape = (list) => list.map((b) => b.kind + (b.children ? b.children.filter(writes).length : ""));
+  const mine = modelFlatten({ blocks: chunk }).filter(writes);
   const theirs = modelFlatten({ blocks: parsed.blocks });
-  if (shape(chunk).join() !== shape(parsed.blocks).join()) return false;
+  if (shape(mine).join() !== shape(theirs).join()) return false;
   mine.forEach((leaf, i) => {
     // The renderer looks one token back, so the hidden token before each block
     // is the parser's answer too.
@@ -4715,6 +4718,114 @@ function modelSwitchList(doc, list, ordered, md, fallback) {
   });
   modelTouch(list);
   return true;
+}
+
+// ── Insert and Clear ─────────────────────────────────────────────────────────
+//
+// Slice 7's step 7: the horizontal rule, the table of contents, and Clear.
+
+// The parser's shape check, under the general name the step 7 commands use it
+// by: the lists' settle step asks nothing about lists in particular.
+function modelSettleShape(doc, block, md) {
+  return modelSettleLists(doc, block, md);
+}
+
+// How this document writes a rule: an existing rule's bytes without the chain
+// or indent in front of them, then the sniffed style, then `---`.
+function modelRuleSpelling(doc, fallback) {
+  for (const block of modelFlatten(doc)) {
+    if (block.kind === "hr" && block.source) return block.source.trim().replace(/^[ \t>]*/, "");
+  }
+  return fallback || "---";
+}
+
+/**
+ * A rule at the caret: `{ rule, at }`, where `at` is where the caret goes, or
+ * null for a refusal.
+ *
+ * It is parsed from the document's own spelling and put in through
+ * `modelInsertBlocks`, which splits the block the way a paste does. **The block
+ * above it always gets a blank line**, because `---` straight under a line of
+ * text is a setext underline, not a rule. And a rule as the last block gets a
+ * paragraph after it, since a caret cannot sit in one — `modelEnsureBlock`.
+ */
+function modelInsertRule(doc, block, offset, md, fallback) {
+  if (!block || !block.inlines) return null;
+  const parsed = modelParse(modelRuleSpelling(doc, fallback) + "\n", md).blocks;
+  if (parsed.length !== 1 || parsed[0].kind !== "hr") return null;
+  const rule = parsed[0];
+  const landed = modelInsertBlocks(doc, block, offset, parsed);
+  if (!landed) return null;
+  const siblings = modelSiblings(doc, rule);
+  const index = siblings.indexOf(rule);
+  // **A split that stays split is trimmed at the cut**, slice 4's rule: a
+  // paste keeps the whitespace there because both halves rejoin around what it
+  // inserts, and a rule leaves them apart, where a markdown block cannot carry
+  // whitespace at its own edge.
+  // A line break at the cut goes too: it would write a blank line of its own.
+  const dropBreaks = (nodes, side) => {
+    while (nodes.length) {
+      const node = nodes[side < 0 ? 0 : nodes.length - 1];
+      if (node.kind !== "softbreak" && node.kind !== "hardbreak") break;
+      nodes.splice(side < 0 ? 0 : nodes.length - 1, 1);
+    }
+  };
+  for (const [neighbour, side] of [[siblings[index - 1], 1], [siblings[index + 1], -1]]) {
+    if (!neighbour || !neighbour.inlines) continue;
+    modelUnshare(neighbour);
+    for (let pass = 0; pass < 3; pass++) {
+      dropBreaks(neighbour.inlines, side);
+      modelInlineTrimEdge(neighbour.inlines, side);
+    }
+    if (neighbour.inline) neighbour.inline.children = modelInlineTokens(neighbour.inlines);
+    modelTouch(neighbour);
+  }
+  if (index > 0 && !/\n[ \t>]*\n/.test(siblings[index - 1].separator)) {
+    siblings[index - 1].separator = modelBlankSeparator(rule);
+  }
+  if (!/\n[ \t>]*\n/.test(rule.separator) && index + 1 < siblings.length) rule.separator = modelBlankSeparator(rule);
+  modelEnsureBlock(doc, md);
+  if (rule.parent) modelTouch(rule.parent);
+  return { rule, at: landed };
+}
+
+/**
+ * Blocks put in after a block's top-level ancestor, or at the start of the
+ * document when there is no block. Adopted the way a paste adopts them, with
+ * a blank line either side. The table of contents' way in.
+ */
+function modelInsertAfter(doc, block, blocks) {
+  if (!blocks.length) return null;
+  let top = block;
+  while (top && top.parent) top = top.parent;
+  const like = top || doc.blocks[0];
+  if (like) modelAdoptBlocks(doc, blocks, like);
+  for (const inserted of blocks) inserted.parent = null;
+  const last = blocks[blocks.length - 1];
+  if (top) {
+    const index = doc.blocks.indexOf(top);
+    last.separator = top.separator && /\n[ \t]*\n/.test(top.separator) ? top.separator : "\n\n";
+    if (index === doc.blocks.length - 1) last.separator = top.separator || "\n";
+    top.separator = "\n\n";
+    doc.blocks.splice(index + 1, 0, ...blocks);
+  } else {
+    last.separator = doc.blocks.length ? "\n\n" : "\n";
+    doc.blocks.unshift(...blocks);
+  }
+  return blocks[0];
+}
+
+/**
+ * Clear: every block gone, and the one empty paragraph `modelEnsureBlock`
+ * leaves for the caret. The same document Ctrl+A and Delete would leave, by a
+ * route that cannot be refused: the merge Backspace runs will not cross a
+ * table or a fence, so a deletion over everything could not be relied on to
+ * empty a document that holds one.
+ */
+function modelClearDocument(doc, md) {
+  doc.blocks = [];
+  doc.prefix = "";
+  return modelEnsureBlock(doc, md);
 }
 
 // ── Structure ────────────────────────────────────────────────────────────────
@@ -5836,7 +5947,8 @@ function modelSourceSplice(block, from, to, text, md) {
  */
 function modelEnsureBlock(doc, md) {
   const last = doc.blocks.length ? doc.blocks[doc.blocks.length - 1] : null;
-  if (last && last.kind !== "table") return null;
+  // A rule, like a table, holds no caret, so the document must not end on one.
+  if (last && last.kind !== "table" && last.kind !== "hr") return null;
   const block = modelParagraphBlock(doc, md);
   if (last) {
     modelInsertBlockAfter(doc, last, block);
