@@ -1857,8 +1857,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     step 5, paragraphs, headings and the code block, is done and tested, by
     machine and by hand in Firefox on 2026-10-26; step 6, lists, is done and
     tested the same day, by machine and by hand in Firefox; step 7, the rule,
-    the table of contents and Clear, is done and tested by machine the same
-    day and waits on its Firefox run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    the table of contents and Clear, is done and tested the same day, by
+    machine and by hand in Firefox. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3759,7 +3759,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         by machine on 2026-10-24 and by hand in Firefox 158.0.1 on 2026-10-26.
         Step 6, lists, is done and tested on 2026-10-26, by machine and by
         hand in Firefox. Step 7, the rule, the table of contents and Clear, is
-        done and tested by machine the same day and waits on its Firefox run.** Every control that edits the
+        done and tested the same day, by machine and by hand in Firefox.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4535,8 +4535,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             a list's numbering from its first item, so the items it joins keep
             their numbers as written. The spec now has this case.
 
-        7.  **Insert and Clear — done and tested by machine 2026-10-26; waiting
-            on its hand run in Firefox.** **The rule** splits the block at the caret and
+        7.  **Insert and Clear — done and tested 2026-10-26**, by machine in
+            Chromium and WebKit and by hand in Firefox 158.0.1, every step
+            clean. **The rule** splits the block at the caret and
             puts an `hr` between the two halves, spelt the way the document
             spells one. It always gets a blank separator above it, because `---`
             directly under a line of text is a setext underline. If the rule

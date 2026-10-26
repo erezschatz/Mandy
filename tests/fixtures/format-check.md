@@ -26,12 +26,14 @@ Chromium and WebKit run the last six sections by machine
    Throughout, *the console stays free of `[model] render diverged` warnings*.
    One appearing is a failure, whichever step it came in.
 3. **File → Open this file** (`tests/fixtures/format-check.md`). *The console
-   shows no errors, here or anywhere in this protocol* — with one known
-   exception: in Firefox, choosing **Leave Page** on the unsaved-changes dialog
-   during a reload can log `Error: undefined undefined 1`. It happens under
-   `?core=legacy` too, so it is not the model core's, and it changes nothing in
-   the document; ignore it. Reloading again straight away shows no dialog at
-   all: browsers only ask once you have clicked or typed since the page loaded.
+   shows no errors, here or anywhere in this protocol.* Firefox used to log
+   `Error: undefined undefined 1` when **Leave Page** was chosen on the
+   unsaved-changes dialog during a reload, under `?core=legacy` too. It has not
+   been seen since Mermaid was removed on 2026-10-01 (the user's observation,
+   2026-10-26), so it is no longer expected; if it ever comes back it changes
+   nothing in the document, and is worth noting rather than failing the run.
+   Reloading again straight away shows no dialog at all: browsers only ask once
+   you have clicked or typed since the page loaded.
 
 **Never save over this file.** It is the pristine copy every run starts from.
 To start again, use **File → Reload** and choose to discard.
@@ -187,7 +189,7 @@ click at the end of the file's last line and press Enter.
    a failure here. Delete the scratch file afterwards.
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
-of errors*, with the known Firefox exception from "Before you start".
+of errors.*
 
 ## Bold, italic and strikethrough (step 3)
 
@@ -239,7 +241,7 @@ Second para here.
    first Firefox run of this section asked for it.
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
-of errors*, with the known Firefox exception from "Before you start".
+of errors.*
 
 ## Inline code and links (step 4)
 
@@ -278,7 +280,7 @@ Read [the guide](https://a.example) first.
    found both missing.
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
-of errors*, with the known Firefox exception from "Before you start".
+of errors.*
 
 ## Paragraphs, headings and the code block (step 5)
 
@@ -314,7 +316,7 @@ npm test
    press.*
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
-of errors*, with the known Firefox exception from "Before you start".
+of errors.*
 
 ## Lists (step 6)
 
@@ -351,7 +353,7 @@ Plain line two
    press.*
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
-of errors*, with the known Firefox exception from "Before you start".
+of errors.*
 
 ## The rule, the table of contents and Clear (step 7)
 
@@ -377,4 +379,4 @@ Alpha beta gamma
    Ctrl/Cmd+Z.** *All of it comes back, in one press.*
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
-of errors*, with the known Firefox exception from "Before you start".
+of errors.*

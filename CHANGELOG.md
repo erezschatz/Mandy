@@ -9541,7 +9541,7 @@ and tested. Step 7, the horizontal rule, the table of contents and Clear, is
 next. docs/REWRITE.md records the run on the stage line, the slice line and the
 step.
 
-## 2026-10-26 — The rule, the table of contents and Clear are model commands
+## 2026-10-26 — `d9d9608` — The rule, the table of contents and Clear are model commands
 
 Slice 7's step 7. Under the model core, Insert → Horizontal rule, Insert →
 Table of contents and Edit → Clear document now change the model, where until
@@ -9576,3 +9576,19 @@ has to render as the parser reads it back. There is one case per rule.
 and the whole harness passed twice, each test run twice on six workers.
 `tests/fixtures/format-check.md` gains a section for the Firefox run, which is
 still owed. `sw.js`'s `VERSION` goes to `v1.83`.
+
+## 2026-10-26 — Slice 7's Insert and Clear step is closed
+
+The user ran the "The rule, the table of contents and Clear" section of
+`tests/fixtures/format-check.md` in Firefox 158.0.1, and every step was clean.
+Chromium and WebKit run it by machine and Safari's run waits for stage 5, so
+step 7 is done and tested. Step 8, the keyboard shortcuts and Cut and Copy, is
+next. docs/REWRITE.md records the run on the stage line, the slice line and the
+step.
+
+The user also reported that the Firefox error the protocol warned about,
+`Error: undefined undefined 1` on choosing Leave Page during a reload, has not
+appeared since Mermaid was removed on 2026-10-01. So "Before you start" no
+longer tells a tester to expect it. It says when it was last seen and that it
+is harmless if it ever comes back. Every section's closing line drops the
+exception, so a clean run is now a console with no errors at all.
