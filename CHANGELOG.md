@@ -9593,7 +9593,7 @@ longer tells a tester to expect it. It says when it was last seen and that it
 is harmless if it ever comes back. Every section's closing line drops the
 exception, so a clean run is now a console with no errors at all.
 
-## 2026-10-26 — Ctrl/Cmd+B and I, and the Edit menu's Cut and Copy, under the model core
+## 2026-10-26 — `9d1a177` — Ctrl/Cmd+B and I, and the Edit menu's Cut and Copy, under the model core
 
 Slice 7's step 8. Under the model core, Ctrl/Cmd+B and Ctrl/Cmd+I are bound on
 the editor and call step 3's commands, so the keys bold and italicise in every
@@ -9629,3 +9629,14 @@ harness passed twice, each test run twice on six workers. The Firefox run of
 the new section in `tests/fixtures/format-check.md` is still owed. It is also
 the real answer to whether a menu click may write the clipboard without a
 prompt. `sw.js`'s `VERSION` goes to `v1.84`.
+
+## 2026-10-26 — Slice 7's keys and clipboard step is closed
+
+The user ran the "The keys and the clipboard" section of
+`tests/fixtures/format-check.md` in Firefox 158.0.1, and every step was clean.
+That includes the measurement the plan asked for. Edit → Copy, chosen from the
+menu, wrote the clipboard with no permission prompt, and pasting gave a bold
+word back. Chromium and WebKit run the section by machine and Safari's run
+waits for stage 5, so step 8 is done and tested. Step 9, the hand pass over the
+whole of slice 7, is the last of the slice and of stage 2's build.
+docs/REWRITE.md records the run on the stage line, the slice line and the step.

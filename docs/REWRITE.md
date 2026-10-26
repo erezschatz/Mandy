@@ -1859,7 +1859,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     tested the same day, by machine and by hand in Firefox; step 7, the rule,
     the table of contents and Clear, is done and tested the same day, by
     machine and by hand in Firefox; step 8, the keys and Cut and Copy, is done
-    and tested by machine the same day and waits on its Firefox run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    and tested the same day, by machine and by hand in Firefox; step 9, the
+    hand pass over the whole slice, is what is left of it. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3761,8 +3762,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         Step 6, lists, is done and tested on 2026-10-26, by machine and by
         hand in Firefox. Step 7, the rule, the table of contents and Clear, is
         done and tested the same day, by machine and by hand in Firefox. Step 8,
-        the keys and Cut and Copy, is done and tested by machine the same day
-        and waits on its Firefox run.** Every control that edits the
+        the keys and Cut and Copy, is done and tested the same day, by machine
+        and by hand in Firefox. Step 9, the hand pass over the whole slice, is
+        what is left.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4605,9 +4607,11 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             and that is not worth it for an edge this narrow. It is nearly all
             of the sweep's refusals.
 
-        8.  **The keyboard, and Cut and Copy — done and tested by machine
-            2026-10-26; waiting on its hand run in Firefox, which is also the
-            plan's permission measurement.** Ctrl/Cmd+B and Ctrl/Cmd+I are
+        8.  **The keyboard, and Cut and Copy — done and tested 2026-10-26**,
+            by machine in Chromium and WebKit and by hand in Firefox 158.0.1,
+            every step clean. **The permission measurement**: in Firefox 158.0.1
+            on macOS, Edit → Copy from a menu click wrote the clipboard with no
+            prompt, and the paste carried the bold. Ctrl/Cmd+B and Ctrl/Cmd+I are
             bound as a `keydown` on the editable under the flag, calling the
             step 3 commands with `preventDefault`. **TODO 1.7 lands here** for
             the model core. For `main` it lands at stage 4, because binding the
