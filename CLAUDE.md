@@ -182,8 +182,11 @@ They cover the invariants that fail *silently* rather than loudly:
   and a tree built by hand answers `nodeType`, `textContent`, `childNodes` and
   `hasAttribute` the way a real one does. What it still cannot do is turn a
   string into a tree, which is why everything that renders markup is measured
-  in the scratch harness instead. It loads `markdown-style.js` ahead of
-  `model.js`, and that order is load-bearing rather than tidy: since slice 3's
+  in a real browser instead: the render verify, switched on under every
+  `tests/browser/` spec, and those specs themselves. (An untracked scratch
+  harness did that during stage 2 and was deleted when the stage closed.) It
+  loads `markdown-style.js` ahead of `model.js`, and that order is load-bearing
+  rather than tidy: since slice 3's
   step 5 the model calls `wrapMarkdownLine` and `hasMathSpan` rather than
   carrying a second copy of either. Its oracle is `ORACLE_FILES`, and every file in
   it is a **fixture** — `tests/fixtures/corpus/`, five frozen copies taken on

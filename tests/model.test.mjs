@@ -2270,8 +2270,9 @@ export default function run(check) {
   // block rendered and concatenated is the whole file rendered. Anything that
   // reaches the DOM — the block-to-element map, the filler, the verify — is
   // unreachable from here, because tests/dom.mjs has no HTML parser and a stub
-  // could only agree with whatever it was told. front/render-scratch.html is
-  // where that half is watched.
+  // could only agree with whatever it was told. That half is watched in a real
+  // browser: the render verify, on under every tests/browser/ spec. (Until
+  // stage 2 closed it was an untracked scratch harness.)
 
   {
     const diverged = [];
@@ -2388,7 +2389,8 @@ export default function run(check) {
   // makeEl/makeText answers nodeType, textContent, childNodes and hasAttribute
   // the way a real one does. There is no HTML parser in the loop to disagree
   // with -- that is the thing tests/dom.mjs cannot supply, and the reason the
-  // slice's other half is measured in the scratch harness instead.
+  // slice's other half is measured in a real browser instead, under the
+  // tests/browser/ specs.
   //
   // The trees below are exactly what markdown-it renders, which was measured in
   // a browser on 2026-09-20 rather than assumed: `<p>foo<br>\nbar</p>` really

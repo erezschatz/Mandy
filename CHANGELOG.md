@@ -9779,7 +9779,7 @@ as the criterion always said. docs/REWRITE.md records it on the stage line,
 the slice line and the step. Stage 3, the 1.1 items, is next, and the merge to
 `main` is still stage 4's.
 
-## 2026-10-26 — Merge `main`: the Unities, Open in new tab and two fixes reach the branch
+## 2026-10-26 — `034c660` — Merge `main`: the Unities, Open in new tab and two fixes reach the branch
 
 `origin/main`'s five commits since the branches last met join `rewrite`: the
 keyboard no longer stranded by a click outside the sheet, the file dialog that
@@ -9811,3 +9811,19 @@ gets `9e868a1`.
 Chromium and WebKit, each test run twice on six workers. From here every commit
 on this branch is checked by the Unities hook: source needs a doc line and a
 task record beside it.
+
+## 2026-10-26 — The stage 2 scratch harness is deleted, and two stale worktrees with it
+
+`front/render-scratch.html`, the untracked harness that measured the model's
+renderer in a real DOM during stage 2, is deleted, as its own header and its
+`.gitignore` entry said to do when the stage closed. The entry goes with it.
+What watches that half now is the render verify, switched on under every
+`tests/browser/` spec, and the specs themselves. CLAUDE.md, a comment in
+`model.js` and two in the `model` suite say so instead of naming the harness,
+and docs/REWRITE.md's two mentions record the deletion. No code changed.
+
+The user also asked for two stale worktrees to be removed:
+`.claude/worktrees/blissful-khorana-b76ed2` and `heuristic-golick-bcf04e`, left
+by the archived probe and list-page sessions. Both were clean, and their
+commits are in this branch. `~/dev/marky-main` was removed before them; the
+`main` branch stays, level with `origin/main`.

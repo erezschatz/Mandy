@@ -2126,7 +2126,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             will be. So the harness is `front/render-scratch.html`, untracked,
             served by the static handler that already serves `front/` and
             same-origin with `/model.js`, which is the only thing the `/tests/`
-            route was ever buying. It is deleted when the stage is. Noted
+            route was ever buying. It is deleted when the stage is, and was, on
+            2026-10-26. Noted
             while measuring this: the three pages that *do* need `CHECK_PAGES`
             are the three stage 4 deletes, so `CHECK_PAGES` and `/report` can
             go with them and `server.ts` goes back to being a file server.
@@ -2484,8 +2485,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         thing the `/tests/` route was ever buying — so no route is added and the
         server stays a file server. It installs the input layer itself rather
         than flipping the model core's flag, so running it does not change the
-        app's state on the same origin. The untracked scratch harness stays for
-        what a machine *can* drive.
+        app's state on the same origin. The untracked scratch harness stayed for
+        what a machine *can* drive, until stage 2 closed (deleted 2026-10-26).
 
     *   **4. Input: structure — done and tested, 2026-09-20; driven clean by
         hand in Blink, Gecko and WebKit on 2026-09-21, after two rounds of

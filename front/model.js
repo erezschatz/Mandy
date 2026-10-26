@@ -1958,9 +1958,10 @@ function modelTouch(block) {
 // The second half builds the DOM from those strings and stamps each block's id
 // on the element it produced. **Nothing in that half can be checked by the Deno
 // suite**: tests/dom.mjs has no HTML parser, so a stub could only agree with
-// whatever it was told. front/render-scratch.html is the harness, untracked and
-// temporary by design — see docs/REWRITE.md's slice 1, which says why that is a
-// harness rather than a check page.
+// whatever it was told. It is watched in a real browser instead: the render
+// verify, switched on under every tests/browser/ spec. During stage 2 it was an
+// untracked scratch harness, deleted when the stage closed — docs/REWRITE.md's
+// slice 1 says why that was a harness rather than a check page.
 //
 // **Never a hand-written HTML emitter.** Everything below goes through
 // `md.renderer`, for two reasons and the second is the load-bearing one: the
