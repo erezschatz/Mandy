@@ -33,6 +33,7 @@ export default function run(check) {
       parsed: [],
       cut: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
       history: [], refused: [], joined: 0, converted: [], revealed: [], toasts: [],
+      toggled: [],
     };
     // What a case can move between events: the document an undo would swap in,
     // and where the caret is.
@@ -125,6 +126,11 @@ export default function run(check) {
         modelRender: (root, d, parser, sel) => calls.render.push({ doc: d, selection: sel }),
         modelDomBlockAt: () => range && range.shift(),
         modelReadSelection: () => state.at || { block, offset: 0 },
+        // Slice 7's step 8: the format route ends in model.js's toggle, which
+        // is the model's and is stubbed, so what is asserted is that it is
+        // reached and with which kind.
+        MODEL_MARK_KINDS: new Set(["strong", "em", "strike"]),
+        modelToggleMark: (d, sel, kind) => { calls.toggled.push(kind); return []; },
         // Equations by typing: the model half is the model suite's, so here a
         // case says which spans exist and the conversion only records itself.
         modelBlockById: () => block,
@@ -199,10 +205,44 @@ export default function run(check) {
 
   {
     const { api, calls } = rig();
-    const e = event("formatBold");
+    const e = event("formatJustifyFull");
     api.modelInputBeforeInput(e);
     check("an inputType nobody handles is still cancelled", e.prevented === 1);
     check("and nothing is done with it", calls.splice.length === 0 && calls.rerender.length === 0);
+  }
+  // Slice 7's step 8: the engine's own format commands reach the toggle, a
+  // bonus entry point like the history pair, and Ctrl/Cmd+B and I are bound.
+  {
+    const block = { kind: "paragraph", inlines: [] };
+    const sel = { block, offset: 0, to: { block, offset: 2 } };
+    const { api, calls } = rig({ at: sel });
+    for (const type of ["formatBold", "formatItalic", "formatStrikeThrough"]) {
+      const e = event(type);
+      api.modelInputBeforeInput(e);
+      check(`${type} is cancelled`, e.prevented === 1);
+    }
+    check("and each reaches the model's toggle with its own kind",
+      calls.toggled.join() === "strong,em,strike");
+  }
+  {
+    const block = { kind: "paragraph", inlines: [] };
+    const { api, calls } = rig({ at: { block, offset: 0, to: { block, offset: 2 } } });
+    let prevented = 0;
+    const key = (k, extra = {}) => api.modelInputKeydown({
+      key: k, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, isComposing: false,
+      preventDefault() { prevented++; }, ...extra,
+    });
+    key("b");
+    check("Ctrl+B bolds the selection, and takes the key from the browser",
+      calls.toggled.join() === "strong" && prevented === 1);
+    key("I");
+    check("Ctrl+I italicises, Caps Lock or not", calls.toggled.join() === "strong,em" && prevented === 2);
+    const e = event("formatItalic");
+    api.modelInputBeforeInput(e);
+    check("and a formatItalic the same keystroke raises is ignored, so the two do not cancel out",
+      calls.toggled.join() === "strong,em" && e.prevented === 1);
+    key("b", { shiftKey: true });
+    check("Ctrl+Shift+B is not Bold", calls.toggled.length === 2);
   }
   {
     const { api } = rig({ doc: null });

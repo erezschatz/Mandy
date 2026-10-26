@@ -1858,7 +1858,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     machine and by hand in Firefox on 2026-10-26; step 6, lists, is done and
     tested the same day, by machine and by hand in Firefox; step 7, the rule,
     the table of contents and Clear, is done and tested the same day, by
-    machine and by hand in Firefox. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    machine and by hand in Firefox; step 8, the keys and Cut and Copy, is done
+    and tested by machine the same day and waits on its Firefox run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3759,7 +3760,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         by machine on 2026-10-24 and by hand in Firefox 158.0.1 on 2026-10-26.
         Step 6, lists, is done and tested on 2026-10-26, by machine and by
         hand in Firefox. Step 7, the rule, the table of contents and Clear, is
-        done and tested the same day, by machine and by hand in Firefox.** Every control that edits the
+        done and tested the same day, by machine and by hand in Firefox. Step 8,
+        the keys and Cut and Copy, is done and tested by machine the same day
+        and waits on its Firefox run.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4602,7 +4605,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             and that is not worth it for an edge this narrow. It is nearly all
             of the sweep's refusals.
 
-        8.  **The keyboard, and Cut and Copy.** Ctrl/Cmd+B and Ctrl/Cmd+I are
+        8.  **The keyboard, and Cut and Copy — done and tested by machine
+            2026-10-26; waiting on its hand run in Firefox, which is also the
+            plan's permission measurement.** Ctrl/Cmd+B and Ctrl/Cmd+I are
             bound as a `keydown` on the editable under the flag, calling the
             step 3 commands with `preventDefault`. **TODO 1.7 lands here** for
             the model core. For `main` it lands at stage 4, because binding the
@@ -4618,6 +4623,50 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             by the model deletion. Whether each engine allows that write from a
             menu click without a permission prompt is measured, not assumed.
             The keyboard's own Cut and Copy never needed any of this.
+
+            **Build order, written 2026-10-26 before any of it was built.**
+
+            1.  **The keys**: Ctrl/Cmd+B and Ctrl/Cmd+I in `modelInputKeydown`,
+                matched on a lowercased `key` (CLAUDE.md's rule, for Caps
+                Lock), calling `modelInputFormat` with `preventDefault`, so
+                Gecko's bookmarks sidebar and WebKit's silence are both taken
+                out of the picture. A keystroke that did the work is recorded,
+                and a `formatBold` or `formatItalic` arriving for the same key
+                is then ignored. Otherwise the three format input types reach
+                `modelInputFormat` too, strikethrough included, which has no key.
+            2.  **Cut and Copy from the Edit menu, by a different route from the
+                plan's.** Not `navigator.clipboard.write`, whose permission
+                prompts are per engine and unmeasured. `runCommand` lets
+                **`copy` alone** through under the flag: it is the one clipboard
+                command that cannot change the document, and the `copy` event it
+                raises is answered by the model's own `modelInputClipboard`,
+                which writes the clipboard and cancels the event, exactly as for
+                Ctrl/Cmd+C. **Cut is that copy followed by the model's own
+                deletion**, run only if the copy reached the model's handler, so
+                a refused copy deletes nothing. `cut` itself is never run under
+                the flag, because a cut the handler did not cancel would edit
+                the page behind the model's back.
+            3.  **The suites**: `execcommand` pins that `copy` is the one
+                command let through, with no normalisation after it, and
+                `model-input` pins the keys and the routing.
+                **`tests/browser/keys-clipboard.spec.mjs`** presses the keys and
+                uses the Edit menu in Chromium and WebKit, reading the clipboard
+                back where the engine allows it. The Firefox run is the
+                measurement the plan asked for, from a real menu click.
+
+            **What the build found.** **A copy lost the marks around it**: a
+            double-click inside a bold word selects only the text inside the
+            `<strong>`, and the clipboard handler copied the range's own
+            contents, so pasting gave plain text. The keyboard's Ctrl/Cmd+C had
+            the same gap, being the same handler. Each mark, code span and link
+            between the selection and its block now wraps what is copied. And
+            **the `model-input` suite's example of an input type nobody handles
+            was `formatBold`**, which this step gives a handler; it uses
+            `formatJustifyFull` now. Under Playwright, Chromium needed the
+            clipboard permissions granted and WebKit needed nothing, so the
+            question the plan asked, whether a menu click may write the
+            clipboard without a prompt, is answered for real by the Firefox
+            run.
 
         9.  **By hand, in Chrome and Firefox**, and in WebKit by machine —
             Safari's own run moved to stage 5 on 2026-10-17. A fixture document,

@@ -353,8 +353,8 @@ builds and judges the JSON each one POSTs to `/report` — the same report a han
 run prints to the server log, so nothing is asserted that the page does not
 already say. Since 2026-10-21 it also drives hand protocols itself:
 `equation-typing.spec.mjs` and, since 2026-10-24, `format-marks.spec.mjs`,
-`inline-code-links.spec.mjs`, `block-kinds.spec.mjs`, `lists.spec.mjs` and
-`insert-clear.spec.mjs` type and select their way through
+`inline-code-links.spec.mjs`, `block-kinds.spec.mjs`, `lists.spec.mjs`,
+`insert-clear.spec.mjs` and `keys-clipboard.spec.mjs` type and select their way through
 `tests/fixtures/format-check.md`'s sections for slice 7 in the running app, with
 Playwright's keyboard and mouse, which are trusted (TODO 6.8 has the
 measurement), and stand in for those runs in Chromium and WebKit. `npm run test:browser` from the root. It is not part of `npm test`
@@ -1124,7 +1124,7 @@ meaning the same thing. Four things about it:
   closed by construction. Its other half goes more quietly still: the browser
   cannot rewrite a trailing space behind our back when it is not the one
   writing.
-- **`runCommand` refuses under the model core**, and that is a measurement
+- **`runCommand` refuses under the model core, except `copy`**, and that is a measurement
   rather than tidiness: Chrome 152, `execCommand` fires `input` but **never
   `beforeinput`**, so it cannot be intercepted at all. Every call site would be
   a DOM mutation the model can neither cancel nor hear about. The formats and
@@ -1577,7 +1577,11 @@ blocks into one fence and back, adopted into place the way a pasted fence is.
 **`modelSettleLists` lets the parser decide what is tight or loose**, refusing
 any operation it would read as a different shape. **Step 7 did the rule, the
 table of contents and Clear**, the first two run on a fork through the same
-shape check. The keyboard and Cut and Copy are the rest of slice 7.
+shape check. **Step 8 bound Ctrl/Cmd+B and Ctrl/Cmd+I** under the flag, which
+is TODO 1.7 for the model core, and made the Edit menu's Cut and Copy go
+through the model's own clipboard handler: `runCommand` lets `copy` alone
+through, and Cut is that copy plus the model's deletion. Step 9, the hand pass
+over the whole slice, is what is left of slice 7.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.

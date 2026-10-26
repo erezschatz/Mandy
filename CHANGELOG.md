@@ -9577,7 +9577,7 @@ and the whole harness passed twice, each test run twice on six workers.
 `tests/fixtures/format-check.md` gains a section for the Firefox run, which is
 still owed. `sw.js`'s `VERSION` goes to `v1.83`.
 
-## 2026-10-26 — Slice 7's Insert and Clear step is closed
+## 2026-10-26 — `ebf6928` — Slice 7's Insert and Clear step is closed
 
 The user ran the "The rule, the table of contents and Clear" section of
 `tests/fixtures/format-check.md` in Firefox 158.0.1, and every step was clean.
@@ -9592,3 +9592,40 @@ appeared since Mermaid was removed on 2026-10-01. So "Before you start" no
 longer tells a tester to expect it. It says when it was last seen and that it
 is harmless if it ever comes back. Every section's closing line drops the
 exception, so a clean run is now a console with no errors at all.
+
+## 2026-10-26 — Ctrl/Cmd+B and I, and the Edit menu's Cut and Copy, under the model core
+
+Slice 7's step 8. Under the model core, Ctrl/Cmd+B and Ctrl/Cmd+I are bound on
+the editor and call step 3's commands, so the keys bold and italicise in every
+engine. Until now Gecko on macOS opened its bookmarks sidebar and WebKit did
+nothing. That is TODO 1.7 for the model core; for `main` it lands at stage 4.
+The keys match a lowercased `key`, so Caps Lock makes no difference.
+`formatBold`, `formatItalic` and `formatStrikeThrough` arriving as input events
+reach the same commands, and one raised by the keystroke that already did the
+work is ignored.
+
+The Edit menu's Cut and Copy did nothing under the model core, because
+`runCommand` refused. They now go through the model's own clipboard handler, by
+a different route from the plan's `navigator.clipboard.write`, whose
+permission prompts are per engine and unmeasured. `runCommand` lets `copy`
+alone through under the flag, since it cannot change the document, and the
+`copy` event it raises is the one Ctrl/Cmd+C raises. Cut is that copy followed
+by the model's own deletion, and the deletion runs only if the copy reached the
+handler. `cut` is never run, because a cut nobody cancelled would edit the page
+behind the model.
+
+The spec found that a copy lost the marks around it. A double-click inside a
+bold word selects only the text inside the `<strong>`, so pasting gave plain
+text. The keyboard copy had the same gap. The marks, code spans and links
+between the selection and its block now wrap what is copied.
+
+The `execcommand` suite pins that `copy` is the one command let through under
+the flag, with no normalisation after it. The `model-input` suite pins the keys
+and the routing; its example of an unhandled input type was `formatBold`, and
+is `formatJustifyFull` now. `tests/browser/keys-clipboard.spec.mjs` presses the
+keys and uses the Edit menu, judging the clipboard by pasting. It needed the
+clipboard permissions granted in Chromium and nothing in WebKit. The whole
+harness passed twice, each test run twice on six workers. The Firefox run of
+the new section in `tests/fixtures/format-check.md` is still owed. It is also
+the real answer to whether a menu click may write the clipboard without a
+prompt. `sw.js`'s `VERSION` goes to `v1.84`.

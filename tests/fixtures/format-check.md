@@ -7,14 +7,16 @@ what you do; *italics* is what should (or should not) happen.
 It grows with TODO 3.1's slice 7: each step that needs a person adds its
 section here. Today it holds seven: keeping equations typeset (step 2), typing
 one (step 10), bold, italic and strikethrough (step 3), inline code and links
-(step 4), paragraphs, headings and the code block (step 5), lists (step 6), and
-the rule, the table of contents and Clear (step 7). (It held diagrams
+(step 4), paragraphs, headings and the code block (step 5), lists (step 6), the
+rule, the table of contents and Clear (step 7), and the keys and the clipboard
+(step 8). (It held diagrams
 too until Mermaid was removed on 2026-10-01.)
 
-Chromium and WebKit run the last six sections by machine
+Chromium and WebKit run the last seven sections by machine
 (`tests/browser/equation-typing.spec.mjs`, `format-marks.spec.mjs`,
-`inline-code-links.spec.mjs`, `block-kinds.spec.mjs`, `lists.spec.mjs` and
-`insert-clear.spec.mjs`), so a hand run of those is Firefox's. Safari's waits for stage 5.
+`inline-code-links.spec.mjs`, `block-kinds.spec.mjs`, `lists.spec.mjs`,
+`insert-clear.spec.mjs` and `keys-clipboard.spec.mjs`), so a hand run of those
+is Firefox's. Safari's waits for stage 5.
 
 ## Before you start
 
@@ -377,6 +379,36 @@ Alpha beta gamma
    entry Ctrl/Cmd+clicks to its heading.* (Undo it.)
 4. **Choose Edit → Clear document.** *The whole document empties.* **Press
    Ctrl/Cmd+Z.** *All of it comes back, in one press.*
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors.*
+
+## The keys and the clipboard (step 8)
+
+Ctrl/Cmd+B and Ctrl/Cmd+I, and Edit → Cut and Edit → Copy. In Firefox on a Mac
+Cmd+B used to open the bookmarks sidebar; under the model core the editor takes
+the key.
+
+The paragraphs to work on:
+
+Alpha beta gamma
+
+Paste here:
+
+1. **Double-click `beta` and press Ctrl/Cmd+B.** *`beta` turns bold, stays
+   selected, and no bookmarks sidebar opens.* **Press it again.** *It goes
+   back to plain.* **Press Ctrl/Cmd+I.** *It turns italic.* (Undo it.)
+2. **Click at the end of "Alpha beta gamma", type a space, press Ctrl/Cmd+B,
+   type `bold`, press Ctrl/Cmd+B again and type ` plain`.** *`bold` is bold and
+   ` plain` is not.* (Undo it.)
+3. **Make `beta` bold, double-click it, and choose Edit → Copy.** *Nothing on
+   the page changes, and no permission prompt appears.* **Click at the end of
+   "Paste here:" and press Ctrl/Cmd+V.** *A bold `beta` appears.* (Undo the
+   paste.)
+4. **Double-click `gamma` and choose Edit → Cut.** *It disappears.* **Click
+   at the end of "Paste here:" and press Ctrl/Cmd+V.** *`gamma` appears there.*
+5. **Press Ctrl/Cmd+Z after any of the above.** *That change goes, in one
+   press.*
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors.*

@@ -379,6 +379,16 @@ export default function run(check) {
       result === false && rig.commands.length === before,
     );
     check("and normalisation does not run either", rig.refreshes.length === 0);
+
+    // Slice 7's step 8: `copy` is let through, because it cannot change the
+    // document and its `copy` event is the model's to answer. `cut` is not —
+    // a cut the model did not cancel would edit the page behind it.
+    const beforeCopy = rig.commands.length;
+    rig.runCommand("copy");
+    check("but copy is let through, as the one command that changes nothing",
+      rig.commands.length === beforeCopy + 1 && rig.refreshes.length === 0);
+    const beforeCut = rig.commands.length;
+    check("and cut is still refused", rig.runCommand("cut") === false && rig.commands.length === beforeCut);
   }
   modelCore = false;
   {

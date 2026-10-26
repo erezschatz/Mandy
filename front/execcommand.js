@@ -307,7 +307,16 @@ function runCommand(command, value = null) {
   // costs the formats, Tab and Clear for as long as the flag is on, and those
   // are slices 4, 5 and 7 — at the end of which this file is deleted and the
   // guard goes with it.
-  if (typeof modelCoreEnabled === "function" && modelCoreEnabled()) return false;
+  //
+  // **`copy` is the one exception**, slice 7's step 8: it cannot change the
+  // document, and the `copy` event it raises is answered by the model's own
+  // clipboard handler, which writes the clipboard and cancels the event — the
+  // Edit menu's Copy and Cut both go through it. Nothing is normalised after
+  // it, since nothing changed and the normaliser would be the one thing here
+  // that did.
+  if (typeof modelCoreEnabled === "function" && modelCoreEnabled()) {
+    return command === "copy" ? document.execCommand("copy", false, null) : false;
+  }
 
   const result = document.execCommand(command, false, value);
 

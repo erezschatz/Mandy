@@ -269,6 +269,7 @@ function modelInputWrite(doc, span, text, inputType = "") {
 // what the editor shows afterwards.
 
 const MODEL_MARK_INPUT_TYPES = { strong: "formatBold", em: "formatItalic", strike: "formatStrikeThrough" };
+const MODEL_INPUT_FORMATS = { formatBold: "strong", formatItalic: "em", formatStrikeThrough: "strike" };
 
 // The spelling a document with none of a mark yet should take: the sniffed
 // style app.js keeps, feature-tested because front/input-check.html ships no
@@ -939,7 +940,27 @@ function modelIndentAtCaret(outdent) {
  * a keyboard user's only way out and is today's rule kept rather than
  * re-decided.
  */
+// The last format a key applied: `{ kind, time }`. A `formatBold` or
+// `formatItalic` raised by the same keystroke is then ignored, or the two would
+// cancel out — the keydown's `preventDefault` should stop the engine raising
+// one at all, and this is for an engine that raises it anyway.
+let modelKeyFormatted = null;
+const MODEL_FORMAT_KEYS = { b: "strong", i: "em" };
+
 function modelInputKeydown(event) {
+  // Ctrl/Cmd+B and Ctrl/Cmd+I, slice 7's step 8 and TODO 1.7 for the model
+  // core. Matched on a lowercased `key`, CLAUDE.md's rule, so Caps Lock does not
+  // hand the key back to the browser. `preventDefault` takes it from the
+  // engine, which in Gecko on macOS opens the bookmarks sidebar and in WebKit
+  // does nothing at all.
+  const key = (event.key || "").toLowerCase();
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !event.isComposing &&
+      MODEL_FORMAT_KEYS[key]) {
+    event.preventDefault();
+    modelKeyFormatted = { kind: MODEL_FORMAT_KEYS[key], time: performance.now() };
+    modelInputFormat(MODEL_FORMAT_KEYS[key]);
+    return;
+  }
   if (event.key !== "Tab" || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
   const doc = modelCurrentDocument();
   if (!doc) return;
@@ -1081,6 +1102,17 @@ function modelInputBeforeInput(event) {
   // application around it, so there the event is logged and nothing happens.
   if (event.inputType === "historyUndo") {
     if (typeof undo === "function") undo();
+    return;
+  }
+  // The engine's own format commands, a bonus entry point the way the history
+  // pair is: a context menu's Bold, or a keystroke the keydown above did not
+  // see. Ignored when the keydown already did the work, or the mark would go
+  // on and straight back off.
+  const format = MODEL_INPUT_FORMATS[event.inputType];
+  if (format) {
+    const keyed = modelKeyFormatted;
+    if (keyed && keyed.kind === format && performance.now() - keyed.time < 200) return;
+    modelInputFormat(format);
     return;
   }
   if (event.inputType === "historyRedo") {
@@ -1602,6 +1634,10 @@ function modelInputPressAtom(event) {
  * A cut then deletes through the model, the way Backspace over the same
  * selection would, announced as `deleteByCut` so it is its own undo step.
  */
+// Set when `modelInputClipboard` has written a copy to the clipboard, so the
+// Edit menu's Cut knows its copy landed before it deletes anything.
+let modelClipboardWritten = false;
+
 function modelInputClipboard(event, cut) {
   const doc = modelCurrentDocument();
   if (!doc || modelInputComposing() || !event.clipboardData) return;
@@ -1612,6 +1648,24 @@ function modelInputClipboard(event, cut) {
 
   const holder = document.createElement("div");
   holder.appendChild(range.cloneContents());
+  // **The marks around the selection go with it.** A double-click inside a bold
+  // word selects only the text inside the `<strong>`, so the range's own
+  // contents carry no bold, and pasting gave plain text where every editor
+  // people arrive from gives bold. Found by step 8's spec on 2026-10-26; the
+  // keyboard's Ctrl/Cmd+C had the same gap, being the same handler. Each mark,
+  // code span and link between the selection and its block wraps what was
+  // copied, innermost first.
+  const wrappers = new Set(["STRONG", "B", "EM", "I", "S", "DEL", "STRIKE", "CODE", "A"]);
+  let around = range.commonAncestorContainer;
+  if (around.nodeType !== 1) around = around.parentNode;
+  while (around && around !== editor && !around.hasAttribute(MODEL_BLOCK_ATTR)) {
+    if (wrappers.has(around.tagName)) {
+      const wrap = around.cloneNode(false);
+      while (holder.firstChild) wrap.appendChild(holder.firstChild);
+      holder.appendChild(wrap);
+    }
+    around = around.parentNode;
+  }
   for (const stop of holder.querySelectorAll(`[${MODEL_FILLER_ATTR}]`)) stop.remove();
   // A space the DOM builder drew as U+00A0 is a plain space in the model, and
   // should be one wherever it is pasted — see `modelHoldSpaces`.
@@ -1636,6 +1690,7 @@ function modelInputClipboard(event, cut) {
   event.preventDefault();
   event.clipboardData.setData("text/html", html);
   event.clipboardData.setData("text/plain", text);
+  modelClipboardWritten = true;
   if (!cut) return;
 
   const span = modelInputSpan({}, doc);
@@ -1645,6 +1700,33 @@ function modelInputClipboard(event, cut) {
   const at = { block: landed.block, offset: landed.offset };
   if (landed.structural) modelInputRestructure(doc, at, "deleteByCut");
   else modelInputShow(doc, landed.block, at, "deleteByCut");
+}
+
+/**
+ * Edit → Copy and Edit → Cut under the model core, slice 7's step 8.
+ *
+ * Copy is `runCommand("copy")`, the one command `runCommand` lets through under
+ * the flag: it raises the same `copy` event Ctrl/Cmd+C does, and
+ * `modelInputClipboard` answers it, so the menu and the keyboard put the same
+ * thing on the clipboard. **Cut is that copy and then the model's own
+ * deletion**, run only when the copy reached the handler — a copy the engine
+ * refused deletes nothing. `cut` itself is never run here: a cut event the
+ * handler did not cancel would edit the page behind the model's back.
+ */
+function modelInputMenuClipboard(cut) {
+  const doc = modelCurrentDocument();
+  if (!doc || typeof runCommand !== "function") return false;
+  modelClipboardWritten = false;
+  runCommand("copy");
+  if (!modelClipboardWritten || !cut) return modelClipboardWritten;
+  const span = modelInputSpan({}, doc);
+  if (!span || span.collapsed) return true;
+  const landed = modelInputDelete(doc, modelInputRetarget(doc, span));
+  if (!landed) return true;
+  const at = { block: landed.block, offset: landed.offset };
+  if (landed.structural) modelInputRestructure(doc, at, "deleteByCut");
+  else modelInputShow(doc, landed.block, at, "deleteByCut");
+  return true;
 }
 
 function modelInputInstall(root) {

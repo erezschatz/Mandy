@@ -1219,8 +1219,16 @@ editor.addEventListener("paste", (e) => {
 // clicking the menu item does not blur the editor and take that selection with
 // it. Cut raises `input` for free, so undo, autosave and the dirty flag pick it
 // up the way any other edit is picked up.
-onToolbarAction("cut", () => runCommand("cut"));
-onToolbarAction("copy", () => runCommand("copy"));
+// Under the model core both go through the model's own clipboard handler,
+// slice 7's step 8 — see `modelInputMenuClipboard`.
+onToolbarAction("cut", () => {
+  if (modelOwnsInput() && typeof modelInputMenuClipboard === "function") return void modelInputMenuClipboard(true);
+  runCommand("cut");
+});
+onToolbarAction("copy", () => {
+  if (modelOwnsInput() && typeof modelInputMenuClipboard === "function") return void modelInputMenuClipboard(false);
+  runCommand("copy");
+});
 
 // Paste cannot: execCommand("paste") is refused in web content in every engine,
 // so the menu has to read the clipboard itself. That is a permission the app
