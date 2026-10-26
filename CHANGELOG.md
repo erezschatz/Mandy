@@ -9502,7 +9502,7 @@ harness then passed three times in a row in both engines, each test run twice,
 on six workers. `tests/fixtures/format-check.md` gains a section for the
 Firefox run, which is still owed. `sw.js`'s `VERSION` goes to `v1.81`.
 
-## 2026-10-26 — A list switched beside another list joins it
+## 2026-10-26 — `951fa15` — A list switched beside another list joins it
 
 The user ran the "Lists" section of `tests/fixtures/format-check.md` in
 Firefox 158.0.1. Every step was clean but one. Choosing Numbered list in a
@@ -9523,3 +9523,11 @@ document's all-`1.` habit. The `model` suite and `lists.spec.mjs` have the
 case. The harness passed in Chromium and WebKit twice, each test run twice on
 six workers. The fixture's step says what now happens. The step wants a second
 Firefox look before step 6 is closed.
+
+## 2026-10-26 — The service worker version moves for the list fix
+
+The previous commit changed `model.js` and `model-input.js` and left `sw.js`'s
+`VERSION` at `v1.81`. Both files are shell assets, so a browser that had loaded
+the app before could have gone on serving the old copies from its cache, and a
+Firefox re-check of the fix would have tested the code it replaced. `VERSION`
+goes to `v1.82`.
