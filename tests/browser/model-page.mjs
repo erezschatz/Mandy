@@ -21,6 +21,11 @@ test.beforeEach(async ({ page }, testInfo) => {
   await page.waitForFunction(() =>
     typeof loadDocumentMarkdown === "function" && typeof modelCoreEnabled === "function");
   expect(await page.evaluate(() => modelCoreEnabled()), "the model core is on").toBe(true);
+  // Startup finished, not just defined: it fetches the welcome document
+  // asynchronously, and under load that fetch could land after a test had
+  // loaded its own document, leaving the welcome page in the history under it.
+  await page.waitForLoadState("networkidle");
+  await page.waitForFunction(() => editor.children.length > 0);
 });
 
 test.afterEach(async ({}, testInfo) => {

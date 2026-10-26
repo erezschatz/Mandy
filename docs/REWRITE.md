@@ -1855,7 +1855,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the same day, by machine and by hand in Firefox; step 4, inline code and
     links, is done and tested the same day, by machine and by hand in Firefox;
     step 5, paragraphs, headings and the code block, is done and tested, by
-    machine and by hand in Firefox on 2026-10-26. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    machine and by hand in Firefox on 2026-10-26; step 6, lists, is done and
+    tested by machine the same day and waits on its Firefox run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3753,7 +3754,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         not run separately before the close. Step 4, inline code and links,
         is done and tested the same day, by machine and by hand in Firefox.
         Step 5, paragraphs, headings and the code block, is done and tested,
-        by machine on 2026-10-24 and by hand in Firefox 158.0.1 on 2026-10-26.** Every control that edits the
+        by machine on 2026-10-24 and by hand in Firefox 158.0.1 on 2026-10-26.
+        Step 6, lists, is done and tested by machine on 2026-10-26 and waits on
+        its Firefox run.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4436,7 +4439,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             continuation, while the first line of an item's first child has to
             carry the marker. `modelMakeFence` puts it back.
 
-        6.  **Lists: bullet and numbered.** Wrapping contiguous sibling blocks
+        6.  **Lists: bullet and numbered — done and tested by machine
+            2026-10-26; waiting on its hand run in Firefox.** Wrapping contiguous sibling blocks
             makes one list with one item each. The marker is the one the
             document uses at that depth, falling back to the sniff, and
             numbering starts at 1 or follows the document's all-`1.` habit.
@@ -4448,6 +4452,71 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             width changes. A heading cannot go into a list, which is 1.1.5's
             refusal from the other side. Each case gets a structural
             re-render, which is the 16.8 ms the plan already accepted.
+
+            **Build order, written 2026-10-26 before any of it was built.**
+            All three operations keep the paragraphs they move as the same
+            block objects, with the same ids and inline trees, so the
+            selection resolves straight back and the bytes of everything
+            untouched stay. Only the containers are new, and their tokens come
+            from a parsed template.
+
+            1.  **`modelWrapList(doc, blocks, ordered, md, fallback)`**:
+                contiguous sibling paragraphs become one tight list with an
+                item each. The list and items come from `modelParse` of a
+                template with the right markers, and each paragraph is moved
+                into its item, hidden the way a tight list hides it. The marker
+                is the one the document already uses for that type, then the
+                sniffed style. Numbering follows the document's all-`1.` habit
+                where it has one. Inside a quote the chain comes along, and
+                inside an item the markers start at the item's content column.
+                A heading, a fence or anything else that is not a paragraph is
+                refused.
+            2.  **`modelUnwrapItems(doc, list, items, md)`**: the selected items'
+                contents move out to the list's own level, splitting the list
+                around them. It is `modelLiftItem` generalised past the empty
+                item, with `modelMoveItem`'s shift: every leaf under a lifted
+                item is re-affixed, every nested marker moved out by the item's
+                content column, and every fence's lines with it.
+            3.  **`modelSwitchList(doc, list, ordered, md, fallback)`**: the list's
+                open and close tokens come from a template of the other type,
+                and every one of its items takes the new marker. Where the
+                marker's width changes, everything under the item shifts by the
+                difference, as above. **This narrows the plan's "every depth
+                that list owns" to the list's own items**: a nested list is a
+                list of its own, and may be the other type on purpose, so it is
+                left as it is.
+            4.  **The input layer**: ul and ol in `applyFormat` under the flag.
+                Leaves all inside items of one list are unwrapped when the type
+                matches and switch the list when it does not; sibling paragraphs
+                are wrapped; anything else is refused with a `notify`. Every
+                case re-renders and is one undo step.
+            5.  **The `model` suite** (a sweep wrapping every run of sibling
+                paragraphs in the oracle, switching every list and unwrapping
+                every item, with the parser judging the shape and the text each
+                time, plus one case per rule) and
+                **`tests/browser/lists.spec.mjs`**, with a section in
+                `tests/fixtures/format-check.md` for Firefox.
+
+            **What the build found.** Four things, all in the first runs.
+            **Whether a list is tight or loose is the parser's decision, and
+            predicting it was the wrong design**: lifting a nested item made
+            its list loose, which changed which paragraphs markdown-it hides
+            and whether a newline follows `<li>`. So **`modelSettleLists`
+            asks**: after any list operation the touched top-level block and
+            its neighbours are emitted and parsed again, every paragraph's
+            hidden flag, every block's `hiddenBefore` and every container's
+            token list are taken from the parser's answer, and a different
+            shape is a refusal. The input layer runs each operation on a fork
+            first, so a refusal changes nothing. Switching that step off fails
+            the sweep. **A list beside a list of the same kind is one list**,
+            blank line or not, so a new one joins it, numbering carried on.
+            **Inside a quote, the blank `>` line between two paragraphs is a
+            `gap` block**, not a separator, so a run of blocks to wrap allows
+            gaps, which the code block now does too. And **an item's first
+            paragraph cannot become a list**, because the model cannot write
+            the item's marker in front of the list's. That is refused on
+            purpose, and the input layer never asks: a paragraph in an item
+            takes the unwrap-or-switch path.
 
         7.  **Insert and Clear.** **The rule** splits the block at the caret and
             puts an `hr` between the two halves, spelt the way the document

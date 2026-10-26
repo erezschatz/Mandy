@@ -9455,10 +9455,49 @@ landed the caret inside the bold word. It now waits for that caret before it
 looks. The whole harness then passed in Chromium and WebKit three times in a
 row.
 
-## 2026-10-26 — Slice 7's block kinds step is closed
+## 2026-10-26 — `4991408` — Slice 7's block kinds step is closed
 
 The user ran the "Paragraphs, headings and the code block" section of
 `tests/fixtures/format-check.md` in Firefox 158.0.1, and every step was clean.
 Chromium and WebKit run it by machine and Safari's run waits for stage 5, so
 step 5 is done and tested. Step 6, bullet and numbered lists, is next.
 docs/REWRITE.md records the run on the stage line, the slice line and the step.
+
+## 2026-10-26 — Bullet and numbered lists are model commands
+
+Slice 7's step 6. Under the model core, Bullet list and Numbered list, from the
+Format menu or the bar at a line's start, now change the model. What they do
+is read off the selection. Paragraphs become one tight list with an item each,
+in the bullet the document already uses or the sniffed default. Items of a
+list already that type come out of it as paragraphs, the list split around
+them. Items of the other type switch the whole list, since markdown cannot mix
+the two in one. A heading cannot go into a list, and is refused with a notice.
+
+`modelWrapList`, `modelUnwrapItems` and `modelSwitchList` keep the paragraphs
+they move as the same block objects, so the selection resolves straight back
+and untouched bytes stay. Only the containers are new, from a parsed template.
+Where a marker changes width, everything under the item moves with it, fences
+included. A nested list keeps its own type when its parent switches, which
+narrows the plan's "every depth that list owns". docs/REWRITE.md says so.
+
+The first runs found that predicting tight and loose was the wrong design.
+Lifting a nested item made its list loose, which changes which paragraphs
+markdown-it hides and where a newline follows `<li>`. So `modelSettleLists`
+asks the parser instead. After each operation it parses the touched block and
+its neighbours again, and takes the hidden flags and container tokens from the
+answer. A different shape is a refusal. The input layer runs every operation on
+a fork first, so a refusal changes nothing. A new list beside one of the same
+kind joins it, as the parser would. A quote's blank `>` line is a `gap` block,
+so a run of blocks may hold gaps, and the code block allows them now too.
+
+The `model` suite wraps every paragraph outside a list item in the oracle into
+each kind of list, switches every list and unwraps every item. Each has to
+render the way the parser reads it back, and switching settle off fails that.
+There is one case per rule. `tests/browser/lists.spec.mjs` drives the bar and
+the menu in Chromium and WebKit. Running the harness under load found a
+startup race that also explains an earlier flake: `model-page.mjs` began
+before the page's own welcome document had loaded, so under load that document
+could land in the undo history. It now waits for startup to finish. The whole
+harness then passed three times in a row in both engines, each test run twice,
+on six workers. `tests/fixtures/format-check.md` gains a section for the
+Firefox run, which is still owed. `sw.js`'s `VERSION` goes to `v1.81`.

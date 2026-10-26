@@ -92,6 +92,7 @@ export default function run(check) {
     modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState,
     modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState,
     modelSetHeading, modelMakeFence, modelUnfence, modelPlainText,
+    modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -119,7 +120,8 @@ export default function run(check) {
       " modelHoldSpaces, modelVerifyRender," +
       " modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState," +
       " modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState," +
-      " modelSetHeading, modelMakeFence, modelUnfence, modelPlainText };",
+      " modelSetHeading, modelMakeFence, modelUnfence, modelPlainText," +
+      " modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -4244,6 +4246,61 @@ export default function run(check) {
         kinds > 1000 && fences > 300);
     }
 
+    // ── Lists: slice 7's step 6 ──────────────────────────────────────────────
+    {
+      // The top-level block an edit touched and the one either side of it,
+      // rendered by the model and by the parser from what the model emits.
+      const agrees = (doc, block) => {
+        let top = block;
+        while (top.parent) top = top.parent;
+        const index = doc.blocks.indexOf(top);
+        const chunk = doc.blocks.slice(Math.max(0, index - 1), index + 2);
+        const src = modelSerialise({ prefix: "", blocks: chunk }, (b) => modelEmitLeaf(b, md, doc));
+        // The document's reference definitions go along, as in the marks
+        // sweep, or a neighbour's `[text][label]` renders as literal text.
+        const env = modelReferenceEnv(doc, md);
+        return modelRenderDocument({ blocks: chunk }, md, {}) === md.renderer.render(md.parse(src, env), md.options, env);
+      };
+      let done = 0;
+      let refused = 0;
+      const wrong = [];
+      for (const file of ORACLE_FILES) {
+        const doc = parse(repoFile(file));
+        const trials = [];
+        // Paragraphs outside a list item: what the input layer wraps. One in an
+        // item takes the unwrap-or-switch path instead.
+        for (const leaf of leavesOf(doc).filter((b) => b.kind === "paragraph" && b.inlines && !modelItemAncestor(b))) {
+          for (const ordered of [false, true]) {
+            trials.push([`wrap #${leaf.id} ${ordered ? "ol" : "ul"}`, (d) => modelWrapList(d, [modelBlockById(d, leaf.id)], ordered, md)]);
+          }
+        }
+        for (const list of modelFlatten(doc).filter((b) => b.kind === "list")) {
+          trials.push([`switch #${list.id}`, (d) => {
+            const target = modelBlockById(d, list.id);
+            return modelSwitchList(d, target, !modelListOrdered(target), md) ? target : null;
+          }]);
+          for (const item of list.children.filter((child) => child.kind === "item")) {
+            trials.push([`unwrap #${item.id}`, (d) => {
+              const moved = modelUnwrapItems(d, modelBlockById(d, list.id), [modelBlockById(d, item.id)], md);
+              return moved && moved[0];
+            }]);
+          }
+        }
+        for (const [label, run] of trials) {
+          const copy = modelForkDocument(doc);
+          let touched = null;
+          try { touched = run(copy); } catch (error) { wrong.push(`${file} ${label} threw ${error.message}`); continue; }
+          if (!touched || !modelSettleLists(copy, touched, md)) { refused++; continue; }
+          done++;
+          if (!agrees(copy, touched)) wrong.push(`${file} ${label}`);
+        }
+      }
+      check(`every paragraph outside a list item in the oracle wrapped into each kind of list, every list switched and every item ` +
+        `unwrapped, ${done} times, renders as the parser reads it back` +
+        (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 5).join(" | ")}` : ""), wrong.length === 0);
+      check(`and the sweep measured something: ${refused} refused by the parser's own reading`, done > 800);
+    }
+
     const blockEdit = (src, f) => {
       const doc = parse(src);
       const result = f(doc, modelFlatten(doc).filter((b) => !b.children));
@@ -4274,6 +4331,42 @@ export default function run(check) {
     check("the fence takes the document's own fence character",
       blockEdit("~~~\nx\n~~~\n\nnew para\n", (d, l) => modelMakeFence(d, [l[1]], md)).out === "~~~\nx\n~~~\n\n~~~\nnew para\n~~~\n");
     check("two bullets are not one code block", blockEdit("- one\n- two\n", (d, l) => modelMakeFence(d, [l[0], l[1]], md)).result === null);
+    const listEdit = (src, f) => {
+      const doc = parse(src);
+      const all = modelFlatten(doc);
+      const result = f(doc, all.filter((b) => !b.children && b.kind !== "gap"), all.filter((b) => b.kind === "list"));
+      const settled = result ? modelSettleLists(doc, Array.isArray(result) ? result[0] : result.kind ? result : doc.blocks[0], md) : false;
+      return { result, settled, out: modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc)) };
+    };
+    check("paragraphs become one tight list with an item each",
+      listEdit("one\n\ntwo\n\nthree\n", (d, l) => modelWrapList(d, l.slice(0, 2), false, md)).out === "- one\n- two\n\nthree\n");
+    check("a numbered list is numbered from 1",
+      listEdit("one\n\ntwo\n", (d, l) => modelWrapList(d, l, true, md)).out === "1. one\n2. two\n");
+    check("a new list takes the bullet the document already uses, and joins one beside it",
+      listEdit("* x\n\none\n", (d, l) => modelWrapList(d, [l[1]], false, md)).out === "* x\n* one\n");
+    check("and a document with no list of that kind takes the fallback it is given",
+      listEdit("one\n", (d, l) => modelWrapList(d, l, false, md, { bullet: "+ " })).out === "+ one\n");
+    check("a list inside a quote keeps the quote's chain",
+      listEdit("> one\n>\n> two\n", (d, l) => modelWrapList(d, l, false, md)).out === "> - one\n> - two\n");
+    check("a paragraph inside an item becomes a nested list at the item's column",
+      listEdit("- item\n\n  para\n", (d, l) => modelWrapList(d, [l[1]], false, md)).out === "- item\n\n  - para\n");
+    check("a heading cannot go into a list",
+      listEdit("# H\n", (d, l) => modelWrapList(d, l, false, md)).result === null);
+    check("unwrapping the middle item splits the list around it",
+      listEdit("- a\n- b\n- c\n", (d, l, lists) => modelUnwrapItems(d, lists[0], [lists[0].children[1]], md)).out ===
+        "- a\n\nb\n\n- c\n");
+    check("unwrapping an item takes its fence out with it, lines and all",
+      listEdit("- a\n\n  ```\n  code\n  ```\n", (d, l, lists) => modelUnwrapItems(d, lists[0], lists[0].children.slice(), md)).out ===
+        "a\n\n```\ncode\n```\n");
+    check("unwrapping a nested item leaves its paragraph in the outer item, not run into it",
+      listEdit("- a\n  - b\n  - c\n", (d, l, lists) => modelUnwrapItems(d, lists[1], [lists[1].children[0]], md)).out ===
+        "- a\n\n  b\n\n  - c\n");
+    check("switching a list switches every one of its items, and leaves a nested list alone",
+      listEdit("- a\n- b\n  - nested\n", (d, l, lists) => modelSwitchList(d, lists[0], true, md) && lists[0]).out ===
+        "1. a\n2. b\n   - nested\n");
+    check("and a wider marker moves what is under it",
+      listEdit("- a\n\n  more\n- b\n", (d, l, lists) => modelSwitchList(d, lists[0], true, md) && lists[0]).out ===
+        "1. a\n\n   more\n2. b\n");
     check("a code block turns back into literal text, a paragraph per run of lines",
       blockEdit("```\nline **one**\n\nline two\n```\n\nafter\n", (d, l) => modelUnfence(d, l[0], md)).out ===
         "line \\*\\*one**\n\nline two\n\nafter\n");

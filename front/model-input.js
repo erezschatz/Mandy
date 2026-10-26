@@ -417,6 +417,77 @@ function modelInputBlockShown(doc, at) {
   return true;
 }
 
+// The sniffed style a list falls back to when the document has none of that
+// type yet: app.js keeps it, and front/input-check.html ships no app.js.
+function modelInputListFallback() {
+  if (typeof markdownStyle !== "object" || !markdownStyle) return {};
+  return {
+    bullet: (markdownStyle.bulletListMarker || "-") + " ".repeat(markdownStyle.bulletPad || 1),
+    delimiter: markdownStyle.orderedDelimiter || ".",
+  };
+}
+
+/**
+ * Bullet list and Numbered list under the model core, slice 7's step 6.
+ *
+ * What it does is read off the selection. Leaves all inside items of one list
+ * **unwrap** those items when the list is already that type, and **switch the
+ * whole list** when it is not — markdown cannot mix the two in one list, so
+ * converting only the selected items would write three lists where the user
+ * saw one. Sibling paragraphs are **wrapped** into a new list. Anything else is
+ * refused with a notice.
+ *
+ * **It runs on a fork first.** Whether a list is tight or loose, and whether
+ * two lists merge, is the parser's decision, so `modelSettleLists` asks it; an
+ * operation the parser would read as a different shape is refused before the
+ * live document is touched.
+ */
+function modelInputList(ordered) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  const leaves = modelSelectedRanges(doc, at).map((range) => range.block).filter((block) => block.kind !== "gap");
+  if (!leaves.length) return true;
+  const fallback = modelInputListFallback();
+  const refuse = () => {
+    if (typeof notify === "function") {
+      notify("Select paragraphs, or items of one list, to make a list.", { severity: "info" });
+    }
+    return true;
+  };
+
+  const items = leaves.map((leaf) => modelItemAncestor(leaf));
+  const list = items[0] && items[0].parent;
+  let run;
+  if (items.every((item) => item && item.parent === list)) {
+    const chosen = [...new Set(items)];
+    run = (d) => {
+      const target = modelBlockById(d, list.id);
+      if (modelListOrdered(target) === ordered) {
+        const moved = modelUnwrapItems(d, target, chosen.map((item) => modelBlockById(d, item.id)), md);
+        return moved && moved[0];
+      }
+      return modelSwitchList(d, target, ordered, md, fallback) ? target : null;
+    };
+  } else if (leaves.every((leaf) => leaf.kind === "paragraph")) {
+    run = (d) => modelWrapList(d, leaves.map((leaf) => modelBlockById(d, leaf.id)), ordered, md, fallback);
+  } else {
+    return refuse();
+  }
+
+  const trial = modelForkDocument(doc);
+  const tried = run(trial);
+  if (!tried || !modelSettleLists(trial, tried, md)) return refuse();
+  const done = run(doc);
+  if (!done || !modelSettleLists(doc, done, md)) return refuse();
+  modelPendingMarks = null;
+  modelEnsureBlock(doc, md);
+  modelRender(editor, doc, md, at);
+  modelInputAnnounce(ordered ? "insertOrderedList" : "insertUnorderedList");
+  return true;
+}
+
 const MODEL_BLOCK_LEVELS = { p: 0, h1: 1, h2: 2, h3: 3, h4: 4, h5: 5, h6: 6 };
 
 /**

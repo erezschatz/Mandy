@@ -555,8 +555,11 @@ function applyFormat(format) {
   // Paragraph and the six headings are model commands too, slice 7's step 5.
   const modelBlock = /^(p|h[1-6])$/.test(format) && modelOwnsInput() && typeof modelInputBlockFormat === "function";
   if (modelBlock) modelInputBlockFormat(format);
+  // And the two lists, slice 7's step 6.
+  const modelList = (format === "ul" || format === "ol") && modelOwnsInput() && typeof modelInputList === "function";
+  if (modelList) modelInputList(format === "ol");
 
-  switch (modelMark || modelBlock ? null : format) {
+  switch (modelMark || modelBlock || modelList ? null : format) {
     case null:
       break;
     case "bold":

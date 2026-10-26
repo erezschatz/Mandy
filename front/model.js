@@ -4089,6 +4089,25 @@ function modelSetLink(block, from, to, href, md, env) {
   return { from, to };
 }
 
+/**
+ * Where a run of blocks sits among its siblings: `{ siblings, at, count }`, or
+ * null when they are not one run. Gaps between them are allowed and belong to
+ * the run, because inside a quote the blank `>` line between two paragraphs is
+ * recorded as a gap block rather than as a separator.
+ */
+function modelSiblingRun(doc, blocks) {
+  if (!blocks.length) return null;
+  const siblings = modelSiblings(doc, blocks[0]);
+  const at = siblings.indexOf(blocks[0]);
+  const end = siblings.indexOf(blocks[blocks.length - 1]);
+  if (at < 0 || end < at) return null;
+  const wanted = new Set(blocks);
+  for (let i = at; i <= end; i++) {
+    if (!wanted.has(siblings[i]) && siblings[i].kind !== "gap") return null;
+  }
+  return { siblings, at, count: end - at + 1 };
+}
+
 // ── Block kinds and the code block ───────────────────────────────────────────
 //
 // Slice 7's step 5: Paragraph, Heading 1–6, and Code over whole blocks.
@@ -4233,9 +4252,9 @@ function modelFenceChar(doc) {
  */
 function modelMakeFence(doc, blocks, md) {
   if (!blocks.length || blocks.some((block) => !block.inlines)) return null;
-  const siblings = modelSiblings(doc, blocks[0]);
-  const at = siblings.indexOf(blocks[0]);
-  if (at < 0 || blocks.some((block, i) => siblings[at + i] !== block)) return null;
+  const place = modelSiblingRun(doc, blocks);
+  if (!place) return null;
+  const { siblings, at } = place;
 
   const content = blocks.map((block) => modelPlainText(block.inlines)).join("\n");
   const char = modelFenceChar(doc);
@@ -4260,7 +4279,7 @@ function modelMakeFence(doc, blocks, md) {
   }
   block.id = blocks[0].id;
   block.separator = blocks[blocks.length - 1].separator;
-  siblings.splice(at, blocks.length, block);
+  siblings.splice(at, place.count, block);
   if (block.parent) modelTouch(block.parent);
   return block;
 }
@@ -4304,6 +4323,385 @@ function modelUnfence(doc, block, md) {
   if (block.parent) modelTouch(block.parent);
   for (const paragraph of made) modelTouch(paragraph);
   return made;
+}
+
+// ── Lists ────────────────────────────────────────────────────────────────────
+//
+// Slice 7's step 6: bullet and numbered lists. The paragraphs a list operation
+// moves stay the same block objects, so the selection resolves straight back
+// and everything untouched keeps its bytes; only the containers are new.
+
+const MODEL_ORDERED_ITEM = /^([ \t]*)(\d{1,9})([.)])([ \t]*)$/;
+
+// Whether a list block is numbered, read off its own open token.
+function modelListOrdered(list) {
+  return !!list && list.kind === "list" && list.tokens[0] && list.tokens[0].type === "ordered_list_open";
+}
+
+/**
+ * The marker this document uses for a list of the given type, without its
+ * indent: `{ bullet }` or `{ delimiter, pad, ones }`, where `ones` is the
+ * document's all-`1.` habit. Read off the document's own lists, then the
+ * sniffed style, then the house default.
+ */
+function modelListStyle(doc, ordered, fallback = {}) {
+  for (const list of modelFlatten(doc)) {
+    if (list.kind !== "list" || modelListOrdered(list) !== ordered || !list.children) continue;
+    const items = list.children.filter((child) => child.kind === "item" && child.marker);
+    if (!items.length) continue;
+    const marker = items[0].marker.replace(/^[ \t]*/, "");
+    if (!ordered) return { bullet: marker };
+    const match = MODEL_ORDERED_ITEM.exec(items[0].marker);
+    if (!match) continue;
+    const ones = items.length > 1 && items.every((item) => /^[ \t]*1[.)]/.test(item.marker));
+    return { delimiter: match[3], pad: match[4] || " ", ones };
+  }
+  if (!ordered) return { bullet: fallback.bullet || "- " };
+  return { delimiter: fallback.delimiter || ".", pad: " ", ones: false };
+}
+
+// The marker for the item at `index` of a new or switched list.
+function modelListMarker(style, ordered, index, start = 1) {
+  if (!ordered) return style.bullet;
+  return String(style.ones ? start : start + index) + style.delimiter + style.pad;
+}
+
+// Set a paragraph's tokens hidden or not — what markdown-it does to every
+// paragraph of a tight list — on copies, so a shared token is never written.
+function modelSetParagraphHidden(block, hidden) {
+  if (block.kind !== "paragraph") return;
+  block.tokens = block.tokens.map((token) => {
+    if (token.type !== "paragraph_open" && token.type !== "paragraph_close") return token;
+    if (!!token.hidden === hidden) return token;
+    const copy = modelCloneToken(token);
+    copy.hidden = hidden;
+    return copy;
+  });
+  block.inline = block.tokens.find((token) => token.type === "inline") || block.inline;
+}
+
+/**
+ * Contiguous sibling paragraphs become one tight list with an item each, and
+ * the list is handed back — or null when they are not that.
+ *
+ * The list and its items come from `modelParse` of a template carrying the
+ * right markers, which is where their tokens and their recorded affixes come
+ * from; each paragraph is then moved into its item in place of the template's,
+ * hidden the way a tight list hides it. Inside a quote the chain comes along,
+ * and inside an item the markers start at that item's content column, since a
+ * marker in this model is absolute. A heading cannot go into a list, which is
+ * TODO 1.1.5's refusal from the other side, and nothing else but a paragraph is
+ * taken either.
+ */
+function modelWrapList(doc, blocks, ordered, md, fallback) {
+  if (!blocks.length || blocks.some((block) => block.kind !== "paragraph" || !block.inlines)) return null;
+  // An item's first paragraph cannot become a list: the item's first child
+  // would be the list, and the model has no way to write the item's own marker
+  // in front of the list's. The input layer never asks — a paragraph in an
+  // item takes the unwrap-or-switch path — so this is a refusal on purpose
+  // rather than a case left out.
+  const opening = modelItemAffix(blocks[0]);
+  if (opening && opening.first) return null;
+  const run = modelSiblingRun(doc, blocks);
+  if (!run) return null;
+  const { siblings, at } = run;
+
+  const style = modelListStyle(doc, ordered, fallback);
+  const markers = blocks.map((_, i) => modelListMarker(style, ordered, i));
+  const template = modelParse(markers.map((marker) => marker + "x").join("\n") + "\n", md);
+  const list = template.blocks[0];
+  if (template.blocks.length !== 1 || !list || list.kind !== "list" || list.children.length !== blocks.length) return null;
+
+  const outer = modelItemAncestor(blocks[0]);
+  const indent = outer && outer.contentIndent ? outer.contentIndent : "";
+  const chain = blocks[0].quotePrefixes ? blocks[0].quotePrefixes : null;
+  const last = blocks[blocks.length - 1];
+
+  list.id = modelMintId(doc);
+  list.source = null;
+  list.parent = blocks[0].parent;
+  list.quotePrefixes = chain ? chain.slice() : null;
+  list.separator = last.separator;
+  list.children.forEach((item, i) => {
+    item.id = modelMintId(doc);
+    item.source = null;
+    item.quotePrefixes = chain ? chain.slice() : null;
+    item.marker = indent + item.marker;
+    if (item.contentIndent !== null) item.contentIndent = indent + item.contentIndent;
+    else item.contentIndent = indent + " ".repeat(markers[i].length);
+    const paragraph = blocks[i];
+    paragraph.parent = item;
+    paragraph.separator = "";
+    modelSetParagraphHidden(paragraph, true);
+    item.children = [paragraph];
+    item.separator = i === blocks.length - 1 ? "" : "\n";
+  });
+  siblings.splice(at, run.count, list);
+  for (const paragraph of blocks) {
+    modelSetLeadingAffix(paragraph, "");
+    modelTouch(paragraph);
+  }
+  // **A list beside a list of the same kind is one list** to the parser,
+  // blank line or not, so the new one joins it rather than standing beside it
+  // as a second list the file cannot hold.
+  return modelJoinAdjacentList(doc, list, md);
+}
+
+// Whether two lists would read as one: the same type, and for bullets the same
+// bullet character, which is what CommonMark keys a list on.
+function modelListsJoin(a, b) {
+  if (!a || !b || a.kind !== "list" || b.kind !== "list") return false;
+  if (modelListOrdered(a) !== modelListOrdered(b)) return false;
+  const key = (list) => {
+    const item = list.children.find((child) => child.marker);
+    const marker = item ? item.marker.replace(/^[ \t]*/, "") : "";
+    return modelListOrdered(list) ? (MODEL_ORDERED_ITEM.exec(item.marker) || [])[3] : marker[0];
+  };
+  return key(a) === key(b);
+}
+
+// Join a list to the list just before it and the one just after it, where they
+// would read as one, and hand back the list that holds the items.
+function modelJoinAdjacentList(doc, list, md) {
+  let host = list;
+  const siblings = modelSiblings(doc, list);
+  const at = siblings.indexOf(list);
+  const before = at > 0 ? siblings[at - 1] : null;
+  if (modelListsJoin(before, list)) {
+    const between = modelSiblingSeparator(doc, before.children[0]) ?? "\n";
+    before.children[before.children.length - 1].separator = between;
+    for (const item of list.children) {
+      item.parent = before;
+      before.children.push(item);
+    }
+    before.separator = list.separator;
+    siblings.splice(at, 1);
+    host = before;
+  }
+  const index = siblings.indexOf(host);
+  const after = siblings[index + 1];
+  if (modelListsJoin(host, after)) {
+    const between = modelSiblingSeparator(doc, host.children[0]) ?? "\n";
+    host.children[host.children.length - 1].separator = between;
+    for (const item of after.children) {
+      item.parent = host;
+      host.children.push(item);
+    }
+    host.separator = after.separator;
+    siblings.splice(index + 1, 1);
+  }
+  if (host !== list) {
+    // Numbering carries on from the list it joined, unless the document
+    // writes every number as 1.
+    if (modelListOrdered(host)) {
+      const style = modelListStyle(doc, true);
+      host.children.forEach((item, i) => {
+        const lead = /^[ \t]*/.exec(item.marker || "")[0];
+        const marker = lead + modelListMarker(style, true, i);
+        if (marker === item.marker) return;
+        const leaves = modelFlatten({ blocks: item.children || [] }).filter((node) => !node.children);
+        const extras = new Map(leaves.map((leaf) => [leaf, modelBlockExtra(leaf)]));
+        const columns = marker.length - (item.marker || "").length;
+        item.marker = marker;
+        item.contentIndent = lead + " ".repeat(marker.length - lead.length);
+        for (const child of item.children || []) modelShiftUnder(child, columns, extras);
+      });
+    }
+    for (const item of host.children) modelTouch(item);
+    modelTouch(host);
+  }
+  return host;
+}
+
+/**
+ * After a list operation, the parser is asked what the document now says
+ * around `block`: its top-level block and the one either side of it, emitted
+ * and parsed again. **Whether a list is tight or loose is the parser's
+ * decision**, and it decides which paragraphs it hides, so their hidden flags
+ * are copied from its answer. If it sees a different shape at all — a list
+ * that merged, a paragraph that became a lazy continuation — this says no, and
+ * the caller, which ran the operation on a fork, refuses it.
+ */
+function modelSettleLists(doc, block, md) {
+  let top = block;
+  while (top && top.parent) top = top.parent;
+  const index = doc.blocks.indexOf(top);
+  if (index < 0) return false;
+  const chunk = doc.blocks.slice(Math.max(0, index - 1), index + 2);
+  let src;
+  try {
+    src = modelSerialise({ prefix: "", blocks: chunk }, (leaf) => modelEmitLeaf(leaf, md, doc));
+  } catch (error) {
+    return false;
+  }
+  const parsed = modelParse(src, md);
+  const shape = (blocks) => modelFlatten({ blocks }).map((b) => b.kind + (b.children ? b.children.length : ""));
+  const mine = modelFlatten({ blocks: chunk });
+  const theirs = modelFlatten({ blocks: parsed.blocks });
+  if (shape(chunk).join() !== shape(parsed.blocks).join()) return false;
+  mine.forEach((leaf, i) => {
+    // The renderer looks one token back, so the hidden token before each block
+    // is the parser's answer too.
+    leaf.hiddenBefore = theirs[i].hiddenBefore ? modelCloneToken(theirs[i].hiddenBefore) : null;
+    // A container renders only its own open and close, and keeps the tokens
+    // between for the renderer's look-ahead, which decides whether a newline
+    // follows `<li>`. So a container takes the parser's tokens whole.
+    if (leaf.children) {
+      leaf.tokens = theirs[i].tokens.map((token) => modelCloneToken(token));
+      return;
+    }
+    if (leaf.kind !== "paragraph") return;
+    const open = theirs[i].tokens.find((token) => token.type === "paragraph_open");
+    if (open) modelSetParagraphHidden(leaf, !!open.hidden);
+  });
+  return true;
+}
+
+// Move every leaf under `block` by `columns`: each nested marker and indent,
+// each source leaf's lines, and each inline leaf re-affixed from where it now
+// sits. `extras` is each leaf's own indent beyond its opener, read before the
+// move, since afterwards its position no longer describes its bytes.
+function modelShiftUnder(block, columns, extras) {
+  const all = modelFlatten({ blocks: [block] });
+  for (const node of all) {
+    if (node.kind !== "item" || !columns) continue;
+    node.marker = modelReindentMarker(node.marker, columns);
+    if (node.contentIndent !== null) node.contentIndent = modelShiftIndent(node.contentIndent, columns);
+  }
+  for (const leaf of all.filter((node) => !node.children)) {
+    if (leaf.inlines) {
+      modelSetLeadingAffix(leaf, extras.get(leaf) || "");
+      modelTouch(leaf);
+    } else if (leaf.source != null) {
+      const bytes = modelShiftSource(leaf.source, columns);
+      modelTouch(leaf);
+      leaf.source = bytes;
+    }
+  }
+}
+
+/**
+ * The given items' contents move out to their list's own level, splitting the
+ * list around them, and the blocks that moved are handed back.
+ *
+ * `modelLiftItem` generalised past the empty item, with `modelMoveItem`'s
+ * shift: everything under a lifted item moves out by the item's content column,
+ * since the indent is absolute. A paragraph lifted out of a tight list stops
+ * being hidden, unless where it lands is a tight list itself. An empty item
+ * becomes an empty paragraph, which emits nothing until something is typed.
+ */
+function modelUnwrapItems(doc, list, items, md) {
+  if (!list || list.kind !== "list" || !items.length) return null;
+  const indexes = items.map((item) => list.children.indexOf(item)).sort((a, b) => a - b);
+  if (indexes[0] < 0 || indexes.some((index, i) => i && index !== indexes[i - 1] + 1)) return null;
+  const siblings = modelSiblings(doc, list);
+  const at = siblings.indexOf(list);
+  if (at < 0) return null;
+
+  const before = list.children.slice(0, indexes[0]);
+  const chosen = list.children.slice(indexes[0], indexes[indexes.length - 1] + 1);
+  const after = list.children.slice(indexes[indexes.length - 1] + 1);
+  const blank = modelBlankSeparator(list);
+  const ending = list.separator;
+
+  const lifted = [];
+  for (const item of chosen) {
+    if (!item.children || !item.children.length) {
+      const paragraph = modelParagraphBlock(doc, md);
+      paragraph.parent = list.parent;
+      paragraph.quotePrefixes = item.quotePrefixes ? item.quotePrefixes.slice() : null;
+      lifted.push(paragraph);
+      continue;
+    }
+    const columns = modelMarkerColumn(item.marker) - modelIndentColumn(item.contentIndent || "");
+    const leaves = modelFlatten({ blocks: item.children }).filter((node) => !node.children);
+    const extras = new Map(leaves.map((leaf) => [leaf, modelBlockExtra(leaf)]));
+    for (const child of item.children) {
+      child.parent = list.parent;
+      lifted.push({ child, columns, extras });
+    }
+  }
+
+  const made = [];
+  if (before.length) {
+    list.children = before;
+    before[before.length - 1].separator = "";
+    list.separator = blank;
+    made.push(list);
+  }
+  const moved = lifted.map((entry) => (entry.child ? entry.child : entry));
+  moved.forEach((block, i) => { block.separator = i === moved.length - 1 && !after.length ? ending : blank; });
+  made.push(...moved);
+  if (after.length) {
+    const rest = modelContainerLike(doc, list);
+    rest.children = after;
+    for (const item of after) item.parent = rest;
+    after[after.length - 1].separator = "";
+    rest.separator = ending;
+    rest.parent = list.parent;
+    made.push(rest);
+    modelTouch(rest);
+  }
+  siblings.splice(at, 1, ...made);
+  // A block lifted to sit straight after a paragraph that a single newline
+  // joined to the list would read as that paragraph's continuation, so the
+  // separator before it becomes a blank line.
+  if (!before.length && at > 0 && !/\n[ \t>]*\n/.test(siblings[at - 1].separator)) {
+    siblings[at - 1].separator = blank;
+  }
+
+  for (const entry of lifted) {
+    if (!entry.child) { modelSetLeadingAffix(entry, ""); modelTouch(entry); continue; }
+    modelShiftUnder(entry.child, entry.columns, entry.extras);
+    for (const leaf of modelFlatten({ blocks: [entry.child] })) {
+      if (leaf.kind === "paragraph" && modelItemAncestor(leaf) === modelItemAncestor(entry.child)) {
+        modelSetParagraphHidden(leaf, modelListHidesParagraphs(leaf));
+      }
+    }
+  }
+  if (made.includes(list)) modelTouch(list);
+  if (list.parent) modelTouch(list.parent);
+  return moved;
+}
+
+/**
+ * A list switches between bullets and numbers, every one of its own items
+ * taking the new marker. Returns whether it changed.
+ *
+ * The open and close tokens come from a template of the other type. Where an
+ * item's marker changes width, everything under it shifts by the difference,
+ * the way an outdent shifts it. **A nested list is left as it is**: it is a
+ * list of its own, and may be the other type on purpose.
+ */
+function modelSwitchList(doc, list, ordered, md, fallback) {
+  if (!list || list.kind !== "list" || modelListOrdered(list) === ordered) return false;
+  const template = modelParse((ordered ? "1. x" : "- x") + "\n", md).blocks[0];
+  if (!template || template.kind !== "list") return false;
+  const open = modelCloneToken(template.tokens[0]);
+  const close = modelCloneToken(template.tokens[template.tokens.length - 1]);
+  const itemOpen = template.children[0].tokens[0];
+  const itemClose = template.children[0].tokens[template.children[0].tokens.length - 1];
+  const style = modelListStyle(doc, ordered, fallback);
+
+  list.tokens = [open, ...list.tokens.slice(1, -1), close];
+  list.children.forEach((item, i) => {
+    if (item.kind !== "item") return;
+    const lead = /^[ \t]*/.exec(item.marker || "")[0];
+    const marker = lead + modelListMarker(style, ordered, i);
+    const leaves = modelFlatten({ blocks: item.children || [] }).filter((node) => !node.children);
+    const extras = new Map(leaves.map((leaf) => [leaf, modelBlockExtra(leaf)]));
+    const columns = (marker.length - lead.length) - ((item.marker || "").length - lead.length);
+    item.marker = marker;
+    item.contentIndent = lead + " ".repeat(marker.length - lead.length);
+    item.tokens = [modelCloneToken(itemOpen), ...item.tokens.slice(1, -1), modelCloneToken(itemClose)];
+    for (const child of item.children || []) modelShiftUnder(child, columns, extras);
+    if (!item.children) {
+      modelTouch(item);
+      item.source = ((item.quotePrefixes && item.quotePrefixes[0]) || "") + marker.replace(/[ \t]+$/, "");
+    } else modelTouch(item);
+  });
+  modelTouch(list);
+  return true;
 }
 
 // ── Structure ────────────────────────────────────────────────────────────────

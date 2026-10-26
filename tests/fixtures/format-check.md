@@ -5,15 +5,15 @@ app, follow the steps, and edit the paragraphs written for each one. **Bold** is
 what you do; *italics* is what should (or should not) happen.
 
 It grows with TODO 3.1's slice 7: each step that needs a person adds its
-section here. Today it holds five: keeping equations typeset (step 2), typing
+section here. Today it holds six: keeping equations typeset (step 2), typing
 one (step 10), bold, italic and strikethrough (step 3), inline code and links
-(step 4), and paragraphs, headings and the code block (step 5). (It held diagrams
+(step 4), paragraphs, headings and the code block (step 5), and lists (step 6). (It held diagrams
 too until Mermaid was removed on 2026-10-01.)
 
-Chromium and WebKit run the last four sections by machine
+Chromium and WebKit run the last five sections by machine
 (`tests/browser/equation-typing.spec.mjs`, `format-marks.spec.mjs`,
-`inline-code-links.spec.mjs` and `block-kinds.spec.mjs`), so a hand run of
-those is Firefox's. Safari's waits for stage 5.
+`inline-code-links.spec.mjs`, `block-kinds.spec.mjs` and `lists.spec.mjs`), so
+a hand run of those is Firefox's. Safari's waits for stage 5.
 
 ## Before you start
 
@@ -310,6 +310,41 @@ npm test
 6. **Select both bullets and choose Format → Code.** *A message says to select
    inside a single block, and nothing changes.*
 7. **Press Ctrl/Cmd+Z after any of the above.** *That change goes, in one
+   press.*
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors*, with the known Firefox exception from "Before you start".
+
+## Lists (step 6)
+
+Bullet list and Numbered list, from the Format menu or the bar at a line's
+start. What they do depends on where the caret is: paragraphs become a list,
+the list's own type takes items out of it, and the other type switches the
+whole list.
+
+The paragraphs and list to work on:
+
+Plain line one
+
+Plain line two
+
+- first bullet
+- second bullet
+- third bullet
+
+1. **Put the caret at the start of "Plain line one" and press the bullet
+   button on the short bar.** *It becomes a bullet.* (Undo it.)
+2. **Select from "Plain line one" to the end of "Plain line two" and choose
+   Format → Numbered list.** *They become one list, numbered 1 and 2.* (Undo
+   it.)
+3. **Click in "second bullet" and choose Format → Bullet list.** *It leaves
+   the list as a plain paragraph, and the bullets above and below it stay
+   bullets.* (Undo it.)
+4. **Click in "second bullet" and choose Format → Numbered list.** *All three
+   become numbered, 1 to 3.* (Undo it.)
+5. **Click in a heading and choose Format → Bullet list.** *A message says to
+   select paragraphs or items of one list, and nothing changes.*
+6. **Press Ctrl/Cmd+Z after any of the above.** *That change goes, in one
    press.*
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
