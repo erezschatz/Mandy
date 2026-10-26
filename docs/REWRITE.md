@@ -1854,8 +1854,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     2026-10-24; step 3, bold, italic and strikethrough, is done and tested
     the same day, by machine and by hand in Firefox; step 4, inline code and
     links, is done and tested the same day, by machine and by hand in Firefox;
-    step 5, paragraphs, headings and the code block, is done and tested by
-    machine the same day and waits on its Firefox run. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    step 5, paragraphs, headings and the code block, is done and tested, by
+    machine and by hand in Firefox on 2026-10-26. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3752,8 +3752,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         Chromium and WebKit; their Firefox look, step 9 of the protocol, was
         not run separately before the close. Step 4, inline code and links,
         is done and tested the same day, by machine and by hand in Firefox.
-        Step 5, paragraphs, headings and the code block, is done and tested by
-        machine the same day and waits on its Firefox run.** Every control that edits the
+        Step 5, paragraphs, headings and the code block, is done and tested,
+        by machine on 2026-10-24 and by hand in Firefox 158.0.1 on 2026-10-26.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4360,8 +4360,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `modelCodeState`; the old core uses the format bar's `CODE`
             predicate.
 
-        5.  **Block kinds: p, h1–h6 and the code block — done and tested by
-            machine 2026-10-24; waiting on its hand run in Firefox.** A kind change keeps
+        5.  **Block kinds: p, h1–h6 and the code block — done and tested
+            2026-10-26**, by machine in Chromium and WebKit on 2026-10-24 and by
+            hand in Firefox 158.0.1 on 2026-10-26, every step clean. A kind change keeps
             the block's id, so the selection resolves back into it. Its tokens
             come from `md.parse` of a template with the inline children
             replaced, as slice 4 does for a new paragraph.

@@ -9441,7 +9441,7 @@ format bar in Chromium and WebKit, and `tests/fixtures/format-check.md` gains a
 section for the Firefox run, which is still owed. `sw.js`'s `VERSION` goes to
 `v1.80`.
 
-## 2026-10-24 — Two browser tests put right after the code block step
+## 2026-10-24 — `3049ea0` — Two browser tests put right after the code block step
 
 The previous commit went in with three of the harness's 82 tests failing,
 because the commit was chained onto the run without waiting for its verdict.
@@ -9454,3 +9454,11 @@ third failed once, in Chromium, and passed five times in a row on its own.
 landed the caret inside the bold word. It now waits for that caret before it
 looks. The whole harness then passed in Chromium and WebKit three times in a
 row.
+
+## 2026-10-26 — Slice 7's block kinds step is closed
+
+The user ran the "Paragraphs, headings and the code block" section of
+`tests/fixtures/format-check.md` in Firefox 158.0.1, and every step was clean.
+Chromium and WebKit run it by machine and Safari's run waits for stage 5, so
+step 5 is done and tested. Step 6, bullet and numbered lists, is next.
+docs/REWRITE.md records the run on the stage line, the slice line and the step.
