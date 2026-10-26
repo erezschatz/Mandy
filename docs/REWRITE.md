@@ -1856,8 +1856,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     links, is done and tested the same day, by machine and by hand in Firefox;
     step 5, paragraphs, headings and the code block, is done and tested, by
     machine and by hand in Firefox on 2026-10-26; step 6, lists, is done and
-    tested by machine the same day, and its Firefox run is clean but for one
-    step, since fixed, which wants a second look. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
+    tested the same day, by machine and by hand in Firefox. Not a merge point, and neither is any place inside it: build-order steps 2 through 4 are
     render, input and formats, and between a renderer that exists and formats
     at parity there is nowhere to stop. Its end is a real boundary and still
     the wrong merge — `main` would take the whole input layer's risk while the
@@ -3756,9 +3755,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         is done and tested the same day, by machine and by hand in Firefox.
         Step 5, paragraphs, headings and the code block, is done and tested,
         by machine on 2026-10-24 and by hand in Firefox 158.0.1 on 2026-10-26.
-        Step 6, lists, is done and tested by machine on 2026-10-26 and run by
-        hand in Firefox the same day; one step, since fixed, wants a second
-        look.** Every control that edits the
+        Step 6, lists, is done and tested on 2026-10-26, by machine and by
+        hand in Firefox.** Every control that edits the
         document becomes a model command: the thirteen formats, Clear, the rule,
         the link, the table of contents, Cut and Copy. `applyFormat` stays the
         single entry point for the formats and gains a model branch in front of
@@ -4441,9 +4439,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             continuation, while the first line of an item's first child has to
             carry the marker. `modelMakeFence` puts it back.
 
-        6.  **Lists: bullet and numbered — done and tested by machine
-            2026-10-26; run by hand in Firefox 158.0.1 the same day, clean
-            but for one step, since fixed, which wants a second look.** Wrapping contiguous sibling blocks
+        6.  **Lists: bullet and numbered — done and tested 2026-10-26**, by
+            machine in Chromium and WebKit and by hand in Firefox 158.0.1,
+            every step clean once the switch beside another list was fixed
+            and looked at again. Wrapping contiguous sibling blocks
             makes one list with one item each. The marker is the one the
             document uses at that depth, falling back to the sniff, and
             numbering starts at 1 or follows the document's all-`1.` habit.

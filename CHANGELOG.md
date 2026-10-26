@@ -9524,10 +9524,19 @@ case. The harness passed in Chromium and WebKit twice, each test run twice on
 six workers. The fixture's step says what now happens. The step wants a second
 Firefox look before step 6 is closed.
 
-## 2026-10-26 — The service worker version moves for the list fix
+## 2026-10-26 — `d3cc51c` — The service worker version moves for the list fix
 
 The previous commit changed `model.js` and `model-input.js` and left `sw.js`'s
 `VERSION` at `v1.81`. Both files are shell assets, so a browser that had loaded
 the app before could have gone on serving the old copies from its cache, and a
 Firefox re-check of the fix would have tested the code it replaced. `VERSION`
 goes to `v1.82`.
+
+## 2026-10-26 — Slice 7's lists step is closed
+
+The user looked at the fixed step again in Firefox 158.0.1, and the whole
+"Lists" section of `tests/fixtures/format-check.md` is clean. Chromium and
+WebKit run it by machine and Safari's run waits for stage 5, so step 6 is done
+and tested. Step 7, the horizontal rule, the table of contents and Clear, is
+next. docs/REWRITE.md records the run on the stage line, the slice line and the
+step.
