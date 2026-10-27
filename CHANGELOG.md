@@ -9812,7 +9812,7 @@ Chromium and WebKit, each test run twice on six workers. From here every commit
 on this branch is checked by the Unities hook: source needs a doc line and a
 task record beside it.
 
-## 2026-10-26 — The stage 2 scratch harness is deleted, and two stale worktrees with it
+## 2026-10-26 — `c07f53c` — The stage 2 scratch harness is deleted, and two stale worktrees with it
 
 `front/render-scratch.html`, the untracked harness that measured the model's
 renderer in a real DOM during stage 2, is deleted, as its own header and its
@@ -9827,3 +9827,25 @@ The user also asked for two stale worktrees to be removed:
 by the archived probe and list-page sessions. Both were clean, and their
 commits are in this branch. `~/dev/marky-main` was removed before them; the
 `main` branch stays, level with `origin/main`.
+
+## 2026-10-27 — Stage 3 is planned
+
+Stage 3 of the rewrite is planned in docs/REWRITE.md, on its stage line, before
+any of it is built. The criterion is the estimate table's: blockquote (1.1.6),
+image (1.1.7), table insert and structural editing (1.1.8), and the 2.1
+formatter. With 1.1.8 the table refusal stage 2 started comes to an end. Six
+slices: the quote, the image, the formatter, cells that take the caret, table
+structure, and a hand pass that closes the stage. The first three are
+independent of each other; the cells need the formatter, and the structure
+needs the cells.
+
+The user settled four decisions first, all as recommended. Task lists (1.1.9)
+and the link editor (1.1.10) wait until after stage 4, because until then a
+save is still Turndown, and each would need a save-side rule that stage 4
+deletes. The 2.1 formatter is wired into Turndown's `table` rule as well as
+the model's emitter, so 2.1 is fixed in the running editor now. Enter in a cell
+moves down a row and adds one at the bottom. An edited cell re-emits only its
+row, unless a padded column's width changes. Seven smaller questions are
+written down as open, each with a recommendation, to settle before the slice
+that needs it. `tasks/1.1-formats.md` and `tasks/2.1-table-reemission.md` point
+at the plan. No code changed.

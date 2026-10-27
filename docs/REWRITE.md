@@ -4940,10 +4940,11 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     formats design section leaves to whoever builds it in stage 3; and whether
     `tabsSwitchAllowed()`'s switch lock comes off once a background tab is a
     live model rather than a frozen string, which the tabs section defers to
-    stage 4 and keeps by default until then.
-*   **3. The 1.1 items — not started.** Not a merge point either, for the same
-    reason: reintegration has not happened, so the app around the new core is
-    still reading `editor.innerHTML`.
+    stage 4 and keeps by default until then. (The first was settled on
+    2026-10-27 in stage 3's plan: Enter moves down a row.)
+*   **3. The 1.1 items — planned 2026-10-27, not started.** Not a merge point
+    either, for the same reason: reintegration has not happened, so the app
+    around the new core is still reading `editor.innerHTML`.
 
     **It inherits one debt from stage 2, named on both sides so it cannot be
     lost between them:** a table refuses edits from slice 4 onwards, and TODO
@@ -4951,6 +4952,214 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     table is rendered `contenteditable="false"` and is exactly as editable as
     it is today, which is to say not. The item is the place the refusal ends;
     stage 2's exit criterion records that it starts.
+
+    **The exit criterion is the estimate table's**: blockquote, image, table
+    insert and structural editing, and the 2.1 formatter. That is TODO 1.1.6,
+    1.1.7, 1.1.8 and 2.1, and with 1.1.8 the end of stage 2's one named
+    exception: **a table cell takes the caret and an edit**, by machine in
+    Chromium and WebKit and by hand in Firefox, the way slice 7 was run.
+
+    **What it does not include, decided 2026-10-27: task lists (1.1.9) and the
+    link editor (1.1.10).** Both wait on 3.1 and neither is in the criterion,
+    and the reason to keep them out is the save path. Until stage 4 a save is
+    still Turndown over the DOM the model rendered. A blockquote, an image and
+    a table already have Turndown rules (the core `blockquote` and `image`
+    rules, and `table` in `app.js`), so nothing this stage builds needs a
+    save-side rule that stage 4 then deletes. A live checkbox, a linkified bare
+    URL and a `{#id}` on a heading each would. So both land on `main` after
+    stage 4, when the model owns the file and a construct needs one emitter
+    rather than two.
+
+    **What reaches the file, and when.** The same split stage 2 had: the model
+    owns editing, and Turndown writes the file. A quote, an image and an
+    inserted table save correctly today by those rules. The one thing that
+    would show is an **edited table** saving in the `table` rule's house
+    style, which is 2.1 itself, and that is why the formatter is wired into
+    both sides (below).
+
+    **Four decisions, settled 2026-10-27 before any of the work**, all taken
+    as recommended:
+
+    - **Scope stops at the criterion**: 1.1.9 and 1.1.10 go after stage 4, as
+      above.
+    - **The 2.1 formatter is wired into both emitters**: the model's, for
+      stage 4, and Turndown's `table` rule, so 2.1 is fixed in the running
+      save path now and reaches `main` at the stage 4 merge. That is D7: it
+      fixes something in a file the app loads, which costs nothing. The
+      Turndown side has no per-table source to read, so it takes the
+      convention from `sniffMarkdownStyle`, document-wide. The model reads it
+      off each table's own delimiter row.
+    - **Enter in a cell moves down a row**, to the same column. On the last
+      row it adds a row first, the way Tab on the last cell does. A no-op was
+      the other candidate, and a key that does nothing reads as a broken
+      editor, which is the complaint the refusal earned in Gecko and WebKit.
+    - **An edited cell re-emits its row where it can.** In a compact or
+      one-space table only the edited row's line changes. In a table padded
+      to width, the whole table re-emits only when a column's width actually
+      changes. Re-emitting the whole table every time was simpler, and it is
+      the diff D1 exists to prevent.
+
+    **One rule follows from D4's amendment, and is not a decision:** every
+    control this stage adds answers under the model core only. Under the legacy
+    core each says so with a `notify` rather than reaching `runCommand`, since
+    no new format is written against contenteditable. The flag goes at stage 4,
+    and the notices go with it.
+
+    **Open, to settle before the slice that needs it** — each with the
+    recommendation, so the slice can start on a yes:
+
+    - **What the quote control does (slice 1).** Recommended: it wraps every
+      block the selection touches in one quote, and if all of them are
+      already quoted it unwraps one level. It never nests a quote. Inside a
+      list item it wraps the item's own blocks, which markdown writes as
+      `- > text`; the emitter already suppresses the item affix for a quote
+      inside a bullet. The alternative is refusing it inside a list, as a
+      heading is.
+    - **Enter and Backspace in a quote (slice 1).** Recommended: Enter on an
+      empty quoted paragraph leaves the quote, and Backspace at the start of
+      a quote's first block unwraps it. These are the empty-item rules'
+      twins, and what every editor people arrive from does.
+    - **The image dialog (slice 2).** `askForInput` has one field, and an
+      image needs src and alt, with an optional title. Recommended:
+      generalise it to take a list of fields. 1.1.10's link editor needs
+      three fields anyway, so it gets built once, and the alternative is a
+      third copy of the modal scaffold. Editing an existing image reuses the
+      dialog, pre-filled, when the selection is exactly one image.
+    - **Where the table controls live (slice 5).** Recommended: Insert →
+      Table, and a group in Format (row above, row below, column left, column
+      right, delete row, delete column, delete table, and the three
+      alignments), disabled outside a table. The menu already skips a
+      `[disabled]` item in keyboard navigation, so this is a small
+      `toolbar.js` addition. A seventh top-level menu was the alternative, and
+      it would break the six-words-at-375px fit.
+    - **What Insert → Table makes (slice 5).** Recommended: three columns, a
+      header row and two body rows, with the caret in the first header cell,
+      and no dialog. Rows and columns are one menu item away.
+    - **Paste into a cell (slice 4).** Recommended: flattened to one line of
+      inline content. Pasted blocks become their inline content joined by a
+      space, and a newline becomes a space. A GFM cell cannot hold either.
+    - **A selection across cells (slice 4).** Recommended: a deletion empties
+      the covered text in each cell and keeps the grid, never merging two
+      cells; typing over it is refused, the way a cross-block replacement is
+      refused today.
+
+    **Six slices, roughly in order of cost.** Each one has `model` suite
+    cases, a section in `tests/fixtures/format-check.md` with a Playwright
+    spec beside it, and a hand run of that section in Firefox. Every new
+    writer to a block's contents carries its own `modelUnshare` barrier,
+    which is slice 6 of stage 2's rule for anything that writes before
+    `modelTouch`.
+
+    1.  **Blockquote — TODO 1.1.6.** The model already holds quotes: a quote
+        is a container, and every block inside one records its `> ` chain in
+        `quotePrefixes`. What is missing is a way to make or remove one.
+        - **`modelWrapQuote` and `modelUnwrapQuote`**, on a fork through the
+          shape check the way `modelSettleLists` is, so the parser decides
+          whether the result reads back as what was meant.
+        - **Format → Blockquote**, toggling. Whether the caret bar gets it too
+          is decided with the control, since the bar's markup has two copies
+          (`index.html` and `html-export.js`).
+        - **Enter and Backspace in a quote**, per the open item above.
+        - Done when a quote made, nested inside a list and unmade comes back
+          as the file the parser expects, and when an untouched quote in
+          `torture.md` stays byte-identical.
+
+    2.  **Image — TODO 1.1.7.** An image is already an atom: one `￼`, one
+        node, tokens kept.
+        - **`askForInput` takes a list of fields**, if the open item is
+          settled that way, with today's one caller unchanged.
+        - **Insert → Image…**, at the caret. Its token comes from the parser,
+          never hand-built — stage 2's slice 4 rule for any command that
+          creates an atom.
+        - **Editing an existing image** through the same dialog, pre-filled.
+        - **One limit, stated rather than solved:** a relative `src` resolves
+          against the server's origin, not against the open file's
+          directory, so `./pic.png` does not load. That is 1.2's relative-link
+          problem with a different element, and it is fixed there or not at
+          all. A reference image keeps the limit CLAUDE.md records: a rebuilt
+          one saves inline.
+
+    3.  **The 2.1 formatter.** A pure function from a table's rows, its
+        alignments and a convention to text. It goes in `markdown-style.js`,
+        because both the Turndown rule in `app.js` and the emitter in
+        `model.js` call it, and that file loads before both.
+        - **The convention, sniffed**: compact (`|a|b|`), one-space
+          (`| a | b |`) or padded to width, plus whether the outer pipes are
+          written. It is read off the delimiter row and the rows beside it.
+        - **Alignment kept**, `:--`, `:-:` and `--:`, and escaped pipes in a
+          cell kept escaped.
+        - **Width is counted in code points.** A table padded by an editor
+          that counts East Asian wide characters as two will re-pad
+          differently. That is accepted and stated, not solved.
+        - **Wired into Turndown's `table` rule**, which closes 2.1 for the
+          running editor with a test in `save-fidelity`. The model's half is
+          slice 4's, once there is an edited cell to emit.
+        - Done when every table in the oracle that keeps to one convention,
+          re-emitted from its rows, comes back byte-identical. That is the
+          check stage 1 used for leaves. A hand-padded table that keeps to no
+          convention cannot pass it and is not meant to: the suite lists those
+          in a check label rather than excusing them. The oracle has tables in
+          `torture.md` and in the corpus.
+
+    4.  **Cells take the caret.** This is the slice that ends the refusal.
+        - **A cell is a node in the model with an inline tree and no
+          `source`.** `td_open` carries no `map`, so a cell has no source span,
+          and splitting a row on pipes to give it one was turned down in stage
+          2's slice 4 for being a second source of spans outside the parser.
+          It does not need one: the row keeps its `source` until a cell in it
+          is touched, and then the row (or the whole table) is re-emitted by
+          the formatter from its cells' inline sources. The cell's tree comes
+          from the parser's own inline token. **The tiling check exempts cells
+          by name**: the row stays the floor for bytes, and a cell is the floor
+          for text.
+        - **Cells get ids and own their `<td>`/`<th>`.** Selection maps into
+          them as it does into any block, and `modelVerifyRender` covers them,
+          so a table stops being the one block the verify cannot see.
+        - **The render drops `contenteditable="false"`**, and the mitigation
+          note in 1.1.8 becomes history.
+        - **Edits in a cell**: text, the deletes, the marks and inline code
+          and links. Block formats are refused in a cell, as a heading is in a
+          list.
+        - **The emitter**, with the row-where-it-can rule above.
+        - **Paste and cross-cell selection**, per the open items.
+        - **Measured, not assumed:** whether Gecko shows its own inline table
+          editing controls on an editable table. They have been off by default
+          since Firefox 64, as far as is known, but if they are not, they edit
+          the DOM directly, and turning them off is an `execCommand` setting.
+          `front/input-check.html` gets the steps that measure it.
+        - **The guard paragraph after a trailing table stays.** A caret in a
+          cell still cannot get below a table that ends the document, and the
+          paragraph costs nothing in the file.
+
+    5.  **Table structure — the rest of TODO 1.1.8.** Index arithmetic on the
+        rows, each a model command whose result the formatter emits.
+        - **Insert → Table**, per the open item.
+        - **Rows and columns**: insert above, below, left and right, and
+          delete. The header row cannot be deleted, since a GFM table needs
+          one, and that is a `notify`. Deleting the last column deletes the
+          table. A table with no body rows is valid and is allowed.
+        - **Alignment** for the caret's column.
+        - **Tab and Shift+Tab** between cells. Tab on the last cell adds a row.
+          Shift+Tab on the first cell does nothing.
+        - **Enter moves down a row**, as decided. **Backspace at a cell's
+          start does nothing**: cells never merge. Backspace at the start of
+          the paragraph after a table puts the caret at the end of the last
+          cell rather than merging into it.
+        - **Undo** for every one of these, which needs nothing new beyond the
+          barriers: a structural edit is a document state like any other.
+
+    6.  **The hand pass, and closing the stage.** The new sections of
+        `tests/fixtures/format-check.md` top to bottom on one document in
+        Firefox, ending in a Save As and a reopen, the way stage 2 closed.
+        Then 1.1.6, 1.1.7, 1.1.8 and 2.1 get their `## What was done`, and the
+        refusal's descriptions in CLAUDE.md, `tasks/1.1-formats.md` and this
+        file become history.
+
+    **Order and dependencies.** Slices 1 and 2 stand alone. Slice 3 stands
+    alone too, and is the one piece of this stage that changes what the
+    running editor writes to a file. Slice 4 needs slice 3's formatter, and
+    slice 5 needs slice 4's cells. So 1, 2 and 3 can be built in any order,
+    and 4 and 5 come after them in that order.
 *   **4. Reintegration — not started. → MERGE TO `main` WHEN THIS CLOSES** —
     D8, and **this is the merge that cannot be taken back.** Autosave changes
     from HTML to the model's serialised form and the first load after landing
