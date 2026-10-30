@@ -317,7 +317,9 @@ function activeCase(build) {
 function menuCase(build) {
   const { editor, touched } = build();
   const items = {};
-  for (const format of ["bold", "italic", "strikethrough", "code"]) items[format] = makeEl("button");
+  for (const format of ["bold", "italic", "strikethrough", "code", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "quote"]) {
+    items[format] = makeEl("button");
+  }
   let opened = null;
   loadSource(
     "format-bar.js",
@@ -348,7 +350,7 @@ function menuCase(build) {
       onMenuOpen: (id, handler) => { if (id === "formatMenu") opened = handler; },
     },
   );
-  opened({ querySelector: (sel) => items[(sel.match(/format-([a-z]+)/) || [])[1]] || null });
+  opened({ querySelector: (sel) => items[(sel.match(/format-([a-z0-9]+)/) || [])[1]] || null });
   return (format) => items[format].attrs["aria-pressed"];
 }
 
@@ -824,6 +826,26 @@ export default function run(check) {
   });
   check("and checks Code for a selection inside a code span", pressed("code") === "true");
   check("without claiming Bold for it", pressed("bold") === "false");
+  // The block formats are checked too: the selection is in a heading, a list
+  // or a quote, which is not plain text, and the menu says so.
+  pressed = menuCase(() => {
+    const editor = makeEl("div");
+    const quote = makeEl("blockquote", { parent: editor });
+    const ul = makeEl("ul", { parent: quote });
+    const li = makeEl("li", { parent: ul });
+    const t = appendText(li, "a quoted bullet");
+    return { editor, touched: [t] };
+  });
+  check("the Format menu checks Blockquote and Bullet list for a bullet in a quote",
+    pressed("quote") === "true" && pressed("ul") === "true" && pressed("ol") === "false" && pressed("h1") === "false");
+  pressed = menuCase(() => {
+    const editor = makeEl("div");
+    const h = makeEl("h5", { parent: editor });
+    const t = appendText(h, "small heading");
+    return { editor, touched: [t] };
+  });
+  check("and the heading's own level, even one only the menu offers",
+    pressed("h5") === "true" && pressed("h2") === "false" && pressed("quote") === "false");
 
   // The anchor is wherever the drag started, which can be either end — so the
   // old check's answer for this exact selection depended on drag direction.

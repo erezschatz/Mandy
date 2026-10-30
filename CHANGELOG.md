@@ -9828,7 +9828,7 @@ by the archived probe and list-page sessions. Both were clean, and their
 commits are in this branch. `~/dev/marky-main` was removed before them; the
 `main` branch stays, level with `origin/main`.
 
-## 2026-10-27 — Stage 3 is planned
+## 2026-10-27 — `f76fd4f` — Stage 3 is planned
 
 Stage 3 of the rewrite is planned in docs/REWRITE.md, on its stage line, before
 any of it is built. The criterion is the estimate table's: blockquote (1.1.6),
@@ -9849,3 +9849,54 @@ row, unless a padded column's width changes. Seven smaller questions are
 written down as open, each with a recommendation, to settle before the slice
 that needs it. `tasks/1.1-formats.md` and `tasks/2.1-table-reemission.md` point
 at the plan. No code changed.
+
+## 2026-10-30 — Blockquote, under the model core
+
+Stage 3's slice 1 of the rewrite, and TODO 1.1.6. Under the model core,
+Format → Blockquote makes or removes a quote. The user settled both open
+questions as recommended. The control wraps every block the selection touches
+in one quote, and if all of them are quoted already it removes one level. It
+never nests a quote: a quote inside the selection, or directly beside it,
+joins the new one. Inside a list it quotes each item's own blocks (`- > text`)
+rather than putting a quote around part of the list. Enter on an empty
+paragraph in a quote leaves the quote, splitting it if needed. Backspace at
+the start of a quote's first block takes that block out.
+
+A wrap or unwrap rewrites every line it touches, so it works on text. The
+top-level block holding the change is written out, `> ` is added or removed
+at the column where its outer containers end, and the result is parsed
+again, with the document's reference definitions available so reference
+links still resolve. Each leaf that comes back takes the id of the leaf it
+replaces, which keeps the caret in place. If the parse does not give back the
+same leaves, the edit is refused. An empty paragraph goes through the parse
+holding a placeholder, so it can be quoted and then typed into. Quoting and
+unquoting every leaf outside a quote in the six oracle files gives each file
+back byte for byte. Table rows are the only refusals.
+
+Two fixes came with it. An empty paragraph inside a quote wrote a bare `>`,
+so every Enter in a quote put a quoted blank line into the file. It now writes
+nothing, as it already did in every other container. And WebKit raises no
+`beforeinput` for Backspace at the very start of the document, found by the
+new spec, so the Backspace rule is also handled on `keydown`.
+
+**The Format menu now says which block format the caret or selection is
+in.** Heading 1–6, Bullet list, Numbered list and Blockquote carry a check
+when everything selected is in that format, and a mixed mark when only part
+of it is, the way Bold, Italic, Strikethrough and Code already did. The user
+asked for this at every earlier stage. A caret in a quote, a list or a heading
+is not in plain text, and the menu has to say so. Paragraph, the plain case,
+has no check. Under the model core `modelBlockState` answers for each block
+the selection touches, and the innermost list counts, so a bullet nested in
+a numbered item reads as a bullet. Under the old core it is the same DOM
+check the format bar uses, extended to H4–H6 and `blockquote`.
+
+Under the old core the control shows a notice and changes nothing, because
+D4's amendment says no new format is written against contenteditable. Until
+stage 4 a save is still Turndown over the DOM, so what the model writes for a
+quote is what a save will write from stage 4 on. Tested by machine: `model`,
+`model-input` and `format-bar` suite cases, and `tests/browser/blockquote.spec.mjs` in
+Chromium and WebKit, which stands in for the hand run in those two. The
+Firefox hand run of `tests/fixtures/format-check.md`'s new section passed in
+full on 2026-10-30, the menu checks included. The service worker's version is
+bumped, since the shell changed.
+

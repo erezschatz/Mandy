@@ -4942,7 +4942,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     live model rather than a frozen string, which the tabs section defers to
     stage 4 and keeps by default until then. (The first was settled on
     2026-10-27 in stage 3's plan: Enter moves down a row.)
-*   **3. The 1.1 items — planned 2026-10-27, not started.** Not a merge point
+*   **3. The 1.1 items — planned 2026-10-27; slice 1 done and tested
+    2026-10-30, by machine and by hand in Firefox.** Not a merge point
     either, for the same reason: reintegration has not happened, so the app
     around the new core is still reading `editor.innerHTML`.
 
@@ -5008,14 +5009,16 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     **Open, to settle before the slice that needs it** — each with the
     recommendation, so the slice can start on a yes:
 
-    - **What the quote control does (slice 1).** Recommended: it wraps every
+    - **What the quote control does (slice 1).** *Settled 2026-10-27, as
+      recommended.* It wraps every
       block the selection touches in one quote, and if all of them are
       already quoted it unwraps one level. It never nests a quote. Inside a
       list item it wraps the item's own blocks, which markdown writes as
       `- > text`; the emitter already suppresses the item affix for a quote
       inside a bullet. The alternative is refusing it inside a list, as a
       heading is.
-    - **Enter and Backspace in a quote (slice 1).** Recommended: Enter on an
+    - **Enter and Backspace in a quote (slice 1).** *Settled 2026-10-27, as
+      recommended.* Enter on an
       empty quoted paragraph leaves the quote, and Backspace at the start of
       a quote's first block unwraps it. These are the empty-item rules'
       twins, and what every editor people arrive from does.
@@ -5059,7 +5062,48 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         - **Format → Blockquote**, toggling. Whether the caret bar gets it too
           is decided with the control, since the bar's markup has two copies
           (`index.html` and `html-export.js`).
-        - **Enter and Backspace in a quote**, per the open item above.
+        - **Enter and Backspace in a quote**, per the item above, settled.
+        - **How it is built, decided when it was started.** A wrap or an
+          unwrap changes the bytes of every line it touches, so there is no
+          fidelity to keep inside it, and the model's affixes for a quote
+          inside an item are split between the chain and `leadingAffix` in a
+          way no hand-written re-chaining would get right first time. So the
+          top-level block that holds the change is **re-emitted as text with
+          one `> ` added or taken off each line at the column its outer
+          containers end, and parsed again** — with the document's reference
+          definitions in the parser's env, so a reference link inside it still
+          resolves. Every leaf the parse hands back takes the id of the leaf it
+          replaces, in order, so the caret survives; a parse that does not hand
+          back the same leaves is refused. An empty paragraph emits nothing,
+          so Enter's rule lifts one directly instead.
+        - **Done 2026-10-27 and tested: by machine, and by hand in Firefox on
+          2026-10-30, where format-check.md's new section passed in full.** `modelToggleQuote`,
+          `modelWrapQuote`, `modelUnwrapQuote` and `modelQuoteKey` in
+          `model.js`; `modelInputQuote` and the two keys in `model-input.js`;
+          Format → Blockquote in the menu and not on the caret bar, whose markup
+          has two copies to keep in step. The `model` suite quotes and unquotes
+          every leaf outside a quote in the oracle and gets each file back byte
+          for byte, the only refusals being table rows; `blockquote.spec.mjs`
+          runs the hand section in Chromium and WebKit. Five things were
+          decided or found on the way:
+          - **A wrap takes in a quote directly beside it**, so quoting the
+            paragraph between two quotes makes one, and taking a block out of
+            a quote and putting it back gives back the quote it was in.
+          - **An empty paragraph now writes nothing inside a quote too.** It
+            wrote a bare `>`, so Enter in a quote put a quoted blank line in
+            the file for every paragraph nobody had typed into, which every
+            other container already avoided.
+          - **WebKit raises no `beforeinput` for Backspace at the very start
+            of the document**, measured in Playwright's WebKit, so the
+            Backspace rule is taken on `keydown` as well.
+          - **The old core answers the control with a notice**, per D4's
+            amendment, and changes nothing.
+          - **The Format menu checks the block formats the selection is in**
+            (Heading 1–6, both lists, Blockquote), 2026-10-30, at the user's
+            request. They had asked at every earlier stage and it had been
+            missed each time. It holds for every slice after this one: a
+            control for something that is not plain text shows when the caret
+            is in it. `modelBlockState` is the model's answer.
         - Done when a quote made, nested inside a list and unmade comes back
           as the file the parser expects, and when an untouched quote in
           `torture.md` stays byte-identical.

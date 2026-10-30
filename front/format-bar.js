@@ -217,6 +217,10 @@ const FORMAT_PREDICATES = {
   h1: (node) => hasAncestorTag(node, "H1"),
   h2: (node) => hasAncestorTag(node, "H2"),
   h3: (node) => hasAncestorTag(node, "H3"),
+  h4: (node) => hasAncestorTag(node, "H4"),
+  h5: (node) => hasAncestorTag(node, "H5"),
+  h6: (node) => hasAncestorTag(node, "H6"),
+  quote: (node) => hasAncestorTag(node, "BLOCKQUOTE"),
   bold: (node) => hasAncestorTag(node, "STRONG", "B"),
   italic: (node) => hasAncestorTag(node, "EM", "I"),
   strikethrough: (node) => hasAncestorTag(node, "S", "DEL", "STRIKE"),
@@ -315,8 +319,16 @@ function updateActiveButtons() {
 // Code is checked the same way: a caret in a code span or a code block, or a
 // selection that is all code. Not a mark to the model, so it asks its own.
 const MENU_MARKS = { bold: "strong", italic: "em", strikethrough: "strike", code: "code" };
+// And the block formats: the caret in a heading, a list or a quote is in
+// something other than plain text, and the menu says so. The model answers per
+// leaf touched, the old core from the same DOM predicates the bar uses.
+const MENU_BLOCKS = ["h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "quote"];
+const MENU_CHECKS = Object.keys(MENU_MARKS).concat(MENU_BLOCKS);
 
 function formatMenuState(format) {
+  if (modelOwnsInput() && MENU_BLOCKS.includes(format) && typeof modelInputBlockState === "function") {
+    return modelInputBlockState(format);
+  }
   if (modelOwnsInput() && format === "code" && typeof modelInputCodeState === "function") {
     return modelInputCodeState();
   }
@@ -332,7 +344,7 @@ function formatMenuState(format) {
 }
 
 onMenuOpen("formatMenu", (wrapper) => {
-  for (const format of Object.keys(MENU_MARKS)) {
+  for (const format of MENU_CHECKS) {
     const item = wrapper.querySelector(`[data-action="format-${format}"]`);
     if (!item) continue;
     const state = formatMenuState(format);
@@ -558,10 +570,20 @@ function applyFormat(format) {
   // And the two lists, slice 7's step 6.
   const modelList = (format === "ul" || format === "ol") && modelOwnsInput() && typeof modelInputList === "function";
   if (modelList) modelInputList(format === "ol");
+  // And the blockquote, stage 3's slice 1, which has no old-core version.
+  const modelQuote = format === "quote" && modelOwnsInput() && typeof modelInputQuote === "function";
+  if (modelQuote) modelInputQuote();
 
-  switch (modelMark || modelBlock || modelList ? null : format) {
+  switch (modelMark || modelBlock || modelList || modelQuote ? null : format) {
     case null:
       break;
+    // D4's amendment: no new format is written against contenteditable, so
+    // the running editor says where the control works instead.
+    case "quote":
+      if (typeof notify === "function") {
+        notify("Blockquote needs the new editing core (?core=model).", { severity: "info" });
+      }
+      return;
     case "bold":
       runCommand("bold");
       break;
@@ -686,6 +708,6 @@ document.querySelectorAll(".format-btn").forEach((btn) => {
 // through the one applyFormat entry point everything else here does; the
 // default `formatBlock` branch already handles any tag name, so no new case
 // was needed for them, only the registration.
-for (const format of ["p", "h1", "h2", "h3", "h4", "h5", "h6", "bold", "italic", "strikethrough", "ul", "ol", "code"]) {
+for (const format of ["p", "h1", "h2", "h3", "h4", "h5", "h6", "bold", "italic", "strikethrough", "ul", "ol", "code", "quote"]) {
   onToolbarAction(`format-${format}`, () => applyFormat(format));
 }

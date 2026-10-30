@@ -26,6 +26,7 @@ export default function run(check) {
     source = false, at = null, item = null, empty = false, hardBreak = "  ",
     html = "", point = null, selection = false, history = true,
     domText = "abX", blockText = "ab", spans = [], reveal = null, collapsed = false,
+    quote = null, quoteToggle = { block: {} }, settle = true,
   } = {}) => {
     const calls = {
       splice: [], rerender: [], render: [], announced: [], sourceSplice: [],
@@ -33,7 +34,7 @@ export default function run(check) {
       parsed: [],
       cut: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
       history: [], refused: [], joined: 0, converted: [], revealed: [], toasts: [],
-      toggled: [],
+      toggled: [], quoteKey: [], quoteToggled: [],
     };
     // What a case can move between events: the document an undo would swap in,
     // and where the caret is.
@@ -140,6 +141,16 @@ export default function run(check) {
           return from + 1;
         },
         notify: (message) => calls.toasts.push(message),
+        // Stage 3's slice 1. The quote's own rules are the model suite's; what
+        // is asserted here is when they are asked, and what a refusal does.
+        // The fork is the document itself, since nothing here is mutated.
+        modelForkDocument: (d) => d,
+        modelSettleShape: () => settle,
+        modelQuoteKey: (d, b, parser, backspace) => { calls.quoteKey.push({ block: b, backspace }); return quote; },
+        modelToggleQuote: (d, leaves) => { calls.quoteToggled.push(leaves); return quoteToggle; },
+        modelSelectedRanges: (d, sel) => [{ block: sel.block }],
+        modelRecordSelection: (sel) => (sel ? { block: sel.block.id, offset: sel.offset } : null),
+        modelResolveSelection: (d, rec) => (rec ? { block: "resolved", offset: rec.offset } : null),
         modelMathReveal: (b, offset, backward) => {
           calls.revealed.push({ offset, backward });
           return reveal;
@@ -182,7 +193,7 @@ export default function run(check) {
         " modelInputCompositionEnd, modelInputComposing, modelInputInstall," +
         " modelInputKeydown, modelIndentAtCaret, modelInputPasteEvent," +
         " modelInputDrop, modelInputDragStart, modelInputDragOver," +
-        " modelPastePlain, modelPasteMarkdown, modelInputSelectionMath };",
+        " modelPastePlain, modelPasteMarkdown, modelInputSelectionMath, modelInputQuote };",
     );
     return { api, calls, editor, block, state };
   };
@@ -507,6 +518,99 @@ export default function run(check) {
     r.api.modelInputBeforeInput(e);
     check("Backspace away from an item's start is an ordinary deletion",
       r.calls.emptyItem.length === 0 && r.calls.splice.length === 1);
+  }
+
+  // --- stage 3's slice 1: the quote's keys and its control ----------------
+
+  {
+    // Enter and Backspace at a quote's edge are asked after the empty-item
+    // rules and before the generic edit, and only answer when the model does.
+    for (const [type, backspace] of [["insertParagraph", false], ["deleteContentBackward", true]]) {
+      const target = { id: 40, inlines: [] };
+      const landed = { block: target, offset: 0 };
+      const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 }, quote: landed });
+      r.api.modelInputBeforeInput(event(type, { targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] }));
+      check(`${type} the quote rule answers is the quote rule, not the generic edit`,
+        r.calls.quoteKey.length === 2 && r.calls.quoteKey[1].backspace === backspace &&
+          r.calls.split.length === 0 && r.calls.splice.length === 0 && r.calls.render.length === 1 &&
+          r.calls.announced[0] === type);
+    }
+  }
+
+  {
+    // The model saying no is an ordinary key, and so is the shape check
+    // saying no on the fork, before the document is touched.
+    for (const [label, opts] of [["the model has no quote rule there", {}], ["the parser refuses the shape", { quote: { block: {}, offset: 0 }, settle: false }]]) {
+      const target = { id: 41, inlines: [] };
+      const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 }, ...opts,
+        range: [here(target, 0), here(target, 0)] });
+      r.api.modelInputBeforeInput(event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] }));
+      check(`Enter is an ordinary split when ${label}`,
+        r.calls.quoteKey.length === 1 && r.calls.split.length === 1);
+    }
+  }
+
+  {
+    // Empty items first: an empty item in a quote is the list's business.
+    const target = { id: 42, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, item: { kind: "item" }, empty: true, at: { block: target, offset: 0 },
+      quote: { block: target, offset: 0 } });
+    r.api.modelInputBeforeInput(event("insertParagraph"));
+    check("an empty item is asked before the quote", r.calls.emptyItem.length === 1 && r.calls.quoteKey.length === 0);
+  }
+
+  {
+    // Backspace only at a block's start, only as a character deletion, and
+    // never over a selection.
+    const target = { id: 43, inlines: [] };
+    const cases = [
+      ["mid-block", { at: { block: target, offset: 2 } }, "deleteContentBackward"],
+      ["a word deletion", { at: { block: target, offset: 0 } }, "deleteWordBackward"],
+      ["over a selection", { at: { block: target, offset: 0, to: { block: target, offset: 2 } } }, "deleteContentBackward"],
+    ];
+    for (const [label, opts, type] of cases) {
+      const r = rig({ doc: { blocks: [target] }, quote: { block: target, offset: 0 }, ...opts,
+        range: [here(target, 0), here(target, 1)] });
+      r.api.modelInputBeforeInput(event(type, { targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 1 }] }));
+      check(`Backspace ${label} does not ask the quote rule`, r.calls.quoteKey.length === 0);
+    }
+  }
+
+  {
+    // WebKit raises no beforeinput for a Backspace at the very start of the
+    // document, so the keydown asks the same rule — and cancels only when it
+    // answered, leaving every other Backspace to the engine and beforeinput.
+    const target = { id: 45, inlines: [] };
+    const press = (opts, extra = {}) => {
+      const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 }, ...opts });
+      const e = { key: "Backspace", prevented: 0, preventDefault() { this.prevented += 1; }, ...extra };
+      r.api.modelInputKeydown(e);
+      return { r, e };
+    };
+    const taken = press({ quote: { block: target, offset: 0 } });
+    check("a Backspace keydown the quote rule answers is cancelled and handled",
+      taken.e.prevented === 1 && taken.r.calls.render.length === 1);
+    const left = press({});
+    check("one it does not answer is left to the engine", left.e.prevented === 0 && left.r.calls.quoteKey.length === 1);
+    const modified = press({ quote: { block: target, offset: 0 } }, { altKey: true });
+    check("and a modified Backspace is not asked at all", modified.e.prevented === 0 && modified.r.calls.quoteKey.length === 0);
+  }
+
+  {
+    // Format → Blockquote: a fork first, then the document, then one render
+    // with the selection carried across by id.
+    const target = { id: 44, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 3 } });
+    r.api.modelInputQuote();
+    check("Blockquote toggles on a fork and then on the document, and renders once",
+      r.calls.quoteToggled.length === 2 && r.calls.render.length === 1 &&
+        r.calls.render[0].selection && r.calls.render[0].selection.block === "resolved" &&
+        r.calls.render[0].selection.offset === 3 && r.calls.announced[0] === "formatBlock");
+    const refused = rig({ doc: { blocks: [target] }, at: { block: target, offset: 3 }, quoteToggle: null });
+    refused.api.modelInputQuote();
+    check("a Blockquote the model refuses says so and changes nothing",
+      refused.calls.quoteToggled.length === 1 && refused.calls.render.length === 0 &&
+        refused.calls.toasts.length === 1 && refused.calls.announced.length === 0);
   }
 
   // --- slice 4: Tab, which is not an inputType -----------------------------

@@ -1372,7 +1372,7 @@ function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
  * lines that belong to a container and to none of its children: a table's
  * delimiter row, and a blockquote's bare `>`.
  */
-function modelParse(markdown, md) {
+function modelParse(markdown, md, env = null) {
   const offsets = modelLineOffsets(markdown);
   const lines = markdown.split("\n");
 
@@ -1391,7 +1391,10 @@ function modelParse(markdown, md) {
   let nextId = 1;
   const tiled = modelTileRange(
     { markdown, lines, startOf, endOf, md, mint: () => nextId++ },
-    modelSpansAtLevel(md.parse(markdown, {}), 0),
+    // `env` is for a part of a document parsed on its own, which still has to
+    // resolve the document's reference links (stage 3's slice 1). Copied,
+    // because markdown-it writes the part's own definitions into it.
+    modelSpansAtLevel(md.parse(markdown, env ? { references: { ...env.references } } : {}), 0),
     0,
     lines.length,
   );
@@ -1734,6 +1737,13 @@ function modelEmitLeaf(block, md, doc, width = 0) {
   if (item && item.marker === null) {
     throw new Error("edited block inside an item with no recorded marker");
   }
+
+  // **An empty paragraph writes nothing**, which `modelJoinBlocks` relies on
+  // and every container but a quote already gave it: composed, one inside a
+  // quote came out as a bare `>`, so Enter in a quote put a quoted blank line
+  // into the file for every paragraph nobody had typed into yet. The one
+  // exception is an item's first paragraph, whose marker is the item.
+  if (block.kind === "paragraph" && content === "" && !(item && item.first)) return "";
 
   // What the item puts back on the first line, and what every line after it
   // carries instead.
@@ -4719,6 +4729,485 @@ function modelSwitchList(doc, list, ordered, md, fallback) {
   });
   modelTouch(list);
   return true;
+}
+
+// ── Blockquote ───────────────────────────────────────────────────────────────
+//
+// Stage 3's slice 1, TODO 1.1.6. A quote is already a container in this model
+// and every block inside one records its chain; what was missing is a way to
+// make one or take one away.
+//
+// **Both are done as text and then parsed**, because a wrap or an unwrap
+// rewrites every line it touches — there are no bytes inside it to keep — and
+// a quote inside a list item splits its prefix between `quotePrefixes` and
+// `leadingAffix` (`- > a` records the chain `""` and the affix `"- > "`), which
+// no hand-written re-chaining gets right first time. So the top-level block
+// holding the change is emitted, `> ` is added or taken off each line at the
+// column its outer containers end, and the result goes back through
+// `modelParse` with the document's reference definitions in its env. Every
+// leaf the parse hands back takes the id of the leaf it replaces, in order,
+// which is what keeps the caret; a parse that hands back different leaves is a
+// refusal.
+
+// What an empty paragraph is written as while it goes through the parser,
+// since it otherwise writes nothing and the parser would lose it. A private-use
+// character, so no document has one to be confused with.
+const MODEL_QUOTE_HOLDER = "";
+
+// The nearest quote a block is inside, or null.
+function modelQuoteAncestor(block) {
+  for (let node = block && block.parent; node; node = node.parent) {
+    if (node.kind === "quote") return node;
+  }
+  return null;
+}
+
+// A block's containers, outermost first, not counting the block itself.
+function modelAncestors(block) {
+  const out = [];
+  for (let node = block.parent; node; node = node.parent) out.unshift(node);
+  return out;
+}
+
+// The items whose first line is this block's first line: every item above it
+// reached by first children alone.
+function modelFirstOf(block) {
+  const out = new Set();
+  for (let node = block; node.parent; node = node.parent) {
+    const parent = node.parent;
+    if (parent.leading !== "" || parent.children[0] !== node) break;
+    if (parent.kind === "item") out.add(parent);
+  }
+  return out;
+}
+
+// One leaf as the quote commands write it: the emitter, except that an empty
+// paragraph holds `MODEL_QUOTE_HOLDER` so the parse can see it.
+function modelQuoteEmitter(md, doc) {
+  return (leaf) => {
+    if (leaf.kind === "paragraph" && leaf.inlines && modelIsEmptyBlock(leaf)) {
+      return modelEmitLeaf({ ...leaf, inlines: [modelTextNode(MODEL_QUOTE_HOLDER)] }, md, doc);
+    }
+    return modelEmitLeaf(leaf, md, doc);
+  };
+}
+
+/**
+ * Where the bytes the containers above a run put in front of one of its lines
+ * end, and what they would be on a blank line: `{ pos, blank }`. `blank` is
+ * untrimmed, since what goes after it decides whether its indent is needed.
+ *
+ * Read off the line rather than recomputed, a container at a time: a quote
+ * takes its marker if the line has one — a lazy line has none — and an item
+ * takes its marker on its first line and its continuation indent on every
+ * other. **An item's marker is absolute from the end of the chain before it**,
+ * which is how 1b records it, so an item is measured from there and not from
+ * wherever the item above it ended. A lazy line inside an item has less indent
+ * than the item's and is taken as far as its own whitespace goes.
+ */
+function modelOuterPrefix(line, ancestors, firsts) {
+  let pos = 0;
+  let base = 0;
+  let blank = "";
+  let chain = "";
+  for (const node of ancestors) {
+    if (node.kind === "quote") {
+      const match = MODEL_QUOTE_MARKER.exec(line.slice(pos));
+      if (match) pos += match[0].length;
+      base = pos;
+      chain = blank = chain + "> ";
+    } else if (node.kind === "item") {
+      const rest = line.slice(base);
+      const own = firsts.has(node) ? node.marker : node.contentIndent;
+      if (own !== null && rest.startsWith(own)) pos = base + own.length;
+      else pos = Math.max(pos, base + /^[ \t]*/.exec(rest)[0].length);
+      blank = chain + (node.contentIndent || "");
+    }
+  }
+  return { pos, blank };
+}
+
+// A run of sibling blocks as lines, each saying which block of the run wrote
+// it, or -1 for a blank line between two of them. Joined the way
+// `modelJoinBlocks` joins, which is what the file will hold.
+function modelRunLines(blocks, emit) {
+  const lines = [];
+  let separator = "";
+  let started = false;
+  blocks.forEach((block, i) => {
+    const bytes = modelEmitBlock(block, emit);
+    if (bytes === "") {
+      if (started) separator = block.separator;
+      return;
+    }
+    if (started) for (const text of separator.split("\n").slice(1, -1)) lines.push({ text, owner: -1 });
+    for (const text of bytes.split("\n")) lines.push({ text, owner: i });
+    separator = block.separator;
+    started = true;
+  });
+  return lines;
+}
+
+/**
+ * `parent`'s children `from` to `to` replaced by `bytes`, and the top-level
+ * block holding them parsed again. Hands back the new top-level blocks, or null
+ * when the parse does not give back the leaves that went in.
+ *
+ * `parent` null is the document itself, and then only the run is parsed.
+ */
+function modelQuoteReplace(doc, parent, from, to, bytes, md) {
+  const emit = modelQuoteEmitter(md, doc);
+  let index;
+  let count;
+  let text;
+  let old;
+  if (!parent) {
+    index = from;
+    count = to - from + 1;
+    text = bytes;
+    old = doc.blocks.slice(from, to + 1);
+  } else {
+    let top = parent;
+    while (top.parent) top = top.parent;
+    index = doc.blocks.indexOf(top);
+    if (index < 0) return null;
+    count = 1;
+    old = [top];
+    // A shallow copy of each container from the top down to `parent`, emitted
+    // instead of the real ones, so nothing in the document is written to until
+    // the parse has said yes.
+    const copy = (node) => {
+      const kids = node === parent
+        ? [...node.children.slice(0, from),
+          { kind: "raw", source: bytes, separator: node.children[to].separator, children: null },
+          ...node.children.slice(to + 1)]
+        : node.children.map((child) => (child === path[path.indexOf(node) + 1] ? copy(child) : child));
+      return { ...node, source: null, children: kids };
+    };
+    const path = [...modelAncestors(parent), parent];
+    try {
+      text = modelEmitBlock(copy(top), emit);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  const parsed = modelParse(text, md, modelReferenceEnv(doc, md));
+  if (parsed.prefix !== "" || !parsed.blocks.length) return null;
+  const leaves = (blocks) => modelFlatten({ blocks }).filter((block) => !block.children && block.kind !== "gap");
+  const before = leaves(old);
+  const after = leaves(parsed.blocks);
+  if (before.length !== after.length || before.some((block, i) => block.kind !== after[i].kind)) return null;
+
+  for (const block of modelFlatten(parsed)) block.id = modelMintId(doc);
+  before.forEach((block, i) => {
+    const fresh = after[i];
+    fresh.id = block.id;
+    // An empty paragraph went in holding its placeholder, and comes back
+    // empty — with the chain and the affix the parse recorded for it, so the
+    // first thing typed into it is written where it now sits.
+    if (block.kind === "paragraph" && block.inlines && modelIsEmptyBlock(block)) {
+      fresh.inlines = [];
+      fresh.inline.content = "";
+      fresh.inline.children = [];
+      modelTouch(fresh);
+    }
+  });
+  // The top-level container keeps its id too, when one was parsed again; at
+  // the top level `old` is the run itself and its leaves already have theirs.
+  if (parent && parsed.blocks.length === 1) parsed.blocks[0].id = old[0].id;
+  parsed.blocks[parsed.blocks.length - 1].separator = old[old.length - 1].separator;
+  doc.blocks.splice(index, count, ...parsed.blocks);
+  return parsed.blocks;
+}
+
+/**
+ * Wrap a run of sibling blocks in one quote. `blocks` are `parent`'s children
+ * `from` to `to`; `parent` is null at the top level, or an item.
+ *
+ * Every line of the run gets `> ` where the containers outside it end, so a
+ * paragraph in a bullet becomes `- > text`, and a blank line between two of
+ * them becomes `>`, or the quote would end there. **A quote in the run is
+ * dissolved into the new one** rather than nested inside it: its lines already
+ * carry the marker, so they are left as they are. That includes a quote
+ * directly beside the run, which is taken into it.
+ */
+function modelWrapQuote(doc, parent, from, to, md) {
+  const siblings = parent ? parent.children : doc.blocks;
+  // A quote straight before or after joins the new one, so quoting the
+  // paragraph between two quotes makes one quote of the three — and taking a
+  // block out of a quote and putting it back gives back the quote it was in.
+  if (from > 0 && siblings[from - 1].kind === "quote") from -= 1;
+  if (to + 1 < siblings.length && siblings[to + 1].kind === "quote") to += 1;
+  const run = siblings.slice(from, to + 1);
+  if (!run.length) return null;
+  const ancestors = parent ? [...modelAncestors(parent), parent] : [];
+  if (ancestors.some((node) => node.kind === "quote" || (node.kind === "item" && node.marker === null))) return null;
+  const firsts = modelFirstOf(run[0]);
+  let lines;
+  try {
+    lines = modelRunLines(run, modelQuoteEmitter(md, doc));
+  } catch (error) {
+    return null;
+  }
+  const out = lines.map((line, i) => {
+    const outer = modelOuterPrefix(line.text, ancestors, i === 0 ? firsts : new Set());
+    // Trimmed after the marker goes on, not before: in an item the indent is
+    // what keeps the line inside the item, and `>` at column 0 ends the list.
+    if (line.text.trim() === "") return (outer.blank + ">").replace(/[ \t]+$/, "");
+    if (line.owner >= 0 && run[line.owner].kind === "quote") return line.text;
+    return line.text.slice(0, outer.pos) + "> " + line.text.slice(outer.pos);
+  });
+  return modelQuoteReplace(doc, parent, from, to, out.join("\n"), md);
+}
+
+// Whether a block of a quote is nothing but the quote's own markers: the bare
+// `>` lines that sit between two of its paragraphs. Dropped where a quote is
+// cut, since at its edge one is a quoted blank line nobody meant to keep.
+function modelBareQuoteLine(block) {
+  return block.kind === "gap" && /^[ \t>]*$/.test(block.source || "") && !/\n/.test(block.source || "");
+}
+
+/**
+ * Take a quote's children `from` to `to` out of it, splitting it around them:
+ * the ones before stay in the quote, the ones after go into a second one, and
+ * a blank line goes between each part. One level of `> ` comes off each line
+ * that moves, at the column the containers outside the quote end.
+ */
+function modelUnwrapQuote(doc, quote, from, to, md) {
+  if (!quote || quote.kind !== "quote" || !quote.children || quote.leading !== "") return null;
+  const parent = quote.parent;
+  const siblings = parent ? parent.children : doc.blocks;
+  const at = siblings.indexOf(quote);
+  if (at < 0) return null;
+  const ancestors = modelAncestors(quote);
+  if (ancestors.some((node) => node.kind === "item" && node.marker === null)) return null;
+  const firsts = modelFirstOf(quote);
+
+  const kids = quote.children;
+  const part = (i) => (i < from ? 0 : i <= to ? 1 : 2);
+  // Each part loses the bare marker lines at its own edges.
+  const keep = kids.map(() => true);
+  for (const which of [0, 1, 2]) {
+    const own = kids.map((_, i) => i).filter((i) => part(i) === which);
+    for (let k = 0; k < own.length && modelBareQuoteLine(kids[own[k]]); k++) keep[own[k]] = false;
+    for (let k = own.length - 1; k >= 0 && keep[own[k]] && modelBareQuoteLine(kids[own[k]]); k--) keep[own[k]] = false;
+  }
+
+  let lines;
+  try {
+    lines = modelRunLines(kids, modelQuoteEmitter(md, doc));
+  } catch (error) {
+    return null;
+  }
+  const outerBlank = modelOuterPrefix("", ancestors, new Set()).blank.replace(/[ \t]+$/, "");
+  const parts = [[], [], []];
+  // A blank line between two children goes with them when they are in one
+  // part, and is replaced by the outer blank line when it falls between parts.
+  let previous = -1;
+  lines.forEach((line, i) => {
+    if (line.owner >= 0) previous = line.owner;
+    const owner = line.owner >= 0 ? line.owner : previous;
+    if (line.owner < 0) {
+      const next = lines.slice(i).find((l) => l.owner >= 0);
+      if (!next || part(next.owner) !== part(owner) || !keep[next.owner] || !keep[owner]) return;
+    }
+    if (!keep[owner]) return;
+    const which = part(owner);
+    if (which !== 1) {
+      parts[which].push(line.text);
+      return;
+    }
+    const outer = modelOuterPrefix(line.text, ancestors, i === 0 ? firsts : new Set());
+    if (line.text.trim() === "") {
+      parts[1].push(outerBlank);
+      return;
+    }
+    let rest = line.text.slice(outer.pos);
+    const match = MODEL_QUOTE_MARKER.exec(rest);
+    if (match) rest = rest.slice(match[0].length);
+    const head = line.text.slice(0, outer.pos);
+    parts[1].push(rest.trim() === "" ? head.replace(/[ \t]+$/, "") : head + rest);
+  });
+  if (!parts[1].length) return null;
+  const bytes = parts.filter((lines) => lines.length).map((lines) => lines.join("\n")).join("\n" + outerBlank + "\n");
+  return modelQuoteReplace(doc, parent, at, at, bytes, md);
+}
+
+/**
+ * The quote control, over the leaves a selection touches. Hands back
+ * `{ block }`, a block to check the shape around, or null for a refusal.
+ *
+ * **Every leaf already quoted unwraps one level**, taking each leaf's block out
+ * of its innermost quote; anything else wraps. What is wrapped is the run of
+ * siblings that holds every leaf, under their nearest common container — but
+ * inside a list that is each item's own blocks, item by item, since a quote
+ * around part of a list would split the list. A table refuses, and so does a
+ * leaf with no container that can hold a quote.
+ *
+ * It runs one group at a time and finds the next group's blocks again by id,
+ * because each step parses its top-level block afresh and only the leaves keep
+ * their ids.
+ */
+function modelToggleQuote(doc, leaves, md) {
+  leaves = leaves.filter((leaf) => leaf.kind !== "gap");
+  if (!leaves.length) return null;
+  const ids = leaves.map((leaf) => leaf.id);
+  const find = (group) => group.map((id) => modelBlockById(doc, id)).filter(Boolean);
+  let made = null;
+
+  if (leaves.every((leaf) => modelQuoteAncestor(leaf))) {
+    const groups = new Map();
+    for (const leaf of leaves) {
+      const quote = modelQuoteAncestor(leaf);
+      if (!groups.has(quote)) groups.set(quote, []);
+      groups.get(quote).push(leaf.id);
+    }
+    for (const group of groups.values()) {
+      const found = find(group);
+      if (!found.length) return null;
+      const quote = modelQuoteAncestor(found[0]);
+      const indexes = found.map((leaf) => {
+        let node = leaf;
+        while (node.parent !== quote) node = node.parent;
+        return quote.children.indexOf(node);
+      });
+      made = modelUnwrapQuote(doc, quote, Math.min(...indexes), Math.max(...indexes), md);
+      if (!made) return null;
+    }
+    return made && { block: made[0] };
+  }
+
+  const chains = leaves.map((leaf) => [...modelAncestors(leaf), leaf]);
+  let depth = 0;
+  while (chains.every((chain) => depth < chain.length && chain[depth] === chains[0][depth])) depth++;
+  // A single leaf is its own common ancestor, and is wrapped by itself.
+  if (depth === chains[0].length) depth--;
+  const common = depth > 0 ? chains[0][depth - 1] : null;
+  if (common && /^(table|table-head|table-body|row)$/.test(common.kind)) return null;
+
+  let groups;
+  if (common && common.kind === "list") {
+    const byItem = new Map();
+    leaves.forEach((leaf, i) => {
+      const item = chains[i][depth];
+      if (!byItem.has(item)) byItem.set(item, []);
+      byItem.get(item).push(ids[i]);
+    });
+    groups = [...byItem.values()];
+  } else {
+    groups = [ids];
+  }
+  for (const group of groups) {
+    const found = find(group);
+    if (!found.length) return null;
+    const paths = found.map((leaf) => [...modelAncestors(leaf), leaf]);
+    let level = 0;
+    while (paths.every((path) => level < path.length && path[level] === paths[0][level])) level++;
+    if (level === paths[0].length) level--;
+    const parent = level > 0 ? paths[0][level - 1] : null;
+    if (parent && parent.kind !== "item") return null;
+    const siblings = parent ? parent.children : doc.blocks;
+    const indexes = paths.map((path) => siblings.indexOf(path[level]));
+    made = modelWrapQuote(doc, parent, Math.min(...indexes), Math.max(...indexes), md);
+    if (!made) return null;
+  }
+  return made && { block: made[0] };
+}
+
+/**
+ * Whether the selection is in a block format: "all", "mixed" or "none", over
+ * the leaves it touches. What the Format menu's checkmark shows for Heading
+ * 1–6, the two lists and Blockquote, the way `modelMarkState` answers for the
+ * marks. A list is the innermost one a leaf is in, so a bullet nested in a
+ * numbered item is a bullet; a quote is any quote around it.
+ */
+function modelBlockState(doc, selection, format) {
+  const leaves = modelSelectedRanges(doc, selection).map((range) => range.block).filter((block) => block.kind !== "gap");
+  if (!leaves.length) return "none";
+  const heading = /^h([1-6])$/.exec(format);
+  const has = (leaf) => {
+    if (heading) return leaf.kind === "heading" && leaf.level === Number(heading[1]);
+    if (format === "quote") return !!modelQuoteAncestor(leaf);
+    if (format === "ul" || format === "ol") {
+      const item = modelItemAncestor(leaf);
+      return !!item && !!item.parent && item.parent.kind === "list" && modelListOrdered(item.parent) === (format === "ol");
+    }
+    return false;
+  };
+  const count = leaves.filter(has).length;
+  return count === leaves.length ? "all" : count ? "mixed" : "none";
+}
+
+/**
+ * Enter and Backspace at a quote's edge, the empty-item rules' twins. Hands
+ * back where the caret goes, or null when neither applies and the key is an
+ * ordinary one.
+ *
+ * **Enter on an empty paragraph in a quote leaves the quote**, splitting it
+ * when the paragraph was in the middle. **Backspace at the start of a quote's
+ * first block takes that block out of it.** An empty paragraph writes nothing,
+ * so the parse cannot carry it and it is moved by hand; a block with content
+ * goes through `modelUnwrapQuote`. Moving an empty paragraph to the front of a
+ * list item would leave the item's marker on nothing, so that one case is left
+ * to the ordinary key.
+ */
+function modelQuoteKey(doc, block, md, backspace) {
+  const quote = block && block.parent;
+  if (!quote || quote.kind !== "quote" || !block.inlines) return null;
+  const index = quote.children.indexOf(block);
+  const empty = modelIsEmptyBlock(block);
+  if (backspace) {
+    if (quote.children.slice(0, index).some((child) => child.kind !== "gap")) return null;
+  } else if (!empty) {
+    return null;
+  }
+  if (!empty) {
+    const made = modelUnwrapQuote(doc, quote, index, index, md);
+    const moved = made && modelBlockById(doc, block.id);
+    return moved ? { block: moved, offset: 0 } : null;
+  }
+
+  const before = quote.children.slice(0, index);
+  const after = quote.children.slice(index + 1);
+  while (before.length && modelBareQuoteLine(before[before.length - 1])) before.pop();
+  while (after.length && modelBareQuoteLine(after[0])) after.shift();
+  if (!before.length && after.length && modelFirstOf(quote).size) return null;
+  const siblings = modelSiblings(doc, quote);
+  const at = siblings.indexOf(quote);
+  if (at < 0) return null;
+  const blank = modelBlankSeparator(quote);
+  const ending = quote.separator;
+
+  modelUnshare(block);
+  const made = [];
+  if (before.length) {
+    quote.children = before;
+    before[before.length - 1].separator = "";
+    quote.separator = blank;
+    made.push(quote);
+  }
+  block.parent = quote.parent;
+  block.quotePrefixes = quote.quotePrefixes && quote.quotePrefixes.length
+    ? [quote.quotePrefixes[quote.quotePrefixes.length - 1]]
+    : null;
+  block.separator = after.length ? blank : ending;
+  made.push(block);
+  if (after.length) {
+    const rest = modelContainerLike(doc, quote);
+    rest.children = after;
+    for (const child of after) child.parent = rest;
+    after[after.length - 1].separator = "";
+    rest.separator = ending;
+    rest.parent = quote.parent;
+    made.push(rest);
+  }
+  siblings.splice(at, 1, ...made);
+  modelSetLeadingAffix(block, "");
+  modelSetParagraphHidden(block, modelListHidesParagraphs(block));
+  for (const container of made) if (container.children) modelTouch(container);
+  modelTouch(block);
+  return { block, offset: 0 };
 }
 
 // ── Insert and Clear ─────────────────────────────────────────────────────────

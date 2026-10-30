@@ -94,6 +94,7 @@ export default function run(check) {
     modelSetHeading, modelMakeFence, modelUnfence, modelPlainText,
     modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered,
     modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape,
+    modelToggleQuote, modelQuoteKey, modelBlockState,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -123,7 +124,8 @@ export default function run(check) {
       " modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState," +
       " modelSetHeading, modelMakeFence, modelUnfence, modelPlainText," +
       " modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered," +
-      " modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape };",
+      " modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape," +
+      " modelToggleQuote, modelQuoteKey, modelBlockState };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -4534,5 +4536,194 @@ export default function run(check) {
       broken("ab\n", [0, "  "]) === "\\\nab\n");
     check("and two backslash breaks are left as they are",
       broken("ab\n", [1, "\\"], [2, "\\"]) === "a\\\n\\\nb\n");
+  }
+
+  // ---- Stage 3, slice 1: the blockquote ---------------------------------
+  //
+  // Making and unmaking a quote is done as text and parsed again, so what is
+  // checked is the bytes it writes, that the parser reads them as the shape
+  // meant, and that the leaves keep their ids — which is what keeps a caret.
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const live = (doc) => modelFlatten(doc).filter((b) => !b.children && b.kind !== "gap");
+    const quoted = (block) => { for (let p = block.parent; p; p = p.parent) if (p.kind === "quote") return true; return false; };
+    // The toggle over leaves picked by index, then the bytes, the shape check
+    // and whether every picked leaf is still in the document by its id.
+    const toggle = (src, picks) => {
+      const doc = parse(src);
+      const leaves = live(doc);
+      const chosen = picks.map((i) => leaves[i]);
+      const made = modelToggleQuote(doc, chosen, md);
+      return {
+        out: made ? emitOf(doc) : null,
+        settled: !!made && modelSettleShape(doc, made.block, md),
+        kept: chosen.every((leaf) => modelBlockById(doc, leaf.id)),
+        doc,
+      };
+    };
+    const writes = (label, src, picks, want) => {
+      const r = toggle(src, picks);
+      check(`${label} (${JSON.stringify(r.out)})`, r.out === want && r.settled && r.kept);
+    };
+
+    writes("a paragraph is quoted", "a\n\nb\n", [0], "> a\n\nb\n");
+    writes("two paragraphs are one quote, with a quoted blank line between", "a\n\nb\n", [0, 1], "> a\n>\n> b\n");
+    writes("a quote is never nested: a selection reaching into one takes it in", "> a\n\nb\n", [0, 1], "> a\n>\n> b\n");
+    writes("a quote beside the run joins it", "> a\n\nb\n\n> c\n", [1], "> a\n>\n> b\n>\n> c\n");
+    writes("a quoted block comes out of the middle of a quote and splits it", "> a\n>\n> b\n>\n> c\n", [1], "> a\n\nb\n\n> c\n");
+    writes("a quote two deep loses one level", "> > deep\n", [0], "> deep\n");
+    writes("a lazy line comes out with its quote", "> lazy\nline\n", [0], "lazy\nline\n");
+    writes("inside a list item the quote is the item's own: `- > x`", "- x\n- y\n", [0], "- > x\n- y\n");
+    writes("across two items it is item by item, never around the list", "- x\n- y\n", [0, 1], "- > x\n- > y\n");
+    writes("an item's later block is quoted at the item's indent", "- x\n\n  y\n", [1], "- x\n\n  > y\n");
+    writes("and a blank line inside an item keeps the indent that keeps it there", "- x\n\n  y\n", [0, 1], "- > x\n  >\n  > y\n");
+    writes("a quote in an item comes out of it", "- > x\n- y\n", [0], "- x\n- y\n");
+    writes("a tab after the marker stays a tab", "-\tone\n\ttwo\n", [0], "-\t> one\n\t> two\n");
+    writes("a fence is quoted line by line, its blank line included", "```\ncode\n\nmore\n```\n", [0],
+      "> ```\n> code\n>\n> more\n> ```\n");
+    writes("a setext heading keeps its underline", "Title\n=====\n", [0], "> Title\n> =====\n");
+    writes("a whole list is quoted with the paragraph before it", "p\n\n- a\n- b\n", [0, 2], "> p\n>\n> - a\n> - b\n");
+
+    {
+      const r = toggle("| a | b |\n| - | - |\n| 1 | 2 |\n", [1]);
+      check("a table row refuses: a quote cannot go inside a table", r.out === null);
+    }
+    {
+      const r = toggle("See [x][r] here.\n\n[r]: https://e.com\n", [0]);
+      const html = modelRenderDocument(r.doc, md, {});
+      check("a reference link still resolves inside the quote it was moved into, since the parse is given the document's definitions",
+        r.out === "> See [x][r] here.\n\n[r]: https://e.com\n" && html.includes('href="https://e.com"'));
+    }
+    {
+      const doc = parse("- one\n- two\n  three\n");
+      const leaf = live(doc)[1];
+      modelInlineSplice(leaf, 0, 0, "X ");
+      modelToggleQuote(doc, [leaf], md);
+      check("an edited block is quoted with its edit", emitOf(doc) === "- one\n- > X two\n  > three\n");
+    }
+    {
+      const doc = parse("# H\n\n- a\n  b\n\n> q\n\nend\n");
+      const before = live(doc).map((leaf) => leaf.id);
+      modelToggleQuote(doc, [live(doc)[1]], md);
+      const after = new Set(live(doc).map((leaf) => leaf.id));
+      check("every leaf in the block that was parsed again keeps its id, and so does every leaf outside it",
+        before.every((id) => after.has(id)));
+    }
+
+    // Enter and Backspace: the empty-item rules' twins.
+    {
+      const doc = parse("> a\n>\n> b\n\nafter\n");
+      const at = modelInsertParagraph(doc, live(doc)[0], 1, md);
+      check("Enter in a quote writes nothing until something is typed — an empty paragraph in a quote used to write `>`",
+        emitOf(doc) === "> a\n>\n> b\n\nafter\n");
+      const left = modelQuoteKey(doc, at.block, md, false);
+      check("Enter on an empty paragraph in a quote leaves the quote, splitting it, with the caret in the same block",
+        !!left && left.block === at.block && left.offset === 0 && emitOf(doc) === "> a\n\n> b\n\nafter\n");
+      modelInlineSplice(left.block, 0, 0, "typed");
+      check("and what is typed there lands between the two quotes",
+        emitOf(doc) === "> a\n\ntyped\n\n> b\n\nafter\n" && modelSettleShape(doc, left.block, md));
+    }
+    {
+      const doc = parse("> a\n> more\n>\n> b\n");
+      const leaf = live(doc)[0];
+      check("Enter on a quoted paragraph with something in it is an ordinary Enter", modelQuoteKey(doc, leaf, md, false) === null);
+      check("Backspace at the start of a quote's second block is an ordinary Backspace",
+        modelQuoteKey(doc, live(doc)[1], md, true) === null);
+      const out = modelQuoteKey(doc, leaf, md, true);
+      check("Backspace at the start of a quote's first block takes it out, and the caret stays in it",
+        !!out && out.block.id === leaf.id && out.offset === 0 && emitOf(doc) === "a\nmore\n\n> b\n");
+    }
+    {
+      const doc = parse("a\n");
+      const at = modelInsertParagraph(doc, live(doc)[0], 1, md);
+      const id = at.block.id;
+      const made = modelToggleQuote(doc, [at.block], md);
+      const moved = modelBlockById(doc, id);
+      const empty = emitOf(doc);
+      if (moved) modelInlineSplice(moved, 0, 0, "quoted");
+      check("an empty paragraph can be quoted and typed into — it goes through the parse holding a placeholder",
+        !!made && !!moved && empty === "a\n" && emitOf(doc) === "a\n\n> quoted\n" && modelSettleShape(doc, moved, md));
+    }
+
+    // What the Format menu checks: the block formats the selection is in.
+    {
+      const doc = parse("## Head\n\n> - quoted bullet\n\n1. one\n   - nested\n\nplain\n");
+      const [head, bullet, one, nested, plain] = live(doc);
+      const at = (block) => ({ block, offset: 0 });
+      const over = (a, b) => ({ block: a, offset: 0, to: { block: b, offset: 1 } });
+      check("the menu checks Heading 2 in a level-two heading, and no other level",
+        modelBlockState(doc, at(head), "h2") === "all" && modelBlockState(doc, at(head), "h1") === "none");
+      check("and Blockquote and Bullet list for a bullet inside a quote",
+        modelBlockState(doc, at(bullet), "quote") === "all" && modelBlockState(doc, at(bullet), "ul") === "all" &&
+          modelBlockState(doc, at(bullet), "ol") === "none");
+      check("a bullet nested in a numbered item is a bullet: the innermost list is the one checked",
+        modelBlockState(doc, at(nested), "ul") === "all" && modelBlockState(doc, at(nested), "ol") === "none" &&
+          modelBlockState(doc, at(one), "ol") === "all");
+      check("a plain paragraph is in none of them",
+        ["h1", "h2", "ul", "ol", "quote"].every((f) => modelBlockState(doc, at(plain), f) === "none"));
+      check("a selection reaching from a quote into plain text is mixed",
+        modelBlockState(doc, over(bullet, one), "quote") === "mixed");
+    }
+
+    // D1 one step further out, over the whole oracle: every leaf outside a
+    // quote is quoted and then unquoted, and the file that comes back is the
+    // file that went in. That covers the untouched quotes in torture.md too,
+    // which are in the bytes compared.
+    {
+      let done = 0;
+      let rows = 0;
+      const wrong = [];
+      for (const file of ORACLE_FILES) {
+        const src = repoFile(file);
+        const count = live(parse(src)).length;
+        for (let i = 0; i < count; i++) {
+          const doc = parse(src);
+          const leaf = live(doc)[i];
+          if (quoted(leaf)) continue;
+          const made = modelToggleQuote(doc, [leaf], md);
+          if (!made) {
+            if (leaf.kind === "row") rows++;
+            else wrong.push(`${file} #${leaf.id} refused`);
+            continue;
+          }
+          if (!modelSettleShape(doc, made.block, md)) { wrong.push(`${file} #${leaf.id} shape`); continue; }
+          const back = modelToggleQuote(doc, [modelBlockById(doc, leaf.id)], md);
+          if (!back || emitOf(doc) !== src) { wrong.push(`${file} #${leaf.id} not back`); continue; }
+          done++;
+        }
+      }
+      check(`every leaf outside a quote in the oracle, ${done} of them, quoted and unquoted again gives back its file byte for byte` +
+        (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 5).join(" | ")}` : ""), wrong.length === 0 && done > 800);
+      check(`and the only refusals were table rows, ${rows} of them`, rows > 0);
+    }
+
+    // And the other way round, on the quotes torture.md holds: out and back in
+    // again reads the same, though a lazy line comes back with its marker and a
+    // nested quote, being already quoted, loses a second level instead.
+    {
+      const src = repoFile("tests/fixtures/torture.md");
+      const env = () => ({});
+      const reads = (text) => md.render(text, env());
+      let same = 0;
+      let meaning = 0;
+      const wrong = [];
+      const count = live(parse(src)).length;
+      for (let i = 0; i < count; i++) {
+        const doc = parse(src);
+        const leaf = live(doc)[i];
+        if (!quoted(leaf) || !leaf.inlines) continue;
+        const quote = leaf.parent;
+        if (quote.kind !== "quote" || quoted(quote)) continue;
+        if (!modelToggleQuote(doc, [leaf], md)) { wrong.push(`#${leaf.id} out`); continue; }
+        if (!modelToggleQuote(doc, [modelBlockById(doc, leaf.id)], md)) { wrong.push(`#${leaf.id} in`); continue; }
+        const out = emitOf(doc);
+        if (out === src) same++;
+        else if (reads(out) === reads(src)) meaning++;
+        else wrong.push(`#${leaf.id} reads differently`);
+      }
+      check(`a block in one of torture.md's quotes taken out and put back reads as it did — ${same} byte for byte, ` +
+        `${meaning} with a lazy line given its marker` + (wrong.length ? `, but ${wrong.join(" | ")}` : ""),
+        wrong.length === 0 && same > 0);
+    }
   }
 }

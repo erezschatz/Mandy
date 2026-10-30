@@ -101,17 +101,22 @@ const TOOLBAR_MENUS = [
   // These drive applyFormat in format-bar.js, which the format bar's own
   // buttons already went through — the menu is a second way to reach the same
   // ten formats, not a second implementation of them.
+  //
+  // **Every format that is not plain text is checkable**, so the menu says
+  // what the caret or the selection is already in — a heading, a list, a
+  // quote — as well as which marks it has. Paragraph is the plain case and has
+  // no check. format-bar.js stamps them all as the menu opens.
   { id: "formatMenu", label: "Format", variants: ALL, items: [
     { action: "format-p", label: "Paragraph", variants: ALL },
-    { action: "format-h1", label: "Heading 1", variants: ALL },
-    { action: "format-h2", label: "Heading 2", variants: ALL },
-    { action: "format-h3", label: "Heading 3", variants: ALL },
+    { action: "format-h1", label: "Heading 1", checkable: true, variants: ALL },
+    { action: "format-h2", label: "Heading 2", checkable: true, variants: ALL },
+    { action: "format-h3", label: "Heading 3", checkable: true, variants: ALL },
     // TODO 1.1.2: same formatBlock call as h1-h3, just with no room on the
     // floating format bar — six heading buttons there is the level-picker
     // question that item left open, so these landed in the menu only.
-    { action: "format-h4", label: "Heading 4", variants: ALL },
-    { action: "format-h5", label: "Heading 5", variants: ALL },
-    { action: "format-h6", label: "Heading 6", variants: ALL },
+    { action: "format-h4", label: "Heading 4", checkable: true, variants: ALL },
+    { action: "format-h5", label: "Heading 5", checkable: true, variants: ALL },
+    { action: "format-h6", label: "Heading 6", checkable: true, variants: ALL },
     { separator: true, variants: ALL },
     // Checkable: format-bar.js stamps aria-pressed on these when the menu
     // opens, so the menu says which marks the caret or the selection already
@@ -120,8 +125,11 @@ const TOOLBAR_MENUS = [
     { action: "format-italic", label: "Italic", shortcut: "Ctrl+I", checkable: true, variants: ALL },
     { action: "format-strikethrough", label: "Strikethrough", checkable: true, variants: ALL },
     { separator: true, variants: ALL },
-    { action: "format-ul", label: "Bullet list", variants: ALL },
-    { action: "format-ol", label: "Numbered list", variants: ALL },
+    { action: "format-ul", label: "Bullet list", checkable: true, variants: ALL },
+    { action: "format-ol", label: "Numbered list", checkable: true, variants: ALL },
+    // Stage 3's slice 1. A toggle, model core only — D4's amendment writes no
+    // new format against contenteditable, so the old core says so instead.
+    { action: "format-quote", label: "Blockquote", checkable: true, variants: ALL },
     // "Code", not "Code block": one control does both, and the selection
     // decides which — a code span inside a line, a code block for whole lines.
     // Checkable for the same reason as the three marks above.

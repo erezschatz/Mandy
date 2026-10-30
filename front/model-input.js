@@ -491,6 +491,54 @@ function modelInputList(ordered) {
   return true;
 }
 
+/**
+ * Format → Blockquote under the model core, stage 3's slice 1: a toggle over
+ * the leaves the selection touches — `modelToggleQuote` says which way, and
+ * what goes into the quote. On a fork first, through the shape check, the
+ * way the lists are. The leaves keep their ids through the parse that makes
+ * or unmakes a quote, so the selection is carried across by id.
+ */
+function modelInputQuote() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  const ids = modelSelectedRanges(doc, at).map((range) => range.block.id);
+  const run = (d) => modelToggleQuote(d, ids.map((id) => modelBlockById(d, id)).filter(Boolean), md);
+  const trial = modelForkDocument(doc);
+  const tried = run(trial);
+  if (!tried || !modelSettleShape(trial, tried.block, md)) {
+    if (typeof notify === "function") notify("A blockquote cannot go there.", { severity: "info" });
+    return true;
+  }
+  const done = run(doc);
+  if (!done || !modelSettleShape(doc, done.block, md)) return true;
+  modelPendingMarks = null;
+  modelEnsureBlock(doc, md);
+  modelRender(editor, doc, md, modelResolveSelection(doc, modelRecordSelection(at)));
+  modelInputAnnounce("formatBlock");
+  return true;
+}
+
+/**
+ * Enter on an empty paragraph in a quote, and Backspace at the start of a
+ * quote's first block: both take the block out of the quote — see
+ * `modelQuoteKey`. Asked after the empty-item rules and before the generic
+ * edit, on a fork first, and false when neither applies so the key does what
+ * it does anywhere else.
+ */
+function modelInputQuoteKey(doc, backspace) {
+  const at = modelReadSelection(editor, doc);
+  if (!at || (at.to && (at.to.block !== at.block || at.to.offset !== at.offset))) return false;
+  if (backspace && at.offset !== 0) return false;
+  const trial = modelForkDocument(doc);
+  const tried = modelQuoteKey(trial, modelBlockById(trial, at.block.id), md, backspace);
+  if (!tried || !modelSettleShape(trial, tried.block, md)) return false;
+  const landed = modelQuoteKey(doc, at.block, md, backspace);
+  if (!landed || !modelSettleShape(doc, landed.block, md)) return false;
+  return modelInputRestructure(doc, landed, backspace ? "deleteContentBackward" : "insertParagraph");
+}
+
 // ── Insert and Clear ─────────────────────────────────────────────────────────
 //
 // Slice 7's step 7. Each structural insertion runs on a fork first and asks
@@ -638,6 +686,14 @@ async function modelInputLink() {
 
 // The same for Code, which is not a mark: a code span is a leaf, and a code
 // block a kind of block.
+// The same for the block formats — Heading 1–6, the two lists and Blockquote.
+function modelInputBlockState(format) {
+  const doc = modelCurrentDocument();
+  if (!doc) return "none";
+  const at = modelReadSelection(editor, doc);
+  return at ? modelBlockState(doc, at, format) : "none";
+}
+
 function modelInputCodeState() {
   const doc = modelCurrentDocument();
   if (!doc) return "none";
@@ -961,6 +1017,18 @@ function modelInputKeydown(event) {
     modelInputFormat(MODEL_FORMAT_KEYS[key]);
     return;
   }
+  // Backspace at the start of a quote's first block, taken here as well as
+  // from `beforeinput`, because **WebKit raises no `beforeinput` for a
+  // Backspace at the very start of the document** — measured 2026-10-27 in
+  // Playwright's WebKit, where a quote opening the document never heard the
+  // key while Chromium sent `deleteContentBackward`. Cancelling the keydown
+  // means no `beforeinput` follows, so the rule runs once either way.
+  if (event.key === "Backspace" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
+      !event.isComposing) {
+    const doc = modelCurrentDocument();
+    if (doc && modelInputQuoteKey(doc, true)) event.preventDefault();
+    return;
+  }
   if (event.key !== "Tab" || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
   const doc = modelCurrentDocument();
   if (!doc) return;
@@ -1069,11 +1137,13 @@ function modelInputBeforeInput(event) {
   }
   if (MODEL_INPUT_DELETE_TYPES.has(event.inputType)) {
     if (modelInputEmptyItem(doc, true)) return;
+    if (event.inputType === "deleteContentBackward" && modelInputQuoteKey(doc, true)) return;
     modelInputWrite(doc, modelInputSpan(event, doc), "", event.inputType);
     return;
   }
   if (event.inputType === "insertParagraph") {
     if (modelInputEmptyItem(doc, false)) return;
+    if (modelInputQuoteKey(doc, false)) return;
     modelInputParagraph(doc, modelInputSpan(event, doc));
     return;
   }

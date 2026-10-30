@@ -1621,6 +1621,23 @@ through the model's own clipboard handler: `runCommand` lets `copy` alone
 through, and Cut is that copy plus the model's deletion. Step 9, the hand pass
 over the whole slice, is what is left of slice 7.
 
+**Stage 3's slice 1 gave it the blockquote**, 2026-10-27 to 2026-10-30: Format → Blockquote
+toggles one quote over the selection, and Enter and Backspace at a quote's edge
+are the empty-item rules' twins. **A wrap or an unwrap is done as text and
+parsed again**, which is the one place the model re-parses a block it already
+holds: the top-level block holding the change is emitted, `> ` goes on or comes
+off each line at the column its outer containers end, and `modelParse` reads it
+back with the document's reference definitions in its env — then every leaf
+takes the id of the leaf it replaces, and a parse that hands back different
+leaves is a refusal. It is done that way because a quote inside an item splits
+its prefix between `quotePrefixes` and `leadingAffix`, and the parser already
+knows how. **The Backspace rule is also on `keydown`**, because WebKit raises no
+`beforeinput` for a Backspace at the very start of the document. **The Format
+menu checks every format that is not plain text** — the marks, Code, Heading
+1–6, both lists and Blockquote — so it says what the caret is in; a new control
+for something that is not plain text gets its check with it, and
+`modelBlockState` is the model's answer for the block formats.
+
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.
 **With it on the toolbar carries a `model core` marker**, which is a link back

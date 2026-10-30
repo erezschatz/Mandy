@@ -10,13 +10,15 @@ one (step 10), bold, italic and strikethrough (step 3), inline code and links
 (step 4), paragraphs, headings and the code block (step 5), lists (step 6), the
 rule, the table of contents and Clear (step 7), the keys and the clipboard
 (step 8), and everything together (step 9). (It held diagrams
-too until Mermaid was removed on 2026-10-01.)
+too until Mermaid was removed on 2026-10-01.) Stage 3 adds to it from the end,
+one section per slice: the blockquote (slice 1) is the first.
 
 Chromium and WebKit run the last seven sections by machine
 (`tests/browser/equation-typing.spec.mjs`, `format-marks.spec.mjs`,
 `inline-code-links.spec.mjs`, `block-kinds.spec.mjs`, `lists.spec.mjs`,
-`insert-clear.spec.mjs` and `keys-clipboard.spec.mjs`), so a hand run of those
-is Firefox's. Safari's waits for stage 5.
+`insert-clear.spec.mjs` and `keys-clipboard.spec.mjs`), and the blockquote
+section too (`blockquote.spec.mjs`), so a hand run of those is Firefox's.
+Safari's waits for stage 5.
 
 ## Before you start
 
@@ -446,6 +448,57 @@ Read the [field notes][notes] first.
    scratch file.** *Everything you did in this whole pass comes back as you
    left it*: the marks, the code, the lists, the links, the headings, and every
    equation typeset. **Delete the scratch file afterwards.**
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors.*
+
+## Blockquote (stage 3, slice 1)
+
+Format → Blockquote, and Enter and Backspace at a quote's edge. The control is
+a toggle: what the selection touches goes into one quote, or comes out of one
+level if it is all quoted already. It is in the Format menu only, not on the
+bar.
+
+The paragraphs, list and quote to work on:
+
+Quote me alone
+
+Quote me together
+
+And me too
+
+- a bullet to quote
+- a bullet left alone
+
+> An existing quote, first paragraph.
+>
+> Its second paragraph.
+
+1. **Click in "Quote me alone" and choose Format → Blockquote.** *It is drawn
+   as a quote.* **Choose Format → Blockquote again.** *It is a plain paragraph
+   again.*
+2. **Select from "Quote me together" to the end of "And me too" and choose
+   Format → Blockquote.** *Both are in one quote, not two.* (Undo it.)
+3. **Click in "a bullet to quote" and choose Format → Blockquote.** *It is
+   still a bullet, with its text quoted inside it, and "a bullet left alone"
+   is unchanged.* (Undo it.)
+4. **Click at the end of "Its second paragraph." and press Enter.** *The caret
+   is on a new line inside the quote.* **Press Enter again.** *The caret leaves
+   the quote, on a line of its own below it.* **Type a word.** *It is not
+   quoted.* (Undo until the word and both new lines are gone.)
+5. **Click at the start of "An existing quote, first paragraph." and press
+   Backspace.** *That paragraph leaves the quote, the caret stays at its start,
+   and "Its second paragraph." is still quoted.* (Undo it.)
+6. **Press Ctrl/Cmd+Z after any of the above.** *That change goes, in one
+   press.*
+7. **Click in "Its second paragraph." and open the Format menu.** *Blockquote
+   has a check.* **Close it with Escape, click in "a bullet to quote" and open
+   it again.** *Bullet list has a check and Blockquote does not.* **Click in
+   this section's heading and open it.** *Heading 2 has a check.*
+8. **Open `http://localhost:9130/?core=legacy`, click in any paragraph and
+   choose Format → Blockquote.** *A message says Blockquote needs the new
+   editing core, and nothing changes.* **Go back to `?core=model`** before
+   anything else.
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors.*
