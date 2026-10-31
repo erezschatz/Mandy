@@ -96,7 +96,7 @@ export default function run(check) {
     modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape,
     modelToggleQuote, modelQuoteKey, modelBlockState,
     modelSetImage, modelImageAt, modelImageFields,
-    sniffTableConvention, formatMarkdownTable,
+    sniffTableConvention, formatMarkdownTable, modelCellBlocks,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -129,7 +129,7 @@ export default function run(check) {
       " modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape," +
       " modelToggleQuote, modelQuoteKey, modelBlockState," +
       " modelSetImage, modelImageAt, modelImageFields," +
-      " sniffTableConvention, formatMarkdownTable };",
+      " sniffTableConvention, formatMarkdownTable, modelCellBlocks };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -141,6 +141,11 @@ export default function run(check) {
   // never hands it.
   const md = configureMarkdownParser(markdownit());
   const parse = (src) => modelParse(src, md);
+  // A row's children are its cells since stage 3's slice 4, and a cell has no
+  // source of its own: the row is the floor for bytes and the cell the floor
+  // for text. So a walk over the tiling — anything that reads a leaf's bytes —
+  // stops at the row, and that is the exemption the plan names, by name.
+  const tiles = (b) => (b.kind === "row" ? null : b.children);
 
   // Every block an edit can re-serialise, in order. A container re-emits as its
   // children (slice 1b's step 3), so what reaches slice 3's emitter is always a
@@ -148,7 +153,7 @@ export default function run(check) {
   // the metric at the bottom of this file count in.
   const leavesOf = (doc) => {
     const out = [];
-    const walk = (b) => (b.children ? b.children.forEach(walk) : out.push(b));
+    const walk = (b) => (tiles(b) ? tiles(b).forEach(walk) : out.push(b));
     doc.blocks.forEach(walk);
     return out;
   };
@@ -339,7 +344,7 @@ export default function run(check) {
   // parent's own source — and it is asserted first, on real files, because
   // every other claim in this section is only interesting if it holds.
   const mistiled = (block, path) => {
-    if (!block.children) return [];
+    if (!tiles(block)) return [];
     const rebuilt = block.leading + block.children.map((c) => c.source + c.separator).join("");
     const here = rebuilt === block.source ? [] : [`${path} (${block.kind})`];
     return here.concat(block.children.flatMap((c, i) => mistiled(c, `${path}/${i}`)));
@@ -356,8 +361,8 @@ export default function run(check) {
   // children anywhere tiles vacuously, which is exactly the state slice 1 was
   // in and exactly what step 2 had to change.
   const todoDoc = parse(repoFile(CORPUS.todo));
-  const depthOf = (b) => (b.children ? 1 + Math.max(...b.children.map(depthOf)) : 1);
-  const containers = (b) => (b.children ? 1 : 0) + (b.children || []).reduce((n, c) => n + containers(c), 0);
+  const depthOf = (b) => (tiles(b) ? 1 + Math.max(...b.children.map(depthOf)) : 1);
+  const containers = (b) => (tiles(b) ? 1 : 0) + (tiles(b) || []).reduce((n, c) => n + containers(c), 0);
   check(
     "corpus/todo.md tiles into containers rather than staying flat",
     todoDoc.blocks.reduce((n, b) => n + containers(b), 0) > 40,
@@ -380,9 +385,16 @@ export default function run(check) {
     shape(tree.blocks[2]) === ["quote", " paragraph", " gap", " paragraph"].join("\n"),
   );
   check(
-    "a table tiles into head, body and rows, and stops at the row",
-    shape(tree.blocks[3]) === ["table", " table-head", "  row", " gap", " table-body", "  row"].join("\n"),
+    "a table tiles into head, body and rows, and a row holds its cells",
+    shape(tree.blocks[3]) === ["table", " table-head", "  row", "   cell", "   cell", " gap", " table-body", "  row", "   cell", "   cell"].join("\n"),
   );
+  // The floor for bytes is still the row: a cell has no span of its own,
+  // because `td_open` carries no `map`.
+  {
+    const row = tree.blocks[3].children[0].children[0];
+    check("a cell has no source, and its row keeps its own",
+      row.children.every((cell) => cell.source === null && cell.inlines) && row.source === "| a | b |");
+  }
 
   // The two lines the tiler section found unclaimed are blocks in their own
   // position now, by the same mechanism a reference definition is: a table's
@@ -602,7 +614,7 @@ export default function run(check) {
   let deepest = null;
   let deepestAt = 0;
   const findDeepest = (block, depth) => {
-    if (block.children) return block.children.forEach((c) => findDeepest(c, depth + 1));
+    if (tiles(block)) return block.children.forEach((c) => findDeepest(c, depth + 1));
     if (depth > deepestAt) {
       deepestAt = depth;
       deepest = block;
@@ -750,7 +762,7 @@ export default function run(check) {
   {
     const quotedLeaves = [];
     const walk = (block, inQuote) => {
-      if (block.children) return block.children.forEach((c) => walk(c, inQuote || block.kind === "quote"));
+      if (tiles(block)) return block.children.forEach((c) => walk(c, inQuote || block.kind === "quote"));
       if (inQuote) quotedLeaves.push(block);
     };
     for (const path of ORACLE_FILES) parse(repoFile(path)).blocks.forEach((b) => walk(b, false));
@@ -3148,7 +3160,14 @@ export default function run(check) {
     for (let i = 0; i < total; i++) {
       const doc = parse(text);
       const leaf = leavesOf(doc)[i];
-      const own = leaf.source;
+      // Since stage 3's slice 4 an edit inside a table hands the emitter the
+      // whole table, because a cell has no bytes of its own; whether the
+      // emitter then writes back only the row is the table sweep's question,
+      // at the end of this file, with the real emitter.
+      let unit = leaf;
+      while (unit.parent && unit.kind !== "table") unit = unit.parent;
+      if (unit.kind !== "table") unit = leaf;
+      const own = unit.source;
       modelTouch(leaf);
       const out = modelSerialise(doc, () => SENTINEL);
       let at = 0;
@@ -4686,7 +4705,7 @@ export default function run(check) {
           if (quoted(leaf)) continue;
           const made = modelToggleQuote(doc, [leaf], md);
           if (!made) {
-            if (leaf.kind === "row") rows++;
+            if (leaf.kind === "cell") rows++;
             else wrong.push(`${file} #${leaf.id} refused`);
             continue;
           }
@@ -4698,7 +4717,9 @@ export default function run(check) {
       }
       check(`every leaf outside a quote in the oracle, ${done} of them, quoted and unquoted again gives back its file byte for byte` +
         (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 5).join(" | ")}` : ""), wrong.length === 0 && done > 800);
-      check(`and the only refusals were table rows, ${rows} of them`, rows > 0);
+      // A cell since stage 3's slice 4, where it was the row before: either
+      // way a block format inside a table is refused.
+      check(`and the only refusals were table cells, ${rows} of them`, rows > 0);
     }
 
     // And the other way round, on the quotes torture.md holds: out and back in
@@ -4873,5 +4894,146 @@ export default function run(check) {
     // keeping to nothing is the sniff refusing to guess, which is the point.
     check("and torture.md's hand-padded table is the one that keeps to none",
       loose.length === 1 && loose[0].startsWith("tests/fixtures/torture.md:"));
+  }
+
+  // ── Stage 3's slice 4: cells ──────────────────────────────────────────────
+  //
+  // Every cell in the oracle, edited one at a time with the real emitter: a
+  // letter typed on its end. Three things have to hold for each, and the
+  // second is D1 one table further out:
+  //   - the file outside the table comes back byte for byte;
+  //   - the table re-parses to exactly the edit, every other cell as it was;
+  //   - where the edit widened no column, only the edited row's line changes,
+  //     which is the row-where-it-can rule measured rather than assumed.
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const SENT = "\u2603TABLE\u2603";
+    const tablesOf = (doc) => modelFlatten(doc).filter((b) => b.kind === "table");
+    const cellsOf = (table) => modelFlatten({ blocks: [table] }).filter((b) => b.kind === "cell");
+    const parsedCells = (src) =>
+      md.parse(src, {}).filter((t, i, all) => t.type === "inline" && /^t[hd]_open$/.test(all[i - 1].type)).map((t) => t.content);
+    let edited = 0;
+    let oneLine = 0;
+    const wrong = [];
+    for (const file of ORACLE_FILES) {
+      const src = repoFile(file);
+      const doc = parse(src);
+      tablesOf(doc).forEach((table, t) => {
+        cellsOf(table).forEach((cell, c) => {
+          const copy = modelForkDocument(doc);
+          const there = cellsOf(tablesOf(copy)[t])[c];
+          const before = modelInlineText(there.inlines);
+          if (modelInlineSplice(there, before.length, before.length, "x") === null) {
+            wrong.push(`${file} table ${t} cell ${c} refused`);
+            return;
+          }
+          // Where the table sits, by the sentinel: the stub writes it for the
+          // one block it is handed, which is the table.
+          const marked = modelSerialise(copy, () => SENT);
+          const at = marked.indexOf(SENT);
+          const head = marked.slice(0, at);
+          const tail = marked.slice(at + SENT.length);
+          const out = emitOf(copy);
+          const where = `${file} table ${t} cell ${c}`;
+          if (!out.startsWith(head) || !out.endsWith(tail)) return wrong.push(`${where}: bytes outside the table moved`);
+          const was = table.source.split("\n");
+          const now = out.slice(head.length, out.length - tail.length).split("\n");
+          // What the edited cell should read back as is its own tree's source:
+          // typed at the end of a cell ending in a code span, the letter goes
+          // inside the span, which is the caret's boundary rule and right.
+          const want = parsedCells(table.source.split("\n").map((line) => line.replace(/^(\s*>)+ ?/, "").trim()).join("\n"));
+          want[c] = modelInlineSource(there.inlines, md, () => true).replace(/\\\|/g, "|").trim();
+          // Parsed with each line's prefix off: a table indented under an item
+          // is an indented code block on its own.
+          const bare = (lines) => lines.map((line) => line.replace(/^(\s*>)+ ?/, "").trim()).join("\n");
+          const got = parsedCells(bare(now));
+          if (got.join("\u0000") !== want.join("\u0000")) return wrong.push(`${where}: reads back as ${JSON.stringify(got[c])}`);
+          const changed = was.filter((line, i) => line !== now[i]).length;
+          const widened = table.tableConvention && table.tableConvention.aligned;
+          if (now.length !== was.length || (!widened && changed !== 1)) return wrong.push(`${where}: ${changed} lines changed`);
+          if (changed === 1) oneLine++;
+          edited++;
+        });
+      });
+    }
+    check(`every cell in the oracle, ${edited} of them, edited alone leaves the file outside its table untouched` +
+      ` and reads back as the edit, with only its own row's line changed in ${oneLine}` +
+      (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 4).join(" | ")}` : ""),
+      wrong.length === 0 && edited > 100);
+  }
+
+  // The same, by hand, for the decisions the sweep cannot see one at a time.
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const cellsOf = (doc) => modelFlatten(doc).filter((b) => b.kind === "cell");
+    const edit = (src, index, text) => {
+      const doc = parse(src);
+      const cell = cellsOf(doc)[index];
+      const end = modelInlineText(cell.inlines).length;
+      modelInlineSplice(cell, end, end, text);
+      return emitOf(doc);
+    };
+    check("a one-space table rewrites only the edited row when a cell grows",
+      edit("| a | b |\n| --- | --- |\n| 1 | 2 |\n", 2, "234") === "| a | b |\n| --- | --- |\n| 1234 | 2 |\n");
+    check("a padded table re-pads the whole column when a cell outgrows it",
+      edit("| a   | b   |\n| --- | --- |\n| 1   | 2   |\n", 2, "234") ===
+        "| a    | b   |\n| ---- | --- |\n| 1234 | 2   |\n");
+    check("a pipe typed into a cell is escaped, so it stays in the cell",
+      edit("|a|b|\n|-|-|\n|1|2|\n", 2, " | 3") === "|a|b|\n|-|-|\n|1 \\| 3|2|\n");
+    check("a table in a quote keeps its `>` on every line",
+      edit("> |a|b|\n> |-|-|\n> |1|2|\n", 3, "0") === "> |a|b|\n> |-|-|\n> |1|20|\n");
+    check("a table in a list item keeps the item's indent",
+      edit("- item\n\n  |a|b|\n  |-|-|\n  |1|2|\n", 2, "0") === "- item\n\n  |a|b|\n  |-|-|\n  |10|2|\n");
+    check("a hand-padded table keeps its other lines and writes the edited row in the default",
+      edit("| a |  b |\n| --- | --- |\n|c| d |\n", 2, "x") === "| a |  b |\n| --- | --- |\n| cx | d |\n");
+    check("a header cell is edited like any other",
+      edit("|a|b|\n|-|-|\n|1|2|\n", 0, "z") === "|az|b|\n|-|-|\n|1|2|\n");
+    const cells = cellsOf(parse("| a | b |\n| :-- | --: |\n| 1 | |\n"));
+    check("a cell records its alignment and whether it is a header",
+      cells[0].header && cells[1].align === "right" && !cells[2].header && cells[2].align === "left");
+    check("and an empty cell is a cell with an empty tree", cells[3].inlines.length === 0);
+
+    // Found by the review before slice 4's commit. markdown-it takes one
+    // backslash off before every pipe in a row, code and maths included, so a
+    // cell's source has to put one back before every pipe — and `\\|` in an
+    // equation was being treated as already escaped and lost its bars.
+    check("an equation's norm bars and a code span's pipe survive their table being rewritten",
+      edit("|$\\\\|x\\\\|$|`a\\|b`|\n|-|-|\n|1|2|\n", 2, "0") === "|$\\\\|x\\\\|$|`a\\|b`|\n|-|-|\n|10|2|\n");
+    // markdown-it pads a short row and drops a long row's extra cells, so the
+    // model holds neither, and laying the table out from its cells changed
+    // untouched rows.
+    check("a short row and a long row stay as written when another row is edited",
+      edit("|a|b|\n|-|-|\n|1|2|3|\n|4|\n", 0, "z") === "| az | b |\n|-|-|\n|1|2|3|\n|4|\n");
+    check("and an edited long row keeps its extra cell",
+      edit("|a|b|\n|-|-|\n|1|2|3|\n", 2, "0") === "|a|b|\n|-|-|\n| 10 | 2 | 3 |\n");
+    check("a table opening a quote inside a list item keeps both markers",
+      edit("- > |a|b|\n  > |-|-|\n  > |1|2|\n", 0, "z") === "- > |az|b|\n  > |-|-|\n  > |1|2|\n");
+    check("and one opening a list inside a list item keeps both of those",
+      edit("- - |a|b|\n    |-|-|\n    |1|2|\n", 0, "z") === "- - |az|b|\n    |-|-|\n    |1|2|\n");
+
+    // Paste into a cell, settled 2026-10-31: one line of inline content.
+    const flat = (markdown) => {
+      const doc = parse("|a|b|\n|-|-|\n|1|2|\n");
+      const blocks = modelCellBlocks(doc, md, parse(markdown).blocks);
+      return blocks.length === 1 && blocks[0].kind === "paragraph" ? modelInlineSource(blocks[0].inlines, md, () => true) : null;
+    };
+    check("pasted blocks become their inline content on one line, marks and links kept",
+      flat("# Title\n\nSome **bold** and a [link](u).\n\n- one\n- two\n") === "Title Some **bold** and a [link](u). one two");
+    check("a line break becomes a space, in both its spellings",
+      flat("a  \nb\\\nc\nd\n") === "a b c d");
+    // Escaped as little as stops it reading as markup: one backslash is enough.
+    check("a code block's text comes through as plain text",
+      flat("```\nx *y*\n```\n") === "x \\*y*");
+    check("and a line that would read as a block start stays a paragraph",
+      flat("1\\. not a list\n") === "1\\. not a list");
+    // And all the way through: the flattened paste lands in the cell, and the
+    // table is written back with it on its own line.
+    {
+      const doc = parse("|a|b|\n|-|-|\n|1|2|\n");
+      const cell = modelFlatten(doc).filter((b) => b.kind === "cell")[2];
+      const landed = modelInsertBlocks(doc, cell, 1, modelCellBlocks(doc, md, parse("**x**\n\ny\n").blocks));
+      check("a flattened paste lands inside the cell, and the table stays one line a row",
+        !!landed && modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc)) === "|a|b|\n|-|-|\n|1**x** y|2|\n");
+    }
   }
 }

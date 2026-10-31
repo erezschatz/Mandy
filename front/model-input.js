@@ -201,6 +201,40 @@ function modelInputDelete(doc, span) {
     return offset === null ? null : { block: from.block, offset, structural: false };
   }
 
+  // **Across cells, a deletion empties and never merges** (stage 3's slice 4,
+  // settled 2026-10-31): what it covers goes out of each cell and the grid
+  // stays. Between a cell and anything outside its table it is refused, which
+  // is also what Backspace at a cell's start is, since its range reaches into
+  // the cell before — and that has no text to lose, so it changes nothing.
+  if (from.block.kind === "cell" || to.block.kind === "cell") {
+    const table = (block) => {
+      let node = block;
+      while (node && node.kind !== "table") node = node.parent;
+      return node;
+    };
+    if (from.block.kind !== "cell" || to.block.kind !== "cell" || table(from.block) !== table(to.block)) return null;
+    const cells = modelFlatten({ blocks: [table(from.block)] }).filter((block) => block.kind === "cell");
+    const first = cells.indexOf(from.block);
+    const last = cells.indexOf(to.block);
+    if (first < 0 || last < first) return null;
+    const cuts = [];
+    for (let i = first; i <= last; i++) {
+      const cell = cells[i];
+      const start = i === first ? from.offset : 0;
+      const end = i === last ? to.offset : modelInlineText(cell.inlines).length;
+      if (end > start) cuts.push({ id: cell.id, start, end });
+    }
+    // On a fork first, so a cell that refuses its part leaves no other cell
+    // already cut.
+    const trial = modelForkDocument(doc);
+    if (cuts.some((cut) => modelInlineSplice(modelBlockById(trial, cut.id), cut.start, cut.end, "") === null)) return null;
+    for (const cut of cuts) modelInlineSplice(modelBlockById(doc, cut.id), cut.start, cut.end, "");
+    const covered = cuts.length > 0;
+    // Covering nothing — Backspace at a cell's start — leaves the caret where
+    // it was rather than moving it into the cell before.
+    return covered ? { block: from.block, offset: from.offset, structural: true } : null;
+  }
+
   if (!from.block.inlines || !to.block.inlines) return null;
   const flat = modelFlatten(doc).filter((block) => !block.children && block.kind !== "gap");
   const first = flat.indexOf(from.block);
@@ -369,6 +403,25 @@ function modelInputCode() {
     return true;
   };
 
+  // In a cell Code is always a code span, since a cell cannot hold a fence: a
+  // caret or the whole cell spans the cell's whole content, and a selection
+  // across cells is refused like any block format there.
+  if (at.block.kind === "cell" || to.block.kind === "cell") {
+    if (to.block !== at.block) return modelInputCellRefusal(doc, at);
+    const cell = at.block;
+    let from = Math.min(at.offset, to.offset);
+    let end = Math.max(at.offset, to.offset);
+    if (from === end) {
+      from = 0;
+      end = modelInlineText(cell.inlines).length;
+    }
+    if (from === end) return true;
+    const range = modelToggleCode(cell, from, end, md, modelReferenceEnv(doc, md));
+    if (!range) return true;
+    modelPendingMarks = null;
+    return modelInputShow(doc, cell, { block: cell, offset: range.from, to: { block: cell, offset: range.to } }, "formatCode");
+  }
+
   // A caret or selection in a code block turns it back into text.
   if (to.block === at.block && (at.block.kind === "fence" || at.block.kind === "code")) {
     const made = modelUnfence(doc, at.block, md);
@@ -406,6 +459,21 @@ function modelInputCode() {
   if (!range) return true;
   modelPendingMarks = null;
   return modelInputShow(doc, block, { block, offset: range.from, to: { block, offset: range.to } }, "formatCode");
+}
+
+// The block formats are refused in a table cell, with a notice, the way a
+// heading is in a list item: a GFM cell holds one line of inline content, and
+// a paragraph, a heading, a list, a quote, a code block, a rule or a table of
+// contents is none of that. Stage 3's slice 4.
+function modelInputCellRefusal(doc, at) {
+  const to = at.to || at;
+  const touches = at.block.kind === "cell" || to.block.kind === "cell" ||
+    modelSelectedRanges(doc, at).some((range) => range.block.kind === "cell");
+  if (!touches) return false;
+  if (typeof notify === "function") {
+    notify("A table cell holds one line of text, so that cannot go in one.", { severity: "info" });
+  }
+  return true;
 }
 
 // A change to what kind a block is, shown: the whole document re-rendered,
@@ -448,6 +516,7 @@ function modelInputList(ordered) {
   if (!doc) return false;
   const at = modelReadSelection(editor, doc);
   if (!at) return true;
+  if (modelInputCellRefusal(doc, at)) return true;
   const leaves = modelSelectedRanges(doc, at).map((range) => range.block).filter((block) => block.kind !== "gap");
   if (!leaves.length) return true;
   const fallback = modelInputListFallback();
@@ -503,6 +572,7 @@ function modelInputQuote() {
   if (!doc) return false;
   const at = modelReadSelection(editor, doc);
   if (!at) return true;
+  if (modelInputCellRefusal(doc, at)) return true;
   const ids = modelSelectedRanges(doc, at).map((range) => range.block.id);
   const run = (d) => modelToggleQuote(d, ids.map((id) => modelBlockById(d, id)).filter(Boolean), md);
   const trial = modelForkDocument(doc);
@@ -530,6 +600,8 @@ function modelInputQuote() {
 function modelInputQuoteKey(doc, backspace) {
   const at = modelReadSelection(editor, doc);
   if (!at || (at.to && (at.to.block !== at.block || at.to.offset !== at.offset))) return false;
+  // A quote holding a table is not left by a key pressed in a cell.
+  if (at.block.kind === "cell") return false;
   if (backspace && at.offset !== 0) return false;
   const trial = modelForkDocument(doc);
   const tried = modelQuoteKey(trial, modelBlockById(trial, at.block.id), md, backspace);
@@ -573,6 +645,7 @@ function modelInputRule() {
   if (!doc) return false;
   const at = modelReadSelection(editor, doc);
   if (!at || !at.block.inlines) return true;
+  if (modelInputCellRefusal(doc, at)) return true;
   const fallback = typeof markdownStyle === "object" && markdownStyle ? markdownStyle.hr : undefined;
   const ok = modelInputGuarded((d) => {
     const block = modelBlockById(d, at.block.id);
@@ -598,6 +671,7 @@ function modelInputToc(markdown) {
   const doc = modelCurrentDocument();
   if (!doc) return false;
   const at = modelReadSelection(editor, doc);
+  if (at && modelInputCellRefusal(doc, at)) return true;
   return modelInputGuarded((d) => {
     const block = at ? modelBlockById(d, at.block.id) : null;
     const first = modelInsertAfter(d, block, modelParse(markdown, md).blocks);
@@ -622,14 +696,16 @@ const MODEL_BLOCK_LEVELS = { p: 0, h1: 1, h2: 2, h3: 3, h4: 4, h5: 5, h6: 6 };
 /**
  * Paragraph and Heading 1–6 under the model core, slice 7's step 5: every leaf
  * the selection touches, whole, since there is no such thing as half a
- * heading. A table is skipped, because it refuses edits, and a heading inside
- * a list item is refused, TODO 1.1.5's answer.
+ * heading. A selection touching a table cell is refused with a notice, since a
+ * cell holds one line (stage 3's slice 4), and a heading inside a list item is
+ * refused, TODO 1.1.5's answer.
  */
 function modelInputBlockFormat(format) {
   const doc = modelCurrentDocument();
   if (!doc || !(format in MODEL_BLOCK_LEVELS)) return false;
   const at = modelReadSelection(editor, doc);
   if (!at) return true;
+  if (modelInputCellRefusal(doc, at)) return true;
   let changed = false;
   for (const range of modelSelectedRanges(doc, at)) {
     if (modelSetHeading(doc, range.block, MODEL_BLOCK_LEVELS[format], md)) changed = true;
@@ -945,12 +1021,18 @@ function modelInputSelectionMath() {
  */
 function modelInputEmptyItem(doc, backspace) {
   const at = modelReadSelection(editor, doc);
-  if (!at) return false;
+  if (!at || at.block.kind === "cell") return false;
   const item = modelItemAncestor(at.block);
   if (!item || !modelIsEmptyBlock(item)) return false;
   if (backspace && at.offset !== 0) return false;
   const landed = modelEmptyItemKey(doc, item, md, backspace);
   return modelInputRestructure(doc, landed, backspace ? "deleteContentBackward" : "insertParagraph");
+}
+
+// A cell holds one line, so Enter and Shift+Enter there do nothing until
+// stage 3's slice 5 gives Enter its meaning, which is moving down a row.
+function modelInputInCell(span) {
+  return !!span && (span.from.block.kind === "cell" || span.to.block.kind === "cell");
 }
 
 /**
@@ -963,6 +1045,7 @@ function modelInputEmptyItem(doc, backspace) {
  */
 function modelInputParagraph(doc, span) {
   if (!span) return false;
+  if (modelInputInCell(span)) return true;
   const target = modelInputRetarget(doc, span);
 
   let block = target.from.block;
@@ -995,6 +1078,7 @@ function modelInputParagraph(doc, span) {
  */
 function modelInputLineBreak(doc, span) {
   if (!span) return false;
+  if (modelInputInCell(span)) return true;
   const target = modelInputRetarget(doc, span);
   let block = target.from.block;
   let offset = target.from.offset;
@@ -1032,6 +1116,9 @@ function modelIndentAtCaret(outdent) {
   if (!doc) return false;
   const at = modelReadSelection(editor, doc);
   if (!at) return true;
+  // Format → Indent and Outdent reach here without Tab's guard: from a cell
+  // in a table inside a list item they would move the whole item.
+  if (modelInputCellRefusal(doc, at)) return true;
   const item = modelItemAncestor(at.block);
   if (!item) return true;
   const moved = outdent ? modelOutdentItem(doc, item) : modelIndentItem(doc, item);
@@ -1087,6 +1174,12 @@ function modelInputKeydown(event) {
   const doc = modelCurrentDocument();
   if (!doc) return;
   const at = modelReadSelection(editor, doc);
+  // Taken in a cell and does nothing, until stage 3's slice 5 moves between
+  // cells with it: left to the engine, Tab would take focus out of the editor.
+  if (at && at.block.kind === "cell") {
+    event.preventDefault();
+    return;
+  }
   if (!at || !modelItemAncestor(at.block)) return;
   event.preventDefault();
   modelIndentAtCaret(event.shiftKey === true);
@@ -1362,9 +1455,21 @@ function modelInputPaste(doc, at, html, text, inputType = "insertFromPaste") {
   if (!at) return false;
   const blocks = modelPasteBlocks(doc, html) || (text ? modelTextBlocks(doc, md, text) : null);
   if (!blocks || !blocks.length) return false;
-  const landed = modelInsertBlocks(doc, at.block, at.offset, blocks);
+  const landed = modelInputInsertBlocks(doc, at, blocks);
   if (!landed) return false;
   return modelInputRestructure(doc, landed, inputType);
+}
+
+// Paste, drop, Paste markdown and a drag moving text all land blocks through
+// here, and that is where a cell's rule is applied: what lands in a table cell
+// is flattened to one line first (stage 3's slice 4). Paste without formatting
+// never makes blocks for a cell — it joins its lines with a space where it
+// splices — so it does not need to come this way. Anywhere else the blocks
+// land as they are.
+function modelInputInsertBlocks(doc, at, blocks) {
+  const landing = at.block.kind === "cell" ? modelCellBlocks(doc, md, blocks) : blocks;
+  if (!landing.length) return null;
+  return modelInsertBlocks(doc, at.block, at.offset, landing);
 }
 
 // Where an edit lands: the selection, with any range it covers deleted first.
@@ -1521,7 +1626,7 @@ function modelInputDrop(event) {
     // Only when the two are in the same block does taking the source out move
     // the target; anywhere else the offset still names the same place.
     if (at.block === source.from.block && at.offset > end) at = { block: at.block, offset: at.offset - (end - start) };
-    const landed = modelInsertBlocks(doc, at.block, at.offset, modelParse(moved, md).blocks);
+    const landed = modelInputInsertBlocks(doc, at, modelParse(moved, md).blocks);
     if (landed) modelInputRestructure(doc, landed, "insertFromDrop");
     return;
   }
@@ -1551,6 +1656,8 @@ function modelPastePlain(text) {
   // One line is an ordinary insertion and must not split anything; several are
   // blocks. `modelInlineSplice` normalises U+00A0 on the way through, which is
   // the same boundary slice 3 put it at.
+  // In a cell several lines are one: a cell cannot hold a line break.
+  if (at.block.kind === "cell") text = text.replace(/\s*[\r\n]+\s*/g, " ").trim();
   if (!/[\r\n]/.test(text)) {
     const offset = modelInlineSplice(at.block, at.offset, at.offset, text);
     if (offset === null) return false;
@@ -1573,7 +1680,7 @@ function modelPasteMarkdown(text) {
   if (!doc || !text || !text.trim()) return false;
   const at = modelInputCollapsed(doc);
   if (!at) return false;
-  const landed = modelInsertBlocks(doc, at.block, at.offset, modelParse(text, md).blocks);
+  const landed = modelInputInsertBlocks(doc, at, modelParse(text, md).blocks);
   if (!landed) return false;
   return modelInputRestructure(doc, landed, "insertFromPaste");
 }

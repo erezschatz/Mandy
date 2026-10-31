@@ -9952,7 +9952,7 @@ the file. `image.spec.mjs` checks that an image shares the line of the text
 beside it, and fails under the old rule. The service worker's version is
 bumped, since the shell changed.
 
-## 2026-10-31 — An edited table keeps the way its document writes tables
+## 2026-10-31 — `72bece9` — An edited table keeps the way its document writes tables
 
 Stage 3's slice 3 of the rewrite, and TODO 2.1, which it closes for the running
 editor. An untouched table already restored its own bytes. An edited one came
@@ -10035,3 +10035,89 @@ planned. Tested by machine:
 No hand run is owed for this slice: the save path does nothing a person can see
 that the browser check above did not. The service worker's version is bumped,
 since the shell changed.
+
+## 2026-10-31 — Table cells take the caret, under the model core
+
+Stage 3's slice 4 of the rewrite, and the first half of TODO 1.1.8: a table's
+cells can be edited. Since stage 2's slice 4 a table had been
+`contenteditable="false"` under the model core, because the model could not
+address a cell. Now it can, and the refusal is gone. Rows and columns cannot be
+added or removed yet, which is slice 5's.
+
+A row's children are now its cells. Each cell holds the parser's tokens for it,
+an inline tree, its alignment, and whether it is a header. It has no source of
+its own, because markdown-it records no span for a cell. So the row stays the
+smallest thing with bytes, and the cell the smallest thing with text. An edit in
+a cell hands the whole table to the emitter. A table that keeps to a convention
+is laid out again by slice 3's formatter, which gives every untouched row back
+byte for byte unless a column widened. In a table padded to width, that is when
+every row has to move. A table that keeps to no convention keeps its untouched
+lines and writes the edited row alone. Each line keeps its quote chain or list
+indent.
+
+What works in a cell is what works in a paragraph's text: typing, the deletes,
+bold, italic, strikethrough, code spans, links, images and equations. The user
+settled two questions on 2026-10-31, both as recommended:
+- **A deletion across cells** empties what it covers in each cell and never
+  merges two, and typing over such a selection is refused.
+- **A paste or drop into a cell** is flattened to one line: the pasted blocks'
+  inline content joined by a space, with bold and links kept.
+
+The block formats are refused in a cell with a notice, and Code there is always
+a code span. Enter, Shift+Enter and Tab do nothing in a cell until slice 5 gives
+them meanings. Backspace at a cell's start changes nothing. A key pressed in a
+cell never triggers the quote's or the empty item's rule.
+
+Two fixes outside the new code:
+- **An empty cell writes bytes.** The parser check that quoting goes through
+  treated it like an empty paragraph, which writes nothing, so a paragraph next
+  to a table with an empty cell could not be quoted.
+- **The table sniff now reads a padded table's delimiter as filling the
+  column.** A fixed dash count that matched would stop padding once a column
+  widened.
+
+The `model core` marker's tooltip, which still said the formats did nothing,
+now names what is left.
+
+The review before the commit found four bugs, each now pinned by a check:
+- **A pipe inside an equation or a code span lost its backslash.** markdown-it
+  13 removes exactly one backslash before every `|` in a table row, code and
+  maths included, whatever comes before it. Measured, `$\\|x\\|$` in a cell is
+  the norm bars `\|x\|`. So a cell's source now gets a backslash before every
+  pipe, which is the exact inverse. The first version treated `\|` as already
+  escaped and wrote the bars back as plain pipes.
+- **A row with more or fewer cells than its header changed when another row was
+  edited**, because markdown-it pads a short row and drops a long row's extra
+  cells. Such a table now counts as keeping to no convention, so its untouched
+  rows stay as written, and an edited long row keeps its extra cells.
+- **A table opening a quote or a list inside a list item**, `- > |a|b|` or
+  `- - |a|b|`, kept only its outer marker when a cell in it was edited. Every
+  marker in front of the table is now kept as its prefix.
+- **Format → Indent and Outdent** were not refused in a cell, and from a table
+  inside a list item they would have moved the whole item.
+
+A deletion across cells now runs on a fork first, so a cell that refuses its
+part leaves no other cell cut. The same review showed that slice 3's fix for "an
+escaped backslash before the edge pipe" was wrong. markdown-it never splits a
+row on a pipe straight after a backslash, however many backslashes come before
+it. The table splitter now follows that rule, and slice 3's test pins the
+measured behaviour.
+
+Tested by machine:
+- The `model` suite edits every cell in the oracle one at a time. The file
+  outside the table always comes back byte for byte, the table re-parses to the
+  edit, and only the edited row's line changes wherever no column widened.
+- `model-input` checks each routing rule above.
+- `tests/browser/table-cells.spec.mjs` passes in Chromium, WebKit and
+  Playwright's Firefox.
+
+The Firefox hand run of `tests/fixtures/format-check.md`'s new table-cell
+section passed the same day, every step as written. That includes the one look
+a machine cannot take: Firefox showed none of its own table-editing controls on
+an editable table.
+
+The full browser run also turned up two Firefox failures that predate this
+change. They fail the same way on the committed code: `check-pages.spec.mjs`'s
+list-indent check, and `inline-code-links.spec.mjs`'s case for Code over a word.
+They are recorded, not fixed. The service worker's version is bumped, since the
+shell changed.

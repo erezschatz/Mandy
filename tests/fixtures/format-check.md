@@ -11,16 +11,17 @@ one (step 10), bold, italic and strikethrough (step 3), inline code and links
 rule, the table of contents and Clear (step 7), the keys and the clipboard
 (step 8), and everything together (step 9). (It held diagrams
 too until Mermaid was removed on 2026-10-01.) Stage 3 adds to it from the end,
-one section per slice: the blockquote (slice 1), then the image (slice 2).
+one section per slice: the blockquote (slice 1), the image (slice 2), then
+table cells (slice 4; slice 3 changed only what a save writes).
 
 Chromium and WebKit run the last seven sections by machine
 (`tests/browser/equation-typing.spec.mjs`, `format-marks.spec.mjs`,
 `inline-code-links.spec.mjs`, `block-kinds.spec.mjs`, `lists.spec.mjs`,
 `insert-clear.spec.mjs` and `keys-clipboard.spec.mjs`), and the blockquote
-and image sections too (`blockquote.spec.mjs`, `image.spec.mjs`), so a hand
-run of those is Firefox's. Those last two specs pass in Playwright's Firefox as
-well, but that is a pinned build rather than the one installed, so the hand run
-in Firefox stands.
+image and table-cell sections too (`blockquote.spec.mjs`, `image.spec.mjs`,
+`table-cells.spec.mjs`), so a hand run of those is Firefox's. Those three specs
+pass in Playwright's Firefox as well, but that is a pinned build rather than the
+one installed, so the hand run in Firefox stands.
 Safari's waits for stage 5.
 
 ## Before you start
@@ -537,6 +538,64 @@ Put an image after this:
    choose Insert → Image….** *A message says inserting an image needs the new
    editing core, and no dialog opens.* **Go back to `?core=model`** before
    anything else.
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors.*
+
+## Table cells (stage 3, slice 4)
+
+A table's cells take the caret now, and an edit in one rewrites as little of
+the table as it can. Rows and columns cannot be added yet, and Enter and Tab do
+nothing in a cell, which is slice 5's. The first table is compact and the
+second padded to width, so the two ways a table is written back can both be
+seen.
+
+**What the model will write is read from the console**, not from Export → Copy
+markdown, which is still the old core's save path until stage 4 and lays every
+edited table out in one convention per document. Open the browser's console and
+keep this line to hand; it prints the markdown the model holds:
+
+```
+console.log(modelSerialise(modelCurrentDocument(), (b) => modelEmitLeaf(b, md, modelCurrentDocument())))
+```
+
+|Unit|Mass|
+|:--|--:|
+|Core A|4.2|
+|Core B|12|
+
+| Sample   | Depth |
+| -------- | ----: |
+| Bexley 1 |  12.4 |
+| Fold     |   3.2 |
+
+After the tables.
+
+1. **Click after `Core A` and type ` (old)`.** *The text goes into the cell,
+   and the caret stays in it.* **Run the console line.** *Only the `Core A`
+   row changed, and it is still compact: `|Core A (old)|4.2|`.*
+2. **Click after `Fold` and type ` Lane East`.** *The first column of the
+   padded table widens.* **Run the console line again.** *Every row of that table is
+   re-padded to the new width, the delimiter row's dashes too, and the depths
+   stay set right.*
+3. **Select from the middle of `Bexley 1` to the middle of `12.4`, and press
+   Backspace.** *What was selected goes from each cell, and both cells stay:
+   no cell merges into another.* (Undo it.)
+4. **Put the caret at the start of a cell's text and press Backspace.**
+   *Nothing happens.* **Press Enter, then Shift+Enter, then Tab.** *Nothing
+   happens either, and the caret stays in the cell.*
+5. **Select a word in a cell and press Ctrl/Cmd+B.** *It goes bold.* **With
+   the caret in a cell, choose Format → Heading 2.** *A message says a table
+   cell holds one line of text, and nothing changes.*
+6. **Copy two paragraphs from anywhere — a web page, or the text above this
+   section — and paste them into a cell.** *They land in the cell on one line,
+   joined by a space, with any bold or links kept.* (Undo it.)
+7. **Ctrl/Cmd+Z after any edit above.** *It is taken back in one press.*
+8. **Firefox only: click into a cell and look at the table's edges.** *No
+   resize grips and no add-or-remove buttons appear around it* — Firefox has
+   its own table-editing controls, off by default since Firefox 64, and if
+   they showed they would change the table behind the model's back. If they
+   do appear, say so: that is the measurement this step exists for.
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors.*

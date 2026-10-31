@@ -63,6 +63,11 @@ const MODEL_BLOCK_KINDS = {
   thead_open: "table-head",
   tbody_open: "table-body",
   tr_open: "row",
+  // A cell is not a sub-block in the tiling sense, since `td_open` carries no
+  // `map` and so no source span; stage 3's slice 4 makes it one in every other
+  // sense. See modelRowCells.
+  th_open: "cell",
+  td_open: "cell",
 };
 
 // The same table one level down: an inline node's kind, by the token that opens
@@ -211,6 +216,93 @@ function modelBlockFromSpan(span, md, id) {
   // cannot be half-filled when the emitter reads it.
   block.inlines = modelInlines(block, md);
   return block;
+}
+
+/**
+ * A row's cells, as its children. Stage 3's slice 4.
+ *
+ * **A cell is a node with an inline tree and no `source`.** `td_open` carries
+ * no `map`, so a cell has no span of its own, and splitting a row's line on its
+ * pipes to give it one was turned down in stage 2's slice 4 for being a second
+ * source of spans beside the parser. It does not need one: the row keeps its
+ * `source` until a cell in it is touched, and then the table is written again
+ * from its cells by `modelEmitTable`. So the tiling invariant stops at the row,
+ * for bytes, and the cell is the floor for text — the one place children do not
+ * tile their parent, and the reason the emitter never joins a table's children.
+ *
+ * Children rather than a field of their own, so that everything that walks the
+ * tree — forking, the id lookup, the selection mapping, `modelTouch` going up —
+ * reaches a cell with no code of its own. Each cell holds the parser's three
+ * tokens, `th_open` or `td_open` with its inline and close, which is exactly
+ * what renders one `<th>` or `<td>`; the row keeps its own full token list, but
+ * a container only ever renders its first and last.
+ */
+function modelRowCells(row, md, mint) {
+  const cells = [];
+  const tokens = row.tokens;
+  for (let i = 0; i < tokens.length; i++) {
+    const open = tokens[i];
+    if (open.type !== "th_open" && open.type !== "td_open") continue;
+    let close = i + 1;
+    while (close < tokens.length && tokens[close].type !== open.type.replace("_open", "_close")) close += 1;
+    const cell = modelBlockShape(mint(), "cell");
+    cell.tokens = tokens.slice(i, close + 1);
+    cell.inline = cell.tokens.find((t) => t.type === "inline") || null;
+    cell.inlines = modelInlines(cell, md);
+    cell.header = open.type === "th_open";
+    const style = open.attrGet("style") || "";
+    cell.align = (style.match(/text-align:(left|right|center)/) || [])[1] || "";
+    cell.parent = row;
+    cells.push(cell);
+    i = close;
+  }
+  row.children = cells;
+  row.leading = "";
+}
+
+/**
+ * What a table's own lines say about how it is written, recorded at parse the
+ * way an item's marker is. Stage 3's slice 4.
+ *
+ * Each line is split into the part that says where the table sits — the quote
+ * chain, an item's indent, and on the first line the item's marker when the
+ * table opens one — and the table's own text. The prefixes are put back on
+ * every line `modelEmitTable` writes; the texts are what
+ * `sniffTableConvention` reads, so a table in a quote or a list keeps to a
+ * convention exactly when the same table at the margin would. `tableLines` is
+ * kept too: a table that keeps to none writes its untouched lines back as they
+ * were.
+ */
+function modelTableShape(table, lines) {
+  const prefixes = [];
+  const texts = [];
+  lines.forEach((line, i) => {
+    // Every line can carry a quote chain and an indent. Only the first can
+    // carry markers too — of every list and quote the table opens, as in
+    // `- > |a|b|` or `- - |a|b|` — so it is stripped until nothing more
+    // comes off. No table row starts `>` or `- ` or `1. `, since that line
+    // would have been a quote or a list item instead.
+    const opener = i === 0 ? /^[ \t]*(?:>[ \t]?|(?:[-*+]|\d{1,9}[.)])[ \t]+)/ : /^[ \t]*>[ \t]?/;
+    let cut = 0;
+    for (let found = opener.exec(line); found && found[0]; found = opener.exec(line.slice(cut))) {
+      cut += found[0].length;
+    }
+    cut += /^[ \t]*/.exec(line.slice(cut))[0].length;
+    prefixes.push(line.slice(0, cut));
+    texts.push(line.slice(cut).replace(/[ \t]+$/, ""));
+  });
+  table.tablePrefixes = prefixes;
+  table.tableLines = texts;
+  // Each line's cells as written. markdown-it pads a short row and drops a long
+  // row's extra cells, so the model holds neither; a table where any row
+  // differs from its header in count therefore keeps to no convention — laying
+  // it out from the model's cells would add `||` to a short untouched row and
+  // lose a long one's extras — and an edited long row keeps its extras from
+  // here, since the reader never saw them and the file still has them.
+  table.tableCells = texts.map((text) => splitTableRow(text).cells.map((cell) => cell.trim()));
+  const width = table.tableCells[0].length;
+  const even = table.tableCells.every((cells, i) => i === 1 || cells.length === width);
+  table.tableConvention = even ? sniffTableConvention(texts) : null;
 }
 
 // A line no token claimed. Same shape as any other block, with nothing to parse
@@ -1200,7 +1292,9 @@ function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
     // so there is no kind here where a blank last line is content.
     let end = span.end;
     while (end > span.start + 1 && modelIsBlankLine(lines[end - 1])) end -= 1;
-    pieces.push({ block: modelBlockFromSpan(span, md, ctx.mint()), start: span.start, end, span });
+    const block = modelBlockFromSpan(span, md, ctx.mint());
+    if (block.kind === "row") modelRowCells(block, md, ctx.mint);
+    pieces.push({ block, start: span.start, end, span });
     line = Math.max(line, span.end);
   }
   if (line < to) takeGap(line, to);
@@ -1286,6 +1380,8 @@ function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
         piece.block.tokens[0].markup,
       );
     }
+
+    if (piece.block.kind === "table") modelTableShape(piece.block, lines.slice(piece.start, piece.end));
 
     if (piece.block.kind === "item") {
       // The item's own first non-blank continuation line, which is what states
@@ -1678,6 +1774,7 @@ function modelItemAffix(block) {
  * the user's file is the one outcome here worth crashing to avoid.
  */
 function modelEmitLeaf(block, md, doc, width = 0) {
+  if (block.kind === "table") return modelEmitTable(block, md, doc);
   if (!block.inlines) {
     throw new Error(`edited ${block.kind} block has no inline tree`);
   }
@@ -1823,6 +1920,70 @@ function modelEmitLeaf(block, md, doc, width = 0) {
 }
 
 /**
+ * A touched table back to markdown. Stage 3's slice 4.
+ *
+ * A table that keeps to a convention is laid out whole by `formatMarkdownTable`
+ * in that convention, and that **is** the row-where-it-can rule with nothing
+ * to keep track of: the convention was read by reproduction, so laying out the
+ * same cells again gives back every untouched row's own bytes — unless a
+ * column's width changed in a table padded to width, which is exactly when
+ * every row of it has to move. A table that keeps to no convention cannot be
+ * reproduced, so its untouched lines are handed back as they were and a
+ * touched row is written alone, in the formatter's default.
+ *
+ * A cell's markdown is its inline source with **a backslash before every
+ * pipe**, whatever is in front of it already. That is the exact inverse of
+ * markdown-it 13's row splitter, measured: it takes one backslash off before
+ * every `|` in a row — in text, in a code span and in an equation alike, and
+ * `\\|` loses one as surely as `\|` does — so an equation's `\|` norm bars
+ * have to be written `\\|` to come back, and "already escaped" is not a thing
+ * a cell's source can be. And with no newline, which a cell cannot
+ * hold; nothing that builds a cell's tree should produce one, so the space is a
+ * guard rather than a rule. Each line gets back the prefix it was parsed with —
+ * its quote chain, its item's indent or marker — which the table records
+ * rather than re-deriving, the way an item records its marker.
+ */
+function modelEmitTable(table, md, doc) {
+  let labels = null;
+  const defines = (label) => {
+    if (!doc) return true;
+    if (labels === null) labels = modelReferenceLabels(doc, md);
+    return labels.has(md.utils.normalizeReference(label));
+  };
+  const rows = [];
+  const walk = (block) => {
+    if (block.kind === "row") rows.push(block);
+    else if (block.children) block.children.forEach(walk);
+  };
+  walk(table);
+  const cellText = (cell) =>
+    modelInlineSource(cell.inlines || [], md, defines)
+      .replace(/\n/g, " ")
+      .replace(/\|/g, "\\|")
+      .trim();
+  const cells = rows.map((row) => row.children.map(cellText));
+  const aligns = rows.length ? rows[0].children.map((cell) => cell.align) : [];
+
+  let lines;
+  if (table.tableConvention) {
+    lines = formatMarkdownTable(cells, aligns, table.tableConvention).split("\n");
+  } else {
+    // Untouched lines as they were; a touched row alone, in the default. The
+    // delimiter is line 1, so a row's line is its index plus one after it.
+    lines = table.tableLines.slice();
+    rows.forEach((row, i) => {
+      if (row.source !== null) return;
+      const line = i === 0 ? 0 : i + 1;
+      const extras = (table.tableCells[line] || []).slice(cells[i].length);
+      lines[line] = formatMarkdownTable([cells[i].concat(extras)], aligns).split("\n")[0];
+    });
+  }
+  const prefixes = table.tablePrefixes || [];
+  const last = prefixes.length ? prefixes[prefixes.length - 1] : "";
+  return lines.map((line, i) => (prefixes[i] ?? last) + line).join("\n");
+}
+
+/**
  * One block back to markdown.
  *
  * Three cases, in this order, and the order is the contract:
@@ -1852,7 +2013,11 @@ function modelEmitLeaf(block, md, doc, width = 0) {
  */
 function modelEmitBlock(block, emit) {
   if (block.source !== null) return block.source;
-  if (block.children) return modelJoinBlocks(block.children, emit, block.leading);
+  // **A table is the one container emitted whole**, since stage 3's slice 4: a
+  // cell has no bytes of its own, so its row cannot be joined from its
+  // children, and a table padded to width moves every row when one column
+  // widens. `modelEmitTable` decides how much of it actually changes.
+  if (block.children && block.kind !== "table") return modelJoinBlocks(block.children, emit, block.leading);
   if (typeof emit !== "function") {
     throw new Error(`edited ${block.kind} block with no serialiser`);
   }
@@ -2222,14 +2387,9 @@ function modelBuildBlock(parent, block, md, env) {
   const nodes = Array.prototype.slice.call(parent.childNodes, from);
   const el = modelOwnedElement(parent, from);
   if (el) el.setAttribute(MODEL_BLOCK_ATTR, String(block.id));
-  // **A table refuses edits, and the rendering is how it says so** (slice 4's
-  // step 7). The refusal itself is an absence — the input layer cancels every
-  // `beforeinput` whether it handles it or not, so a table needs no code there
-  // at all — but a keystroke that silently does nothing reads as a broken
-  // editor rather than as a closed door. `contenteditable="false"` means the
-  // engine will not put a caret inside it, so nobody is ever in the position of
-  // typing into something that ignores them. Lifted at stage 3, as TODO 1.1.8.
-  if (el && block.kind === "table") el.setAttribute("contenteditable", "false");
+  // A table was `contenteditable="false"` from stage 2's slice 4 until stage
+  // 3's slice 4, its refusal made visible; it is ordinary editable markup now,
+  // and each cell owns its `<th>` or `<td>` like any other leaf.
 
   if (block.children) {
     for (const child of block.children) modelBuildBlock(el || parent, child, md, env);
@@ -2620,9 +2780,8 @@ function modelCoreMarkRender(document) {
   mark.textContent = "model core";
   mark.href = "?core=legacy";  // relative: the current page, other core
   mark.title = "TODO 3.1's editing core is drawing this document. " +
-    "The formats, Clear, and Insert's link, rule and table of contents do " +
-    "nothing here — they are slice 7 — and a table refuses the caret until " +
-    "stage 3. " +
+    "A table's cells can be edited, but rows and columns cannot be added or " +
+    "removed yet — that is stage 3's slice 5. " +
     "Click to switch back to the running core.";
   // Before the theme toggle rather than at the head of the group, so its place
   // is the same whatever the open file's path is — the directory beside it is
@@ -4663,7 +4822,9 @@ function modelSettleLists(doc, block, md) {
   const parsed = modelParse(src, md);
   // An empty paragraph is the model's place for a caret and writes nothing, so
   // the parser cannot see it; it is left out of the comparison on this side.
-  const writes = (b) => !(!b.children && b.inlines && modelIsEmptyBlock(b));
+  // An empty cell is not one of those: `| |` is in the file and parses to a
+  // cell.
+  const writes = (b) => b.kind === "cell" || !(!b.children && b.inlines && modelIsEmptyBlock(b));
   const shape = (list) => list.map((b) => b.kind + (b.children ? b.children.filter(writes).length : ""));
   const mine = modelFlatten({ blocks: chunk }).filter(writes);
   const theirs = modelFlatten({ blocks: parsed.blocks });
@@ -6530,16 +6691,18 @@ function modelSourceSplice(block, from, to, text, md) {
  * paragraph block**, so the caret is always inside something the model knows
  * the name of.
  *
- * The second is the `contenteditable="false"` trap slice 4 was warned about
- * before it was built. A table's subtree refuses the caret, so a table as the
- * last block leaves nowhere to go and the document becomes un-appendable — new
- * here, because today everything is editable. An empty paragraph after it is
- * the answer, and it is **free**: an empty block emits nothing and takes the
- * separator before it, so the file is byte for byte what it was.
+ * The second is a table as the last block. It was a trap while a table
+ * refused the caret (stage 2's slice 4 to stage 3's slice 4), and it still is
+ * one with the caret welcome in its cells: nothing a key does in a cell leaves
+ * the table downwards, so a document ending on one is un-appendable. An empty
+ * paragraph after it is the answer, and it is **free**: an empty block emits
+ * nothing and takes the separator before it, so the file is byte for byte what
+ * it was.
  */
 function modelEnsureBlock(doc, md) {
   const last = doc.blocks.length ? doc.blocks[doc.blocks.length - 1] : null;
-  // A rule, like a table, holds no caret, so the document must not end on one.
+  // Nothing leaves a table or a rule downwards, so the document must not end
+  // on one.
   if (last && last.kind !== "table" && last.kind !== "hr") return null;
   const block = modelParagraphBlock(doc, md);
   if (last) {
@@ -6759,6 +6922,41 @@ function modelInsertBlocks(doc, block, offset, blocks) {
     modelMergeBlocks(doc, block, first);
   }
   return at;
+}
+
+/**
+ * Blocks bound for a table cell, flattened to one paragraph of inline content.
+ * Stage 3's slice 4, settled 2026-10-31.
+ *
+ * A GFM cell holds one line of inline markdown, so whatever is pasted or
+ * dropped into one becomes that: each pasted block's inline source in order,
+ * joined by a space, every line break a space — a hard break's spelling with
+ * it — and a code block's text as plain text. Bold, links and code spans come
+ * through, since they are inline; a heading's `#`, a list's markers and the
+ * blank lines between paragraphs do not, since a cell has nowhere for them.
+ * The line is guarded against reading as a block start and parsed, and if the
+ * parser still reads anything but one paragraph the text goes in plain.
+ */
+function modelCellBlocks(doc, md, blocks) {
+  const pieces = [];
+  for (const leaf of modelFlatten({ blocks })) {
+    if (leaf.children) continue;
+    if (leaf.inlines) {
+      pieces.push(modelInlineSource(leaf.inlines, md, () => true));
+    } else if (leaf.kind === "fence" || leaf.kind === "code") {
+      const body = (leaf.tokens.length ? leaf.tokens[0].content : "").replace(/\s*\n\s*/g, " ").trim();
+      if (body) pieces.push(modelEscapeText(md, body));
+    }
+  }
+  const line = pieces
+    .join(" ")
+    .replace(/(?:\\| {2,})\n/g, " ")
+    .replace(/\s*\n\s*/g, " ")
+    .trim();
+  if (!line) return [];
+  const parsed = modelParse(modelEscapeLineStarts(md, line) + "\n", md).blocks;
+  if (parsed.length === 1 && parsed[0].kind === "paragraph") return parsed;
+  return modelTextBlocks(doc, md, line);
 }
 
 /**

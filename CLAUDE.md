@@ -1257,12 +1257,13 @@ cleared everywhere. Seven steps, and the ones worth knowing from outside:
   `modelTouch` read inverted, and the honest shape rather than an exception,
   since the contract is that a block whose content changed must not re-emit its
   *old* bytes. A gap renders to nothing, an `html_block`'s text is not its
-  source, and a table refuses.
-- **A table refuses edits until stage 3**, and the rendering is how it says so:
-  its subtree is `contenteditable="false"`, so the engine never puts a caret
-  inside it. `modelEnsureBlock` closes the trap that comes with that — a table
-  as the last block would leave nowhere for the caret to go — by keeping an
-  empty paragraph after it, which is free, because of the fold above. The same
+  source, and a table refused until stage 3's slice 4 made its cells editable.
+- **A table refused edits from here until stage 3's slice 4**, and the
+  rendering was how it said so: its subtree was `contenteditable="false"`.
+  `modelEnsureBlock` closed the trap that came with that — a table as the last
+  block would leave nowhere for the caret to go — by keeping an empty paragraph
+  after it, which is free, because of the fold above, and it still does, since
+  nothing a key does in a cell leaves the table downwards. The same
   function answers the other half: **deleting everything leaves one empty
   paragraph block**, so the filler paragraph belonging to no block is no longer
   reachable from the app.
@@ -1297,7 +1298,8 @@ cleared everywhere. Seven steps, and the ones worth knowing from outside:
   **file** still gains no trailing whitespace, since markdown strips it on the
   next parse: the last composed line is trimmed on the way out, and only ever
   the last, because a hard break's two spaces are never on it.
-- **Two engines out of three put a caret inside the table anyway.** The
+- **Two engines out of three put a caret inside the table anyway** — history
+  since stage 3's slice 4, which took the refusal away. The
   refusal's signal was meant to be the rendering — an engine will not put a
   caret inside a `contenteditable="false"` island — and measured by hand in all
   three, **that is Blink's behaviour and nobody else's**: Gecko and WebKit both
@@ -1648,6 +1650,25 @@ markdown has it, and `app.css` must not make it a block again: a block image
 takes a line of its own and the caret beside it draws on the line above or
 below, which the Firefox hand run found on 2026-10-31.
 
+**Slice 3 gave tables a formatter** — `formatMarkdownTable` and
+`sniffTableConvention` in `markdown-style.js`, under Save fidelity below — and
+**slice 4 gave cells the caret**, 2026-10-31. A row's `children` are its cells,
+of kind `cell`, each with the parser's three tokens and an inline tree and **no
+`source`**: `td_open` has no `map`, so the row is still the floor for bytes and
+the cell is the floor for text — the one place children do not tile their
+parent, which the `model` suite's tiling walks exempt by name. So a touched
+table is the one container `modelEmitBlock` hands to `emit` whole, and
+`modelEmitTable` writes it: a table that keeps to a convention, recorded at
+parse with each line's prefix, is laid out whole by the formatter, which gives
+every untouched row back byte for byte unless a column widened; one that keeps
+to none keeps its untouched lines and writes the edited row alone. In a cell,
+text, the deletes, marks, code spans, links, images and equations work; a
+deletion across cells empties what it covers and never merges; the block
+formats are refused with a notice; Enter, Shift+Enter and Tab do nothing until
+slice 5; and a paste or drop is flattened to one line — by `modelCellBlocks`
+for anything that arrives as blocks, and by joining the lines with a space for
+Paste without formatting.
+
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.
 **With it on the toolbar carries a `model core` marker**, which is a link back
@@ -1656,8 +1677,8 @@ A/B and there was no way to tell which half of it you were looking at. That is
 worse than having no comparison: slice 1's rule is that the model renders
 *identically* to `markdownToHtml`, so "it looks the same" is the expected answer
 and not evidence of anything, and the differences are all things that stop
-working — the formats, Clear and most of Insert do nothing, a table refuses
-the caret. The marker's `title` says so rather than making the reader look it
+working; today that is a table's rows and columns, which cannot be added or
+removed until stage 3's slice 5. The marker's `title` says so rather than making the reader look it
 up. One function
 in `model.js`, one call site and one CSS rule, because it goes at stage 4 with
 the flag.

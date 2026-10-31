@@ -526,17 +526,18 @@ function tableTextWidth(text) {
 // edge pipes taken off. The cells are untrimmed: padding is the evidence the
 // sniff reads. GFM splits on an unescaped pipe even inside a code span, which is
 // why this does not look for backticks.
-// The edge pipes are found by the same scan that splits, so `\\|` -- an escaped
-// backslash and then a real pipe -- ends a row like any other pipe.
+// A row's cells as written, with the edge pipes taken off and the cells left
+// untrimmed, since padding is the evidence the sniff reads. **A pipe splits
+// unless a backslash is right before it**, which is markdown-it 13's rule,
+// measured: it counts no parity, so `\\|` does not split either, and it looks
+// for no backticks, so a pipe in a code span splits like any other.
 function splitTableRow(line) {
   const cells = [];
   let current = "";
   let lastPipe = -1;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
-    if (ch === "\\" && i + 1 < line.length) {
-      current += ch + line[++i];
-    } else if (ch === "|") {
+    if (ch === "|" && line[i - 1] !== "\\") {
       cells.push(current);
       current = "";
       lastPipe = i;
@@ -660,7 +661,11 @@ function sniffTableConvention(lines) {
       for (const minWidth of aligned ? [3, 1] : [0]) {
         for (const pad of [1, 0]) {
           for (const delimPad of [pad, 1 - pad]) {
-            for (const delimiter of delimiters) {
+            // In a table padded to width the delimiter filling its column is
+            // the reading that keeps doing so when a column widens, so it goes
+            // ahead of a fixed count that happens to match today.
+            const order = aligned ? [...delimiters].reverse() : delimiters;
+            for (const delimiter of order) {
               if (delimiter.fill && !aligned) continue;
               const convention = { lead, trail, pad, delimPad, aligned, justify, delimiter };
               if (aligned) convention.minWidth = minWidth;

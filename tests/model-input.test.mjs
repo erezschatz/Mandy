@@ -35,7 +35,7 @@ export default async function run(check) {
       parsed: [],
       cut: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
       history: [], refused: [], joined: 0, converted: [], revealed: [], toasts: [],
-      toggled: [], quoteKey: [], quoteToggled: [], asked: [], imaged: [],
+      toggled: [], quoteKey: [], quoteToggled: [], asked: [], imaged: [], cellBlocks: [], headings: [],
     };
     // What a case can move between events: the document an undo would swap in,
     // and where the caret is.
@@ -135,7 +135,7 @@ export default async function run(check) {
         modelToggleMark: (d, sel, kind) => { calls.toggled.push(kind); return []; },
         // Equations by typing: the model half is the model suite's, so here a
         // case says which spans exist and the conversion only records itself.
-        modelBlockById: () => block,
+        modelBlockById: (d, id) => ((d && d.blocks) || []).find((b) => b.id === id) || block,
         modelMathCandidates: () => spans,
         modelMathConvert: (b, from, to) => {
           calls.converted.push({ from, to });
@@ -159,6 +159,15 @@ export default async function run(check) {
         modelImageFields: () => ({ src: "old.png", alt: "Old", title: "" }),
         modelSetImage: (b, from, to, fields) => { calls.imaged.push({ block: b, from, to, fields }); return imageSet; },
         modelReferenceEnv: () => ({}),
+        // Stage 3's slice 4. A cell's text is its nodes' content here, and the
+        // flattening is the model suite's: what is asserted is that a landing
+        // in a cell asks for it and lands what it hands back.
+        modelInlineText: (nodes) => (nodes || []).map((n) => n.content || "").join(""),
+        modelCellBlocks: (d, parser, blocks) => {
+          calls.cellBlocks.push(blocks);
+          return [{ kind: "paragraph", inlines: [], flattened: true }];
+        },
+        modelSetHeading: (d, b, level) => { calls.headings.push({ block: b, level }); return true; },
         modelMathReveal: (b, offset, backward) => {
           calls.revealed.push({ offset, backward });
           return reveal;
@@ -201,7 +210,8 @@ export default async function run(check) {
         " modelInputCompositionEnd, modelInputComposing, modelInputInstall," +
         " modelInputKeydown, modelIndentAtCaret, modelInputPasteEvent," +
         " modelInputDrop, modelInputDragStart, modelInputDragOver," +
-        " modelPastePlain, modelPasteMarkdown, modelInputSelectionMath, modelInputQuote, modelInputImage };",
+        " modelPastePlain, modelPasteMarkdown, modelInputSelectionMath, modelInputQuote, modelInputImage," +
+        " modelInputBlockFormat, modelInputPaste };",
     );
     return { api, calls, editor, block, state };
   };
@@ -1162,5 +1172,131 @@ export default async function run(check) {
     check("and so is a caret leaving a typed equation",
       (onDocument.selectionchange || []).includes(api.modelInputSelectionMath));
 
+  }
+
+  // ── Stage 3's slice 4: cells ──────────────────────────────────────────────
+  //
+  // A table of one row of three cells, with the parent links the input layer
+  // walks to find which table a cell is in. `modelFlatten` hands back the
+  // document's blocks whatever it is asked, so the document is the cells.
+  const tableOf = () => {
+    const table = { kind: "table" };
+    const row = { kind: "row", parent: table };
+    const cell = (id, text) => ({ id, kind: "cell", parent: row, inlines: [{ content: text }] });
+    const cells = [cell(60, "abc"), cell(61, "def"), cell(62, "ghi")];
+    return { table, cells, doc: { blocks: cells } };
+  };
+  const span = { startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 };
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, range: [here(cells[0], 1), here(cells[2], 2)] });
+    const e = event("deleteContentBackward", { targets: [span] });
+    r.api.modelInputBeforeInput(e);
+    // Twice: on the trial fork, so no cell is cut unless every one can be, and
+    // then for real. The stub's fork is the document itself.
+    const cut = r.calls.splice.map((c) => `${c.block.id}:${c.from}-${c.to}`).join(" ");
+    check(`a deletion across cells empties what it covers in each and merges nothing (${cut})`,
+      cut === "60:1-3 61:0-3 62:0-2 60:1-3 61:0-3 62:0-2" && r.calls.merged.length === 0 && r.calls.pruned.length === 0);
+    check("and renders the document, since three cells changed", r.calls.render.length === 1);
+  }
+
+  {
+    // Backspace at a cell's start: the engine's range reaches into the cell
+    // before and covers nothing, which changes nothing — the caret stays.
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, range: [here(cells[0], 3), here(cells[1], 0)] });
+    const e = event("deleteContentBackward", { targets: [span] });
+    r.api.modelInputBeforeInput(e);
+    check("Backspace at a cell's start deletes nothing and moves nothing",
+      r.calls.splice.length === 0 && r.calls.render.length === 0 && r.calls.merged.length === 0 && e.prevented === 1);
+  }
+
+  {
+    const { cells, doc } = tableOf();
+    const outside = { id: 70, kind: "paragraph", inlines: [] };
+    const r = rig({ doc: { blocks: [...doc.blocks, outside] }, range: [here(cells[2], 1), here(outside, 0)] });
+    r.api.modelInputBeforeInput(event("deleteContentBackward", { targets: [span] }));
+    check("a deletion between a cell and a block outside its table is refused",
+      r.calls.splice.length === 0 && r.calls.merged.length === 0 && r.calls.render.length === 0);
+  }
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, range: [here(cells[0], 1), here(cells[1], 1)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "x", targets: [span] }));
+    check("typing over a selection across cells is refused", r.calls.splice.length === 0 && r.calls.render.length === 0);
+  }
+
+  for (const type of ["insertParagraph", "insertLineBreak"]) {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[1], 1), range: [here(cells[1], 1), here(cells[1], 1)] });
+    const e = event(type, { targets: [{ startContainer: 1, startOffset: 1, endContainer: 1, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check(`${type} in a cell does nothing until slice 5 gives it a meaning`,
+      r.calls.split.length === 0 && r.calls.broke.length === 0 && r.calls.render.length === 0 &&
+        r.calls.emptyItem.length === 0 && r.calls.quoteKey.length === 0 && e.prevented === 1);
+  }
+
+  {
+    // A cell in a table in a quote in a list item: neither key's rule is asked.
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[0], 0), item: { kind: "item" }, empty: true, quote: { block: cells[0], offset: 0 },
+      range: [here(cells[0], 0), here(cells[0], 0)] });
+    r.api.modelInputBeforeInput(event("deleteContentBackward", { targets: [span] }));
+    check("Backspace in a cell asks neither the empty-item rule nor the quote rule",
+      r.calls.emptyItem.length === 0 && r.calls.quoteKey.length === 0);
+  }
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[1], 1), item: { kind: "item" } });
+    const e = { key: "Tab", prevented: 0, preventDefault() { this.prevented += 1; } };
+    r.api.modelInputKeydown(e);
+    check("Tab in a cell is taken from the engine and does nothing, even inside a list item",
+      e.prevented === 1 && r.calls.moved.length === 0);
+  }
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[1], 1) });
+    r.api.modelInputBlockFormat("h2");
+    check("a block format in a cell is refused, and says so",
+      r.calls.headings.length === 0 && r.calls.toasts.length === 1 && r.calls.render.length === 0);
+  }
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, html: "<h1>T</h1><p>x</p>" });
+    r.api.modelInputPaste(doc, here(cells[1], 1), "<h1>T</h1><p>x</p>", "T\n\nx");
+    check("a paste into a cell is flattened before it lands",
+      r.calls.cellBlocks.length === 1 && r.calls.inserted.length === 1 && r.calls.inserted[0].blocks[0].flattened === true);
+    const plain = rig({ doc, at: here(cells[1], 1) });
+    plain.api.modelPastePlain("two\nlines");
+    check("and plain text pasted into one becomes one line",
+      plain.calls.splice.length === 1 && plain.calls.splice[0].text === "two lines" && plain.calls.inserted.length === 0);
+    const elsewhere = rig({ doc, html: "<p>x</p>" });
+    elsewhere.api.modelInputPaste(doc, here({ id: 80, kind: "paragraph", inlines: [] }, 0), "<p>x</p>", "x");
+    check("while a paste anywhere else is not flattened", elsewhere.calls.cellBlocks.length === 0 && elsewhere.calls.inserted.length === 1);
+  }
+
+  {
+    // A refusal part-way leaves every cell as it was: the trial says no and
+    // nothing is cut for real.
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, splice: [1, null], range: [here(cells[0], 1), here(cells[1], 1)] });
+    r.api.modelInputBeforeInput(event("deleteContentBackward", { targets: [span] }));
+    check("a deletion across cells that one cell refuses cuts no cell at all",
+      r.calls.splice.length === 2 && r.calls.render.length === 0);
+  }
+
+  {
+    // Format → Indent from a cell in a table inside a list item would move
+    // the whole item, so it is refused like the block formats.
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[0], 1), item: { kind: "item" } });
+    r.api.modelIndentAtCaret(false);
+    r.api.modelIndentAtCaret(true);
+    check("Indent and Outdent from the menu are refused in a cell", r.calls.moved.length === 0 && r.calls.toasts.length === 2);
   }
 }

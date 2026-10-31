@@ -117,10 +117,11 @@ export default function run(check) {
 // model suite, which has the parser. These are the decisions one at a time, and
 // then the Turndown rule driven the way Turndown drives it.
 function tableChecks(check) {
-  const { sniffTable, format, sniff } = loadSource(
+  const { sniffTable, format, sniff, split } = loadSource(
     "markdown-style.js",
     {},
-    "; return { sniffTable: sniffTableConvention, format: formatMarkdownTable, sniff: sniffMarkdownStyle };",
+    "; return { sniffTable: sniffTableConvention, format: formatMarkdownTable, sniff: sniffMarkdownStyle," +
+      " split: splitTableRow };",
   );
   const lines = (text) => text.trimEnd().split("\n");
 
@@ -154,9 +155,12 @@ function tableChecks(check) {
   check("and padded to width too",
     format([["a", "b"], ["", "x"]], ["", ""], { ...pipeless, aligned: true, minWidth: 1, delimiter: { fill: true } }) ===
       "a | b\n- | -\n|   | x");
-  // `\\|` is an escaped backslash and then a real pipe, so it ends the row.
-  check("an escaped backslash before the edge pipe still ends the row",
-    !!sniffTable(lines("|a|b\\\\|\n|-|-|\n|1|2|")));
+  // markdown-it 13 splits on a pipe unless a backslash is right before it, and
+  // counts no parity, measured: `b\\|c` is one cell to it. A splitter that
+  // read `\\` as an escaped backslash disagreed with the parser about where
+  // the cells are, which is the one thing it must not do.
+  check("a pipe after two backslashes does not split, as markdown-it reads it",
+    JSON.stringify(split("|a|b\\\\|c|").cells) === JSON.stringify(["a", "b\\\\|c"]));
   check("an empty cell in a one-space table is one space, as people write it",
     format([["a", "b"], ["", "x"]], ["", ""]) === "| a | b |\n| --- | --- |\n| | x |");
 

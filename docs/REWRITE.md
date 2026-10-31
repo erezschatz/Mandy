@@ -4946,7 +4946,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     2026-10-30, by machine and by hand in Firefox; slice 2 done 2026-10-30,
     tested by machine and, on 2026-10-31, by hand in Firefox; slice 3 done
     and tested 2026-10-31, by machine and through the real Turndown in a
-    browser.** Not a merge point
+    browser; slice 4 done and tested 2026-10-31, by machine and by hand in
+    Firefox.** Not a merge point
     either, for the same reason: reintegration has not happened, so the app
     around the new core is still reading `editor.innerHTML`.
 
@@ -5042,10 +5043,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     - **What Insert → Table makes (slice 5).** Recommended: three columns, a
       header row and two body rows, with the caret in the first header cell,
       and no dialog. Rows and columns are one menu item away.
-    - **Paste into a cell (slice 4).** Recommended: flattened to one line of
+    - **Paste into a cell (slice 4).** *Settled 2026-10-31, as recommended.*
+      Recommended: flattened to one line of
       inline content. Pasted blocks become their inline content joined by a
       space, and a newline becomes a space. A GFM cell cannot hold either.
-    - **A selection across cells (slice 4).** Recommended: a deletion empties
+    - **A selection across cells (slice 4).** *Settled 2026-10-31, as
+      recommended.* Recommended: a deletion empties
       the covered text in each cell and keeps the grid, never merging two
       cells; typing over it is refused, the way a cross-block replacement is
       refused today.
@@ -5256,6 +5259,107 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         - **The guard paragraph after a trailing table stays.** A caret in a
           cell still cannot get below a table that ends the document, and the
           paragraph costs nothing in the file.
+        - **The steps, written 2026-10-31 before building:**
+          1. *Cells in the model.* At parse a row gets its cells as
+             `children` of kind `cell`, each with the parser's three tokens,
+             its inline tree, its alignment and whether it is a header cell,
+             and no `source`. Children rather than a field of their own, so
+             forking, the id lookup and `modelTouch`'s walk up reach them
+             with no new code. A table records its convention at parse
+             (`sniffTableConvention` over its own lines, with each line's
+             quote chain, indent or item marker kept aside as that line's
+             prefix).
+          2. *The emitter.* A touched table is handed to `emit` whole rather
+             than joined from its children, and `modelEmitTable` writes it.
+             A table that keeps to a convention is laid out whole by the
+             formatter, which gives back every untouched row's own bytes
+             unless a column's width changed — exactly the
+             row-where-it-can rule, with no bookkeeping. A table that keeps
+             to none keeps every untouched line and writes a touched row
+             alone in the default convention. Each line gets its prefix
+             back. A cell's text has its pipes escaped and cannot hold a
+             newline.
+          3. *The render.* `contenteditable="false"` goes, and each cell owns
+             its `<th>`/`<td>`, so the selection mapping and
+             `modelVerifyRender` reach it like any other leaf.
+          4. *Input.* Text, the deletes, marks, inline code, links, images
+             and equations work in a cell as in a paragraph. Enter and
+             Shift+Enter in a cell do nothing until slice 5 gives Enter a
+             meaning; Tab does nothing until slice 5 moves between cells. A
+             deletion across cells of one table empties what it covers in
+             each and keeps the grid; one between a cell and anything outside
+             its table is refused, and that includes Backspace at the start
+             of the paragraph after a table until slice 5. Typing over a
+             selection across cells is refused, as across blocks. The block
+             formats — paragraph, headings, lists, quote, code block, rule,
+             table of contents — are refused in a cell with a notice, and Code
+             on a whole cell makes a code span rather than a fence. The
+             quote key never acts from inside a cell.
+          5. *Paste and drop into a cell*, flattened per the settled answer:
+             the pasted blocks' inline sources joined with a space, any
+             newline a space, guarded against reading as a block start, and
+             then the existing one-block paste.
+          6. *Gecko's own table controls* are looked for in the Firefox hand
+             run of the new format-check.md section rather than on
+             `front/input-check.html`, because that run is in Firefox anyway
+             and the page would need a table added to its protocol for one
+             look.
+          7. *Tests*: `model` cases and an oracle sweep that edits every cell
+             and checks that the file outside the table is untouched and the
+             edited table re-parses to the edit; `model-input` routing for
+             each rule in step 4; `tests/browser/table-cells.spec.mjs`; a
+             format-check.md section and its Firefox hand run.
+        - **Done and tested 2026-10-31, by machine and by hand in Firefox,
+          where format-check.md's table-cell section passed whole and
+          Firefox showed none of its own table controls.** All seven
+          steps as written, in `modelRowCells`, `modelTableShape`,
+          `modelEmitTable` and `modelCellBlocks` in `model.js` and the cell
+          rules in `model-input.js`. The oracle sweep edits every cell in the
+          oracle: the file outside its table always comes back byte for byte,
+          the table re-parses to the edit, and only the edited row's line
+          changes wherever no column widened. `table-cells.spec.mjs` passes in
+          Chromium, WebKit and Playwright's Firefox. What was found or decided
+          on the way:
+          - **The tiling walks in the `model` suite stop at the row**, the
+            exemption by name the plan called for; the edited-alone sweep's
+            unit for a row is now its table, since that is what the emitter
+            is handed, and the cell sweep is where the row-where-it-can rule
+            is measured.
+          - **An empty cell writes bytes**: `modelSettleLists`' shape check
+            treated an empty leaf as writing nothing, which is true of an
+            empty paragraph and not of `| |`, so two paragraphs beside a table
+            with empty cells could not be quoted. Fixed there.
+          - **A padded table reads its delimiter as filling the column**
+            ahead of a fixed dash count that happens to match, a change to
+            slice 3's sniff: the two reproduce the same table until a column
+            widens, and only the first keeps padding the delimiter then.
+          - **Backspace at a cell's start covers nothing and is refused**
+            rather than moving the caret into the cell before.
+          - **Code in a cell is always a code span**, over the whole cell from
+            a caret, since a cell cannot hold a fence.
+          - **The `model core` marker's tooltip** said the formats did
+            nothing and a table refused the caret; it now names what is
+            actually left, a table's rows and columns.
+          - **The review before the commit found four bugs**, each now pinned
+            by a check. **A cell's source gets a backslash before every
+            pipe**: markdown-it 13 takes one off before every `|` in a row,
+            code and maths included and whatever is in front of it,
+            measured, so an equation's `\\|` norm bars were coming back as
+            plain pipes. **A table whose rows differ from their header in
+            count keeps to no convention**, since the parser pads short rows
+            and drops long rows' extras, and an edited long row keeps its
+            extras. **Every marker in front of a table's first line is its
+            prefix**, so `- > |a|b|` and `- - |a|b|` survive an edit.
+            **Indent and Outdent from the Format menu are refused in a cell.**
+            A cross-cell deletion also runs on a fork first now. And slice
+            3's splitter fix was wrong: markdown-it never splits on a pipe
+            straight after a backslash, whatever the parity, so the splitter
+            follows that and slice 3's check now pins it.
+          - **Two older Firefox failures surfaced** in the full browser run:
+            `check-pages.spec.mjs`'s list-indent-check and
+            `inline-code-links.spec.mjs`'s "Code over a word", both failing
+            identically on the committed code without this slice, so recorded
+            here as found rather than fixed.
 
     5.  **Table structure — the rest of TODO 1.1.8.** Index arithmetic on the
         rows, each a model command whose result the formatter emits.
