@@ -753,11 +753,13 @@
         z-index: 10;
       }
 
+      /* Inline, which is what a markdown image is: it sits in a paragraph's
+         line. As a block it took a line of its own, so the caret beside it
+         drew on the line above or below. An image alone in its paragraph,
+         like the welcome banner, still has the line to itself. */
       #editor img {
         max-width: 100%;
         height: auto;
-        display: block;
-        margin: 1rem 0;
       }
 
       /* The welcome banner ships as a light lockup; swap in the
@@ -1649,6 +1651,13 @@
            filenames, which read better in a face where every character is
            the same width. */
         font: 13.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      /* A field holding words rather than an address — an image's
+         description — in the dialog's own face. */
+      .notify-dialog-input-prose {
+        font: inherit;
+        font-size: 13.5px;
       }
 
       .notify-dialog-input:focus {

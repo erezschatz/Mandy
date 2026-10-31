@@ -921,6 +921,20 @@ function unwrapLink(link) {
 
 onToolbarAction("insert-link", insertLink);
 
+// Insert → Image…, stage 3's slice 2. A model command only: D4's amendment
+// writes no new format against contenteditable, so the old core says where it
+// works instead. Feature-tested, since input-check.html and an exported
+// document each decide for themselves what they ship.
+onToolbarAction("insert-image", async () => {
+  if (modelOwnsInput() && typeof modelInputImage === "function") {
+    await modelInputImage();
+    return;
+  }
+  if (typeof notify === "function") {
+    notify("Inserting an image needs the new editing core (?core=model).", { severity: "info" });
+  }
+});
+
 onToolbarAction("paste-md", async () => {
   try {
     const clipboardText = await navigator.clipboard.readText();

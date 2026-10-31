@@ -95,6 +95,7 @@ export default function run(check) {
     modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered,
     modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape,
     modelToggleQuote, modelQuoteKey, modelBlockState,
+    modelSetImage, modelImageAt, modelImageFields,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -125,7 +126,8 @@ export default function run(check) {
       " modelSetHeading, modelMakeFence, modelUnfence, modelPlainText," +
       " modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered," +
       " modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape," +
-      " modelToggleQuote, modelQuoteKey, modelBlockState };",
+      " modelToggleQuote, modelQuoteKey, modelBlockState," +
+      " modelSetImage, modelImageAt, modelImageFields };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -4725,5 +4727,86 @@ export default function run(check) {
         `${meaning} with a lazy line given its marker` + (wrong.length ? `, but ${wrong.join(" | ")}` : ""),
         wrong.length === 0 && same > 0);
     }
+  }
+
+  // ---- Stage 3, slice 2: the image --------------------------------------
+  //
+  // An image is made by the parser and the block it lands in is judged by
+  // the parser, so what is checked is the bytes, the rendering, and that a
+  // refusal leaves the block alone.
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const image = (src, from, to, fields) => {
+      const doc = parse(src);
+      const block = doc.blocks[0];
+      const range = modelSetImage(block, from, to, fields, md, modelReferenceEnv(doc, md));
+      return { range, out: emitOf(doc), html: modelRenderDocument(doc, md, {}), doc };
+    };
+    const same = (r) => r.html === md.render(r.out, modelReferenceEnv(r.doc, md));
+
+    let r = image("Hello world\n", 5, 5, { src: "pic.png", alt: "A picture", title: "" });
+    check(`an image goes in at the caret, one character wide (${JSON.stringify(r.out)})`,
+      r.out === "Hello![A picture](pic.png) world\n" && r.range.from === 5 && r.range.to === 6 && same(r));
+    r = image("Hello world\n", 6, 11, { src: "a b.png", alt: "x", title: 'say "hi"' });
+    check(`over a selection it replaces it, with the address and the title escaped (${JSON.stringify(r.out)})`,
+      r.out === 'Hello ![x](a%20b.png "say \\"hi\\"")\n' && same(r));
+    r = image("**bold** text\n", 2, 2, { src: "p.png", alt: "x" });
+    check(`inside bold text it stays inside the bold (${JSON.stringify(r.out)})`,
+      r.out === "**bo![x](p.png)ld** text\n" && same(r));
+    r = image("Hello\n", 0, 0, { src: "p.png", alt: "two *stars* and [brackets]" });
+    check(`a description is escaped, so it is never read as markup (${JSON.stringify(r.out)})`,
+      r.out === "![two \\*stars* and [brackets]](p.png)Hello\n" && same(r));
+
+    r = image('A ![old](o.png "T") b\n', 2, 3, { src: "n.png", alt: "old", title: "T" });
+    check(`a selection that is exactly one image changes that image (${JSON.stringify(r.out)})`,
+      r.out === 'A ![old](n.png "T") b\n' && same(r));
+    r = image('A ![old](o.png "T") b\n', 2, 3, { src: "o.png", alt: "old", title: "T" });
+    check("and the same answer back is no change at all", r.range === null && r.out === 'A ![old](o.png "T") b\n');
+    r = image("A ![al *x*][l] b\n\n[l]: q.png\n", 2, 3, { src: "z.png", alt: "al x", title: "" });
+    check(`a changed reference image is written inline, and its definition stays (${JSON.stringify(r.out)})`,
+      r.out === "A ![al x](z.png) b\n\n[l]: q.png\n");
+
+    r = image("Hello\n", 0, 0, { src: "p.png", alt: "" });
+    check(`an image with no description is fine (${JSON.stringify(r.out)})`, r.out === "![](p.png)Hello\n" && same(r));
+    r = image("Hello\n", 0, 0, { src: "", alt: "x" });
+    check("an image with no address is refused", r.range === null && r.out === "Hello\n");
+    r = image("Hello\n", 0, 0, { src: "javascript:alert(1)", alt: "x" });
+    check("and so is one the parser will not make, and the block is left alone",
+      r.range === null && r.out === "Hello\n");
+
+    {
+      const doc = parse('A ![two *x*](p.png "T") b\n');
+      const block = doc.blocks[0];
+      const at = modelImageAt(block, 2, 3);
+      const fields = at && modelImageFields(at.node);
+      check("an image is found only by a selection exactly its one character",
+        !!at && modelImageAt(block, 2, 2) === null && modelImageAt(block, 1, 3) === null);
+      check(`and its fields are what a reader gets: the description flattened (${JSON.stringify(fields)})`,
+        !!fields && fields.src === "p.png" && fields.alt === "two x" && fields.title === "T");
+    }
+
+    // Over the oracle: an image in the middle of every inline-bearing leaf
+    // renders exactly as the parser reads what it wrote.
+    let done = 0;
+    const wrong = [];
+    for (const file of ORACLE_FILES) {
+      const src = repoFile(file);
+      const doc = parse(src);
+      for (const leaf of leavesOf(doc).filter((b) => b.inlines)) {
+        const copy = modelForkDocument(doc);
+        const block = modelBlockById(copy, leaf.id);
+        const middle = Math.floor(modelInlineText(block.inlines).length / 2);
+        const made = modelSetImage(block, middle, middle, { src: "pic.png", alt: "x" }, md, modelReferenceEnv(copy, md));
+        if (!made) continue;
+        const out = emitOf(copy);
+        const env = modelReferenceEnv(copy, md);
+        if (modelRenderDocument(copy, md, {}).replace(/<p><\/p>\n?/g, "") !== md.renderer.render(md.parse(out, env), md.options, env)) {
+          wrong.push(`${file} #${leaf.id}`);
+        }
+        done++;
+      }
+    }
+    check(`an image put into the middle of each of ${done} leaves in the oracle renders as its file reads back` +
+      (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 5).join(" | ")}` : ""), wrong.length === 0 && done > 800);
   }
 }

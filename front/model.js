@@ -721,6 +721,10 @@ function modelFirstConstruct(md, candidate) {
  * which is `modelEscapeLineStarts`, called from `modelEmitLeaf`.
  */
 function modelEscapeText(md, text) {
+  // Nothing needs no escaping. Said first because the loop below asks the
+  // parser for a construct in the empty string, finds none it can place, and
+  // gives up — which an image with no description (stage 3's slice 2) reached.
+  if (text === "") return "";
   let candidate = modelEscapeSilentTriggers(text);
   for (let guard = 0; guard <= text.length; guard++) {
     const at = modelFirstConstruct(md, candidate);
@@ -4078,17 +4082,7 @@ function modelSetLink(block, from, to, href, md, env) {
     const node = link();
     node.children = [label];
     const tree = block.inlines;
-    const at = modelInlineAt(tree, from);
-    if (!at.node) tree.push(node);
-    else {
-      const span = modelInlineLeafSpans(tree).find((candidate) => candidate.node === at.node);
-      const list = span ? span.list : tree;
-      const index = list.indexOf(at.node);
-      if (at.node.kind === "text" && at.offset > 0 && at.offset < at.node.content.length) {
-        list.splice(index, 1, modelTextNode(at.node.content.slice(0, at.offset)), node,
-          modelTextNode(at.node.content.slice(at.offset)));
-      } else list.splice(index + (at.offset > 0 ? 1 : 0), 0, node);
-    }
+    modelInsertInlineAt(tree, from, node);
     if (!modelInlineReadable(tree, md, env)) return null;
     modelInstallInlines(block, tree);
     return { from, to: from + href.length };
@@ -4098,6 +4092,114 @@ function modelSetLink(block, from, to, href, md, env) {
   if (!tree || !modelInlineReadable(tree, md, env)) return null;
   modelInstallInlines(block, tree);
   return { from, to };
+}
+
+// Put one node into an inline tree at an offset, inside whatever marks the
+// offset is inside by `modelInlineAt`'s boundary rule — a text leaf is split
+// there, and anything else has the node put beside it.
+function modelInsertInlineAt(tree, offset, node) {
+  const at = modelInlineAt(tree, offset);
+  if (!at.node) {
+    tree.push(node);
+    return;
+  }
+  const span = modelInlineLeafSpans(tree).find((candidate) => candidate.node === at.node);
+  const list = span ? span.list : tree;
+  const index = list.indexOf(at.node);
+  if (at.node.kind === "text" && at.offset > 0 && at.offset < at.node.content.length) {
+    list.splice(index, 1, modelTextNode(at.node.content.slice(0, at.offset)), node,
+      modelTextNode(at.node.content.slice(at.offset)));
+  } else list.splice(index + (at.offset > 0 ? 1 : 0), 0, node);
+}
+
+// ── Images ───────────────────────────────────────────────────────────────────
+//
+// Stage 3's slice 2, TODO 1.1.7. An image was already an atom — one character,
+// one node, its tokens kept — so what is new is making one and changing one.
+
+// The image a selection is exactly, `{ node, list, start }`, or null: a range
+// one character long whose one character is an image.
+function modelImageAt(block, from, to) {
+  if (!block || !block.inlines || to !== from + 1) return null;
+  const span = modelInlineLeafSpans(block.inlines)
+    .find((candidate) => candidate.start === from && candidate.end === to);
+  return span && span.node.kind === "image" ? { node: span.node, list: span.list, start: from } : null;
+}
+
+// What an image's address, description and title say, read off its token. The
+// description is the text a reader gets — the alt attribute markdown-it
+// renders, with any markup in the source flattened — since that is what the
+// dialog shows and what an unchanged answer has to compare equal to.
+function modelImageFields(node) {
+  const alt = (node.token.children || [])
+    .map((token) => (/^(text|text_special|code_inline)$/.test(token.type) ? token.content : ""))
+    .join("");
+  return {
+    src: node.token.attrGet("src") || "",
+    alt,
+    title: node.token.attrGet("title") || "",
+  };
+}
+
+/**
+ * An image node for `{ src, alt, title }`, **its token from the parser**:
+ * stage 2's slice 4 rule for an atom, since an image's rendering *is* its
+ * `src`, alt and title and there is no honest way to build one by hand. The
+ * description is escaped on the way in and kept plain on the node, so it is
+ * written escaped and never read as markup; the address and the title are
+ * escaped the way a rebuilt link's are. Null when the parser does not read
+ * the image back as one image with the address asked for.
+ */
+function modelImageNode(md, fields) {
+  const src = (fields.src || "").trim();
+  if (!src) return null;
+  const alt = fields.alt || "";
+  const title = fields.title || "";
+  const source = "![" + modelEscapeText(md, alt) + "](" + modelEscapeLinkDestination(src) +
+    (title ? " " + modelEscapeLinkTitle(title) : "") + ")";
+  const tokens = (md.parseInline(source, {})[0]?.children || [])
+    .filter((token) => !(token.type === "text" && token.content === ""));
+  if (tokens.length !== 1 || tokens[0].type !== "image" || tokens[0].attrGet("src") !== md.normalizeLink(src)) {
+    return null;
+  }
+  const token = modelCloneToken(tokens[0]);
+  return { kind: "image", markup: "", content: alt, token, closeToken: null, children: null, raw: null, tail: null };
+}
+
+/**
+ * Insert → Image… in one block: `{ from, to }` around the image afterwards, or
+ * null for a refusal or nothing to change.
+ *
+ * - **A selection that is exactly one image is that image, changed.** Its
+ *   recorded spelling goes with the change, so it is written inline — which is
+ *   CLAUDE.md's reference-image limit, met here rather than added.
+ * - **Anything else puts a new image in**: at a bare caret, or in place of the
+ *   selection, which is taken out first the way typing over it would be.
+ *
+ * The parser judges the block afterwards, as it does every inline command.
+ */
+function modelSetImage(block, from, to, fields, md, env) {
+  modelUnshare(block);
+  if (!block || !block.inlines) return null;
+  const image = modelImageNode(md, fields);
+  if (!image) return null;
+  const existing = modelImageAt(block, from, to);
+  if (existing) {
+    const before = modelImageFields(existing.node);
+    const after = modelImageFields(image);
+    if (before.src === after.src && before.alt === after.alt && before.title === after.title) return null;
+    const tree = block.inlines;
+    existing.list.splice(existing.list.indexOf(existing.node), 1, image);
+    if (!modelInlineReadable(tree, md, env)) return null;
+    modelInstallInlines(block, tree);
+    return { from, to: from + 1 };
+  }
+  if (from !== to) modelInlineSplice(block, from, to, "");
+  const tree = block.inlines;
+  modelInsertInlineAt(tree, from, image);
+  if (!modelInlineReadable(tree, md, env)) return null;
+  modelInstallInlines(block, tree);
+  return { from, to: from + 1 };
 }
 
 /**

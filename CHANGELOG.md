@@ -9850,7 +9850,7 @@ written down as open, each with a recommendation, to settle before the slice
 that needs it. `tasks/1.1-formats.md` and `tasks/2.1-table-reemission.md` point
 at the plan. No code changed.
 
-## 2026-10-30 — Blockquote, under the model core
+## 2026-10-30 — `90c2483` — Blockquote, under the model core
 
 Stage 3's slice 1 of the rewrite, and TODO 1.1.6. Under the model core,
 Format → Blockquote makes or removes a quote. The user settled both open
@@ -9898,5 +9898,57 @@ quote is what a save will write from stage 4 on. Tested by machine: `model`,
 Chromium and WebKit, which stands in for the hand run in those two. The
 Firefox hand run of `tests/fixtures/format-check.md`'s new section passed in
 full on 2026-10-30, the menu checks included. The service worker's version is
+bumped, since the shell changed.
+
+## 2026-10-30 — Insert → Image…, under the model core
+
+Stage 3's slice 2 of the rewrite, and TODO 1.1.7. Under the model core, Insert
+→ Image… opens one dialog with three fields: the address, the description and
+an optional title. The image goes in at the caret, or in place of a selection
+inside one block. With exactly one image selected, the same dialog opens filled
+in and changes that image. An address is required; a missing one is refused
+with a notice, and so is one the parser will not accept, such as a
+`javascript:` URL, whether inserting or editing. The image's token comes from the parser rather than being
+built by hand, and the parser checks the block it lands in. The description is
+escaped, so it is never read as markup. A changed reference image is written
+inline and its definition stays, which is the reference-image limit CLAUDE.md
+already records.
+
+The user settled the dialog question as recommended: `askForInput` now takes a
+list of fields and then resolves to an object keyed by each field's name. Its
+one existing caller, Insert → Link…, is unchanged. Two other decisions came
+from the user: an image gets no check in the Format menu, because like an
+equation the caret is never inside one; and Blockquote stays off the format
+bar, which is for the most common formats.
+
+Under the model core, clicking an image now selects it. That is what lets the
+dialog edit one. Measured in Playwright's engines, Gecko already did this, but
+Blink put the caret at the start of the line and WebKit left no selection at
+all. Building the spec also found a crash: an image with no description reached
+`modelEscapeText` with an empty string, which it could not handle. It now
+returns an empty string at once. And the review before the commit found that an
+edit to an address the parser refuses closed the dialog and said nothing; it
+gets the same notice an insert does now, and `image.spec.mjs` checks it.
+
+Under the old core the menu item shows a notice and opens nothing, per D4's
+amendment. A relative address resolves against the server rather than the
+open file's folder, which is TODO 1.2's limit for links and is stated rather
+than solved. Tested by machine: `model`, `model-input` and `notify` suite
+cases, including an image put into the middle of every inline-bearing leaf in
+the oracle that will take one, and
+`tests/browser/image.spec.mjs` in Chromium, WebKit and Playwright's Firefox.
+The hand run of `tests/fixtures/format-check.md`'s new image section in
+Firefox passed on 2026-10-31.
+
+That hand run found one thing, and it was in neither core. `app.css` drew every
+image in the editor as a block with a margin, a rule written for the welcome
+banner before an image could be edited. So an image sat on a line of its own,
+and the caret beside it drew on the line above or below. A markdown image is
+inline, part of its paragraph's line, and it is drawn that way now: an icon in
+a sentence sits in the sentence, and an image alone in its paragraph, like the
+banner, still has the line to itself. It changes the old core and both exports
+too, which is the point, since all three were drawing a different document from
+the file. `image.spec.mjs` checks that an image shares the line of the text
+beside it, and fails under the old rule. The service worker's version is
 bumped, since the shell changed.
 

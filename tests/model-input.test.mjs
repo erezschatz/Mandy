@@ -18,7 +18,7 @@
 
 import { loadSource, makeEl } from "./dom.mjs";
 
-export default function run(check) {
+export default async function run(check) {
   // One rig per case: the handler keeps composition state across events, so a
   // shared one would let an earlier check decide a later one.
   const rig = ({
@@ -27,6 +27,7 @@ export default function run(check) {
     html = "", point = null, selection = false, history = true,
     domText = "abX", blockText = "ab", spans = [], reveal = null, collapsed = false,
     quote = null, quoteToggle = { block: {} }, settle = true,
+    image = null, dialog = null, imageSet = { from: 0, to: 1 },
   } = {}) => {
     const calls = {
       splice: [], rerender: [], render: [], announced: [], sourceSplice: [],
@@ -34,7 +35,7 @@ export default function run(check) {
       parsed: [],
       cut: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
       history: [], refused: [], joined: 0, converted: [], revealed: [], toasts: [],
-      toggled: [], quoteKey: [], quoteToggled: [],
+      toggled: [], quoteKey: [], quoteToggled: [], asked: [], imaged: [],
     };
     // What a case can move between events: the document an undo would swap in,
     // and where the caret is.
@@ -151,6 +152,13 @@ export default function run(check) {
         modelSelectedRanges: (d, sel) => [{ block: sel.block }],
         modelRecordSelection: (sel) => (sel ? { block: sel.block.id, offset: sel.offset } : null),
         modelResolveSelection: (d, rec) => (rec ? { block: "resolved", offset: rec.offset } : null),
+        // Stage 3's slice 2: Insert → Image…. The dialog answers what a case
+        // says, and the model's half is the model suite's.
+        askForInput: (message, options) => { calls.asked.push(options); return Promise.resolve(dialog); },
+        modelImageAt: () => image,
+        modelImageFields: () => ({ src: "old.png", alt: "Old", title: "" }),
+        modelSetImage: (b, from, to, fields) => { calls.imaged.push({ block: b, from, to, fields }); return imageSet; },
+        modelReferenceEnv: () => ({}),
         modelMathReveal: (b, offset, backward) => {
           calls.revealed.push({ offset, backward });
           return reveal;
@@ -193,7 +201,7 @@ export default function run(check) {
         " modelInputCompositionEnd, modelInputComposing, modelInputInstall," +
         " modelInputKeydown, modelIndentAtCaret, modelInputPasteEvent," +
         " modelInputDrop, modelInputDragStart, modelInputDragOver," +
-        " modelPastePlain, modelPasteMarkdown, modelInputSelectionMath, modelInputQuote };",
+        " modelPastePlain, modelPasteMarkdown, modelInputSelectionMath, modelInputQuote, modelInputImage };",
     );
     return { api, calls, editor, block, state };
   };
@@ -611,6 +619,56 @@ export default function run(check) {
     check("a Blockquote the model refuses says so and changes nothing",
       refused.calls.quoteToggled.length === 1 && refused.calls.render.length === 0 &&
         refused.calls.toasts.length === 1 && refused.calls.announced.length === 0);
+  }
+
+  // --- stage 3's slice 2: Insert → Image… ---------------------------------
+
+  {
+    const target = { id: 50, inlines: [] };
+    const answer = { src: "pic.png", alt: "A picture", title: "" };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 3 }, dialog: answer });
+    r.editor.focus = () => {};
+    await r.api.modelInputImage();
+    const asked = r.calls.asked[0];
+    check("Insert → Image… asks for an address, a description and a title",
+      !!asked && asked.title === "Insert image" && asked.fields.map((f) => f.name).join() === "src,alt,title");
+    check("and puts the image in on a fork, then in the document, at the caret, as one undo step",
+      r.calls.imaged.length === 2 && r.calls.imaged[1].block === target && r.calls.imaged[1].from === 3 &&
+        r.calls.imaged[1].fields === answer && r.calls.announced[0] === "insertImage");
+  }
+
+  {
+    const target = { id: 51, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 2, to: { block: target, offset: 3 } },
+      image: { node: {} }, dialog: { src: "new.png", alt: "Old", title: "" } });
+    r.editor.focus = () => {};
+    await r.api.modelInputImage();
+    const asked = r.calls.asked[0];
+    check("a selection that is one image is edited, with the dialog filled in from it",
+      !!asked && asked.title === "Edit image" && asked.confirmLabel === "Update" && asked.fields[0].value === "old.png" &&
+        asked.fields[1].value === "Old");
+  }
+
+  {
+    const target = { id: 52, inlines: [] };
+    const cases = [
+      ["backing out of the dialog changes nothing", { dialog: null }, 0],
+      ["an empty address is refused, and says so", { dialog: { src: "", alt: "x", title: "" } }, 1],
+      ["an image the model refuses says so", { dialog: { src: "javascript:x", alt: "", title: "" }, imageSet: null }, 1],
+    ];
+    for (const [label, opts, toasts] of cases) {
+      const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 }, ...opts });
+      r.editor.focus = () => {};
+      await r.api.modelInputImage();
+      check(label, r.calls.toasts.length === toasts && r.calls.render.length === 0 && r.calls.rerender.length === 0 &&
+        r.calls.announced.length === 0);
+    }
+    const other = { id: 53, inlines: [] };
+    const across = rig({ doc: { blocks: [target, other] }, at: { block: target, offset: 0, to: { block: other, offset: 1 } },
+      dialog: { src: "p.png", alt: "", title: "" } });
+    await across.api.modelInputImage();
+    check("a selection across two blocks is refused before the dialog opens",
+      across.calls.asked.length === 0 && across.calls.toasts.length === 1);
   }
 
   // --- slice 4: Tab, which is not an inputType -----------------------------

@@ -1638,6 +1638,16 @@ menu checks every format that is not plain text** — the marks, Code, Heading
 for something that is not plain text gets its check with it, and
 `modelBlockState` is the model's answer for the block formats.
 
+**Slice 2 gave it the image**, 2026-10-30: Insert → Image… puts one in at the
+caret, or edits the one image selected, through `askForInput`'s `fields`. Its
+token comes from the parser, the stage 2 rule for every atom, and the parser
+checks the block it lands in. **A click on an image selects it**, under the model
+core, because only Gecko does that itself. An image gets no menu check: like an
+equation, the caret is never inside one. **An image is drawn inline**, as
+markdown has it, and `app.css` must not make it a block again: a block image
+takes a line of its own and the caret beside it draws on the line above or
+below, which the Firefox hand run found on 2026-10-31.
+
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.
 **With it on the toolbar carries a `model core` marker**, which is a link back
@@ -2772,10 +2782,13 @@ test suite scans the sources to keep it that way.
   the chosen action's `value` or to `dismiss` (default `null`).
 - `askForInput(message, { title, placeholder, value, confirmLabel, dismiss })` —
   a modal with one text field, resolving to the trimmed string on confirm (which
-  may be `""`) or to `dismiss` (default `null`) when backed out. A deliberate
+  may be `""`) or to `dismiss` (default `null`) when backed out. Given
+  `fields` — a list of `{ name, label, placeholder, value, prose }` — it asks
+  for several and resolves to an object keyed by name, which Insert → Image…
+  uses for its address, description and title. A deliberate
   second copy of the modal scaffold rather than an option on `ask()`: the return
   contracts differ, and this file is already where the dialogs are built. Insert
-  → Link… is the only caller so far.
+  → Link… and Insert → Image… are its callers.
 
 Why it exists at all is worth keeping: `alert()` blocks the page, ignores the
 theme, and can say nothing but OK. The one that forced the issue is that Chrome

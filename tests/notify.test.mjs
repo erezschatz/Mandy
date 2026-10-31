@@ -69,7 +69,7 @@ function load(doc) {
         if (timers[id - 1]) timers[id - 1].cleared = true;
       },
       console,
-    }, "; return { notify, ask };"),
+    }, "; return { notify, ask, askForInput };"),
   };
 }
 
@@ -241,4 +241,44 @@ export default async function run(check) {
   check("Shift+Tab wraps the other way", doc.activeElement === tabs.at(-1));
   trap.dispatchEvent({ type: "keydown", key: "Escape", preventDefault() {} });
   await pending;
+
+  // --- askForInput, one field and several ---------------------------------
+  //
+  // One field is Insert → Link…'s, resolving to a string; a list of fields is
+  // Insert → Image…'s (stage 3's slice 2), resolving to an object by name.
+  // Enter submits from any field, and backing out is null either way.
+  const inputsOf = (b) => walk(b).filter((n) => n.tagName === "INPUT");
+  let asked = api.askForInput("Link address", { value: "  https://example.com  " });
+  let box = find(doc, "notify-backdrop");
+  check("one field: the dialog has one input, focused", inputsOf(box).length === 1 && doc.activeElement === inputsOf(box)[0]);
+  walk(box).filter((n) => n.className.startsWith("notify-btn"))[1].dispatchEvent({ type: "click" });
+  check("and OK resolves to its text, trimmed", (await asked) === "https://example.com");
+
+  asked = api.askForInput("", {
+    title: "Insert image",
+    fields: [
+      { name: "src", label: "Image address", value: "pic.png" },
+      { name: "alt", label: "Description", prose: true },
+      { name: "title", label: "Title (optional)", prose: true },
+    ],
+  });
+  box = find(doc, "notify-backdrop");
+  const fields = inputsOf(box);
+  check("several fields: one input each, the first focused", fields.length === 3 && doc.activeElement === fields[0]);
+  check("labelled in order", walk(box).filter((n) => n.tagName === "LABEL").map((n) => n.textContent).join("|")
+    .startsWith("Image address"));
+  check("a prose field is set in the dialog's own face", fields[1].className.includes("notify-dialog-input-prose") &&
+    !fields[0].className.includes("prose"));
+  const cycle = () => box.dispatchEvent({ type: "keydown", key: "Tab", shiftKey: false, preventDefault() {} });
+  cycle();
+  check("Tab goes to the next field, not straight to the buttons", doc.activeElement === fields[1]);
+  fields[1].value = "  A picture ";
+  box.dispatchEvent({ type: "keydown", key: "Enter", target: fields[1], preventDefault() {} });
+  const answer = await asked;
+  check(`Enter in any field resolves to every field by name, trimmed (${JSON.stringify(answer)})`,
+    !!answer && answer.src === "pic.png" && answer.alt === "A picture" && answer.title === "");
+
+  asked = api.askForInput("", { fields: [{ name: "src", label: "Image address" }] });
+  find(doc, "notify-backdrop").dispatchEvent({ type: "keydown", key: "Escape", preventDefault() {} });
+  check("and Escape is null, not an empty answer", (await asked) === null);
 }

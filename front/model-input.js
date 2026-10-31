@@ -639,6 +639,60 @@ function modelInputBlockFormat(format) {
 }
 
 /**
+ * Insert → Image…, stage 3's slice 2. One dialog with three fields — the
+ * address, the description and an optional title — filled in when the
+ * selection is exactly one image, which it then changes; otherwise the image
+ * goes in at the caret, or in place of a selection inside one block. The
+ * selection is read before the dialog takes focus, the document is checked to
+ * be the same one after it closes, and the change runs on a fork first, since
+ * replacing a selection deletes before the parser has judged the result.
+ */
+async function modelInputImage() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  const to = at.to || at;
+  const say = (message) => {
+    if (typeof notify === "function") notify(message, { severity: "info" });
+    return true;
+  };
+  if (to.block !== at.block || !at.block.inlines) {
+    return say("Put the caret in a paragraph, a heading or a list item to insert an image.");
+  }
+  const block = at.block;
+  const from = Math.min(at.offset, to.offset);
+  const end = Math.max(at.offset, to.offset);
+  const existing = modelImageAt(block, from, end);
+  const current = existing ? modelImageFields(existing.node) : { src: "", alt: "", title: "" };
+  const answer = typeof askForInput === "function"
+    ? await askForInput("", {
+      title: existing ? "Edit image" : "Insert image",
+      fields: [
+        { name: "src", label: "Image address", placeholder: "https://example.com/picture.png", value: current.src },
+        { name: "alt", label: "Description", placeholder: "What the image shows", value: current.alt, prose: true },
+        { name: "title", label: "Title (optional)", placeholder: "Shown on hover", value: current.title, prose: true },
+      ],
+      confirmLabel: existing ? "Update" : "Insert",
+    })
+    : null;
+  if (answer === null) return true;
+  if (modelCurrentDocument() !== doc) return true;
+  if (!answer.src) return say("An image needs an address.");
+  editor.focus();
+  const env = modelReferenceEnv(doc, md);
+  const trial = modelForkDocument(doc);
+  const tried = modelSetImage(modelBlockById(trial, block.id), from, end, answer, md, env);
+  if (!tried) {
+    return say("That address cannot be used for an image.");
+  }
+  const range = modelSetImage(block, from, end, answer, md, env);
+  if (!range) return true;
+  modelPendingMarks = null;
+  return modelInputShow(doc, block, { block, offset: range.to }, "insertImage");
+}
+
+/**
  * Insert → Link…, slice 7's step 4. The same dialog and the same four cases as
  * the old core — wrap a selection, insert the address at a bare caret,
  * retarget the link the caret is in, or unlink it when the address is left
@@ -1671,9 +1725,27 @@ function modelInputCaretBeside(atom, x) {
  * already inside the selection is left alone, since that is how a drag of the
  * selection begins. Shift is left to the engine, since it extends a selection
  * rather than placing a caret.
+ *
+ * **A press on an image selects the image**, stage 3's slice 2, which is what
+ * makes Insert → Image… able to edit one. Measured 2026-10-30 in Playwright's
+ * engines: Gecko selects a clicked image itself, Blink puts the caret at the
+ * start of the line and WebKit leaves no selection at all, so the press is
+ * taken here and the image selected the way Gecko already does it.
  */
 function modelInputPressAtom(event) {
   if (event.button !== 0 || event.shiftKey) return;
+  const image = event.target && event.target.tagName === "IMG" ? event.target : null;
+  if (image && editor.contains(image)) {
+    const live = window.getSelection();
+    if (live && live.rangeCount && !live.isCollapsed && live.getRangeAt(0).intersectsNode(image)) return;
+    event.preventDefault();
+    editor.focus({ preventScroll: true });
+    const range = editor.ownerDocument.createRange();
+    range.selectNode(image);
+    live.removeAllRanges();
+    live.addRange(range);
+    return;
+  }
   const atom = event.target && event.target.closest && event.target.closest("[data-math]");
   if (!atom || !editor.contains(atom)) return;
   // Pressing on an equation that is part of the current selection is how a

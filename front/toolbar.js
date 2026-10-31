@@ -89,6 +89,9 @@ const TOOLBAR_MENUS = [
 
   { id: "insertMenu", label: "Insert", variants: ALL, items: [
     { action: "insert-link", label: "Link\u2026", shortcut: "Ctrl+K", variants: ALL },
+    // Stage 3's slice 2, model core only. No check, unlike the formats: an
+    // image is an atom, so the caret is never inside one to report.
+    { action: "insert-image", label: "Image\u2026", variants: ALL },
     { id: "tocInsertBtn", action: "insert-toc", label: "Table of contents", variants: ALL },
     { action: "insert-hr", label: "Horizontal rule", variants: ALL },
     { separator: true, variants: ALL },

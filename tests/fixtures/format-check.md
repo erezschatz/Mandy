@@ -11,13 +11,16 @@ one (step 10), bold, italic and strikethrough (step 3), inline code and links
 rule, the table of contents and Clear (step 7), the keys and the clipboard
 (step 8), and everything together (step 9). (It held diagrams
 too until Mermaid was removed on 2026-10-01.) Stage 3 adds to it from the end,
-one section per slice: the blockquote (slice 1) is the first.
+one section per slice: the blockquote (slice 1), then the image (slice 2).
 
 Chromium and WebKit run the last seven sections by machine
 (`tests/browser/equation-typing.spec.mjs`, `format-marks.spec.mjs`,
 `inline-code-links.spec.mjs`, `block-kinds.spec.mjs`, `lists.spec.mjs`,
 `insert-clear.spec.mjs` and `keys-clipboard.spec.mjs`), and the blockquote
-section too (`blockquote.spec.mjs`), so a hand run of those is Firefox's.
+and image sections too (`blockquote.spec.mjs`, `image.spec.mjs`), so a hand
+run of those is Firefox's. Those last two specs pass in Playwright's Firefox as
+well, but that is a pinned build rather than the one installed, so the hand run
+in Firefox stands.
 Safari's waits for stage 5.
 
 ## Before you start
@@ -502,3 +505,39 @@ And me too
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors.*
+
+## Image (stage 3, slice 2)
+
+Insert → Image…, which asks for an address, a description and an optional
+title. With exactly one image selected it edits that image instead. Clicking
+an image selects it. The image below is the editor's own icon, so it loads
+from the server; the line under it is where a new one goes.
+
+![The editor's icon](/favicon-32x32.png "Mandy")
+
+Put an image after this:
+
+1. **Click at the end of "Put an image after this:" and choose Insert →
+   Image….** *A dialog titled Insert image asks for an address, a
+   description and a title, with the caret in the address.* **Type
+   `/favicon-192x192.png`, press Tab, type `A bigger icon`, and press
+   Enter.** *A larger icon appears at the end of the line, and the dialog
+   closes.*
+2. **Press Ctrl/Cmd+Z.** *The new image goes, in one press.*
+3. **Click the icon above that line.** *It is selected.* **Choose Insert →
+   Image….** *The dialog is titled Edit image and holds `/favicon-32x32.png`,
+   `The editor's icon` and `Mandy`.* **Change the description to `Changed`
+   and press Update.** *The icon stays where it was.* (Undo it.)
+4. **Choose Insert → Image… again, leave the address empty and press
+   Enter.** *A message says an image needs an address, and nothing changes.*
+   **Choose it once more and press Escape.** *Nothing changes.*
+5. **Open the Format menu with the icon selected.** *No item has a check for
+   the image*: the caret is never inside one, so there is nothing to show.
+6. **Open `http://localhost:9130/?core=legacy`, click in any paragraph and
+   choose Insert → Image….** *A message says inserting an image needs the new
+   editing core, and no dialog opens.* **Go back to `?core=model`** before
+   anything else.
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors.*
+

@@ -4943,7 +4943,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     stage 4 and keeps by default until then. (The first was settled on
     2026-10-27 in stage 3's plan: Enter moves down a row.)
 *   **3. The 1.1 items — planned 2026-10-27; slice 1 done and tested
-    2026-10-30, by machine and by hand in Firefox.** Not a merge point
+    2026-10-30, by machine and by hand in Firefox; slice 2 done 2026-10-30,
+    tested by machine and, on 2026-10-31, by hand in Firefox.** Not a merge point
     either, for the same reason: reintegration has not happened, so the app
     around the new core is still reading `editor.innerHTML`.
 
@@ -5022,7 +5023,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
       empty quoted paragraph leaves the quote, and Backspace at the start of
       a quote's first block unwraps it. These are the empty-item rules'
       twins, and what every editor people arrive from does.
-    - **The image dialog (slice 2).** `askForInput` has one field, and an
+    - **The image dialog (slice 2).** *Settled 2026-10-30, as recommended.*
+      `askForInput` has one field, and an
       image needs src and alt, with an optional title. Recommended:
       generalise it to take a list of fields. 1.1.10's link editor needs
       three fields anyway, so it gets built once, and the alternative is a
@@ -5098,6 +5100,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             Backspace rule is taken on `keydown` as well.
           - **The old core answers the control with a notice**, per D4's
             amendment, and changes nothing.
+          - **Blockquote stays off the format bar**, confirmed with the user
+            2026-10-30: the bar is for the most common formats, and a quote is
+            not one of them.
           - **The Format menu checks the block formats the selection is in**
             (Heading 1–6, both lists, Blockquote), 2026-10-30, at the user's
             request. They had asked at every earlier stage and it had been
@@ -5110,12 +5115,47 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 
     2.  **Image — TODO 1.1.7.** An image is already an atom: one `￼`, one
         node, tokens kept.
-        - **`askForInput` takes a list of fields**, if the open item is
-          settled that way, with today's one caller unchanged.
-        - **Insert → Image…**, at the caret. Its token comes from the parser,
-          never hand-built — stage 2's slice 4 rule for any command that
-          creates an atom.
-        - **Editing an existing image** through the same dialog, pre-filled.
+        - **`askForInput` takes a list of fields** — settled 2026-10-30 —
+          with today's one caller unchanged: given `fields`, it resolves to an
+          object keyed by each field's name rather than to a string.
+        - **Insert → Image…**, at the caret, or over a selection inside one
+          block, which it replaces. Its token comes from the parser, never
+          hand-built — stage 2's slice 4 rule for any command that creates an
+          atom — and the parser judges the block it lands in. An address is
+          required; the description and the title are not.
+        - **Editing an existing image** through the same dialog, pre-filled,
+          when the selection is exactly that one image. A changed image is
+          written inline, which is the reference-image limit below.
+        - **No check in the Format menu, decided with the user 2026-10-30.**
+          An image is an atom like an equation: the caret is beside one, never
+          inside it, so there is no state to show. The menu item keeps its
+          label rather than turning into "Edit image…".
+        - **Under the old core the item shows a notice**, per D4's amendment,
+          the way Blockquote does.
+        - **Done 2026-10-30 and tested: by machine, and by hand in Firefox on
+          2026-10-31, where format-check.md's image section passed.** `modelSetImage`,
+          `modelImageAt`, `modelImageFields` and `modelImageNode` in
+          `model.js`, with the link's caret insertion shared as
+          `modelInsertInlineAt`; `modelInputImage` in `model-input.js`;
+          `askForInput`'s `fields`. `image.spec.mjs` passes in Chromium, WebKit
+          and Playwright's Firefox, which launched this time. Four things were
+          found on the way:
+          - **A click on an image selects it**, under the model core, because
+            measured in Playwright's engines only Gecko did so. Blink put the
+            caret at the start of the line and WebKit left no selection, so
+            neither could reach the edit. A press on an image already inside a
+            wider selection is left alone, so dragging that selection still
+            works.
+          - **`modelEscapeText` of an empty string threw**, reached by an
+            image with no description. It returns the empty string now.
+          - **An image was drawn as a block**, by an `app.css` rule older than
+            any way to edit one, so the caret beside it drew on the line above
+            or below. Found by the Firefox hand run. Images are inline now,
+            which is what markdown says they are, and `image.spec.mjs` checks
+            that one shares the line of the text beside it.
+          - **An edit to a refused address said nothing**: the dialog closed
+            and the image stayed, with a notice only on the insert path. Found
+            by the review before the commit; both paths say why now.
         - **One limit, stated rather than solved:** a relative `src` resolves
           against the server's origin, not against the open file's
           directory, so `./pic.png` does not load. That is 1.2's relative-link
