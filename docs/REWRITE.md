@@ -4944,7 +4944,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     2026-10-27 in stage 3's plan: Enter moves down a row.)
 *   **3. The 1.1 items — planned 2026-10-27; slice 1 done and tested
     2026-10-30, by machine and by hand in Firefox; slice 2 done 2026-10-30,
-    tested by machine and, on 2026-10-31, by hand in Firefox.** Not a merge point
+    tested by machine and, on 2026-10-31, by hand in Firefox; slice 3 done
+    and tested 2026-10-31, by machine and through the real Turndown in a
+    browser.** Not a merge point
     either, for the same reason: reintegration has not happened, so the app
     around the new core is still reading `editor.innerHTML`.
 
@@ -5184,6 +5186,46 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           convention cannot pass it and is not meant to: the suite lists those
           in a check label rather than excusing them. The oracle has tables in
           `torture.md` and in the corpus.
+        - **Done 2026-10-31 and tested: by machine, and through the real
+          Turndown in a browser.** `formatMarkdownTable`,
+          `sniffTableConvention`, `splitTableRow`, `markdownTables` and the
+          `table` field of the sniffed style in `markdown-style.js`, and the
+          rewired rules in `app.js`. Four decisions made while building it:
+          - **The sniff works by reproduction.** Each candidate convention
+            lays the table's own cells out again, and the first that gives
+            back its lines is the answer, so "keeps to a convention" means the
+            formatter can write the table and nothing nearer is guessed at.
+            Candidates run plainest first, so a one-space table whose columns
+            happen to line up reads as one-space. The convention grew two
+            fields beyond the plan's: `minWidth` for a padded table, because
+            Prettier pads to 3 and a hand-padded one-letter column stays at 1,
+            and `delimPad`, because the delimiter row's padding is not always
+            the cells'.
+          - **Turndown's half is one convention per document**, the
+            commonest, because Turndown sees the DOM and cannot tell tables
+            apart. Slice 4's half is per table, from each table's own lines.
+          - **The rules hand their pieces up**, marked with U+0000, and the
+            `table` rule lays the table out once every row is in: a cell
+            cannot know its width before the whole column is seen.
+          - **An empty cell is `| |`** in a table not padded to width, which
+            is what the oracle's corpus writes.
+          What was found on the way. The oracle check found three tables
+          the first sniff could not read: an empty cell, a padded table with a
+          one-letter column, and a table in a quote. The review before the
+          commit found four bugs, each fixed with a check that fails without
+          it: a pipeless row with an empty first cell lost the cell (it keeps
+          a leading pipe now), tables holding a code span did not vote in the
+          document sniff (it reads them with spans intact now), an escaped
+          backslash before the edge pipe misread the row's edges, and a
+          `<caption>`'s text was dropped. It also caught a wrong claim: an
+          empty `<td>` does not go to Turndown's blank rule in the 7.1.2 the
+          app loads, so the `blankReplacement` added for it was removed.
+          **One limit, recorded:** an indented code block holding a table
+          votes in the document sniff, since telling it from a table in a
+          list item needs the parser. `torture.md` gained
+          three tables, compact, padded with right-set numbers, and pipeless,
+          because the oracle had only one-space ones; the check now asserts it
+          has met all four kinds.
 
     4.  **Cells take the caret.** This is the slice that ends the refusal.
         - **A cell is a node in the model with an inline tree and no

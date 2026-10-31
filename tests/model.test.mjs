@@ -96,6 +96,7 @@ export default function run(check) {
     modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape,
     modelToggleQuote, modelQuoteKey, modelBlockState,
     modelSetImage, modelImageAt, modelImageFields,
+    sniffTableConvention, formatMarkdownTable,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -127,7 +128,8 @@ export default function run(check) {
       " modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered," +
       " modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape," +
       " modelToggleQuote, modelQuoteKey, modelBlockState," +
-      " modelSetImage, modelImageAt, modelImageFields };",
+      " modelSetImage, modelImageAt, modelImageFields," +
+      " sniffTableConvention, formatMarkdownTable };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -4808,5 +4810,68 @@ export default function run(check) {
     }
     check(`an image put into the middle of each of ${done} leaves in the oracle renders as its file reads back` +
       (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 5).join(" | ")}` : ""), wrong.length === 0 && done > 800);
+  }
+
+  // ── Stage 3's slice 3: the table formatter ────────────────────────────────
+  //
+  // Every table in the oracle, laid out again from the parser's own cells in
+  // the convention its lines keep to, comes back byte for byte. The cells are
+  // markdown-it's — its inline content, which has un-escaped `\|`, escaped
+  // again the way app.js's tableCellContent does — never this file's own
+  // splitting, so the sniff and the formatter cannot mark each other's homework.
+  // A table that keeps to no convention cannot pass and is not meant to; it is
+  // named in the label rather than excused.
+  {
+    const conforming = [];
+    const kinds = new Set();
+    const loose = [];
+    const wrong = [];
+    for (const file of ORACLE_FILES) {
+      const src = repoFile(file);
+      const lines = src.split("\n");
+      const tokens = md.parse(src, {});
+      for (let i = 0; i < tokens.length; i++) {
+        if (tokens[i].type !== "table_open") continue;
+        const [start, end] = tokens[i].map;
+        const where = `${file}:${start + 1}`;
+        // Its indent and a quote's `>` chain are where the table sits, not
+        // how it is written, so they come off before either half looks.
+        const own = lines.slice(start, end).map((line) => line.replace(/^(\s*>)+ ?/, "").trim());
+        const rows = [];
+        const aligns = [];
+        for (i++; tokens[i].type !== "table_close"; i++) {
+          const t = tokens[i];
+          if (t.type === "tr_open") rows.push([]);
+          if (t.type === "th_open") {
+            const style = t.attrGet("style") || "";
+            aligns.push((style.match(/text-align:(left|right|center)/) || [])[1] || "");
+          }
+          if (t.type === "inline") rows[rows.length - 1].push(t.content.replace(/\|/g, "\\|"));
+        }
+        const convention = sniffTableConvention(own);
+        if (!convention) {
+          loose.push(where);
+          continue;
+        }
+        if (formatMarkdownTable(rows, aligns, convention) !== own.join("\n")) wrong.push(where);
+        conforming.push(where);
+        if (!convention.pad) kinds.add("compact");
+        if (convention.aligned) kinds.add("aligned");
+        if (!convention.lead) kinds.add("pipeless");
+        if (convention.pad && !convention.aligned && convention.lead) kinds.add("one-space");
+      }
+    }
+    check(`each of the ${conforming.length} tables in the oracle that keeps to a convention comes back byte for byte` +
+      ` from the parser's cells (${loose.length} keep to none: ${loose.join(", ") || "none"})` +
+      (wrong.length ? `, but ${wrong.length} did not: ${wrong.join(", ")}` : ""),
+      wrong.length === 0 && conforming.length >= 6);
+    // Not vacuous: a check that only ever met one-space tables would pass a
+    // formatter that knew nothing else.
+    check(`and between them they keep to all four kinds of convention (${[...kinds].sort().join(", ")})`,
+      ["aligned", "compact", "one-space", "pipeless"].every((kind) => kinds.has(kind)));
+    // torture.md's first table is hand-padded on purpose, so its being read as
+    // keeping to nothing is the sniff refusing to guess, which is the point.
+    check("and torture.md's hand-padded table is the one that keeps to none",
+      loose.length === 1 && loose[0].startsWith("tests/fixtures/torture.md:"));
   }
 }

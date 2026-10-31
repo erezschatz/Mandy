@@ -2074,7 +2074,15 @@ ships no table rule at all — GFM tables live in `turndown-plugin-gfm`, which
 this project does not carry — so a `<table>` fell through to the default and
 every cell came back as its own paragraph. Opening a file with a table and
 saving it destroyed the table, unrecoverably, with nothing wrong on screen
-either side of the save. **`listItem`** overrides a core rule to make the pad and
+either side of the save. **Since 2026-10-31 the `table` rule lays an edited
+table out in the document's own convention** — compact, one-space or padded to
+width, with or without edge pipes — through `formatMarkdownTable` in
+`markdown-style.js`, which is TODO 2.1. The cell and row rules hand their pieces
+up marked with U+0000 and the `table` rule formats once every row is in, since a
+cell's width depends on its whole column. The convention is the document's
+commonest, read by `sniffTableConvention` **by reproduction**: a table keeps to
+a convention when the formatter can write it back byte for byte, and one that
+keeps to none is not guessed at. **`listItem`** overrides a core rule to make the pad and
 the numbering come from the document instead of Turndown's hardcoded `*   one` /
 `1.  one`.
 

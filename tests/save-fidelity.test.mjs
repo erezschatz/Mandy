@@ -106,6 +106,114 @@ export default function run(check) {
   ghostChecks(check, isGhostElement);
   styleChecks(check);
   referenceLinkChecks(check);
+  tableChecks(check);
+}
+
+// TODO 2.1, closed for the running editor by stage 3's slice 3 of 3.1. An edited
+// table used to come back in the rule's one house style, losing a compact or a
+// padded-to-width source; now it is laid out again in the convention the
+// document's tables keep to. The oracle half -- every well-formed table in the
+// oracle files re-emitted byte for byte from the parser's cells -- is in the
+// model suite, which has the parser. These are the decisions one at a time, and
+// then the Turndown rule driven the way Turndown drives it.
+function tableChecks(check) {
+  const { sniffTable, format, sniff } = loadSource(
+    "markdown-style.js",
+    {},
+    "; return { sniffTable: sniffTableConvention, format: formatMarkdownTable, sniff: sniffMarkdownStyle };",
+  );
+  const lines = (text) => text.trimEnd().split("\n");
+
+  const padded = "| Name | Age |\n| ---- | --: |\n| Ann  |   7 |\n| Bo   |  12 |";
+  const convention = sniffTable(lines(padded));
+  check("a table padded to width is read as aligned, its numbers set right",
+    !!convention && convention.aligned && convention.justify && convention.delimiter.fill);
+  check("and widening one cell re-pads the whole column and its delimiter with it",
+    format([["Name", "Age"], ["Annabelle", "7"], ["Bo", "12"]], ["", "right"], convention) ===
+      "| Name      | Age |\n| --------- | --: |\n| Annabelle |   7 |\n| Bo        |  12 |");
+
+  const compact = "|a|b|\n|:-|-:|\n|1|2|";
+  const tight = sniffTable(lines(compact));
+  check("a compact table stays compact when a cell grows, alignment and all",
+    !!tight && format([["a", "b"], ["100", "2"]], ["left", "right"], tight) === "|a|b|\n|:-|-:|\n|100|2|");
+
+  check("an escaped pipe is counted as the two characters the file holds",
+    format([["a"], ["x \\| y"]], [""], { ...convention, justify: false }) ===
+      "| a      |\n| ------ |\n| x \\| y |");
+  check("width is counted in code points, so an accented letter is one",
+    format([["é"], ["ab"]], [""], { ...convention, minWidth: 1 }) === "| é  |\n| -- |\n| ab |");
+  check("a hand-padded table that keeps to no convention is read as none rather than guessed at",
+    sniffTable(lines("| a |  b |\n| --- | --- |\n|c| d |")) === null);
+  // Without edge pipes, a row starting with an empty cell would start with the
+  // pipe after it, which GFM reads as a leading pipe: the cell would vanish.
+  const pipeless = { ...sniffTable(lines("a | b\n--- | ---\n1 | 2")) };
+  check("a table with no edge pipes is read as one",
+    pipeless.lead === false && pipeless.trail === false);
+  check("and a row of it whose first cell is empty keeps a leading pipe, so the cell stays",
+    format([["a", "b"], ["", "x"]], ["", ""], pipeless) === "a | b\n--- | ---\n| | x");
+  check("and padded to width too",
+    format([["a", "b"], ["", "x"]], ["", ""], { ...pipeless, aligned: true, minWidth: 1, delimiter: { fill: true } }) ===
+      "a | b\n- | -\n|   | x");
+  // `\\|` is an escaped backslash and then a real pipe, so it ends the row.
+  check("an escaped backslash before the edge pipe still ends the row",
+    !!sniffTable(lines("|a|b\\\\|\n|-|-|\n|1|2|")));
+  check("an empty cell in a one-space table is one space, as people write it",
+    format([["a", "b"], ["", "x"]], ["", ""]) === "| a | b |\n| --- | --- |\n| | x |");
+
+  // The document-wide half: Turndown sees the DOM, so it gets one convention.
+  check("a document with no tables has no table convention, so the rule keeps its own",
+    sniff("Just prose.\n").table === null);
+  check("the document's commonest convention wins",
+    sniff("|a|b|\n|-|-|\n|1|2|\n\n|c|d|\n|-|-|\n|3|4|\n\n| e | f |\n| --- | --- |\n| 5 | 6 |\n").table.pad === 0);
+  check("a table inside a fence is an example, not evidence",
+    sniff("```\n|a|b|\n|-|-|\n```\n").table === null);
+  // The style sniff blanks code spans so `*x*` in one is not evidence of
+  // emphasis; a table must not lose its cells to that, or its vote goes too.
+  check("a table holding a code span still votes",
+    !!sniff("| `a` | b |\n| --- | --- |\n| 1 | 2 |\n").table);
+  check("a table in a quote is read through its `>`",
+    sniff("> |a|b|\n> |-|-|\n> |1|2|\n").table.pad === 0);
+
+  // The rule, driven the way Turndown drives it: cells, then each row with its
+  // node, then the table with everything its rows returned.
+  const app = loadApp();
+  const cell = (align) => ({ getAttribute: (name) => (name === "style" && align ? `text-align:${align}` : null) });
+  const head = { nodeName: "THEAD", previousElementSibling: null };
+  const body = { nodeName: "TBODY", previousElementSibling: head };
+  const row = (parentNode, previousElementSibling, aligns) =>
+    ({ parentNode, previousElementSibling, children: aligns.map(cell) });
+  const turndownTable = (rows) => {
+    const tr = app.rules.tableRow.replacement;
+    const td = app.rules.tableCell.replacement;
+    let content = "";
+    let previous = null;
+    rows.forEach((cells, i) => {
+      const node = row(i ? body : head, i > 1 ? previous : null, i ? cells.map(() => null) : ["left", "right"]);
+      content += tr(cells.map((c) => td(c)).join(""), node);
+      previous = node;
+    });
+    return app.rules.table.replacement(content);
+  };
+  check("with nothing sniffed the rule writes what it always wrote",
+    turndownTable([["a", "b"], ["1", "22"]]) === "\n\n| a | b |\n| :-- | --: |\n| 1 | 22 |\n\n");
+  app.adoptMarkdownStyle("|x|y|\n|-|-|\n|1|2|\n");
+  check("after a compact document is opened, an edited table is written compact",
+    turndownTable([["a", "b"], ["1", "22"]]) === "\n\n|a|b|\n|:-|-:|\n|1|22|\n\n");
+  app.adoptMarkdownStyle("| x   |   y |\n| --- | --: |\n| 1   |   2 |\n");
+  check("and after a padded one, padded to width",
+    turndownTable([["a", "b"], ["1", "22"]]) === "\n\n| a   |   b |\n| :-- | --: |\n| 1   |  22 |\n\n");
+  // An empty cell reaches the cell rule like any other -- measured against the
+  // Turndown 7.1.2 the app loads, which counts a blank <td> as meaningful.
+  app.adoptMarkdownStyle("");
+  const td = app.rules.tableCell.replacement;
+  const tr = app.rules.tableRow.replacement;
+  check("an empty cell is written as one",
+    app.rules.table.replacement(tr(td("a") + td("b"), row(head, null, ["", ""])) +
+      tr(td("") + td("2"), row(body, null, [null, null]))) === "\n\n| a | b |\n| --- | --- |\n| | 2 |\n\n");
+  // markdown has nowhere for a <caption>, and dropping its text loses words.
+  check("a caption's text is kept, ahead of the table",
+    app.rules.table.replacement("Readings" + tr(td("a"), row(head, null, [""])) + tr(td("1"), row(body, null, [null]))) ===
+      "\n\nReadings\n\n| a |\n| --- |\n| 1 |\n\n");
 }
 
 // A reference link and an inline link resolve to the identical

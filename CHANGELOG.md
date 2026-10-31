@@ -9900,7 +9900,7 @@ Firefox hand run of `tests/fixtures/format-check.md`'s new section passed in
 full on 2026-10-30, the menu checks included. The service worker's version is
 bumped, since the shell changed.
 
-## 2026-10-30 — Insert → Image…, under the model core
+## 2026-10-30 — `3556476` — Insert → Image…, under the model core
 
 Stage 3's slice 2 of the rewrite, and TODO 1.1.7. Under the model core, Insert
 → Image… opens one dialog with three fields: the address, the description and
@@ -9952,3 +9952,86 @@ the file. `image.spec.mjs` checks that an image shares the line of the text
 beside it, and fails under the old rule. The service worker's version is
 bumped, since the shell changed.
 
+## 2026-10-31 — An edited table keeps the way its document writes tables
+
+Stage 3's slice 3 of the rewrite, and TODO 2.1, which it closes for the running
+editor. An untouched table already restored its own bytes. An edited one came
+back in the table rule's one house style, `| a | b |` over a three-dash rule,
+whatever the file had used. A compact table lost its compactness, and a table
+padded to width lost its padding the moment one cell changed. Restoring bytes
+cannot fix that: when a cell in a padded table grows, every other cell in its
+column has to grow with it. So an edited table is now laid out again from its
+cells, in the convention its document's tables keep to.
+
+`formatMarkdownTable` in `markdown-style.js` is the layout: rows of cell
+sources, one alignment per column and a convention in, the table's text out. A
+convention is what varies between the ways people write a pipe table:
+- the pipe at each end of a row;
+- the cell padding, and the delimiter row's own;
+- whether columns are padded to width, and if so, whether content is set right
+  or centred by its column's alignment, and how narrow a column may be;
+- how the delimiter's dashes are counted.
+
+Alignment is kept. The cells it is handed are markdown as it goes in the file,
+so a pipe in one arrives escaped and the formatter escapes nothing itself.
+Widths are counted in code points, so an editor that counts an East Asian wide character as two pads such
+a table differently. That is stated rather than solved. An empty cell in a table
+not padded to width is written `| |`, which is how the oracle's own document
+writes one. In a table without edge pipes, a row whose first cell is empty keeps
+a leading pipe, since without one GFM would read the pipe after the empty cell as
+the row's edge, and every cell would move left a column.
+
+`sniffTableConvention` reads a table's convention by reproduction rather than
+by inspecting its padding. Every candidate convention lays the table's own cells
+out again, and the first that gives back its lines exactly is the answer. So
+"keeps to a convention" means precisely that the formatter can write the table,
+and a hand-padded table nothing reproduces is `null` rather than the nearest
+guess. `sniffMarkdownStyle` takes the commonest convention among a document's
+tables, through a quote's `>` and an item's indent and never inside a fence. It
+reads them from lines with their code spans intact, unlike the rest of the sniff,
+since a cell holding one would otherwise lose its width and its table its vote.
+An indented code block that holds a table still votes, because telling one from
+a table in a list item needs the parser. It
+is per document because Turndown sees the DOM and cannot tell one table's source
+from another's. A file whose tables disagree has its minority's edited tables
+written the majority's way, the same compromise the emphasis delimiter makes. A
+document with no table that keeps to a convention gets exactly what the rule
+wrote before.
+
+Turndown's cell and row rules now hand their pieces up to the `table` rule,
+which lays the table out once every row is in. It has to be that way round: a
+cell cannot know its width until it has seen the whole column. The pieces are
+marked with U+0000, which the HTML parser replaces wherever it meets one, so no
+cell's own text can carry a marker. A `<caption>`, which markdown has no place
+for, keeps its text as a paragraph ahead of the table, as it did before.
+
+The review before the commit found four bugs, all fixed with a check each that
+fails without the fix: the pipeless row above, tables with code spans not
+voting, an escaped backslash before the edge pipe misreading the row's edges,
+and the caption's text being dropped. It also caught a claim that was wrong.
+A Turndown `blankReplacement` had been added for empty cells, on the belief
+that Turndown sent an empty `<td>` to its blank rule and split the row. Measured
+against the Turndown 7.1.2 the app loads, it does not: an empty cell reaches
+the cell rule like any other, and the old rule wrote it correctly. The option
+is gone, and there was no older bug.
+
+The model's half, writing an edited cell from the model, is slice 4's, as
+planned. Tested by machine:
+- In the `model` suite, every table in the oracle that keeps to a convention is
+  re-emitted byte for byte from the parser's own cells, never from this code's
+  splitting. The label names the one that keeps to none, `torture.md`'s
+  deliberately hand-padded table. `torture.md` gained three tables, compact,
+  padded with right-set numbers, and without edge pipes, because the oracle
+  held only one-space tables. That check found three tables the first sniff
+  could not read: an empty cell written `| |`, a padded table with a one-letter
+  column, and a table inside a quote. All three read now.
+- The `save-fidelity` suite drives the formatter's decisions one at a time, the
+  document sniff, and Turndown's rules the way Turndown calls them.
+- Through the real Turndown in a browser, on the old core, a compact and a
+  padded table each came back byte for byte untouched. Each kept its convention
+  with one cell grown, and each kept the cell when it was emptied, including a
+  pipeless table's first cell, which reads back as an empty cell.
+
+No hand run is owed for this slice: the save path does nothing a person can see
+that the browser check above did not. The service worker's version is bumped,
+since the shell changed.

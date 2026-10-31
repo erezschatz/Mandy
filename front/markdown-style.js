@@ -48,12 +48,19 @@ const MARKDOWN_STYLE_DEFAULTS = {
   // 0 means "leave paragraphs on one line" -- the file was not hard-wrapped, so
   // imposing a width would be its own kind of damage.
   wrapWidth: 0,
+  // How the source wrote its pipe tables: the commonest convention among the
+  // tables that keep to one (sniffTableConvention, below). null is the table
+  // rule's own default, TABLE_CONVENTION_DEFAULT, which is what it wrote before
+  // a convention was ever read.
+  table: null,
 };
 
 // Blank out anything that must not vote in a sniff: a fenced block full of
 // shell examples is not evidence about bullet markers, and `*not emphasis*`
 // inside a code span is not evidence about delimiters.
-function markdownStyleLines(markdown) {
+// `spans` false keeps code spans: a table's cells hold them, and blanking one
+// takes the cell's width -- and the table's vote -- with it.
+function markdownStyleLines(markdown, spans = true) {
   const lines = [];
   let fence = null;
   for (const line of (markdown || "").split("\n")) {
@@ -70,7 +77,7 @@ function markdownStyleLines(markdown) {
       lines.push("");
       continue;
     }
-    lines.push(line.replace(/`[^`\n]*`/g, ""));
+    lines.push(spans ? line.replace(/`[^`\n]*`/g, "") : line);
   }
   return lines;
 }
@@ -234,6 +241,20 @@ function sniffMarkdownStyle(markdown) {
   if (spaceBreaks || slashBreaks) {
     style.hardBreak = slashBreaks > spaceBreaks ? "\\" : "  ";
   }
+
+  // Per document, because Turndown sees the DOM and cannot tell one table's
+  // source from another's. A file whose tables disagree has the minority's
+  // edited tables written the majority's way, the same compromise the emphasis
+  // delimiter makes; an untouched table restores its own bytes regardless.
+  const tableConventions = {};
+  for (const table of markdownTables(markdownStyleLines(markdown, false))) {
+    const convention = sniffTableConvention(table);
+    if (!convention) continue;
+    const key = JSON.stringify(convention);
+    tableConventions[key] = (tableConventions[key] || 0) + 1;
+  }
+  const tableWinner = commonest(tableConventions, null);
+  style.table = tableWinner ? JSON.parse(tableWinner) : null;
 
   style.wrapWidth = sniffWrapWidth(lines);
   return style;
@@ -460,11 +481,230 @@ function isTableDelimiterRow(line) {
   return /^[\s|:-]*$/.test(line) && line.includes("|") && line.includes("-");
 }
 
+// ── The table formatter (TODO 2.1, 3.1's stage 3 slice 3) ────────────────────
+//
+// An edited table cannot have its bytes restored, because widening one cell of
+// a table padded to width moves every other cell in that column with it. So it
+// is laid out afresh, from its cells, in the convention its source used. A
+// convention is what varies between the ways people write a pipe table:
+//
+//   lead, trail  the pipe at each end of a row, which GFM makes optional
+//   pad          spaces either side of a cell's content, 0 or 1
+//   delimPad     the same for the delimiter row, which a compact writer and a
+//                padded one do not always agree with themselves about
+//   aligned      every cell of a column padded to the column's width
+//   justify      in an aligned table, content set right or centred by its
+//                column's alignment rather than always left
+//   minWidth     in an aligned table, the narrowest a column is padded to:
+//                Prettier's 3, or 1 where a one-letter column stays one wide
+//   delimiter    the dash run: { total } characters per delimiter cell colons
+//                included (`---`, `:--`), { dashes } between the colons
+//                (`:---:`), or { fill }, the column's width
+//
+// The default is what the Turndown rule wrote before this existed, so a
+// document with no table, or with none that keeps to a convention, saves its
+// tables exactly as it did.
+const TABLE_CONVENTION_DEFAULT = {
+  lead: true,
+  trail: true,
+  pad: 1,
+  delimPad: 1,
+  aligned: false,
+  justify: false,
+  delimiter: { total: 3 },
+};
+
+// Widths are counted in code points, so `é` is one and an emoji is one. An
+// editor that counts an East Asian wide character as two pads such a table
+// differently, and re-padding it here moves its columns. Accepted rather than
+// solved: there is no width every editor agrees on.
+function tableTextWidth(text) {
+  return Array.from(text).length;
+}
+
+// A row's cells as written, split on the pipes that are not escaped, with the
+// edge pipes taken off. The cells are untrimmed: padding is the evidence the
+// sniff reads. GFM splits on an unescaped pipe even inside a code span, which is
+// why this does not look for backticks.
+// The edge pipes are found by the same scan that splits, so `\\|` -- an escaped
+// backslash and then a real pipe -- ends a row like any other pipe.
+function splitTableRow(line) {
+  const cells = [];
+  let current = "";
+  let lastPipe = -1;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === "\\" && i + 1 < line.length) {
+      current += ch + line[++i];
+    } else if (ch === "|") {
+      cells.push(current);
+      current = "";
+      lastPipe = i;
+    } else {
+      current += ch;
+    }
+  }
+  cells.push(current);
+  const lead = /^\s*\|/.test(line);
+  const trail = lastPipe >= 0 && !line.slice(lastPipe + 1).trim() && !(lead && cells.length === 2);
+  if (lead) cells.shift();
+  if (trail) cells.pop();
+  return { cells, lead, trail };
+}
+
+// "left", "right", "center" or "" from one delimiter cell.
+function tableCellAlignment(cell) {
+  const rule = cell.trim();
+  const left = rule.startsWith(":");
+  const right = rule.endsWith(":") && rule.length > 1;
+  if (left && right) return "center";
+  if (right) return "right";
+  if (left) return "left";
+  return "";
+}
+
+function tableDelimiterCell(align, width, convention) {
+  const colons = (align === "left" || align === "right" ? 1 : 0) + (align === "center" ? 2 : 0);
+  const rule = convention.delimiter;
+  let dashes;
+  if (rule.dashes) dashes = rule.dashes;
+  else if (rule.total) dashes = rule.total - colons;
+  else dashes = width + 2 * (convention.pad - convention.delimPad) - colons;
+  dashes = Math.max(1, dashes);
+  const run = "-".repeat(dashes);
+  if (align === "center") return ":" + run + ":";
+  if (align === "left") return ":" + run;
+  if (align === "right") return run + ":";
+  return run;
+}
+
+// An empty cell takes one pad rather than two -- `| |`, which is how a
+// one-space table writes one, not `|  |`. In an aligned table no cell is empty,
+// since each is padded to its column.
+function tableRowText(cells, convention) {
+  const space = " ".repeat(convention.pad);
+  let text = cells.map((cell) => (cell === "" ? space : space + cell + space)).join("|");
+  // Without its leading pipe a row whose first cell is empty would start with
+  // the pipe after that cell, which GFM reads as a leading pipe -- the empty
+  // cell would vanish and every cell move left one column. So that row keeps
+  // its leading pipe, which is the one way to write it.
+  if (convention.lead || (cells.length && !cells[0].trim())) text = "|" + text;
+  else text = text.slice(convention.pad);
+  if (convention.trail) text += "|";
+  else text = text.replace(/\s+$/, "");
+  return text;
+}
+
+function justifyTableCell(text, width, align, justify) {
+  const gap = Math.max(0, width - tableTextWidth(text));
+  if (justify && align === "right") return " ".repeat(gap) + text;
+  if (justify && align === "center") {
+    const before = Math.floor(gap / 2);
+    return " ".repeat(before) + text + " ".repeat(gap - before);
+  }
+  return text + " ".repeat(gap);
+}
+
+// A table as text, from its rows of cell sources — header first — and one
+// alignment per column. The cells are markdown as it goes in the file, so a
+// pipe in one is already escaped; nothing here escapes anything. No trailing
+// newline. A row shorter than the header is written as short as it is: the
+// formatter lays out what it was given and invents no cells.
+function formatMarkdownTable(rows, aligns, convention = TABLE_CONVENTION_DEFAULT) {
+  const columns = Math.max(aligns.length, ...rows.map((row) => row.length));
+  const widths = [];
+  for (let c = 0; c < columns; c++) {
+    let width = convention.aligned ? (convention.minWidth || 3) : 0;
+    for (const row of rows) {
+      if (c < row.length) width = Math.max(width, tableTextWidth(row[c]));
+    }
+    widths.push(width);
+  }
+  const layout = (row) =>
+    row.map((cell, c) =>
+      convention.aligned ? justifyTableCell(cell, widths[c], aligns[c] || "", convention.justify) : cell
+    );
+  const delimiter = aligns.map((align, c) => tableDelimiterCell(align, widths[c], convention));
+  const delimiterConvention = Object.assign({}, convention, { pad: convention.delimPad });
+  const lines = [tableRowText(layout(rows[0] || []), convention), tableRowText(delimiter, delimiterConvention)];
+  for (const row of rows.slice(1)) lines.push(tableRowText(layout(row), convention));
+  return lines.join("\n");
+}
+
+// The convention a table's own lines keep to, or null for one that keeps to
+// none. Decided by reproduction rather than by reading the padding: every
+// candidate convention lays the table's own cells out again, and the first that
+// gives back the lines exactly is the answer. So "keeps to a convention" means
+// precisely that the formatter can write this table, and a table nothing
+// reproduces — hand-padded, one cell out of step — is null rather than the
+// nearest guess. Candidates run plainest first, so a one-space table whose
+// columns happen to line up is read as one-space rather than as aligned.
+function sniffTableConvention(lines) {
+  if (lines.length < 2 || !isTableDelimiterRow(lines[1])) return null;
+  const split = lines.map(splitTableRow);
+  const lead = split[0].lead;
+  const trail = split[0].trail;
+  if (split.some((row) => row.lead !== lead || row.trail !== trail)) return null;
+  const rows = split.filter((_, i) => i !== 1).map((row) => row.cells.map((cell) => cell.trim()));
+  const ruleCells = split[1].cells.map((cell) => cell.trim());
+  const aligns = ruleCells.map(tableCellAlignment);
+  const totals = new Set(ruleCells.map((cell) => cell.length));
+  const dashes = new Set(ruleCells.map((cell) => cell.replace(/:/g, "").length));
+  const delimiters = [];
+  if (totals.size === 1) delimiters.push({ total: [...totals][0] });
+  if (dashes.size === 1) delimiters.push({ dashes: [...dashes][0] });
+  delimiters.push({ fill: true });
+  const candidates = [];
+  for (const aligned of [false, true]) {
+    for (const justify of aligned ? [true, false] : [false]) {
+      for (const minWidth of aligned ? [3, 1] : [0]) {
+        for (const pad of [1, 0]) {
+          for (const delimPad of [pad, 1 - pad]) {
+            for (const delimiter of delimiters) {
+              if (delimiter.fill && !aligned) continue;
+              const convention = { lead, trail, pad, delimPad, aligned, justify, delimiter };
+              if (aligned) convention.minWidth = minWidth;
+              candidates.push(convention);
+            }
+          }
+        }
+      }
+    }
+  }
+  const want = lines.join("\n");
+  return candidates.find((convention) => formatMarkdownTable(rows, aligns, convention) === want) || null;
+}
+
+// The pipe tables in a document's lines, each as its own lines. A delimiter row
+// with a row holding a pipe above it starts one, and it runs until a blank line
+// or a line with no pipe. A table's indent and a quote's `>` chain are taken
+// off first: where a table sits is not how it is written.
+function tableLine(line) {
+  return line.replace(/^(\s*>)+ ?/, "").trim();
+}
+
+function markdownTables(lines) {
+  const tables = [];
+  for (let i = 1; i < lines.length; i++) {
+    const head = tableLine(lines[i - 1]);
+    const rule = tableLine(lines[i]);
+    if (!isTableDelimiterRow(rule) || !head.includes("|")) continue;
+    const table = [head, rule];
+    let j = i + 1;
+    while (j < lines.length && tableLine(lines[j]) && tableLine(lines[j]).includes("|")) {
+      table.push(tableLine(lines[j++]));
+    }
+    tables.push(table);
+    i = j;
+  }
+  return tables;
+}
+
 // A pipe table is the one construct whose spacing is not the author's to keep:
-// the `table` rule in app.js writes its own cell padding and its own three-dash
-// delimiter, so `|---|---|` and `| --- | --- |` are the same table and never the
-// same key. Normalising both sides to one shape is what lets a table the author
-// did not touch restore like every other block.
+// the `table` rule in app.js writes the document's commonest convention, not
+// each table's own, so `|---|---|` and `| --- | --- |` are the same table and
+// never the same key. Normalising both sides to one shape is what lets a table
+// the author did not touch restore like every other block.
 function normaliseTableRows(block) {
   const lines = block.split("\n");
   if (!lines.some(isTableDelimiterRow)) return block;

@@ -320,22 +320,31 @@ function isFirstTableRow(node) {
   return !section.previousElementSibling;
 }
 
+// The cell and row rules do not write the table: a cell's width is only known
+// once every row is in, so they hand their pieces up and the `table` rule lays
+// the whole thing out with formatMarkdownTable, in the document's sniffed
+// convention. The markers are U+0000, which the HTML parser replaces wherever it
+// meets one, so no cell's own text can contain one.
+const TABLE_CELL = "\u0000C";
+const TABLE_ROW = "\u0000R";
+const TABLE_ALIGN = "\u0000A";
+
 turndownService.addRule("tableCell", {
   filter: ["th", "td"],
   replacement: function (content) {
-    return " " + tableCellContent(content) + " |";
+    return TABLE_CELL + tableCellContent(content);
   },
 });
 
+// The first row carries the alignments too, read off its cells.
 turndownService.addRule("tableRow", {
   filter: "tr",
   replacement: function (content, node) {
-    const row = "|" + content;
-    if (!isFirstTableRow(node)) return "\n" + row;
-    const rule = Array.prototype.map
-      .call(node.children, (cell) => " " + tableColumnRule(cell) + " |")
-      .join("");
-    return "\n" + row + "\n|" + rule;
+    if (!isFirstTableRow(node)) return TABLE_ROW + content;
+    const aligns = Array.prototype.map
+      .call(node.children, (cell) => tableColumnRule(cell))
+      .join(" ");
+    return TABLE_ROW + TABLE_ALIGN + aligns + TABLE_ALIGN + content;
   },
 });
 
@@ -346,10 +355,30 @@ turndownService.addRule("tableSection", {
   },
 });
 
+// The rows reach here in document order, header first. A table whose header
+// carried no alignment marker -- markup from somewhere stranger than markdown-it
+// -- gets one plain column per header cell. Anything ahead of the first row is
+// a <caption>, which markdown has no place for, so its text goes before the
+// table as its own paragraph rather than being lost.
 turndownService.addRule("table", {
   filter: "table",
   replacement: function (content) {
-    return "\n\n" + content.trim() + "\n\n";
+    const split = content.split(TABLE_ROW);
+    const caption = split[0].trim();
+    const pieces = split.slice(1);
+    let aligns = null;
+    const rows = pieces.map((piece) => {
+      const marked = piece.match(/^\u0000A([^\u0000]*)\u0000A/);
+      if (marked) {
+        aligns = marked[1].split(" ").map(tableCellAlignment);
+        piece = piece.slice(marked[0].length);
+      }
+      return piece.split(TABLE_CELL).slice(1);
+    });
+    if (!rows.length) return caption ? "\n\n" + caption + "\n\n" : "";
+    if (!aligns) aligns = rows[0].map(() => "");
+    const lead = caption ? caption + "\n\n" : "";
+    return "\n\n" + lead + formatMarkdownTable(rows, aligns, markdownStyle.table || TABLE_CONVENTION_DEFAULT) + "\n\n";
   },
 });
 
