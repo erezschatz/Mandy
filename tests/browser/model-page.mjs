@@ -9,10 +9,19 @@ import { expect } from "@playwright/test";
 export const LINE_START = process.platform === "darwin" ? "Meta+ArrowLeft" : "Home";
 export const LINE_END = process.platform === "darwin" ? "Meta+ArrowRight" : "End";
 
+// Gecko reports a web font whose download was cancelled as a console error,
+// with status NS_BINDING_ABORTED (2152398850 = 0x804B0002), which is what a
+// navigation does to MathJax's and Source Serif's fonts still in flight. Blink
+// and WebKit say nothing. It is the page leaving, not anything failing, so this
+// one message is not a problem; a font that failed for any other reason still is.
+export const cancelledFont = (text) =>
+  /downloadable font: download failed/.test(text) && /status=2152398850\b/.test(text);
+
 export function useModelPage(test) {
 test.beforeEach(async ({ page }, testInfo) => {
   const problems = [];
   page.on("console", (msg) => {
+    if (cancelledFont(msg.text())) return;
     if (msg.type() === "error" || /render diverged/.test(msg.text())) problems.push(`${msg.type()}: ${msg.text()}`);
   });
   page.on("pageerror", (err) => problems.push(`pageerror: ${err.message}`));

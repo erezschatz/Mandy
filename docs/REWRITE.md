@@ -5489,8 +5489,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     slice 5 needs slice 4's cells. So 1, 2 and 3 can be built in any order,
     and 4 and 5 come after them in that order.
 *   **4. Reintegration — planned 2026-11-07; slice 1 done and tested
-    2026-11-07, by machine and by hand in Firefox; slice 2 done and tested
-    by machine 2026-11-07, its Firefox hand run owed. → MERGE TO `main`
+    2026-11-07, by machine and by hand in Firefox; slice 2 done and
+    tested by machine in three engines 2026-11-07, its Firefox hand run of
+    the files themselves owed. → MERGE TO `main`
     WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
@@ -5613,6 +5614,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             the plan's "stage 3 document": stage 3's hand pass was
             `format-check.md`'s sections, and its edited scratch copy was
             deleted when the stage closed.
+          - **That was a stale claim, not a failed attempt.** Nobody tried
+            Playwright's Firefox for this slice: the line came from TODO
+            6.8's record of 2026-10-21, the last time it is recorded failing,
+            and stage 3 had closed earlier the same day with it running 114
+            cases. Tried later on 2026-11-07, it launched as Firefox 157.0
+            and `open-edit-save.spec.mjs` passes in it.
 
     2.  **The exports read the model, behind the flag.** One helper hands the
         static export, PDF and DOCX a clone of the editor with every view
@@ -5676,12 +5683,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             `exports.spec.mjs` makes each export under the model core and
             checks no view attribute reaches any of them, then opens the
             editable export under both cores and re-exports it.
-          - **Hand, in Firefox** (Playwright's does not launch here): the
-            downloads themselves. Export a document holding an equation at a
-            line's edge to HTML, PDF, Word and Editable; open each; the
-            Editable one opened from disk, edited, and exported again.
-        - **Done and tested by machine 2026-11-07; the Firefox hand run is
-          owed.** Built as planned above, with one cost the plan did not
+          - **Hand, in Firefox**: the downloads themselves. Export a
+            document holding an equation at a line's edge to HTML, PDF, Word
+            and Editable; open each; the Editable one opened from disk,
+            edited, and exported again.
+        - **Done and tested by machine 2026-11-07, in all three engines;
+          the Firefox hand run of the files themselves is owed.** Built as planned above, with one cost the plan did not
           name: an Editable export holding markdown shows nothing when the
           markdown-it CDN cannot be reached, where one holding HTML still
           showed the document, uneditable.
@@ -5707,11 +5714,17 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             its `beforeunload` already wrote `content`, so nothing reads the
             wrong document; recorded because the boot used to touch no
             storage at load.
-          - **Owed, by hand in Firefox**, since Playwright's Firefox does
-            not launch here: the recipe above. It is what no machine check
-            reaches — the PDF and Word files themselves, opened, and an
-            Editable export opened from disk as a `file://` page rather than
-            served from the app's origin.
+          - **Playwright's Firefox runs it too**, later the same day, once
+            the stale "does not launch" above was checked rather than
+            repeated: all three tests pass. It needed one change to the
+            shared setup in `model-page.mjs`: Gecko logs a web font whose
+            download a navigation cancelled as a console error (status
+            NS_BINDING_ABORTED), which Blink and WebKit do not, so that one
+            message no longer fails a test.
+          - **Owed, by hand in Firefox**: the recipe above, for what no
+            machine check reaches — the PDF and Word files themselves,
+            opened, and an Editable export opened from disk as a `file://`
+            page rather than served from the app's origin.
 
     3.  **A tab parks its model, behind the flag.** The swap puts the
         outgoing document's model into its parked bundle beside its history,

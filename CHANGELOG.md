@@ -10332,7 +10332,7 @@ changed, with both break spellings kept. `format-check.md`, opened and saved
 untouched, came back byte-identical. It stood in for the plan's "stage 3
 document", whose edited scratch copy was deleted when that stage closed.
 
-## 2026-11-07 — The exports read the model, under the model core
+## 2026-11-07 — `f354829` — The exports read the model, under the model core
 
 Stage 4's slice 2 of TODO 3.1. Under `?core=model` the HTML, PDF and Word
 exports no longer carry the markup the editor adds for editing, and the
@@ -10382,3 +10382,23 @@ Firefox does not launch under Playwright here, so its hand run is owed: export
 a document holding an equation at a line's edge to HTML, PDF, Word and
 Editable, open each, then open the Editable one from disk, edit it and export
 it again.
+
+## 2026-11-07 — Playwright's Firefox runs stage 4's specs
+
+The two entries above say Playwright's Firefox does not launch on this
+machine. Nobody had tried it: the claim was copied from TODO 6.8's record of
+a failure on 2026-10-21, and Firefox had run all 114 browser cases when
+stage 3 closed earlier the same day. Tried, it launched as Firefox 157.0,
+and `open-edit-save.spec.mjs` and `exports.spec.mjs` both pass in it.
+docs/REWRITE.md and the 6.8 task file now say so.
+
+`exports.spec.mjs` needed one change in the shared setup,
+`tests/browser/model-page.mjs`. Navigating from the app to the exported copy
+cancels the web fonts still downloading, and Gecko logs each cancelled
+download as a console error, with status `NS_BINDING_ABORTED`. Blink and
+WebKit log nothing. The setup fails a test on any console error, so that one
+message is now ignored. A font that fails for any other reason still fails
+the test.
+
+Slice 2's hand run in Firefox is now only what no machine opens: the PDF and
+Word files, and the Editable export opened from disk.
