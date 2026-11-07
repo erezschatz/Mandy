@@ -663,6 +663,129 @@ function modelInputRule() {
 }
 
 /**
+ * Insert → Table, and the table controls in the Format menu. Stage 3's slice 5.
+ *
+ * Each runs on a fork of the document first and on the real one only if the
+ * fork was accepted, the way the lists' commands do: the model's table commands
+ * mutate as they go and ask the parser at the end, and a refusal must leave
+ * nothing behind. A refusal comes back as a sentence, which is the notice.
+ */
+function modelInputTableRun(doc, cell, run, inputType) {
+  const trial = modelForkDocument(doc);
+  const tried = run(trial, modelBlockById(trial, cell.id));
+  if (!tried || tried.refused) {
+    if (typeof notify === "function") notify(tried ? tried.refused : "That cannot be done there.", { severity: "info" });
+    return true;
+  }
+  const done = run(doc, cell);
+  if (!done || done.refused) return true;
+  modelPendingMarks = null;
+  modelRender(editor, doc, md, done.at);
+  modelInputAnnounce(inputType);
+  return true;
+}
+
+// What each control does to the cell the caret is in. `offset` is where the
+// caret was, for the one that does not move it.
+const MODEL_TABLE_OPS = {
+  "table-row-above": (d, cell) => modelTableInsertRow(d, cell, false, md),
+  "table-row-below": (d, cell) => modelTableInsertRow(d, cell, true, md),
+  "table-col-left": (d, cell) => modelTableInsertColumn(d, cell, false, md),
+  "table-col-right": (d, cell) => modelTableInsertColumn(d, cell, true, md),
+  "table-delete-row": (d, cell) => modelTableDeleteRow(d, cell, md),
+  "table-delete-column": (d, cell) => modelTableDeleteColumn(d, cell, md),
+  "table-delete": (d, cell) => modelTableDelete(d, modelTableOf(cell), md),
+};
+const MODEL_TABLE_ALIGNS = { "table-align-left": "left", "table-align-center": "center", "table-align-right": "right" };
+
+function modelInputTable(action) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at || at.block.kind !== "cell") {
+    if (typeof notify === "function") notify("Put the caret in a table first.", { severity: "info" });
+    return true;
+  }
+  if (action in MODEL_TABLE_ALIGNS) {
+    return modelInputTableRun(doc, at.block,
+      (d, cell) => modelTableAlign(d, cell, MODEL_TABLE_ALIGNS[action], md, at.offset), "formatTableAlign");
+  }
+  const op = MODEL_TABLE_OPS[action];
+  return op ? modelInputTableRun(doc, at.block, op, "formatTable") : false;
+}
+
+// Whether the caret is in a table, and which way its column is aligned: what
+// the menu disables and checks by when it opens.
+function modelInputTableState() {
+  const doc = modelCurrentDocument();
+  const at = doc ? modelReadSelection(editor, doc) : null;
+  if (!at || at.block.kind !== "cell") return null;
+  return { align: modelTableAlignment(at.block) };
+}
+
+function modelInputInsertTable() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at || !at.block.inlines) return true;
+  if (modelInputCellRefusal(doc, at)) return true;
+  const ok = modelInputGuarded((d) => {
+    const block = modelBlockById(d, at.block.id);
+    const made = block && modelInsertTable(d, block, at.offset, md);
+    return made && { block: made.table, at: made.at };
+  }, "insertFromPaste");
+  if (!ok && typeof notify === "function") notify("A table cannot go there.", { severity: "info" });
+  return true;
+}
+
+/**
+ * Tab, Shift+Tab and Enter in a cell. The cell they arrive in selects its
+ * content, so typing replaces it, which is what a cell is in every editor
+ * people come from. Tab goes along the cells in reading order and Enter goes
+ * down the column; at the end of the table, Tab adds a row and so does Enter on
+ * the last row. Shift+Tab at the first cell does nothing. A selection across
+ * cells does nothing: there is no one place it means to go.
+ */
+function modelInputTableSelect(cell) {
+  const length = modelInlineText(cell.inlines || []).length;
+  return length ? { block: cell, offset: 0, to: { block: cell, offset: length } } : { block: cell, offset: 0 };
+}
+
+function modelInputTableMove(key, backward) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at || at.block.kind !== "cell") return false;
+  if (at.to && at.to.block !== at.block) return true;
+  const cell = at.block;
+  const next = (from) => (key === "tab" ? modelTableCellBeside(from, backward ? -1 : 1) : modelTableCellBelow(from));
+  const target = next(cell);
+  if (target) {
+    modelApplySelection(editor, modelInputTableSelect(target));
+    return true;
+  }
+  if (backward) return true;
+  return modelInputTableRun(doc, cell, (d, from) => {
+    const added = modelTableInsertRow(d, from, true, md);
+    if (!added || added.refused) return added;
+    const landed = next(from);
+    return { at: landed ? modelInputTableSelect(landed) : added.at };
+  }, "formatTable");
+}
+
+// Backspace at the start of the paragraph after a table goes into the table's
+// last cell instead of merging: cells never merge, and a paragraph cannot go
+// into one. Nothing is deleted.
+function modelInputAfterTable(doc) {
+  const at = modelReadSelection(editor, doc);
+  if (!at || at.to || at.offset !== 0 || at.block.kind === "cell") return false;
+  const before = modelLeafBeside(doc, at.block, -1);
+  if (!before || before.kind !== "cell") return false;
+  modelApplySelection(editor, { block: before, offset: modelInlineText(before.inlines || []).length });
+  return true;
+}
+
+/**
  * Insert → Table of contents: `markdown`, which outline.js builds from its own
  * nested list, goes in after the caret's top-level block, or at the start of
  * the document when the caret is not in it.
@@ -1029,8 +1152,8 @@ function modelInputEmptyItem(doc, backspace) {
   return modelInputRestructure(doc, landed, backspace ? "deleteContentBackward" : "insertParagraph");
 }
 
-// A cell holds one line, so Enter and Shift+Enter there do nothing until
-// stage 3's slice 5 gives Enter its meaning, which is moving down a row.
+// A cell holds one line, so Shift+Enter there does nothing, and Enter moves
+// down a row (modelInputTableMove).
 function modelInputInCell(span) {
   return !!span && (span.from.block.kind === "cell" || span.to.block.kind === "cell");
 }
@@ -1045,7 +1168,10 @@ function modelInputInCell(span) {
  */
 function modelInputParagraph(doc, span) {
   if (!span) return false;
-  if (modelInputInCell(span)) return true;
+  if (modelInputInCell(span)) {
+    if (performance.now() - modelEnterShifted < 200) return true;
+    return modelInputTableMove("enter", false) || true;
+  }
   const target = modelInputRetarget(doc, span);
 
   let block = target.from.block;
@@ -1144,7 +1270,14 @@ function modelIndentAtCaret(outdent) {
 let modelKeyFormatted = null;
 const MODEL_FORMAT_KEYS = { b: "strong", i: "em" };
 
+// When a Shift+Enter keydown last arrived, or 0 after a plain Enter. WebKit
+// reports Shift+Enter in a table cell as `insertParagraph` — measured
+// 2026-11-01, where Chromium sends `insertLineBreak` — so without this a cell's
+// Enter rule would take Shift+Enter for Enter and move down a row.
+let modelEnterShifted = 0;
+
 function modelInputKeydown(event) {
+  if (event.key === "Enter") modelEnterShifted = event.shiftKey ? performance.now() : 0;
   // Ctrl/Cmd+B and Ctrl/Cmd+I, slice 7's step 8 and TODO 1.7 for the model
   // core. Matched on a lowercased `key`, CLAUDE.md's rule, so Caps Lock does not
   // hand the key back to the browser. `preventDefault` takes it from the
@@ -1174,10 +1307,11 @@ function modelInputKeydown(event) {
   const doc = modelCurrentDocument();
   if (!doc) return;
   const at = modelReadSelection(editor, doc);
-  // Taken in a cell and does nothing, until stage 3's slice 5 moves between
-  // cells with it: left to the engine, Tab would take focus out of the editor.
+  // Taken in a cell and moves between cells: left to the engine, Tab would
+  // take focus out of the editor.
   if (at && at.block.kind === "cell") {
     event.preventDefault();
+    modelInputTableMove("tab", event.shiftKey === true);
     return;
   }
   if (!at || !modelItemAncestor(at.block)) return;
@@ -1285,6 +1419,7 @@ function modelInputBeforeInput(event) {
   if (MODEL_INPUT_DELETE_TYPES.has(event.inputType)) {
     if (modelInputEmptyItem(doc, true)) return;
     if (event.inputType === "deleteContentBackward" && modelInputQuoteKey(doc, true)) return;
+    if (event.inputType === "deleteContentBackward" && modelInputAfterTable(doc)) return;
     modelInputWrite(doc, modelInputSpan(event, doc), "", event.inputType);
     return;
   }

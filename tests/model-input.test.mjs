@@ -28,6 +28,7 @@ export default async function run(check) {
     domText = "abX", blockText = "ab", spans = [], reveal = null, collapsed = false,
     quote = null, quoteToggle = { block: {} }, settle = true,
     image = null, dialog = null, imageSet = { from: 0, to: 1 },
+    below = null, tableResult = { at: { block: {}, offset: 0 } }, inserted = { table: {}, at: { block: {}, offset: 0 } },
   } = {}) => {
     const calls = {
       splice: [], rerender: [], render: [], announced: [], sourceSplice: [],
@@ -36,6 +37,7 @@ export default async function run(check) {
       cut: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
       history: [], refused: [], joined: 0, converted: [], revealed: [], toasts: [],
       toggled: [], quoteKey: [], quoteToggled: [], asked: [], imaged: [], cellBlocks: [], headings: [],
+      applied: [], tableOps: [],
     };
     // What a case can move between events: the document an undo would swap in,
     // and where the caret is.
@@ -167,6 +169,28 @@ export default async function run(check) {
           calls.cellBlocks.push(blocks);
           return [{ kind: "paragraph", inlines: [], flattened: true }];
         },
+        // Stage 3's slice 5. Reading order and the column are the model
+        // suite's; here a case says what is below, and every command only
+        // records itself, so what is asserted is which one a control reaches.
+        modelTableCellBeside: (c, step) => {
+          const cells = ((state.doc && state.doc.blocks) || []).filter((b) => b.kind === "cell");
+          return cells[cells.indexOf(c) + step] || null;
+        },
+        modelTableCellBelow: () => below,
+        modelApplySelection: (root, selection) => { calls.applied.push(selection); return true; },
+        modelLeafBeside: (d, b, step) => {
+          const flat = (d.blocks || []).filter((x) => !x.children);
+          return flat[flat.indexOf(b) + step] || null;
+        },
+        modelTableOf: (c) => c.parent && c.parent.parent,
+        modelTableAlignment: () => "left",
+        modelTableInsertRow: (d, c, down) => { calls.tableOps.push(down ? "row-below" : "row-above"); return tableResult; },
+        modelTableInsertColumn: (d, c, right) => { calls.tableOps.push(right ? "col-right" : "col-left"); return tableResult; },
+        modelTableDeleteRow: () => { calls.tableOps.push("delete-row"); return tableResult; },
+        modelTableDeleteColumn: () => { calls.tableOps.push("delete-column"); return tableResult; },
+        modelTableDelete: () => { calls.tableOps.push("delete"); return tableResult; },
+        modelTableAlign: (d, c, align, parser, offset) => { calls.tableOps.push(`align-${align}@${offset}`); return tableResult; },
+        modelInsertTable: (d, b, offset) => { calls.tableOps.push(`insert@${offset}`); return inserted; },
         modelSetHeading: (d, b, level) => { calls.headings.push({ block: b, level }); return true; },
         modelMathReveal: (b, offset, backward) => {
           calls.revealed.push({ offset, backward });
@@ -211,7 +235,7 @@ export default async function run(check) {
         " modelInputKeydown, modelIndentAtCaret, modelInputPasteEvent," +
         " modelInputDrop, modelInputDragStart, modelInputDragOver," +
         " modelPastePlain, modelPasteMarkdown, modelInputSelectionMath, modelInputQuote, modelInputImage," +
-        " modelInputBlockFormat, modelInputPaste };",
+        " modelInputBlockFormat, modelInputPaste, modelInputTable, modelInputTableState, modelInputInsertTable };",
     );
     return { api, calls, editor, block, state };
   };
@@ -1228,14 +1252,13 @@ export default async function run(check) {
     check("typing over a selection across cells is refused", r.calls.splice.length === 0 && r.calls.render.length === 0);
   }
 
-  for (const type of ["insertParagraph", "insertLineBreak"]) {
+  {
     const { cells, doc } = tableOf();
     const r = rig({ doc, at: here(cells[1], 1), range: [here(cells[1], 1), here(cells[1], 1)] });
-    const e = event(type, { targets: [{ startContainer: 1, startOffset: 1, endContainer: 1, endOffset: 1 }] });
+    const e = event("insertLineBreak", { targets: [{ startContainer: 1, startOffset: 1, endContainer: 1, endOffset: 1 }] });
     r.api.modelInputBeforeInput(e);
-    check(`${type} in a cell does nothing until slice 5 gives it a meaning`,
-      r.calls.split.length === 0 && r.calls.broke.length === 0 && r.calls.render.length === 0 &&
-        r.calls.emptyItem.length === 0 && r.calls.quoteKey.length === 0 && e.prevented === 1);
+    check("Shift+Enter in a cell still does nothing",
+      r.calls.broke.length === 0 && r.calls.render.length === 0 && r.calls.applied.length === 0 && e.prevented === 1);
   }
 
   {
@@ -1249,12 +1272,127 @@ export default async function run(check) {
   }
 
   {
+    // WebKit reports Shift+Enter in a cell as insertParagraph, so the keydown
+    // before it is what says which key it was.
     const { cells, doc } = tableOf();
-    const r = rig({ doc, at: here(cells[1], 1), item: { kind: "item" } });
-    const e = { key: "Tab", prevented: 0, preventDefault() { this.prevented += 1; } };
+    const r = rig({ doc, at: here(cells[0], 1), below: cells[2], range: [here(cells[0], 1), here(cells[0], 1)] });
+    r.api.modelInputKeydown({ key: "Enter", shiftKey: true, preventDefault() {} });
+    const e = event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 1, endContainer: 1, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check("an insertParagraph straight after a Shift+Enter keydown in a cell is Shift+Enter, and does nothing",
+      e.prevented === 1 && r.calls.applied.length === 0 && r.calls.render.length === 0);
+  }
+
+  // ── Stage 3's slice 5: moving through a table, and its controls ──────────
+  const selects = (r) => r.calls.applied.map((a) => `${a.block.id}:${a.offset}${a.to ? "-" + a.to.offset : ""}`).join(" ");
+  const key = (r, k, shift = false) => {
+    const e = { key: k, shiftKey: shift, prevented: 0, preventDefault() { this.prevented += 1; } };
     r.api.modelInputKeydown(e);
-    check("Tab in a cell is taken from the engine and does nothing, even inside a list item",
-      e.prevented === 1 && r.calls.moved.length === 0);
+    return e;
+  };
+  const enter = (r, cell) => {
+    const e = event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 1, endContainer: 1, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    return e;
+  };
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[0], 1), item: { kind: "item" }, range: [here(cells[0], 1), here(cells[0], 1)] });
+    const e = key(r, "Tab");
+    check("Tab in a cell is taken from the engine and selects the next cell's content, even inside a list item",
+      e.prevented === 1 && selects(r) === "61:0-3" && r.calls.moved.length === 0 && r.calls.render.length === 0);
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[1], 1) });
+    key(r, "Tab", true);
+    check("Shift+Tab goes back a cell", selects(r) === "60:0-3");
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[0], 0) });
+    const e = key(r, "Tab", true);
+    check("and at the first cell does nothing, with the key still taken",
+      e.prevented === 1 && r.calls.applied.length === 0 && r.calls.tableOps.length === 0);
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[2], 1), below: null });
+    const e = key(r, "Tab");
+    check("Tab on the last cell adds a row, below, and selects where it comes to",
+      e.prevented === 1 && r.calls.tableOps.join() === "row-below,row-below" && r.calls.render.length === 1);
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[0], 1), range: [here(cells[0], 1), here(cells[0], 1)] });
+    const empty = { id: 90, kind: "cell", parent: cells[0].parent, inlines: [] };
+    const e = enter(rig({ doc, at: here(cells[0], 1), below: empty, range: [here(cells[0], 1), here(cells[0], 1)] }), cells[0]);
+    const down = rig({ doc, at: here(cells[0], 1), below: empty, range: [here(cells[0], 1), here(cells[0], 1)] });
+    const ev = enter(down, cells[0]);
+    check("Enter in a cell moves down a row, to a caret when the cell below is empty",
+      ev.prevented === 1 && selects(down) === "90:0" && down.calls.split.length === 0 && down.calls.render.length === 0);
+    const last = rig({ doc, at: here(cells[0], 1), below: null, range: [here(cells[0], 1), here(cells[0], 1)] });
+    enter(last, cells[0]);
+    check("and on the last row adds one first", last.calls.tableOps.join() === "row-below,row-below" && last.calls.render.length === 1);
+    check("without splitting anything", r.calls.split.length === 0 && last.calls.split.length === 0);
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: { block: cells[0], offset: 1, to: { block: cells[1], offset: 1 } }, below: cells[2],
+      range: [here(cells[0], 1), here(cells[1], 1)] });
+    const e = enter(r, cells[0]);
+    check("with a selection across cells, Enter and Tab do nothing",
+      e.prevented === 1 && r.calls.applied.length === 0 && (key(r, "Tab"), r.calls.applied.length === 0));
+  }
+  {
+    // Backspace at the start of the paragraph after a table.
+    const { cells, doc } = tableOf();
+    const after = { id: 70, kind: "paragraph", inlines: [] };
+    const full = { blocks: [...doc.blocks, after] };
+    const r = rig({ doc: full, at: here(after, 0), range: [here(cells[2], 3), here(after, 0)] });
+    const e = event("deleteContentBackward", { targets: [span] });
+    r.api.modelInputBeforeInput(e);
+    check("Backspace at the start of the paragraph after a table puts the caret at the end of the last cell",
+      e.prevented === 1 && selects(r) === "62:3" && r.calls.splice.length === 0 && r.calls.merged.length === 0 && r.calls.render.length === 0);
+    const mid = rig({ doc: full, at: here(after, 2), range: [here(after, 1), here(after, 2)] });
+    mid.api.modelInputBeforeInput(event("deleteContentBackward", { targets: [span] }));
+    check("while Backspace later in that paragraph is an ordinary deletion", mid.calls.applied.length === 0 && mid.calls.splice.length === 1);
+  }
+  for (const [action, ops] of [
+    ["table-row-above", "row-above,row-above"], ["table-row-below", "row-below,row-below"],
+    ["table-col-left", "col-left,col-left"], ["table-col-right", "col-right,col-right"],
+    ["table-delete-row", "delete-row,delete-row"], ["table-delete-column", "delete-column,delete-column"],
+    ["table-delete", "delete,delete"], ["table-align-center", "align-center@2,align-center@2"],
+  ]) {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[1], 2) });
+    r.api.modelInputTable(action);
+    check(`${action} reaches its command, on a fork first, and renders once`,
+      r.calls.tableOps.join() === ops && r.calls.render.length === 1 && r.calls.announced.length === 1);
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[1], 2), tableResult: { refused: "No header." } });
+    r.api.modelInputTable("table-delete-row");
+    check("a refusal is said and nothing is done for real",
+      r.calls.tableOps.length === 1 && r.calls.toasts.join() === "No header." && r.calls.render.length === 0);
+    const outside = rig({ doc, at: here({ id: 80, kind: "paragraph", inlines: [] }, 0) });
+    outside.api.modelInputTable("table-delete-row");
+    check("and a control used outside a table says so", outside.calls.tableOps.length === 0 && outside.calls.toasts.length === 1);
+    check("the menu's state is the caret's column, or null outside a table",
+      rig({ doc, at: here(cells[1], 0) }).api.modelInputTableState().align === "left" &&
+        outside.api.modelInputTableState() === null);
+  }
+  {
+    const paragraph = { id: 80, kind: "paragraph", inlines: [] };
+    const r = rig({ doc: { blocks: [paragraph] }, at: here(paragraph, 3) });
+    r.api.modelInputInsertTable();
+    check("Insert → Table puts the table in at the caret and renders", r.calls.tableOps.join() === "insert@3,insert@3" && r.calls.render.length === 1);
+    const { cells, doc } = tableOf();
+    const inCell = rig({ doc, at: here(cells[0], 1) });
+    inCell.api.modelInputInsertTable();
+    check("and is refused inside a cell, where a cell holds one line", inCell.calls.tableOps.length === 0 && inCell.calls.toasts.length === 1);
   }
 
   {

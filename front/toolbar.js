@@ -92,6 +92,10 @@ const TOOLBAR_MENUS = [
     // Stage 3's slice 2, model core only. No check, unlike the formats: an
     // image is an atom, so the caret is never inside one to report.
     { action: "insert-image", label: "Image\u2026", variants: ALL },
+    // Stage 3's slice 5, model core only: three columns, a header and two body
+    // rows. The rest of a table's structure is in Format, where the caret's
+    // table is what the controls act on.
+    { action: "insert-table", label: "Table", variants: ALL },
     { id: "tocInsertBtn", action: "insert-toc", label: "Table of contents", variants: ALL },
     { action: "insert-hr", label: "Horizontal rule", variants: ALL },
     { separator: true, variants: ALL },
@@ -144,6 +148,21 @@ const TOOLBAR_MENUS = [
     // — these call app.js's indent/outdent handlers directly, same as Tab does.
     { action: "indent-list-item", label: "Indent list item", shortcut: "Tab", variants: ALL },
     { action: "outdent-list-item", label: "Outdent list item", shortcut: "Shift+Tab", variants: ALL },
+    { separator: true, variants: ALL },
+    // Stage 3's slice 5, model core only. Disabled unless the caret is in a
+    // table — format-bar.js does that when the menu opens, along with the
+    // alignment checks, which show the caret's column. Tab and Enter move
+    // between cells and add the next row, so neither is listed as a shortcut.
+    { action: "table-row-above", label: "Table row above", variants: ALL },
+    { action: "table-row-below", label: "Table row below", variants: ALL },
+    { action: "table-col-left", label: "Table column left", variants: ALL },
+    { action: "table-col-right", label: "Table column right", variants: ALL },
+    { action: "table-delete-row", label: "Delete table row", variants: ALL },
+    { action: "table-delete-column", label: "Delete table column", variants: ALL },
+    { action: "table-delete", label: "Delete table", variants: ALL },
+    { action: "table-align-left", label: "Align column left", checkable: true, variants: ALL },
+    { action: "table-align-center", label: "Align column centre", checkable: true, variants: ALL },
+    { action: "table-align-right", label: "Align column right", checkable: true, variants: ALL },
   ] },
 
   { id: "viewMenu", label: "View", variants: ALL, items: [

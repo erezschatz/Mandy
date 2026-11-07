@@ -97,6 +97,8 @@ export default function run(check) {
     modelToggleQuote, modelQuoteKey, modelBlockState,
     modelSetImage, modelImageAt, modelImageFields,
     sniffTableConvention, formatMarkdownTable, modelCellBlocks,
+    modelInsertTable, modelTableInsertRow, modelTableDeleteRow, modelTableInsertColumn, modelTableDeleteColumn,
+    modelTableAlign, modelTableAlignment, modelTableDelete, modelTableRows, modelTableCellBeside, modelTableCellBelow,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -129,7 +131,9 @@ export default function run(check) {
       " modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape," +
       " modelToggleQuote, modelQuoteKey, modelBlockState," +
       " modelSetImage, modelImageAt, modelImageFields," +
-      " sniffTableConvention, formatMarkdownTable, modelCellBlocks };",
+      " sniffTableConvention, formatMarkdownTable, modelCellBlocks," +
+      " modelInsertTable, modelTableInsertRow, modelTableDeleteRow, modelTableInsertColumn, modelTableDeleteColumn," +
+      " modelTableAlign, modelTableAlignment, modelTableDelete, modelTableRows, modelTableCellBeside, modelTableCellBelow };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -5036,4 +5040,263 @@ export default function run(check) {
         !!landed && modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc)) === "|a|b|\n|-|-|\n|1**x** y|2|\n");
     }
   }
+
+  // ── Stage 3's slice 5: table structure ────────────────────────────────────
+  //
+  // Rows, columns, alignment, deleting a table, and Insert → Table. Every
+  // command ends by parsing what it would write, so what is asserted here is
+  // the bytes it writes and what stays untouched around them.
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const cellsOf = (doc) => modelFlatten(doc).filter((b) => b.kind === "cell");
+    const run = (src, command) => {
+      const doc = parse(src);
+      const result = command(doc, cellsOf(doc));
+      return { doc, result, out: emitOf(doc) };
+    };
+    const SRC = "| a | b |\n| :-- | --: |\n| 1 | 2 |\n";
+
+    check("a row goes in below the caret's, aligned like the columns beside it",
+      run(SRC, (d, c) => modelTableInsertRow(d, c[2], true, md)).out === "| a | b |\n| :-- | --: |\n| 1 | 2 |\n| | |\n");
+    {
+      const { doc } = run(SRC, (d, c) => modelTableInsertRow(d, c[2], true, md));
+      const fresh = modelTableRows(modelFlatten(doc).find((b) => b.kind === "table"))[2].children;
+      check("and draws aligned too, since the alignment is on its cells' tokens",
+        fresh[0].align === "left" && /text-align:left/.test(fresh[0].tokens[0].attrGet("style")) &&
+          fresh[1].align === "right");
+    }
+    check("a row above puts it in front of the caret's",
+      run(SRC, (d, c) => modelTableInsertRow(d, c[2], false, md)).out === "| a | b |\n| :-- | --: |\n| | |\n| 1 | 2 |\n");
+    check("below the header it is the first body row",
+      run(SRC, (d, c) => modelTableInsertRow(d, c[0], true, md)).out === "| a | b |\n| :-- | --: |\n| | |\n| 1 | 2 |\n");
+    check("in a table with no body it makes the body",
+      run("| a | b |\n| --- | --- |\n", (d, c) => modelTableInsertRow(d, c[0], true, md)).out === "| a | b |\n| --- | --- |\n| | |\n");
+    {
+      const above = run(SRC, (d, c) => modelTableInsertRow(d, c[0], false, md));
+      check("nothing goes above the header, and the table is untouched by the asking",
+        !!above.result.refused && above.out === SRC);
+      const header = run(SRC, (d, c) => modelTableDeleteRow(d, c[0], md));
+      check("and the header row cannot be deleted", !!header.result.refused && header.out === SRC);
+    }
+    check("deleting a row takes it, and the last body row leaves a header-only table",
+      run(SRC, (d, c) => modelTableDeleteRow(d, c[2], md)).out === "| a | b |\n| :-- | --: |\n");
+    {
+      const { result } = run("|a|b|\n|-|-|\n|1|2|\n|3|4|\n", (d, c) => modelTableDeleteRow(d, c[2], md));
+      check("and the caret lands in the same column of the row that takes its place",
+        result.at.block.parent.children.indexOf(result.at.block) === 0 &&
+          modelInlineText(result.at.block.inlines) === "3");
+    }
+    check("a column goes in to the left or to the right, empty and unaligned",
+      run(SRC, (d, c) => modelTableInsertColumn(d, c[0], true, md)).out ===
+        "| a | | b |\n| :-- | --- | --: |\n| 1 | | 2 |\n" &&
+      run(SRC, (d, c) => modelTableInsertColumn(d, c[0], false, md)).out ===
+        "| | a | b |\n| --- | :-- | --: |\n| | 1 | 2 |\n");
+    check("deleting a column takes its cell from every row, alignment with it",
+      run(SRC, (d, c) => modelTableDeleteColumn(d, c[0], md)).out === "| b |\n| --: |\n| 2 |\n");
+    {
+      const { out, result } = run("before\n\n|a|\n|-|\n|1|\n\nafter\n", (d, c) => modelTableDeleteColumn(d, c[0], md));
+      check("the last column going takes the table, and an empty paragraph keeps its place",
+        out === "before\n\nafter\n" && result.at.block.kind === "paragraph" && result.at.block.inlines.length === 0);
+    }
+    check("deleting a table that is an item's only child leaves the item holding an empty paragraph",
+      (() => {
+        const doc = parse("- |a|b|\n  |-|-|\n  |1|2|\n- next\n");
+        modelTableDelete(doc, modelFlatten(doc).find((b) => b.kind === "table"), md);
+        return emitOf(doc) === "-\n- next\n" && modelFlatten(doc).filter((b) => b.kind === "item").length === 2;
+      })());
+    check("deleting the table does the same",
+      run("before\n\n|a|b|\n|-|-|\n|1|2|\n\nafter\n", (d, c) => modelTableDelete(d, d.blocks[1], md)).out === "before\n\nafter\n");
+    check("an alignment is set on the column, header and body",
+      run("|a|b|\n|-|-|\n|1|2|\n", (d, c) => modelTableAlign(d, c[1], "center", md)).out === "|a|b|\n|-|:-:|\n|1|2|\n");
+    check("and chosen again, it is taken off",
+      run(SRC, (d, c) => modelTableAlign(d, c[0], "left", md)).out === "| a | b |\n| --- | --: |\n| 1 | 2 |\n");
+    check("alignment is reported by the column's header cell, from any cell in it",
+      (() => { const d = parse(SRC); const c = cellsOf(d); return modelTableAlignment(c[2]) === "left" && modelTableAlignment(c[3]) === "right"; })());
+
+    check("a table padded to width is re-padded when a row or a column arrives",
+      run("| a   | b   |\n| --- | --- |\n| 1   | 2   |\n", (d, c) => modelTableInsertRow(d, c[2], true, md)).out ===
+        "| a   | b   |\n| --- | --- |\n| 1   | 2   |\n|     |     |\n" &&
+      run("| a   | b   |\n| --- | --- |\n| 1   | 2   |\n", (d, c) => modelTableInsertColumn(d, c[1], true, md)).out ===
+        "| a   | b   |     |\n| --- | --- | --- |\n| 1   | 2   |     |\n");
+    check("a hand-padded table, which keeps to no convention, is written whole in the default",
+      run("| a |  b |\n| --- | --- |\n|c| d |\n", (d, c) => modelTableInsertRow(d, c[2], true, md)).out ===
+        "| a | b |\n| --- | --- |\n| c | d |\n| | |\n");
+    check("and one edited in a cell afterwards is still written whole",
+      (() => {
+        const { doc } = run("| a |  b |\n| --- | --- |\n|c| d |\n", (d, c) => modelTableInsertRow(d, c[2], true, md));
+        const cell = cellsOf(doc)[0];
+        modelInlineSplice(cell, 1, 1, "x");
+        return emitOf(doc) === "| ax | b |\n| --- | --- |\n| c | d |\n| | |\n";
+      })());
+
+    // A row longer than its header has cells nobody was shown. Writing the table
+    // from the model would drop them from the file.
+    {
+      const long = "|a|b|\n|-|-|\n|1|2|3|\n";
+      for (const [name, command] of [
+        ["a row", (d, c) => modelTableInsertRow(d, c[2], true, md)],
+        ["a column", (d, c) => modelTableInsertColumn(d, c[0], true, md)],
+        ["a deletion", (d, c) => modelTableDeleteRow(d, c[2], md)],
+        ["an alignment", (d, c) => modelTableAlign(d, c[0], "left", md)],
+      ]) {
+        const { result, out } = run(long, command);
+        check(`${name} is refused in a table with a row longer than its header, and the file keeps its cell`,
+          !!result.refused && out === long);
+      }
+      check("while a short row is padded, which is only an improvement",
+        run("|a|b|\n|-|-|\n|1|\n", (d, c) => modelTableInsertColumn(d, c[0], true, md)).out ===
+          "| a | | b |\n| --- | --- | --- |\n| 1 | | |\n");
+    }
+
+    // Prefixes: a table in a quote or an item keeps its chain through a
+    // structural edit, and one put there takes the chain of where it landed.
+    check("a table in a quote keeps its `>` on every line when a row is added",
+      run("> |a|b|\n> |-|-|\n> |1|2|\n", (d, c) => modelTableInsertRow(d, c[2], true, md)).out ===
+        "> |a|b|\n> |-|-|\n> |1|2|\n> |||\n");
+    check("and in an item, the item's indent",
+      run("- item\n\n  |a|b|\n  |-|-|\n  |1|2|\n", (d, c) => modelTableInsertColumn(d, c[0], true, md)).out ===
+        "- item\n\n  |a||b|\n  |-|-|-|\n  |1||2|\n");
+    check("a table that opens its item keeps the marker on the first line",
+      run("- |a|b|\n  |-|-|\n  |1|2|\n", (d, c) => modelTableInsertRow(d, c[2], true, md)).out ===
+        "- |a|b|\n  |-|-|\n  |1|2|\n  |||\n");
+    check("a table pasted into a quote is written with the quote's `>`, which its recorded prefixes were not",
+      (() => {
+        const doc = parse("> before\n");
+        const block = modelFlatten(doc).find((b) => b.kind === "paragraph");
+        modelInsertBlocks(doc, block, 6, parse("|a|b|\n|-|-|\n|1|2|\n").blocks);
+        return emitOf(doc).split("\n").filter((line) => line.includes("|")).every((line) => line.startsWith(">"));
+      })());
+
+    // Insert → Table.
+    const insert = (src, offsetIn, which = -1) => {
+      const doc = parse(src);
+      modelEnsureBlock(doc, md);
+      const leaves = modelFlatten(doc).filter((b) => !b.children && b.inlines);
+      const leaf = leaves[which < 0 ? leaves.length + which : which];
+      const made = modelInsertTable(doc, leaf, offsetIn, md);
+      return { doc, made, out: emitOf(doc) };
+    };
+    check("Insert → Table in an empty document makes three columns, a header and two body rows",
+      insert("", 0).out === "| | | |\n| --- | --- | --- |\n| | | |\n| | | |");
+    {
+      const { made, doc } = insert("", 0);
+      check("with the caret in the first header cell, and a paragraph after it for the caret to leave by",
+        made.at.block === modelTableRows(made.table)[0].children[0] && made.at.offset === 0 &&
+          doc.blocks[doc.blocks.length - 1].kind === "paragraph");
+    }
+    check("at the end of a paragraph it goes after it with a blank line between",
+      insert("text\n", 4).out === "text\n\n| | | |\n| --- | --- | --- |\n| | | |\n| | | |\n");
+    check("in the middle it splits the paragraph, as a rule does",
+      insert("text here\n", 4).out === "text\n\n| | | |\n| --- | --- | --- |\n| | | |\n| | | |\n\nhere\n");
+    check("it takes an empty paragraph's place rather than leaving one either side",
+      (() => {
+        const doc = parse("one\n\ntwo\n");
+        const leaf = modelFlatten(doc).filter((b) => b.kind === "paragraph")[0];
+        modelInsertParagraph(doc, leaf, 3, md);
+        const empty = modelFlatten(doc).filter((b) => b.kind === "paragraph")[1];
+        modelInsertTable(doc, empty, 0, md);
+        return doc.blocks.length === 3 && doc.blocks[1].kind === "table" && emitOf(doc).startsWith("one\n\n| | | |");
+      })());
+    check("it is written the way the document's other tables are",
+      insert("| a   | b   |\n| --- | --- |\n| 1   | 2   |\n\ntext\n", 4).out.endsWith(
+        "text\n\n|     |     |     |\n| --- | --- | --- |\n|     |     |     |\n|     |     |     |\n"));
+    check("in a quote it is quoted, and in an item it is indented",
+      insert("> text\n", 4).out === "> text\n>\n> | | | |\n> | --- | --- | --- |\n> | | | |\n> | | | |\n" &&
+      insert("- item\n\n  more\n", 6).out.endsWith("  more\n\n  | | | |\n  | --- | --- | --- |\n  | | | |\n  | | | |\n"));
+    check("and is refused in a cell or in a block with no text",
+      (() => {
+        const doc = parse(SRC);
+        return modelInsertTable(doc, cellsOf(doc)[0], 0, md) === null;
+      })() && insert("```\ncode\n```\n", 0, 0).made === null);
+
+    // Reading order, for Tab and Enter.
+    {
+      const doc = parse("|a|b|\n|-|-|\n|1|2|\n");
+      const c = cellsOf(doc);
+      check("Tab's neighbour is the next cell in reading order, across rows, and null off either end",
+        modelTableCellBeside(c[1], 1) === c[2] && modelTableCellBeside(c[2], -1) === c[1] &&
+          modelTableCellBeside(c[3], 1) === null && modelTableCellBeside(c[0], -1) === null);
+      check("and Enter's is the cell below in the same column",
+        modelTableCellBelow(c[1]) === c[3] && modelTableCellBelow(c[3]) === null);
+    }
+
+    // Undo needs nothing but the barriers: a command run on a fork leaves the
+    // document it was forked from as it was, and a state forked before one still
+    // reads as it did after.
+    {
+      const doc = parse(SRC);
+      const state = modelForkDocument(doc);
+      modelTableInsertRow(doc, cellsOf(doc)[2], true, md);
+      modelTableAlign(doc, cellsOf(doc)[1], "center", md);
+      modelTableInsertColumn(doc, cellsOf(doc)[0], true, md);
+      check("a state taken before the commands still reads as it did",
+        emitOf(state) === SRC && emitOf(doc) !== SRC);
+      const fork = modelForkDocument(doc);
+      modelTableDeleteRow(fork, cellsOf(fork)[3], md);
+      check("and a command run on a fork leaves the document alone",
+        emitOf(doc).includes("| 1 |") && !emitOf(fork).includes("| 1 |"));
+    }
+  }
+
+  // Four of the commands on every table in the oracle: the file outside the
+  // table comes back untouched, and the grid is the one the command says. A
+  // command may refuse only a table with a row longer than its header, and the
+  // oracle holds none, so none is refused. (The alignment command's grid is the
+  // unchanged one, so its output is checked by the hand-written cases above.)
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const SENT = "☃TABLE☃";
+    const tablesOf = (doc) => modelFlatten(doc).filter((b) => b.kind === "table");
+    const gridOf = (table) => modelTableRows(table).map((row) => row.children.map((cell) => modelInlineText(cell.inlines)));
+    const commands = {
+      "row below": (d, cell) => modelTableInsertRow(d, cell, true, md),
+      "column right": (d, cell) => modelTableInsertColumn(d, cell, true, md),
+      "column left": (d, cell) => modelTableInsertColumn(d, cell, false, md),
+      "alignment": (d, cell) => modelTableAlign(d, cell, "center", md),
+    };
+    let done = 0;
+    let refused = 0;
+    const wrong = [];
+    for (const file of ORACLE_FILES) {
+      const doc = parse(repoFile(file));
+      tablesOf(doc).forEach((table, t) => {
+        const ragged = !!table.tableCells && table.tableCells.some((cells, i) => i !== 1 && cells.length > table.tableCells[0].length);
+        for (const [name, command] of Object.entries(commands)) {
+          const copy = modelForkDocument(doc);
+          const there = tablesOf(copy)[t];
+          const before = gridOf(there);
+          const cell = there.children.flatMap((s) => (s.children || [])).flatMap((r) => r.children || [])[0];
+          const where = `${file} table ${t} ${name}`;
+          const result = command(copy, cell);
+          if (result.refused) {
+            if (ragged) refused++;
+            else wrong.push(`${where}: refused unexpectedly (${result.refused})`);
+            continue;
+          }
+          const marked = modelSerialise(copy, () => SENT);
+          const at = marked.indexOf(SENT);
+          const head = marked.slice(0, at);
+          const tail = marked.slice(at + SENT.length);
+          const out = emitOf(copy);
+          if (!out.startsWith(head) || !out.endsWith(tail)) {
+            wrong.push(`${where}: bytes outside the table moved`);
+            continue;
+          }
+          const after = gridOf(tablesOf(copy)[t]);
+          const want = before.map((row) => row.slice());
+          if (name === "row below") want.splice(1, 0, row0(before));
+          if (name === "column right") want.forEach((row) => row.splice(1, 0, ""));
+          if (name === "column left") want.forEach((row) => row.unshift(""));
+          if (JSON.stringify(after) !== JSON.stringify(want)) wrong.push(`${where}: grid is ${JSON.stringify(after)}`);
+          done++;
+        }
+      });
+      function row0(grid) { return grid[0].map(() => ""); }
+    }
+    check(`every structural command on every table in the oracle, ${done} runs, leaves the file outside the table untouched` +
+      ` and builds the grid it says` + (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 4).join(" | ")}` : ""),
+      wrong.length === 0 && done > 40);
+    check("and none was refused, since no table in the oracle has a row longer than its header", refused === 0);
+  }
+
 }

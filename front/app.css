@@ -456,6 +456,12 @@
         left: -4px;
         z-index: 200;
         min-width: 244px;
+        /* The Format menu is taller than a short window since the table
+           controls joined it, and a panel hung off a sticky bar has no page to
+           scroll it by: its last items were unreachable. */
+        max-height: calc(100vh - var(--toolbar-height) - 16px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
         padding: 6px;
         border: 1px solid var(--rule);
         border-radius: 10px;

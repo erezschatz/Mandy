@@ -56,11 +56,11 @@ test("Backspace at a cell's start changes nothing", async ({ page }) => {
   expect(await markdown(page)).toBe(SOURCE);
 });
 
-test("Enter, Shift+Enter and Tab in a cell do nothing yet, and the caret stays put", async ({ page }) => {
+test("Shift+Enter in a cell does nothing, and the caret stays put", async ({ page }) => {
   await open(page, SOURCE);
   await cell(page, "1").click();
   await page.keyboard.press(LINE_END);
-  for (const key of ["Enter", "Shift+Enter", "Tab"]) await page.keyboard.press(key);
+  await page.keyboard.press("Shift+Enter");
   await page.keyboard.type("x");
   expect(await markdown(page)).toBe("Before.\n\n|a|b|\n|-|-|\n|1x|2|\n|3|4|\n\nAfter.\n");
 });

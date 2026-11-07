@@ -964,6 +964,30 @@ onToolbarAction("insert-image", async () => {
   }
 });
 
+// Insert → Table and the table controls in the Format menu, stage 3's slice 5.
+// Model commands only, for Insert → Image…'s reason: D4's amendment writes no
+// new format against contenteditable, so the old core says where it works.
+// The controls are disabled outside a table, so the notice is the legacy
+// core's, or a keyboard that got past the menu.
+function tableControl(run) {
+  if (modelOwnsInput() && typeof modelInputTable === "function") return void run();
+  if (typeof notify === "function") {
+    notify("Tables need the new editing core (?core=model).", { severity: "info" });
+  }
+}
+
+onToolbarAction("insert-table", () => tableControl(() => modelInputInsertTable()));
+onToolbarAction("table-row-above", () => tableControl(() => modelInputTable("table-row-above")));
+onToolbarAction("table-row-below", () => tableControl(() => modelInputTable("table-row-below")));
+onToolbarAction("table-col-left", () => tableControl(() => modelInputTable("table-col-left")));
+onToolbarAction("table-col-right", () => tableControl(() => modelInputTable("table-col-right")));
+onToolbarAction("table-delete-row", () => tableControl(() => modelInputTable("table-delete-row")));
+onToolbarAction("table-delete-column", () => tableControl(() => modelInputTable("table-delete-column")));
+onToolbarAction("table-delete", () => tableControl(() => modelInputTable("table-delete")));
+onToolbarAction("table-align-left", () => tableControl(() => modelInputTable("table-align-left")));
+onToolbarAction("table-align-center", () => tableControl(() => modelInputTable("table-align-center")));
+onToolbarAction("table-align-right", () => tableControl(() => modelInputTable("table-align-right")));
+
 onToolbarAction("paste-md", async () => {
   try {
     const clipboardText = await navigator.clipboard.readText();

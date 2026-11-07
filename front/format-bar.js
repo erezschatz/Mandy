@@ -350,6 +350,15 @@ onMenuOpen("formatMenu", (wrapper) => {
     const state = formatMenuState(format);
     item.setAttribute("aria-pressed", state === "all" ? "true" : state === "mixed" ? "mixed" : "false");
   }
+  // The table controls, stage 3's slice 5: live only with the caret in a table
+  // under the model core, and the alignment items check the caret's column.
+  const table = modelOwnsInput() && typeof modelInputTableState === "function" ? modelInputTableState() : null;
+  for (const item of wrapper.querySelectorAll('[data-action^="table-"]')) {
+    item.disabled = !table;
+    if (!item.hasAttribute("aria-pressed")) continue;
+    const align = item.getAttribute("data-action").replace("table-align-", "");
+    item.setAttribute("aria-pressed", table && table.align === align ? "true" : "false");
+  }
 });
 
 const BLOCK_TAGS = ["P", "H1", "H2", "H3", "LI", "PRE"];

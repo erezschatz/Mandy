@@ -350,7 +350,10 @@ function menuCase(build) {
       onMenuOpen: (id, handler) => { if (id === "formatMenu") opened = handler; },
     },
   );
-  opened({ querySelector: (sel) => items[(sel.match(/format-([a-z0-9]+)/) || [])[1]] || null });
+  opened({
+    querySelector: (sel) => items[(sel.match(/format-([a-z0-9]+)/) || [])[1]] || null,
+    querySelectorAll: () => [],
+  });
   return (format) => items[format].attrs["aria-pressed"];
 }
 

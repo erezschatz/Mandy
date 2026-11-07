@@ -11,15 +11,17 @@ one (step 10), bold, italic and strikethrough (step 3), inline code and links
 rule, the table of contents and Clear (step 7), the keys and the clipboard
 (step 8), and everything together (step 9). (It held diagrams
 too until Mermaid was removed on 2026-10-01.) Stage 3 adds to it from the end,
-one section per slice: the blockquote (slice 1), the image (slice 2), then
-table cells (slice 4; slice 3 changed only what a save writes).
+one section per slice: the blockquote (slice 1), the image (slice 2), table
+cells (slice 4; slice 3 changed only what a save writes), then table structure
+(slice 5).
 
 Chromium and WebKit run the last seven sections by machine
 (`tests/browser/equation-typing.spec.mjs`, `format-marks.spec.mjs`,
 `inline-code-links.spec.mjs`, `block-kinds.spec.mjs`, `lists.spec.mjs`,
 `insert-clear.spec.mjs` and `keys-clipboard.spec.mjs`), and the blockquote
 image and table-cell sections too (`blockquote.spec.mjs`, `image.spec.mjs`,
-`table-cells.spec.mjs`), so a hand run of those is Firefox's. Those three specs
+`table-cells.spec.mjs`), and the table-structure section too
+(`table-structure.spec.mjs`), so a hand run of those is Firefox's. Those four specs
 pass in Playwright's Firefox as well, but that is a pinned build rather than the
 one installed, so the hand run in Firefox stands.
 Safari's waits for stage 5.
@@ -545,8 +547,8 @@ of errors.*
 ## Table cells (stage 3, slice 4)
 
 A table's cells take the caret now, and an edit in one rewrites as little of
-the table as it can. Rows and columns cannot be added yet, and Enter and Tab do
-nothing in a cell, which is slice 5's. The first table is compact and the
+the table as it can. Rows and columns are slice 5's, in the next section. The
+first table is compact and the
 second padded to width, so the two ways a table is written back can both be
 seen.
 
@@ -582,8 +584,8 @@ After the tables.
    Backspace.** *What was selected goes from each cell, and both cells stay:
    no cell merges into another.* (Undo it.)
 4. **Put the caret at the start of a cell's text and press Backspace.**
-   *Nothing happens.* **Press Enter, then Shift+Enter, then Tab.** *Nothing
-   happens either, and the caret stays in the cell.*
+   *Nothing happens.* **Press Shift+Enter.** *Nothing happens either, and the
+   caret stays in the cell.* (Enter and Tab move between cells now: slice 5's.)
 5. **Select a word in a cell and press Ctrl/Cmd+B.** *It goes bold.* **With
    the caret in a cell, choose Format → Heading 2.** *A message says a table
    cell holds one line of text, and nothing changes.*
@@ -596,6 +598,133 @@ After the tables.
    its own table-editing controls, off by default since Firefox 64, and if
    they showed they would change the table behind the model's back. If they
    do appear, say so: that is the measurement this step exists for.
+
+Throughout, *the console stays free of `[model] render diverged` warnings and
+of errors.*
+
+## Table structure (stage 3, slice 5)
+
+**Only step 16 is a hand step.** The rest is covered by
+`table-structure.spec.mjs` and the `model` suite, and is kept as the written
+protocol for anyone who wants to repeat it, not as a thing to click through each
+time.
+
+A table's rows, columns and alignment can be changed now, and Insert → Table
+makes one. The tables below are written in different ways on purpose — compact,
+padded to width, in a quote, in a list item, with no body and with a row too
+long — because what is being checked is that each keeps to the way it is
+written.
+
+**Read the model from the console again**, but this line prints only the lines
+of this section's tables, so each step's answer is short. It is the markdown the
+model holds, not Export → Copy markdown:
+
+```
+console.log(modelSerialise(modelCurrentDocument(), (b) => modelEmitLeaf(b, md, modelCurrentDocument())).split("\n## Table structure")[1].split("\n").filter((l) => /^[ >-]*\|/.test(l)).join("\n"))
+```
+
+Add a table after this line.
+
+|Tool|Count|
+|:--|--:|
+|Auger|3|
+|Probe|7|
+
+| Site     | Depth |
+| -------- | ----: |
+| Bexley 1 |  12.4 |
+
+> |Key|Value|
+> |-|-|
+> |one|1|
+
+- Item with a table
+
+  |x|y|
+  |-|-|
+  |1|2|
+
+|Only|Header|
+|-|-|
+
+|A|B|
+|-|-|
+|1|2|3|
+
+After the tables.
+
+1. **Put the caret at the end of `Add a table after this line.` and choose
+   Insert → Table.** *A table of three columns appears below it, with a header
+   and two body rows, all empty, and the caret is in the first header cell.*
+   **Type `Name`, press Tab, type `Qty`, press Tab, type `Note`.** *Each Tab went
+   to the next header cell.* **Run the console line.** *The first four lines are
+   `|Name|Qty|Note|`, `|-|-|-|`, `||||` and `||||`: written compact, like most
+   of the tables around it.*
+2. **Press Tab.** *The first cell of the first body row is the caret.*
+   **Press Enter.** *The caret goes to the cell below, in the same column.*
+   **Click in `Auger` and press Tab.** *`3` is selected, the whole cell.*
+   **Type `4`.** *It replaces the 3.* **Press Shift+Tab twice.** *The selection
+   goes to `Auger`, then to `Count`, in the header.* **Press Shift+Tab with the
+   caret in `Name`, the very first cell.** *Nothing happens.*
+3. **Click in `7` and press Tab.** *A new row is added at the bottom and the
+   caret is in its first cell.* **Type `Rod`, press Tab, type `1`, press Enter.**
+   *Enter on the last row adds another, and the caret is in its second cell.*
+   **Press Shift+Enter.** *Nothing happens.* **Run the console line.** *The
+   `Tool` table is `|Tool|Count|`, `|:--|--:|`, `|Auger|4|`, `|Probe|7|`,
+   `|Rod|1|` and `|||`.* (Undo twice.)
+4. **Put the caret in the paragraph `After the tables.`, open Format, and look
+   at the bottom of it.** *The ten table items, from Table row above to Align
+   column right, are greyed out, and the arrow keys skip them.* **Click in
+   `Probe` and open Format again.** *They are live, and Align column left is
+   checked, because that is how the `Tool` column is aligned.* **Click in
+   `7`.** *Align column right is the one checked.*
+5. **Click in `Probe` and choose Format → Table row above.** *An empty row
+   appears between `Auger` and `Probe`, and the caret is in its first cell.*
+   **Choose Format → Delete table row.** *It goes, and the caret is in `Probe`.*
+   **Click in `Tool` and choose Table row above.** *A message says a table starts
+   with its header row, and nothing changes.* **Choose Delete table row.** *A
+   message says a table needs its header row, and nothing changes.*
+6. **Click in `Probe` and choose Format → Table column right.** *An empty column
+   appears between `Tool` and `Count`, the caret is in its cell on `Probe`'s row,
+   and the `Count` column is still set right.* **Run the console line.** *The
+   header is `|Tool||Count|` and the delimiter row is `|:--|---|--:|`.* **Choose
+   Delete table column.** *It goes, and the table is `|Tool|Count|` again.*
+7. **Click in `Auger` and choose Format → Align column centre.** *The `Tool`
+   column is centred on screen, header and body.* **Run the console line.** *The
+   delimiter row is `|:-:|--:|`.* **Open Format.** *Align column centre is
+   checked.* **Choose it again.** *The alignment goes, and the delimiter row is
+   `|---|--:|`.*
+8. **Click in `Bexley 1` and choose Format → Table column right.** *Every row of
+   the padded table is re-padded, with the new column three characters wide:
+   `| Site     |     | Depth |`, `| -------- | --- | ----: |` and
+   `| Bexley 1 |     |  12.4 |`.* (Undo it.)
+9. **Click in `one` and choose Table row below.** *The quote's table gains a
+   row, and every line of it keeps its `> `: the new one is `> |||`.* **Click in
+   `1` in the list item's table and choose Table column right.** *The column
+   comes in, and the table's lines keep their two-space indent.*
+10. **Click in `Only` and choose Table row below.** *A body row appears under the
+    header.* **Choose Delete table row.** *Back to a header and nothing under it,
+    and it is still a table.* **Choose Delete table column, then again.** *The
+    first leaves one column. The second takes the table, and an empty line is
+    left where it was.* (Undo twice.)
+11. **Click in `A` and choose Table row below.** *A message says the table has a
+    row longer than its header and changing its rows would drop the extra cell.
+    Nothing changes, and the console line still shows `|1|2|3|`.*
+12. **Click in `1` in the list item's table and choose Delete table.** *The
+    table goes. The bullet `Item with a table` is still there, and an empty line
+    is where the table was.* (Undo it.)
+13. **Click at the start of `After the tables.` and press Backspace.** *The
+    caret moves to the end of the last cell of the table above, and nothing is
+    deleted.* **Type `x`.** *It lands at the end of `2`, the last cell the table shows: the over-long row's third cell is not one.* (Undo it.)
+14. **Ctrl/Cmd+Z after each edit above.** *Each is taken back in one press, and
+    redo brings it back.*
+15. **Make the browser window about 400 pixels tall and open Format.** *The panel
+    scrolls, so the last item, Align column right, can be reached with the mouse
+    wheel or by arrowing down to it.*
+16. **Firefox only: click in a cell of the new table and look at its edges.**
+    *No resize grips and no add-or-remove buttons appear*; this was measured
+    absent on 2026-10-31 and is looked at again because the table now changes
+    shape.
 
 Throughout, *the console stays free of `[model] render diverged` warnings and
 of errors.*

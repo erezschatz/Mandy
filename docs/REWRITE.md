@@ -4947,7 +4947,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     tested by machine and, on 2026-10-31, by hand in Firefox; slice 3 done
     and tested 2026-10-31, by machine and through the real Turndown in a
     browser; slice 4 done and tested 2026-10-31, by machine and by hand in
-    Firefox.** Not a merge point
+    Firefox; slice 5 done and tested 2026-11-01 by machine, and on 2026-11-07
+    by hand in Firefox for the one thing a machine cannot see.** Not a merge point
     either, for the same reason: reintegration has not happened, so the app
     around the new core is still reading `editor.innerHTML`.
 
@@ -5285,11 +5286,14 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           4. *Input.* Text, the deletes, marks, inline code, links, images
              and equations work in a cell as in a paragraph. Enter and
              Shift+Enter in a cell do nothing until slice 5 gives Enter a
-             meaning; Tab does nothing until slice 5 moves between cells. A
+             meaning; Tab does nothing until slice 5 moves between cells
+             (slice 5 did: Enter and Tab now move, Shift+Enter still does
+             nothing). A
              deletion across cells of one table empties what it covers in
              each and keeps the grid; one between a cell and anything outside
              its table is refused, and that includes Backspace at the start
-             of the paragraph after a table until slice 5. Typing over a
+             of the paragraph after a table until slice 5 (which makes it a move into the
+             last cell). Typing over a
              selection across cells is refused, as across blocks. The block
              formats — paragraph, headings, lists, quote, code block, rule,
              table of contents — are refused in a cell with a notice, and Code
@@ -5338,8 +5342,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           - **Code in a cell is always a code span**, over the whole cell from
             a caret, since a cell cannot hold a fence.
           - **The `model core` marker's tooltip** said the formats did
-            nothing and a table refused the caret; it now names what is
-            actually left, a table's rows and columns.
+            nothing and a table refused the caret; it named what
+            was left, a table's rows and columns, until slice 5 left nothing to
+            name and the sentence went.
           - **The review before the commit found four bugs**, each now pinned
             by a check. **A cell's source gets a backslash before every
             pipe**: markdown-it 13 takes one off before every `|` in a row,
@@ -5377,6 +5382,80 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           cell rather than merging into it.
         - **Undo** for every one of these, which needs nothing new beyond the
           barriers: a structural edit is a document state like any other.
+        - **The steps, written 2026-11-01 before building:**
+          1. *Commands in `model.js`.* Everything is index arithmetic on the
+             table's rows. A new row or cell is **never hand-built**: it is
+             taken from the parser, as a one-row template table of the right
+             width, and given fresh ids. A row inserted copies its columns'
+             alignments onto its cells' tokens, so it draws aligned. A header
+             cannot go and nothing goes above it; a row below the header is the
+             first body row, and a header-only table gets its `tbody` from the
+             template. Deleting the last body row removes the `tbody`. The last
+             column going takes the table with it, replaced by an empty
+             paragraph in the same place (a shape the item and quote machinery
+             already knows), never a bare removal. Alignment on a column that
+             already has it clears it.
+          2. *The emitter.* A structural edit writes the **whole** table from
+             the model: in its convention when it has one, which is the
+             reproduction guarantee doing its job on the untouched rows, else
+             in the formatter's default, via `tableLines = null`. A row's
+             index no longer names its line, which is why the no-convention
+             path cannot keep untouched lines after one. **A table with a row
+             longer than its header refuses every structural edit**, with a
+             notice: its extra cells were never shown, a rewrite from the model
+             would drop them from the file, and that is the one loss here a
+             reader could not have seen coming. A short row is padded, which
+             is an improvement.
+          3. *Insert → Table*, three columns, a header and two body rows, no
+             dialog, written in the convention the document's other tables
+             keep (the commonest, else the formatter's default) and placed the
+             way a rule is: splitting the block at the caret, or replacing an
+             empty block. The caret lands in the first header cell.
+          4. *Keys.* Tab and Shift+Tab move through the cells in reading order
+             and select the cell's content, and Tab on the last cell adds a row;
+             Enter moves to the same column one row down, adding a row on the
+             last. Both do nothing with a selection across cells, and Shift+Enter
+             still does nothing. Backspace at the start of the paragraph after
+             a table puts the caret at the end of the last cell and changes
+             nothing else.
+          5. *Menus.* Insert → Table, and ten Format items (row above and
+             below, column left and right, delete row, column and table, and
+             three alignments, which are checkable and show the caret's
+             column). The ten are `disabled` outside a table and under the
+             legacy core; the menu already skips a disabled item.
+          6. *Tests.* `model` cases for each command, an oracle sweep that runs
+             each on every table in the oracle and checks that the file outside
+             it is untouched and the table re-parses to the edit; `model-input`
+             routing for the keys; `toolbar` for the items;
+             `tests/browser/table-structure.spec.mjs`; and a section of
+             `tests/fixtures/format-check.md` for the Firefox hand run.
+        - **Done 2026-11-01, tested by machine; Firefox's own table controls
+          looked for by hand on 2026-11-07 and absent.** All six
+          steps as written, except that step 6's `toolbar` cases are the
+          existing check that every rendered item has a handler, which the ten
+          new items pass, and the items' disabled and checked state is
+          watched only by `table-structure.spec.mjs`, for one item of each. In `modelTable*` and `modelInsertTable` in
+          `model.js`, `modelInputTable*` in `model-input.js` and the ten
+          controls in `toolbar.js`, `app.js` and `format-bar.js`. The oracle
+          sweep runs four of the commands on every table in the oracle, and
+          `table-structure.spec.mjs` passes in Chromium and WebKit. What was
+          found or decided on the way:
+          - **The table's line prefixes are worked out from where it sits** when
+            it arrived by paste or Insert, not recorded at parse. A pasted
+            table had been written back without the `>` or the indent of where
+            it landed, a latent fault in slice 4's paste path, now covered.
+          - **Tab and Enter select the cell they arrive in**, so typing
+            replaces it.
+          - **A row longer than its header makes the table refuse every
+            structural edit**, where the plan only said the extras were an
+            open question. The oracle holds no such table, so it is pinned by
+            hand-written cases.
+          - **Delete table leaves an empty paragraph**, not a bare removal, so a
+            table that was an item's only child leaves the item a paragraph
+            rather than empty.
+          - **WebKit sends `insertParagraph` for Shift+Enter in a cell.**
+          - **The Format menu was taller than a 720px window.** Its panel now
+            scrolls, which fixes every menu.
 
     6.  **The hand pass, and closing the stage.** The new sections of
         `tests/fixtures/format-check.md` top to bottom on one document in

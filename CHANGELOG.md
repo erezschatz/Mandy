@@ -10036,7 +10036,7 @@ No hand run is owed for this slice: the save path does nothing a person can see
 that the browser check above did not. The service worker's version is bumped,
 since the shell changed.
 
-## 2026-10-31 — Table cells take the caret, under the model core
+## 2026-10-31 — `78312a7` — Table cells take the caret, under the model core
 
 Stage 3's slice 4 of the rewrite, and the first half of TODO 1.1.8: a table's
 cells can be edited. Since stage 2's slice 4 a table had been
@@ -10121,3 +10121,98 @@ change. They fail the same way on the committed code: `check-pages.spec.mjs`'s
 list-indent check, and `inline-code-links.spec.mjs`'s case for Code over a word.
 They are recorded, not fixed. The service worker's version is bumped, since the
 shell changed.
+
+## 2026-11-01 — Table structure, under the model core
+
+Stage 3's slice 5, the rest of TODO 1.1.8: a table's rows and columns can be
+added and taken away, a column can be aligned, and Insert → Table makes one. On
+the model core only, as every control this stage adds; under the old core they
+show a notice. Slice 6, the hand pass that closes the stage, is what is left.
+
+- **Insert → Table** puts in three columns, a header and two body rows, every
+  cell empty, with the caret in the first header cell and no dialog. It is
+  written the way the document's other tables are, the commonest convention
+  among those that keep one, and placed the way a rule is: at an empty
+  paragraph it takes the paragraph's place, anywhere else it splits the block at
+  the caret.
+- **Format has ten table controls**: row above and below, column left and right,
+  delete row, column and table, and align left, centre and right. They are
+  disabled unless the caret is in a table under the model core, and the three
+  alignments are checks that show the caret's column. Choosing the alignment a
+  column has takes it off.
+- **Tab and Shift+Tab move through the cells** in reading order and select the
+  cell's content, so typing replaces it. Tab on the last cell adds a row.
+  **Enter moves down the column**, and on the last row adds one first, as
+  decided with the stage's plan. Shift+Enter still does nothing. Backspace at the
+  start of the paragraph after a table puts the caret at the end of the last
+  cell and deletes nothing.
+- **A new row or cell is taken from the parser**, never built by hand: a
+  template table of the right width, with fresh ids. A new row copies its
+  columns' alignments onto its cells' tokens, so it draws aligned. Nothing goes
+  above the header and the header cannot be deleted, each with a notice. The
+  last body row going leaves a header-only table, which is valid; the last column
+  going takes the table, replaced by an empty paragraph in the same place so an
+  item or a quote is never left with no children.
+- **The parser judges every result.** Each command writes the table out the way
+  the emitter will and parses that, and a table that does not come back with the
+  same grid is a refusal. Each runs on a fork first, so a refusal leaves nothing
+  behind.
+- **A structural edit writes the whole table.** In its own convention when it
+  has one, which leaves every untouched row as it was unless a padded column
+  changed width, and otherwise in the formatter's default, since a row's index
+  no longer names its line once a row has come or gone. **A table with a row
+  longer than its header refuses every structural edit**, with a notice: its
+  extra cells were never shown, and writing the table from the model would drop
+  them from the file. A short row is padded, which is only an improvement.
+- **Backspace at the start of a block right after a table goes into the last
+  cell**, whatever the block is, a heading or a list item's paragraph as much as
+  a paragraph. It also means an empty paragraph after a table can no longer be
+  removed by Backspace; Insert → Table's own guard paragraph costs nothing in the
+  file, so that is left. Tab and Enter do nothing across a multi-cell selection,
+  Insert → Table is refused in a cell with a notice, and a table control used
+  outside a table says to put the caret in one. Rule insertion shares its
+  splitting code with Insert → Table now (`modelInsertStandalone`).
+- **A pasted table kept the wrong prefixes.** Found while building this: a
+  table's line prefixes were recorded at parse, so one pasted into a quote or a
+  list was written without the `>` or the indent of where it landed. A table that
+  arrives by paste or by Insert now works its prefixes out from where it sits.
+  This is a fix to slice 4's paste path as much as a part of this slice.
+- **WebKit reports Shift+Enter in a table cell as `insertParagraph`**, where
+  Chromium sends `insertLineBreak`. Measured in Playwright's WebKit when
+  `table-cells.spec.mjs`'s Shift+Enter case, rewritten once Enter had a meaning,
+  saw Shift+Enter move the caret down a row. The input
+  layer now remembers a shifted Enter keydown and treats the event after it in a
+  cell as Shift+Enter.
+- **Menu panels scroll.** The Format menu with ten more items is taller than a
+  720px window, and a panel hung off a sticky bar has no page to scroll it by, so
+  the alignment items could not be reached. `.menu-panel` now has a `max-height`
+  and `overflow-y: auto`; this is a fix for every menu, the Format menu was only
+  the first to need it.
+
+Tested by machine:
+- The `model` suite runs every command by hand for the decisions above, and then
+  four of them on every table in the oracle: the file outside the table comes
+  back byte for byte and, for the row and column commands, the grid is the one
+  the command says (the alignment command's output is checked by hand-written
+  cases, not by the sweep). Removing the
+  rule that lets go of a table's remembered lines, and the one that works out a
+  pasted table's prefixes, fails five of its checks.
+- `model-input` checks the routing of each key and control, including that a
+  refusal does nothing for real, and the WebKit Shift+Enter case.
+- `tests/browser/table-structure.spec.mjs` passes in Chromium and WebKit, with
+  trusted keys. `table-cells.spec.mjs`'s case for Enter and Tab in a cell changed
+  to Shift+Enter alone, which is what is still true.
+
+**Run in Firefox on 2026-11-07, by machine and by hand, and the two are not the
+same claim.** `table-structure.spec.mjs` and the whole browser suite ran in
+Playwright's Firefox as well as Chromium and WebKit, and the table-structure
+spec passed there. The hand run was narrowed to what a machine cannot see: step
+16 of the new `format-check.md` section, whether Firefox draws its own table
+controls on a table that now changes shape. It drew none. Steps 1 to 15 were not
+clicked through by hand, and their cover is the spec for the keys, menus,
+alignment, deletion and undo, and the `model` suite alone for the padded, quoted,
+list-item, header-only and over-long-row tables, which no browser spec reaches.
+The rule behind the narrowing is that a hand run is for what an engine cannot
+vouch for, and for real documents once the rewrite is nearly done, not for
+keystroke recipes a spec can press.
+The service worker's version is bumped, since the shell changed.

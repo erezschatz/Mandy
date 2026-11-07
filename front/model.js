@@ -1944,18 +1944,40 @@ function modelEmitLeaf(block, md, doc, width = 0) {
  * rather than re-deriving, the way an item records its marker.
  */
 function modelEmitTable(table, md, doc) {
-  let labels = null;
-  const defines = (label) => {
-    if (!doc) return true;
-    if (labels === null) labels = modelReferenceLabels(doc, md);
-    return labels.has(md.utils.normalizeReference(label));
-  };
+  const lines = modelTableLines(table, md, doc);
+  const prefix = modelTablePrefixes(table);
+  return lines.map((line, i) => prefix(i) + line).join("\n");
+}
+
+// A table's rows in reading order, header first, whichever sections hold them.
+function modelTableRows(table) {
   const rows = [];
   const walk = (block) => {
     if (block.kind === "row") rows.push(block);
     else if (block.children) block.children.forEach(walk);
   };
   walk(table);
+  return rows;
+}
+
+/**
+ * A table's lines with no prefix on them: the table as it would be written at
+ * the margin. Split from `modelEmitTable` for slice 5, whose commands judge a
+ * table by parsing exactly this.
+ *
+ * **`tableLines` null means every line is written from the model.** A parsed
+ * table keeps its own lines so an untouched one can be given back, and a
+ * touched row's index names its line; after a row or a column has come or gone
+ * neither is true any more, and a table made by Insert → Table never had any.
+ */
+function modelTableLines(table, md, doc) {
+  let labels = null;
+  const defines = (label) => {
+    if (!doc) return true;
+    if (labels === null) labels = modelReferenceLabels(doc, md);
+    return labels.has(md.utils.normalizeReference(label));
+  };
+  const rows = modelTableRows(table);
   const cellText = (cell) =>
     modelInlineSource(cell.inlines || [], md, defines)
       .replace(/\n/g, " ")
@@ -1964,23 +1986,49 @@ function modelEmitTable(table, md, doc) {
   const cells = rows.map((row) => row.children.map(cellText));
   const aligns = rows.length ? rows[0].children.map((cell) => cell.align) : [];
 
-  let lines;
   if (table.tableConvention) {
-    lines = formatMarkdownTable(cells, aligns, table.tableConvention).split("\n");
-  } else {
-    // Untouched lines as they were; a touched row alone, in the default. The
-    // delimiter is line 1, so a row's line is its index plus one after it.
-    lines = table.tableLines.slice();
-    rows.forEach((row, i) => {
-      if (row.source !== null) return;
-      const line = i === 0 ? 0 : i + 1;
-      const extras = (table.tableCells[line] || []).slice(cells[i].length);
-      lines[line] = formatMarkdownTable([cells[i].concat(extras)], aligns).split("\n")[0];
-    });
+    return formatMarkdownTable(cells, aligns, table.tableConvention).split("\n");
   }
-  const prefixes = table.tablePrefixes || [];
-  const last = prefixes.length ? prefixes[prefixes.length - 1] : "";
-  return lines.map((line, i) => (prefixes[i] ?? last) + line).join("\n");
+  if (!table.tableLines) {
+    return formatMarkdownTable(cells, aligns).split("\n");
+  }
+  // Untouched lines as they were; a touched row alone, in the default. The
+  // delimiter is line 1, so a row's line is its index plus one after it.
+  const lines = table.tableLines.slice();
+  rows.forEach((row, i) => {
+    if (row.source !== null) return;
+    const line = i === 0 ? 0 : i + 1;
+    const extras = ((table.tableCells || [])[line] || []).slice(cells[i].length);
+    lines[line] = formatMarkdownTable([cells[i].concat(extras)], aligns).split("\n")[0];
+  });
+  return lines;
+}
+
+/**
+ * What goes in front of a table's line `i`: the quote chain, then the item's
+ * marker or indent — the order markdown-it took them off, as for a leaf.
+ *
+ * A parsed table recorded its own at parse. One that was put in afterwards —
+ * pasted, or made by Insert → Table — has none, so they are worked out from
+ * where it sits now, which is the only answer for it: a pasted table's
+ * recorded prefixes were for the document it came from, and written into this
+ * one they would drop the `> ` of the quote it landed in.
+ */
+function modelTablePrefixes(table) {
+  const recorded = table.tablePrefixes;
+  if (recorded) {
+    const last = recorded.length ? recorded[recorded.length - 1] : "";
+    return (i) => recorded[i] ?? last;
+  }
+  const item = modelItemAffix(table);
+  if (item && item.marker === null) {
+    throw new Error("edited table inside an item with no recorded marker");
+  }
+  const opener = item ? (item.first ? item.marker : item.contentIndent) : "";
+  const indent = item ? item.contentIndent : "";
+  const chain = table.quotePrefixes;
+  const last = chain && chain.length ? chain[chain.length - 1] : "";
+  return (i) => (chain ? chain[i] ?? last : "") + (i === 0 ? opener : indent);
 }
 
 /**
@@ -2780,8 +2828,6 @@ function modelCoreMarkRender(document) {
   mark.textContent = "model core";
   mark.href = "?core=legacy";  // relative: the current page, other core
   mark.title = "TODO 3.1's editing core is drawing this document. " +
-    "A table's cells can be edited, but rows and columns cannot be added or " +
-    "removed yet — that is stage 3's slice 5. " +
     "Click to switch back to the running core.";
   // Before the theme toggle rather than at the head of the group, so its place
   // is the same whatever the open file's path is — the directory beside it is
@@ -5507,7 +5553,17 @@ function modelInsertRule(doc, block, offset, md, fallback) {
   const parsed = modelParse(modelRuleSpelling(doc, fallback) + "\n", md).blocks;
   if (parsed.length !== 1 || parsed[0].kind !== "hr") return null;
   const rule = parsed[0];
-  const landed = modelInsertBlocks(doc, block, offset, parsed);
+  const landed = modelInsertStandalone(doc, block, offset, rule, md);
+  return landed && { rule, at: landed };
+}
+
+/**
+ * A block with no text of its own put in at a position inside a leaf: the rule,
+ * and since stage 3's slice 5 a table. Splits the block there the way a paste
+ * does, and returns where the caret lands after it, or null for a refusal.
+ */
+function modelInsertStandalone(doc, block, offset, rule, md) {
+  const landed = modelInsertBlocks(doc, block, offset, [rule]);
   if (!landed) return null;
   const siblings = modelSiblings(doc, rule);
   const index = siblings.indexOf(rule);
@@ -5539,7 +5595,7 @@ function modelInsertRule(doc, block, offset, md, fallback) {
   if (!/\n[ \t>]*\n/.test(rule.separator) && index + 1 < siblings.length) rule.separator = modelBlankSeparator(rule);
   modelEnsureBlock(doc, md);
   if (rule.parent) modelTouch(rule.parent);
-  return { rule, at: landed };
+  return landed;
 }
 
 /**
@@ -6814,6 +6870,9 @@ function modelAdoptBlocks(doc, blocks, like) {
       block.source = null;
       block.parent = parent;
       block.quotePrefixes = chain ? chain.slice() : null;
+      // A table's recorded line prefixes were for the document it was parsed in;
+      // here they are worked out from where it now sits. See modelTablePrefixes.
+      if (block.kind === "table") block.tablePrefixes = null;
       // An item's marker is absolute in this model (slice 4), so a list pasted
       // into an indented context has every marker beneath it moved by the same
       // number of columns — the shift `modelMoveItem` does, arriving at the one
@@ -6957,6 +7016,311 @@ function modelCellBlocks(doc, md, blocks) {
   const parsed = modelParse(modelEscapeLineStarts(md, line) + "\n", md).blocks;
   if (parsed.length === 1 && parsed[0].kind === "paragraph") return parsed;
   return modelTextBlocks(doc, md, line);
+}
+
+// ── Structure: tables ────────────────────────────────────────────────────────
+//
+// Stage 3's slice 5, the rest of TODO 1.1.8. Slice 4 made a cell a place to
+// type; this makes the grid itself editable — rows, columns, alignment, the
+// table as a whole, and a way to make one.
+//
+// **Everything is index arithmetic on the table's rows, and nothing is
+// hand-built.** A row or a cell that does not exist yet is taken from the
+// parser, as a one-row or one-column template table, and given fresh ids — the
+// stage 2 rule for anything a command creates, and for the same reason: a cell
+// has three tokens that render one `<th>` or `<td>`, and a second place that
+// knew how to make them would be free to disagree with the parser.
+//
+// **And the parser judges the result.** Each command writes the whole table out
+// the way the emitter will and parses that; a table that does not come back with
+// the same grid is a refusal, as the lists' `modelSettleLists` is for lists.
+// What a command returns is `{ at }` for where the caret goes, or `{ refused }`
+// with the sentence to tell the user, or null for "this is not a table".
+
+const MODEL_TABLE_RAGGED = "This table has a row longer than its header, and changing its rows or columns would drop the extra cells from the file.";
+
+function modelTableOf(block) {
+  for (let node = block; node; node = node.parent) {
+    if (node.kind === "table") return node;
+  }
+  return null;
+}
+
+// Where a cell sits: its table, the table's rows, and its row and column.
+function modelTableContext(cell) {
+  if (!cell || cell.kind !== "cell") return null;
+  const table = modelTableOf(cell);
+  if (!table) return null;
+  const rows = modelTableRows(table);
+  const r = rows.indexOf(cell.parent);
+  const c = cell.parent ? cell.parent.children.indexOf(cell) : -1;
+  return r < 0 || c < 0 ? null : { table, rows, r, c };
+}
+
+// A row longer than the header has cells nobody was shown, which the parser
+// drops and the file still holds. Rewriting the table from the model would lose
+// them, so every structural command declines such a table. A short row is padded
+// by the parser and is only improved by being written out.
+function modelTableRagged(table) {
+  const lines = table.tableCells;
+  if (!lines || !lines.length) return false;
+  return lines.some((cells, i) => i !== 1 && cells.length > lines[0].length);
+}
+
+// A table of the right width from the parser, its ids minted into this
+// document, for its rows and cells to be taken from.
+function modelTableTemplate(doc, md, columns, bodyRows) {
+  const line = "|" + " |".repeat(columns);
+  const text = [line, "|" + "-|".repeat(columns), ...Array(bodyRows).fill(line)].join("\n") + "\n";
+  const parsed = modelParse(text, md).blocks;
+  if (parsed.length !== 1 || parsed[0].kind !== "table") return null;
+  const mint = (block) => {
+    block.id = modelMintId(doc);
+    block.source = null;
+    if (block.children) block.children.forEach(mint);
+  };
+  mint(parsed[0]);
+  return parsed[0];
+}
+
+// A cell's column alignment, in the cell's model and on the token that renders
+// it. The token is written, so the cell has to be its own first.
+function modelSetCellAlign(cell, align) {
+  modelUnshare(cell);
+  const open = cell.tokens[0];
+  const rest = (open.attrs || []).filter((attr) => attr[0] !== "style");
+  open.attrs = align ? rest.concat([["style", "text-align:" + align]]) : rest.length ? rest : null;
+  cell.align = align;
+}
+
+// The separators between a container's children. A table is emitted whole and
+// nothing reads these, but a container's last child ends with none and the rest
+// with a newline, and `modelRemoveBlock` and the tiling checks assume it.
+function modelTableSettle(block) {
+  const children = block.children || [];
+  children.forEach((child, i) => {
+    child.parent = block;
+    child.separator = i < children.length - 1 ? "\n" : "";
+  });
+}
+
+/**
+ * Whether the table, written out as the emitter will write it, parses back to
+ * the grid the model holds: the same rows, the same cells in each, the same
+ * text and the same alignment.
+ */
+function modelTableJudge(table, md, doc) {
+  const lines = modelTableLines(table, md, doc);
+  const parsed = modelParse(lines.join("\n") + "\n", md).blocks;
+  if (parsed.length !== 1 || parsed[0].kind !== "table") return false;
+  const back = modelTableRows(parsed[0]);
+  const rows = modelTableRows(table);
+  if (back.length !== rows.length) return false;
+  const text = (cell) => modelInlineSource(cell.inlines || [], md, () => true);
+  return back.every((row, i) =>
+    row.children.length === rows[i].children.length &&
+    row.children.every((cell, c) => {
+      const mine = rows[i].children[c];
+      return cell.align === mine.align && text(cell) === text(mine);
+    }));
+}
+
+// A structural edit ends here: the table is touched, its remembered lines are
+// let go (a row's index no longer names its line), and the parser has its say.
+function modelTableSeal(doc, table, md) {
+  modelTouch(table);
+  modelTableSettle(table);
+  table.tableLines = null;
+  table.tableCells = null;
+  return modelTableJudge(table, md, doc);
+}
+
+const MODEL_TABLE_REFUSED = "That cannot be done to this table.";
+
+function modelTableInsertRow(doc, cell, below, md) {
+  const ctx = modelTableContext(cell);
+  if (!ctx) return null;
+  const { table, rows, r, c } = ctx;
+  if (modelTableRagged(table)) return { refused: MODEL_TABLE_RAGGED };
+  if (!below && r === 0) return { refused: "A table starts with its header row, so nothing can go above it." };
+  const template = modelTableTemplate(doc, md, rows[0].children.length, 1);
+  if (!template) return { refused: MODEL_TABLE_REFUSED };
+  const body = template.children.find((child) => child.kind === "table-body");
+  const fresh = body.children[0];
+  rows[0].children.forEach((head, i) => modelSetCellAlign(fresh.children[i], head.align));
+
+  // A row goes into the section its neighbour is in — except below the header,
+  // where it is the first body row, in a body a header-only table may not have.
+  const section = rows[r].parent;
+  let host = section;
+  let index = section.children.indexOf(rows[r]) + (below ? 1 : 0);
+  if (section.kind === "table-head") {
+    host = table.children.find((child) => child.kind === "table-body") || null;
+    index = 0;
+  }
+  if (host) {
+    fresh.parent = host;
+    host.children.splice(index, 0, fresh);
+    modelTableSettle(host);
+  } else {
+    body.parent = table;
+    table.children.push(body);
+  }
+  if (!modelTableSeal(doc, table, md)) return { refused: MODEL_TABLE_REFUSED };
+  return { at: { block: fresh.children[c], offset: 0 } };
+}
+
+function modelTableDeleteRow(doc, cell, md) {
+  const ctx = modelTableContext(cell);
+  if (!ctx) return null;
+  const { table, rows, r, c } = ctx;
+  if (modelTableRagged(table)) return { refused: MODEL_TABLE_RAGGED };
+  if (r === 0) return { refused: "A table needs its header row, so that row cannot be deleted." };
+  const section = rows[r].parent;
+  section.children.splice(section.children.indexOf(rows[r]), 1);
+  if (section.children.length) modelTableSettle(section);
+  else table.children.splice(table.children.indexOf(section), 1);
+  if (!modelTableSeal(doc, table, md)) return { refused: MODEL_TABLE_REFUSED };
+  const left = modelTableRows(table);
+  return { at: { block: left[Math.min(r, left.length - 1)].children[c], offset: 0 } };
+}
+
+function modelTableInsertColumn(doc, cell, right, md) {
+  const ctx = modelTableContext(cell);
+  if (!ctx) return null;
+  const { table, rows, r, c } = ctx;
+  if (modelTableRagged(table)) return { refused: MODEL_TABLE_RAGGED };
+  const template = modelTableTemplate(doc, md, 1, rows.length - 1);
+  if (!template) return { refused: MODEL_TABLE_REFUSED };
+  const fresh = modelTableRows(template);
+  const at = c + (right ? 1 : 0);
+  rows.forEach((row, i) => {
+    const added = fresh[i].children[0];
+    added.parent = row;
+    row.children.splice(at, 0, added);
+  });
+  if (!modelTableSeal(doc, table, md)) return { refused: MODEL_TABLE_REFUSED };
+  return { at: { block: rows[r].children[at], offset: 0 } };
+}
+
+function modelTableDeleteColumn(doc, cell, md) {
+  const ctx = modelTableContext(cell);
+  if (!ctx) return null;
+  const { table, rows, r, c } = ctx;
+  if (modelTableRagged(table)) return { refused: MODEL_TABLE_RAGGED };
+  const width = rows[0].children.length;
+  // The last column going is the table going.
+  if (width === 1) return modelTableDelete(doc, table, md);
+  rows.forEach((row) => row.children.splice(c, 1));
+  if (!modelTableSeal(doc, table, md)) return { refused: MODEL_TABLE_REFUSED };
+  return { at: { block: rows[r].children[Math.min(c, width - 2)], offset: 0 } };
+}
+
+/**
+ * The table goes and an empty paragraph stays where it was, which is a shape
+ * the item and quote machinery already knows — a bare removal would leave an
+ * item with no children, or a quote with none. It emits nothing, so the file
+ * simply loses the table.
+ */
+function modelTableDelete(doc, table, md) {
+  const paragraph = modelParagraphBlock(doc, md);
+  paragraph.quotePrefixes = table.quotePrefixes ? table.quotePrefixes.slice() : null;
+  if (!modelInsertBlockAfter(doc, table, paragraph)) return { refused: MODEL_TABLE_REFUSED };
+  modelRemoveBlock(doc, table);
+  modelTouch(paragraph);
+  modelEnsureBlock(doc, md);
+  return { at: { block: paragraph, offset: 0 } };
+}
+
+/**
+ * A column's alignment. Choosing the one it already has takes it off, which is
+ * how every toggle in the Format menu reads; the header cell is the column's
+ * record of it. The caret stays where it was, at `offset`.
+ */
+function modelTableAlign(doc, cell, align, md, offset = 0) {
+  const ctx = modelTableContext(cell);
+  if (!ctx) return null;
+  const { table, rows, c } = ctx;
+  if (modelTableRagged(table)) return { refused: MODEL_TABLE_RAGGED };
+  const target = rows[0].children[c].align === align ? "" : align;
+  rows.forEach((row) => modelSetCellAlign(row.children[c], target));
+  if (!modelTableSeal(doc, table, md)) return { refused: MODEL_TABLE_REFUSED };
+  return { at: { block: cell, offset } };
+}
+
+// The caret's column alignment, or null outside a table.
+function modelTableAlignment(cell) {
+  const ctx = modelTableContext(cell);
+  return ctx ? ctx.rows[0].children[ctx.c].align : null;
+}
+
+// Cells in reading order, and the one a step from this one — the cell Tab and
+// Shift+Tab go to. Null off either end.
+function modelTableCellBeside(cell, step) {
+  const ctx = modelTableContext(cell);
+  if (!ctx) return null;
+  const cells = ctx.rows.flatMap((row) => row.children);
+  return cells[cells.indexOf(cell) + step] || null;
+}
+
+// The cell in the same column one row down, or null on the last row.
+function modelTableCellBelow(cell) {
+  const ctx = modelTableContext(cell);
+  return ctx && ctx.rows[ctx.r + 1] ? ctx.rows[ctx.r + 1].children[ctx.c] : null;
+}
+
+/**
+ * How this document writes tables: the commonest convention among the tables in
+ * it that keep to one, else the formatter's default. A new table is written the
+ * way its neighbours are, for the reason a rule is — the author's spelling over
+ * a house style.
+ */
+function modelTableConvention(doc) {
+  const seen = new Map();
+  for (const block of modelFlatten(doc)) {
+    if (block.kind !== "table" || !block.tableConvention) continue;
+    const key = JSON.stringify(block.tableConvention);
+    const entry = seen.get(key) || { convention: block.tableConvention, count: 0 };
+    entry.count += 1;
+    seen.set(key, entry);
+  }
+  let best = null;
+  for (const entry of seen.values()) if (!best || entry.count > best.count) best = entry;
+  return best ? best.convention : TABLE_CONVENTION_DEFAULT;
+}
+
+/**
+ * Insert → Table: three columns, a header and two body rows, every cell empty,
+ * written the way the document writes tables, with the caret in the first
+ * header cell. At an empty paragraph it takes the paragraph's place; anywhere
+ * else it splits the block at the caret the way a rule does.
+ */
+function modelInsertTable(doc, block, offset, md) {
+  if (!block || !block.inlines || block.kind === "cell") return null;
+  const convention = modelTableConvention(doc);
+  const blank = ["", "", ""];
+  const text = formatMarkdownTable([blank, blank, blank], ["", "", ""], convention);
+  const parsed = modelParse(text + "\n", md).blocks;
+  if (parsed.length !== 1 || parsed[0].kind !== "table") return null;
+  const table = parsed[0];
+  // Written from the model in the convention chosen, at the prefixes of
+  // wherever it lands.
+  table.tableConvention = convention;
+  table.tableLines = null;
+  table.tableCells = null;
+  table.tablePrefixes = null;
+
+  if (block.kind === "paragraph" && modelIsEmptyBlock(block)) {
+    modelAdoptBlocks(doc, [table], block);
+    if (!modelInsertBlockAfter(doc, block, table)) return null;
+    modelRemoveBlock(doc, block);
+    modelTouch(table);
+    modelEnsureBlock(doc, md);
+  } else if (!modelInsertStandalone(doc, block, offset, table, md)) {
+    return null;
+  }
+  if (!modelTableJudge(table, md, doc)) return null;
+  return { table, at: { block: modelTableRows(table)[0].children[0], offset: 0 } };
 }
 
 /**

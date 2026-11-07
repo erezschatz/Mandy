@@ -1664,10 +1664,30 @@ every untouched row back byte for byte unless a column widened; one that keeps
 to none keeps its untouched lines and writes the edited row alone. In a cell,
 text, the deletes, marks, code spans, links, images and equations work; a
 deletion across cells empties what it covers and never merges; the block
-formats are refused with a notice; Enter, Shift+Enter and Tab do nothing until
-slice 5; and a paste or drop is flattened to one line — by `modelCellBlocks`
-for anything that arrives as blocks, and by joining the lines with a space for
-Paste without formatting.
+formats are refused with a notice; Shift+Enter does nothing; and a paste or
+drop is flattened to one line — by `modelCellBlocks` for anything that arrives
+as blocks, and by joining the lines with a space for Paste without formatting.
+
+**Slice 5 gave tables their structure**, 2026-11-01: Insert → Table (three
+columns, a header and two body rows, in the convention the document's other
+tables keep), and ten Format controls — row above and below, column left and
+right, delete row, column and table, and three alignments that show the caret's
+column. They are disabled outside a table. Tab and Shift+Tab move through the
+cells and select the content, Tab on the last cell and Enter on the last row
+add a row, and Backspace at the start of the paragraph after a table goes into
+the last cell. Four things are decisions rather than details. **A new row or
+cell is taken from the parser** as a template table of the right width, never
+built by hand. **The parser judges every result**: each command writes the table
+the way the emitter will and parses that, and a grid that does not come back is
+a refusal. **A structural edit writes the whole table** — in its convention, or
+in the formatter's default with `tableLines` null, since a row's index no
+longer names its line — and **a table with a row longer than its header refuses
+all of them**, because its extra cells were never shown and the rewrite would
+drop them from the file. And **a table that arrives by paste or Insert works its
+line prefixes out from where it sits** (`modelTablePrefixes`): the recorded ones
+belong to the document it was parsed in, and a pasted table written with them
+lost the `>` of the quote it landed in. WebKit reports Shift+Enter in a cell as
+`insertParagraph`, so the input layer remembers a shifted Enter keydown.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.
@@ -1677,9 +1697,8 @@ A/B and there was no way to tell which half of it you were looking at. That is
 worse than having no comparison: slice 1's rule is that the model renders
 *identically* to `markdownToHtml`, so "it looks the same" is the expected answer
 and not evidence of anything, and the differences are all things that stop
-working; today that is a table's rows and columns, which cannot be added or
-removed until stage 3's slice 5. The marker's `title` says so rather than making the reader look it
-up. One function
+working; the marker's `title` once named what was left, and does not now,
+because nothing the plan knows of is. One function
 in `model.js`, one call site and one CSS rule, because it goes at stage 4 with
 the flag.
 It is not for `main` — no merge is planned before stage 4 — it is so the branch
