@@ -2084,6 +2084,26 @@ function modelSerialise(doc, emit) {
 }
 
 /**
+ * The document as the file it saves to — stage 4's slice 1, and the one call
+ * every writer makes: Save and Save As, Download and Copy markdown.
+ *
+ * `modelSerialise` with the leaf emitter handed the document, so a reference
+ * link can ask whether its label still resolves, and the width the document was
+ * sniffed at, so an edited paragraph is re-wrapped the way its neighbours are.
+ * An untouched block never reaches the emitter: it is handed back as the bytes
+ * it was parsed from, which is D1 by construction rather than the restore layer
+ * finding it again.
+ *
+ * It throws where `modelEmitLeaf` throws, on a block whose spelling the model
+ * never recorded. That is deliberate and the callers catch it: a save that
+ * cannot write the document it was asked for must fail loudly rather than
+ * write something else.
+ */
+function modelDocumentMarkdown(doc, md, width = 0) {
+  return modelSerialise(doc, (block) => modelEmitLeaf(block, md, doc, width));
+}
+
+/**
  * A run of blocks and the separators between them, which is both what a
  * document is and what a container is — the tiling invariant read backwards, in
  * the one place that does the reading.

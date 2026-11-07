@@ -99,6 +99,7 @@ export default function run(check) {
     sniffTableConvention, formatMarkdownTable, modelCellBlocks,
     modelInsertTable, modelTableInsertRow, modelTableDeleteRow, modelTableInsertColumn, modelTableDeleteColumn,
     modelTableAlign, modelTableAlignment, modelTableDelete, modelTableRows, modelTableCellBeside, modelTableCellBelow,
+    modelDocumentMarkdown,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -133,7 +134,8 @@ export default function run(check) {
       " modelSetImage, modelImageAt, modelImageFields," +
       " sniffTableConvention, formatMarkdownTable, modelCellBlocks," +
       " modelInsertTable, modelTableInsertRow, modelTableDeleteRow, modelTableInsertColumn, modelTableDeleteColumn," +
-      " modelTableAlign, modelTableAlignment, modelTableDelete, modelTableRows, modelTableCellBeside, modelTableCellBelow };",
+      " modelTableAlign, modelTableAlignment, modelTableDelete, modelTableRows, modelTableCellBeside, modelTableCellBelow," +
+      " modelDocumentMarkdown };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -5299,4 +5301,46 @@ export default function run(check) {
     check("and none was refused, since no table in the oracle has a row longer than its header", refused === 0);
   }
 
+  // ── Stage 4's slice 1: the model writes the file ──────────────────────────
+  //
+  // `modelDocumentMarkdown` is what Save, Save As, Download and Copy markdown
+  // call under the model core. Most of what it does is proved above, block by
+  // block; what is here is the entry point itself, and the one case that is
+  // the reason this slice exists: a file the old save path loses data from.
+  {
+    let same = 0;
+    for (const path of ORACLE_FILES) {
+      const src = repoFile(path);
+      if (modelDocumentMarkdown(parse(src), md, 0) === src && modelDocumentMarkdown(parse(src), md, 40) === src) same++;
+    }
+    check(`modelDocumentMarkdown hands every unedited oracle file back byte-identical, ${same} of ${ORACLE_FILES.length}, ` +
+      "at no wrap width and at a narrow one", same === ORACLE_FILES.length);
+
+    // A table row longer than its header. The extra cell is never rendered, so
+    // the DOM never holds it and Turndown cannot write it back: the old save
+    // path dropped it from the file, measured in stage 3's hand pass. The model
+    // never asked the DOM, so an edit beside it leaves the row as written.
+    const long = "Intro text.\n\n| a | b |\n| --- | --- |\n| 1 | 2 | 3 |\n";
+    const doc = parse(long);
+    modelInlineSplice(doc.blocks[0], 0, 5, "Opening");
+    const out = modelDocumentMarkdown(doc, md);
+    check("an edit beside a table row longer than its header keeps the extra cell in the file",
+      out === "Opening text.\n\n| a | b |\n| --- | --- |\n| 1 | 2 | 3 |\n");
+
+    // The width is handed to the emitter: an edited paragraph is re-wrapped at
+    // it, and with 0 it is not.
+    const wrapped = parse("Short.\n");
+    modelInlineSplice(wrapped.blocks[0], 0, 6, "one two three four five six seven eight nine ten eleven twelve.");
+    const at30 = modelDocumentMarkdown(wrapped, md, 30);
+    check("an edited paragraph is re-wrapped at the width it is handed",
+      at30.split("\n").filter(Boolean).length > 1 && at30.split("\n").every((line) => line.length <= 30));
+    check("and a width of 0 leaves it on one line",
+      modelDocumentMarkdown(wrapped, md, 0).split("\n").filter(Boolean).length === 1);
+
+    // A blank document — New, or everything deleted — is an empty file, not a
+    // file holding the filler paragraph the caret needs.
+    const blank = parse("");
+    modelEnsureBlock(blank, md);
+    check("a blank document saves as an empty file", modelDocumentMarkdown(blank, md) === "");
+  }
 }

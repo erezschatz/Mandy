@@ -747,7 +747,11 @@ async function saveFileBody(filePath) {
   if (overwrite === "cancel") return false;
   if (overwrite === "save-as") return saveFileAs();
 
-  const markdown = htmlToMarkdown(editor.innerHTML);
+  // Null when the document cannot be written as it stands, which has already
+  // been reported; the edits are still unsaved, so this answers false like any
+  // other failed save and whatever was waiting on it does not go ahead.
+  const markdown = documentMarkdownFor("save");
+  if (markdown === null) return false;
 
   let data;
   try {

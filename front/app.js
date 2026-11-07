@@ -579,6 +579,37 @@ function htmlToMarkdown(html) {
   return restoreSourceWrapping(wrapped, markdownSource);
 }
 
+// The open document as the markdown a save writes — the one question Save,
+// Save As, Download and Copy markdown all ask, so the two cores differ in one
+// place rather than three.
+//
+// **Under the model core the model writes the file**, which is stage 4's slice
+// 1: an untouched block goes back as the bytes it was parsed from, and only an
+// edited one is composed, in the document's own conventions and at its sniffed
+// width. Turndown over the DOM is the legacy answer and goes with the flag.
+//
+// The fallback when there is no model is for an editable export opened under
+// the flag, which keeps its embedded HTML and never loads one until slice 2.
+function documentMarkdown() {
+  const doc = modelCoreEnabled() ? modelCurrentDocument() : null;
+  if (doc) return modelDocumentMarkdown(doc, md, markdownStyle.wrapWidth);
+  return htmlToMarkdown(editor.innerHTML);
+}
+
+// The same, for a caller that has a user waiting: a document the emitter
+// refuses is reported and answers null, so the action stops rather than
+// writing or copying something other than the document. `action` finishes the
+// sentence — "save", "download", "copy".
+function documentMarkdownFor(action) {
+  try {
+    return documentMarkdown();
+  } catch (err) {
+    console.error(`[Save] Could not ${action} the document:`, err);
+    notify(`Could not ${action} the document: ${err.message}`, { severity: "error" });
+    return null;
+  }
+}
+
 // The only place markdown enters the document, which is why the sniff lives
 // here rather than at the four call sites -- open, upload, paste and the
 // welcome document all route through it, and a fifth would be easy to forget.
@@ -689,7 +720,8 @@ function showDocumentStart() {
 // exist in exported documents, and registering an action nothing renders is
 // harmless.
 onToolbarAction("download-md", () => {
-  const markdown = htmlToMarkdown(editor.innerHTML);
+  const markdown = documentMarkdownFor("download");
+  if (markdown === null) return;
 
   const blob = new Blob([markdown], { type: "text/markdown" });
   const url = URL.createObjectURL(blob);
@@ -707,7 +739,8 @@ onToolbarAction("upload-md", () => {
 });
 
 onToolbarAction("copy-md", async (button) => {
-  const markdown = htmlToMarkdown(editor.innerHTML);
+  const markdown = documentMarkdownFor("copy");
+  if (markdown === null) return;
 
   try {
     await navigator.clipboard.writeText(markdown);

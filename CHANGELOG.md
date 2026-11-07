@@ -10244,7 +10244,7 @@ refusal it was first built around.
 Stage 4, reintegration, is next. It is not started, and its plan is written
 before any of its work.
 
-## 2026-11-07 — Stage 4's plan
+## 2026-11-07 — `995887a` — Stage 4's plan
 
 TODO 3.1's stage 4, reintegration, is planned in docs/REWRITE.md, before any
 of its work, as the project's rule asks. Nothing in `front/` changed.
@@ -10284,3 +10284,50 @@ that first had to be put back into plain terms:
   amendment, the operation also fixes its tab and document when it starts,
   so it acts on the right document even if that block fails.
 - The conversion code lives in one file and is deleted when stage 5 closes.
+
+## 2026-11-07 — The model writes the file, under the model core
+
+Stage 4's slice 1 of TODO 3.1. Under `?core=model`, Save, Save As, Download
+and Copy markdown now write the document from the model rather than running
+Turndown over the page. A block nobody edited goes back to the file as the
+bytes it was read from, and an edited one is written in the document's own
+conventions, at its own wrap width. Autosave still holds HTML until slice 4.
+
+The old core changes in one way. Its saves go through the same
+`documentMarkdownFor`, so if Turndown ever throws, Save, Download and Copy
+markdown now show an error notice, where before the exception escaped the
+handler. A failed Save also answers false.
+
+`modelDocumentMarkdown` in `model.js` is the one call. `documentMarkdown` in
+`app.js` picks the core, and `documentMarkdownFor` turns a document the model
+refuses to write into a notice, so the save stops instead of writing
+something other than the document. A refused Save answers false, like any
+other failed save, so an action waiting on it does not go ahead.
+
+`tests/browser/open-edit-save.spec.mjs` is new, and it is TODO 6.8's "Open,
+edit, save" and stage 4's parity gate. It opens
+`tests/fixtures/break-test.md` through the file API, types after each of the
+four labels, saves to a scratch file outside the repo under each core, and
+compares the two line by line. On this fixture they differ on exactly one
+line, which the spec names in advance: CHARLIE's backslash break. The old
+core rewrites it to two spaces in an edited paragraph (TODO 2.3's residue),
+and the model keeps it. ECHO and the filler above ALPHA are byte-identical to
+the fixture. DELTA is re-wrapped into lines no longer than the filler's
+longest, which stands in for the sniffed width. The spec saves by handing
+`saveFile` a path, so the Save As dialog itself is not driven. It passes in
+Chromium and WebKit. With the model's save path switched off it fails on
+CHARLIE.
+
+The `model` suite gained checks on the same entry point:
+- every oracle file comes back byte-identical;
+- an edit beside a table row longer than its header keeps the extra cell,
+  which the old save path drops;
+- the wrap width reaches the emitter;
+- a blank document saves as an empty file.
+
+Firefox does not launch under Playwright on macOS 27, so it was run by hand
+the same day, and both results were reported as expected. In `break-test.md`,
+typed into and saved under a scratch name, only the four labelled paragraphs
+changed, with both break spellings kept. `format-check.md`, opened and saved
+untouched, came back byte-identical. It stood in for the plan's "stage 3
+document", whose edited scratch copy was deleted when that stage closed.

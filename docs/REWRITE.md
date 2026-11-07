@@ -5488,7 +5488,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     running editor writes to a file. Slice 4 needs slice 3's formatter, and
     slice 5 needs slice 4's cells. So 1, 2 and 3 can be built in any order,
     and 4 and 5 come after them in that order.
-*   **4. Reintegration — planned 2026-11-07, not started. → MERGE TO `main`
+*   **4. Reintegration — planned 2026-11-07; slice 1 done and tested
+    2026-11-07, by machine and by hand in Firefox. → MERGE TO `main`
     WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
@@ -5560,7 +5561,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         `modelDocumentMarkdown()`, which is `modelSerialise` with
         `modelEmitLeaf` at the sniffed width and `modelEmitTable` for tables,
         and the three writers call it when the flag is on: `saveFileBody`,
-        Download and Copy markdown. Autosave is untouched and still holds HTML,
+        Download and Copy markdown, through one function in `app.js` that
+        picks the core. Autosave is untouched and still holds HTML,
         which is what keeps `?core=legacy` working on the same storage.
         **This is the slice D1 was for**: an untouched block is emitted from
         its own bytes, so a save no longer depends on the restore layer
@@ -5577,6 +5579,39 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           listed one that stops showing.
         - **Hand run**: the `break-test.md` recipe in Firefox under
           `?core=model`, plus the stage 3 document from 2026-11-07.
+        - **Done and tested 2026-11-07, by machine and by hand in
+          Firefox.** `modelDocumentMarkdown` in `model.js` is the one call;
+          `documentMarkdown` and `documentMarkdownFor` in `app.js` choose the
+          core and report a refusal, so Save, Save As, Download and Copy
+          markdown stop with a notice rather than writing something other
+          than the document. **The model is asked only when there is a model
+          document**, so an editable export opened under the flag still saves
+          through Turndown until slice 2.
+          - **`tests/browser/open-edit-save.spec.mjs`** is the parity spec,
+            and on `break-test.md` the list has **one entry**: CHARLIE's
+            backslash break, which the old core rewrites to two spaces in an
+            edited paragraph (TODO 2.3's residue) and the model keeps. Every
+            other line is identical between the cores, ECHO and the filler
+            above ALPHA are byte-identical to the fixture, and DELTA is
+            re-wrapped into lines no longer than the filler's longest, which
+            stands in for the sniffed width. It saves through `saveFile` to
+            a path rather than through the Save As dialog. Green in Chromium and WebKit, and red
+            on CHARLIE with the model's save path switched off. The
+            over-long row, a code span's edge spaces and the minority
+            emphasis are not on the list, because this fixture holds none of
+            them; the over-long row is pinned in the `model` suite instead,
+            beside a check that every oracle file comes back byte-identical
+            through the new entry point.
+          - **Firefox does not launch under Playwright on this machine**
+            (TODO 6.8), so its run of the recipe was by hand, the same day,
+            and was reported as expected: `break-test.md`, typed into after
+            its four labels and saved under a scratch name, differed from the
+            fixture only in those four paragraphs, with both break spellings
+            kept and DELTA re-wrapped. `format-check.md`, opened and saved
+            with no edits, came back byte-identical. That file stood in for
+            the plan's "stage 3 document": stage 3's hand pass was
+            `format-check.md`'s sections, and its edited scratch copy was
+            deleted when the stage closed.
 
     2.  **The exports read the model, behind the flag.** One helper hands the
         static export, PDF and DOCX a clone of the editor with every view

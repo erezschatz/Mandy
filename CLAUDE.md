@@ -360,7 +360,11 @@ already say. Since 2026-10-21 it also drives hand protocols itself:
 `insert-clear.spec.mjs` and `keys-clipboard.spec.mjs` type and select their way through
 `tests/fixtures/format-check.md`'s sections for slice 7 in the running app, with
 Playwright's keyboard and mouse, which are trusted (TODO 6.8 has the
-measurement), and stand in for those runs in Chromium and WebKit. `npm run test:browser` from the root. It is not part of `npm test`
+measurement), and stand in for those runs in Chromium and WebKit. Since
+2026-11-07 `open-edit-save.spec.mjs` opens `tests/fixtures/break-test.md`
+through the file API, types into it and saves it to a scratch file under both
+cores — stage 4's parity gate, where every line the two cores write
+differently has to be one the spec names in advance. `npm run test:browser` from the root. It is not part of `npm test`
 and will not be: it wants a browser engine and a `node_modules`, which is the
 one dependency of that kind this project has agreed to (TODO 6.8 is the
 agreement and the plan). First time only, `cd tests/browser && npm install &&
