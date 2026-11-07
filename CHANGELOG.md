@@ -10285,7 +10285,7 @@ that first had to be put back into plain terms:
   so it acts on the right document even if that block fails.
 - The conversion code lives in one file and is deleted when stage 5 closes.
 
-## 2026-11-07 — The model writes the file, under the model core
+## 2026-11-07 — `dce086c` — The model writes the file, under the model core
 
 Stage 4's slice 1 of TODO 3.1. Under `?core=model`, Save, Save As, Download
 and Copy markdown now write the document from the model rather than running
@@ -10331,3 +10331,54 @@ typed into and saved under a scratch name, only the four labelled paragraphs
 changed, with both break spellings kept. `format-check.md`, opened and saved
 untouched, came back byte-identical. It stood in for the plan's "stage 3
 document", whose edited scratch copy was deleted when that stage closed.
+
+## 2026-11-07 — The exports read the model, under the model core
+
+Stage 4's slice 2 of TODO 3.1. Under `?core=model` the HTML, PDF and Word
+exports no longer carry the markup the editor adds for editing, and the
+Editable export carries the document as markdown.
+
+The model core's renderer marks each element with the block it belongs to,
+adds an invisible `<br>` to an empty block, a zero-width character in front of
+an equation that starts a line and a `<br>` behind one that ends it, and makes
+the equation uneditable. None of that is the document. In a Word file the
+zero-width character was a real character and the `<br>` a real line break.
+`modelExportClone` in `model.js` now gives all three exports a copy of the
+editor with all of it removed. `convertHtmlToDocxElements` takes that copy as
+a root, where before it read `editor.children` itself. Under the old core the
+copy differs from before only in attributes that mean nothing outside the
+editor: a typeset equation is no longer marked uneditable, and the PDF's copy
+loses the editor's own `contenteditable` and `spellcheck`, as the HTML
+export's always did. So the helper is not behind the flag.
+
+The Editable export now writes the model's markdown into
+`<script type="text/markdown" id="app-document">` beside the bundle and leaves
+the editor empty, whenever there is a model document. A file made that way
+opens through `loadDocumentMarkdown`, under either core. The boot checks what
+the file carries rather than which core is running, so a file exported under
+the model core also opens under `?core=legacy`. A file with no
+`#app-document`, made under the old core or before this change, keeps its
+embedded HTML as before. A script element ends at the first `</script`, and
+documents say that, so `&` and `<` are written as `&amp;` and `&lt;` and
+decoded on the way in. A document the model refuses to write stops the export
+with a notice, the way a save stops. `currentModelMarkdown` in `app.js` is the
+model's half of `documentMarkdown`, shared by both.
+
+One cost: an Editable export made under the model core shows nothing when the
+markdown-it CDN cannot be reached, where one holding HTML still showed the
+document, uneditable. The plan chose markdown so that opening an exported
+file never needs the HTML conversion stage 4 runs once and retires.
+
+The suites changed with it. `static-export` drives `modelStripView` on a stub
+tree and checks the export takes its copy from the helper. `self-reproduce`
+checks the markdown payload, its escaping, an empty editor and a refused
+document. `export-variant` boots an exported document from `#app-document`.
+`tests/browser/exports.spec.mjs` is new: under the model core it makes the
+HTML export, hands PDF and Word their copy, and checks that none of the
+model's markup reaches any of them. It then opens the Editable export under
+both cores and re-exports it, getting the same markdown and the same bundle
+byte for byte. It passes in Chromium and WebKit, and fails with the stripping switched off.
+Firefox does not launch under Playwright here, so its hand run is owed: export
+a document holding an equation at a line's edge to HTML, PDF, Word and
+Editable, open each, then open the Editable one from disk, edit it and export
+it again.

@@ -589,11 +589,43 @@ function htmlToMarkdown(html) {
 // width. Turndown over the DOM is the legacy answer and goes with the flag.
 //
 // The fallback when there is no model is for an editable export opened under
-// the flag, which keeps its embedded HTML and never loads one until slice 2.
+// the flag that still embeds HTML: one made under the old core, or before
+// stage 4's slice 2 made the export embed markdown.
 function documentMarkdown() {
+  const markdown = currentModelMarkdown();
+  return markdown !== null ? markdown : htmlToMarkdown(editor.innerHTML);
+}
+
+// The model's answer alone: the markdown it would write, or null when there is
+// no model document to ask. The editable export asks this rather than
+// documentMarkdown, because without a model it embeds HTML, not Turndown's
+// reading of it. Throws when the emitter refuses, as a save would.
+function currentModelMarkdown() {
   const doc = modelCoreEnabled() ? modelCurrentDocument() : null;
-  if (doc) return modelDocumentMarkdown(doc, md, markdownStyle.wrapWidth);
-  return htmlToMarkdown(editor.innerHTML);
+  return doc ? modelDocumentMarkdown(doc, md, markdownStyle.wrapWidth) : null;
+}
+
+// ── The editable export's markdown ───────────────────────────────────────────
+//
+// Under the model core an editable export carries its document as markdown in
+// `<script type="text/markdown" id="app-document">` (stage 4's slice 2). A
+// script element ends at the first `</script` whatever its type, and plenty of
+// documents say that — this repo's own do — so `&` and `<` are written as
+// entities: the one reversible pair that leaves no `<` inside the element. A
+// script's text is never entity-decoded by the parser, so it is undone here.
+function encodeEmbeddedMarkdown(markdown) {
+  return markdown.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}
+
+function decodeEmbeddedMarkdown(text) {
+  return text.replace(/&(amp|lt);/g, (_, name) => (name === "amp" ? "&" : "<"));
+}
+
+// The markdown an exported document was made with, or null for one that
+// embeds HTML in the editor instead.
+function readEmbeddedMarkdown() {
+  const element = document.getElementById("app-document");
+  return element ? decodeEmbeddedMarkdown(element.textContent) : null;
 }
 
 // The same, for a caller that has a user waiting: a document the emitter
@@ -1465,8 +1497,15 @@ window.addEventListener("load", () => {
 
   (async () => {
     if (isExported) {
-      // Exported HTML file: keep the embedded content, ignore localStorage
+      // Exported HTML file: its own document, never this browser's autosave.
+      // One exported under the model core carries markdown and an empty
+      // editor, and goes through the markdown door, which either core can
+      // render — so the question is what the file carries, not which core is
+      // running. One exported before that, or under the old core, keeps the
+      // HTML embedded in the editor.
       editor.removeAttribute("data-exported");
+      const embedded = readEmbeddedMarkdown();
+      if (embedded !== null) loadDocumentMarkdown(embedded);
     } else if (saved && !isBlankContent(saved)) {
       // Style first, content second, which is a swap on the line before this
       // stage. loadDocumentHtml converts through htmlToMarkdown on the model

@@ -78,7 +78,9 @@ async function generatePDF() {
     throw new Error("Could not load the PDF library. Check your connection.");
   }
 
-  const element = editor.cloneNode(true);
+  // Without the model's view: a caret stop is a zero-width character and its
+  // <br> a real line break once the page is drawn to a canvas.
+  const element = modelExportClone(editor);
   const filename = generatePDFFilename();
 
   // Create a temporary wrapper to hold the cloned element

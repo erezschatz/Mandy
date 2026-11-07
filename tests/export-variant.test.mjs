@@ -18,7 +18,11 @@
 // `currentFilePath` and `fileDescriptor()`, both of which are `file-api.js`
 // globals, so a bundle without the file throws before a single check runs.
 
-import { loadSource, makeEl, markdownitStub, walk } from "./dom.mjs";
+import { loadApp, loadSource, makeEl, markdownitStub, walk } from "./dom.mjs";
+
+// The real escape, out of app.js: the file a model-core export writes carries
+// its markdown through it, and the boot below has to undo exactly that.
+const { encodeEmbeddedMarkdown } = loadApp();
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -26,8 +30,13 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 // document's content is the markup in the page, not anything in storage.
 // `stored` is what this browser happens to have under the autosave key, which
 // on a first open is nothing and after any editing is that editing.
+//
+// `markdown` is the other kind of exported document, made under the model core
+// since stage 4's slice 2: an empty editor and the document as markdown in
+// `#app-document`, escaped the way the export writes it.
 function boot({
   embedded = "<h1>Real work</h1>",
+  markdown = null,
   stored = null,
   confirmAnswer = true,
 } = {}) {
@@ -50,6 +59,11 @@ function boot({
 
   const extra = new Map([["editor", editorEl]]);
   for (const id of ["fileInput", "formatBar"]) extra.set(id, makeEl());
+  if (markdown !== null) {
+    const script = makeEl("script");
+    script.textContent = encodeEmbeddedMarkdown(markdown);
+    extra.set("app-document", script);
+  }
 
   // What a download looks like from outside: app.js builds a real <a>, sets
   // `download`, clicks it and takes it out again. The anchor is the only
@@ -232,6 +246,22 @@ export default async function run(check) {
   check("and this browser's autosave is ignored", r2.editorHtml() !== "<p>Your own notes</p>");
   check("and data-exported is stripped once the toolbar has read it",
     !r2.hasVariantAttribute());
+
+  // --- one exported under the model core --------------------------------
+  //
+  // Its editor is empty and its document is markdown beside the bundle. The
+  // boot asks what the file carries rather than which core is running, so
+  // this harness — the old core, whose markdown door is md.render, a
+  // pass-through in the stub — reads the decoded markdown straight back off
+  // the editor. The model core's half of the same door is a browser's: see
+  // tests/browser/exports.spec.mjs.
+  const sent = "# Sent to you\n\nSay `</script>` & `&lt;`.\n";
+  const r3 = boot({ embedded: "", markdown: sent, stored: "<p>Your own notes</p>" });
+  await settle();
+  check("a document exported as markdown opens through the markdown door",
+    r3.editorHtml() === sent);
+  check("and this browser's autosave is still ignored", r3.editorHtml() !== "<p>Your own notes</p>");
+  check("and data-exported is stripped all the same", !r3.hasVariantAttribute());
 
   // --- the blob fallbacks -----------------------------------------------
   //

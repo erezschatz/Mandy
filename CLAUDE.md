@@ -364,7 +364,9 @@ measurement), and stand in for those runs in Chromium and WebKit. Since
 2026-11-07 `open-edit-save.spec.mjs` opens `tests/fixtures/break-test.md`
 through the file API, types into it and saves it to a scratch file under both
 cores — stage 4's parity gate, where every line the two cores write
-differently has to be one the spec names in advance. `npm run test:browser` from the root. It is not part of `npm test`
+differently has to be one the spec names in advance. `exports.spec.mjs` makes
+each export under the model core and checks none carries the renderer's
+editing markup, and opens the Editable one under both cores. `npm run test:browser` from the root. It is not part of `npm test`
 and will not be: it wants a browser engine and a `node_modules`, which is the
 one dependency of that kind this project has agreed to (TODO 6.8 is the
 agreement and the plan). First time only, `cd tests/browser && npm install &&
@@ -2241,6 +2243,15 @@ There are two, and they are different deliverables:
   anyone's `.md`. See the outline section below.
 - **Editable** ([html-export.js](front/html-export.js)) — bundles the editor
   *with* the document so recipients can edit in-browser and send it back.
+  **Under the model core the document travels as markdown** (stage 4's slice
+  2): escaped in `<script type="text/markdown" id="app-document">`, with an
+  empty editor, and the boot loads it through `loadDocumentMarkdown` whichever
+  core is running. A file without that element keeps the HTML in its editor.
+
+The static export, PDF and Word all start from `modelExportClone` in
+`model.js`, which strips the model renderer's block ids, fillers, caret stops
+and `contenteditable` from a copy of the editor. A new document export starts
+there too, or the zero-width stop beside an equation reaches the file.
 
 **Exported documents are self-reproducing.** They carry the export set a
 document can travel on in — markdown, HTML and Editable — so the collaboration

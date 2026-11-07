@@ -384,7 +384,7 @@ export function loadApp({ modelCore = false } = {}) {
       " inputAnswers: __inputAnswers, insertLink," +
       " documentElement: __root, byId: __byId," +
       " htmlToMarkdown, anchorSlug, headingAnchors, openExternalLink, normaliseLinkHref," +
-      " slugifyTitle, isBlankContent, sniffMarkdownStyle, reflowMarkdown," +
+      " slugifyTitle, encodeEmbeddedMarkdown, decodeEmbeddedMarkdown, isBlankContent, sniffMarkdownStyle, reflowMarkdown," +
       " adoptMarkdownStyle, normaliseNbsp, isGhostElement," +
       " scanReferenceDefinitions, normalizeReferenceLabel, appendReferenceDefinitions," +
       " referenceDefinitionsNow: () => referenceDefinitions };",

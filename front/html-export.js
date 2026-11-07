@@ -55,12 +55,29 @@ function unwrapInline(text) {
 }
 
 onToolbarAction("export-editable", async () => {
-  const currentContent = editor.innerHTML;
-  const currentText = editor.textContent || "";
-  const needsMathJax =
-    containsLatex(currentText) ||
-    currentContent.includes("mjx-container") ||
-    currentContent.includes("MJX-CHTML");
+  // Under the model core the document travels as markdown, beside the bundle,
+  // and the editor ships empty: embedding the rendered HTML would make every
+  // open of the file a conversion from HTML, which stage 4 runs once and then
+  // retires. With no model document it is the HTML, as it always was.
+  let markdown;
+  try {
+    markdown = currentModelMarkdown();
+  } catch (err) {
+    console.error("[Export] Could not write the document:", err);
+    notify(`Could not export the document: ${err.message}`, { severity: "error" });
+    return;
+  }
+  const currentContent = markdown === null ? editor.innerHTML : "";
+  const needsMathJax = markdown !== null
+    ? containsLatex(markdown)
+    : containsLatex(editor.textContent || "") ||
+      currentContent.includes("mjx-container") ||
+      currentContent.includes("MJX-CHTML");
+  // Escaped by app.js's encoder, which its boot undoes. No whitespace around
+  // it, so the element's textContent is exactly what was written.
+  const documentScript = markdown === null
+    ? ""
+    : `<script type="text/markdown" id="app-document">${encodeEmbeddedMarkdown(markdown)}${CLOSE}\n    `;
 
   // file-api.js is the one module deliberately left out: it drives the
   // server-backed Open/Save, and an exported document has no server. app.js
@@ -211,7 +228,7 @@ ${cssContent}
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"><\/script>
     <script src="https://cdn.jsdelivr.net/npm/turndown@7.1.2/dist/turndown.min.js"><\/script>
     ${needsMathJax ? MATHJAX_TAGS : ""}
-    <script id="app-script">
+    ${documentScript}<script id="app-script">
 ${jsContent}
     <\/script>
 </body>

@@ -10,16 +10,20 @@ import { loadApp, loadSource, readFront } from "./dom.mjs";
 // The real one out of app.js, not a stand-in: the filename is the one thing an
 // export hands to the recipient's filesystem, and a slug that disagrees with
 // the app's own would be invisible from in here.
-const { slugifyTitle } = loadApp();
+const { slugifyTitle, encodeEmbeddedMarkdown, decodeEmbeddedMarkdown } = loadApp();
 
 const INLINE_CSS = "#editor h1 { font-size: 2rem; } /* gen-N css */";
 const INLINE_JS = [
   "toolbar.js", "app.js", "static-export.js", "html-export.js",
 ].map(readFront).join("\n\n");
 
-function runExport({ inlined }) {
+// `markdown` is what the model core would answer: null for no model document,
+// which is the old core and an export that still embeds HTML; a string for the
+// model's document; an Error for a document the emitter refuses to write.
+function runExport({ inlined, markdown = null }) {
   let written = null;
   let downloaded = null;
+  const notices = [];
   let fetchCalls = 0;
   let handler = null;
 
@@ -61,9 +65,14 @@ function runExport({ inlined }) {
       class { constructor(u) { this.pathname = u; } },
       { createObjectURL: () => "blob:x", revokeObjectURL: () => {} },
     ),
-    notify: () => {},
-    console,
+    notify: (message) => notices.push(message),
+    console: { ...console, error() {} },
     containsLatex: () => false,
+    currentModelMarkdown: () => {
+      if (markdown instanceof Error) throw markdown;
+      return markdown;
+    },
+    encodeEmbeddedMarkdown,
     onToolbarAction: (action, fn) => { if (action === "export-editable") handler = fn; },
   });
 
@@ -72,6 +81,7 @@ function runExport({ inlined }) {
     output: () => written,
     filename: () => downloaded,
     fetches: () => fetchCalls,
+    notices,
   };
 }
 
@@ -141,4 +151,51 @@ export default async function run(check) {
   check("and says which of the two HTML exports it is", name.includes("-editable-"));
   check("and a re-export names itself the same way",
     /^doc-editable-\d+\.html$/.test(reExport.filename()));
+
+  // --- under the model core: the document travels as markdown ---------------
+  //
+  // Stage 4's slice 2. The editor ships empty and the markdown sits in its own
+  // script element beside the bundle, which the recipient's boot loads through
+  // the markdown door. What can go wrong without a browser to show it is the
+  // escaping: a script element ends at the first `</script` whatever its type,
+  // and documents — this repo's own — say exactly that.
+  check("an export with no model document embeds no markdown",
+    !genOne.includes('id="app-document"') && genOne.includes("<h1>Doc</h1><p>body</p>"));
+
+  const MARKDOWN = "# Doc\n\nSay `</script>` and `<!-- x -->` & `&lt;` here.\n";
+  const modelExport = runExport({ inlined: true, markdown: MARKDOWN });
+  await modelExport.handler();
+  const genModel = modelExport.output();
+  const embedded = genModel.match(/<script type="text\/markdown" id="app-document">([\s\S]*?)<\/script>/);
+  check("under the model core the export embeds the markdown", !!embedded);
+  check("and it decodes to exactly the document",
+    !!embedded && decodeEmbeddedMarkdown(embedded[1]) === MARKDOWN);
+  check("with no < left inside the element to end it early",
+    !!embedded && !embedded[1].includes("<"));
+  check("beside the bundle, ahead of it",
+    genModel.indexOf('id="app-document"') < genModel.indexOf('<script id="app-script">'));
+  const editorDiv = genModel.match(/<div id="editor"[^>]*>([\s\S]*?)<\/div>\n    <\/div>/);
+  check("and the editor ships empty", !!editorDiv && editorDiv[1].trim() === "");
+  check("not the rendered HTML", !genModel.includes("<h1>Doc</h1><p>body</p>"));
+  check("and the bundle is still carried forward whole", genModel.includes(INLINE_JS));
+
+  const modelScript = genModel.match(/<script id="app-script">\n([\s\S]*?)\n    <\/script>/);
+  const modelStructure = modelScript ? genModel.replace(modelScript[1], "") : genModel;
+  check("script tags still balance with the document's own",
+    (modelStructure.match(/<script/g) || []).length ===
+      (modelStructure.match(/<\/script>/g) || []).length);
+
+  // The encoder against itself, on the strings a naive one gets wrong: an
+  // entity already in the text has to come back as the entity, not as what it
+  // names.
+  for (const text of ["&lt;", "&amp;lt;", "<&>", "a</script>b", ""]) {
+    check(`the escape round-trips ${JSON.stringify(text)}`,
+      decodeEmbeddedMarkdown(encodeEmbeddedMarkdown(text)) === text);
+  }
+
+  // A document the model refuses to write is not exported as something else.
+  const refused = runExport({ inlined: true, markdown: new Error("no shape") });
+  await refused.handler();
+  check("a refused document writes no file", refused.output() === null);
+  check("and says why", refused.notices.some((m) => m.includes("no shape")));
 }

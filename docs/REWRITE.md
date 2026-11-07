@@ -5489,7 +5489,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     slice 5 needs slice 4's cells. So 1, 2 and 3 can be built in any order,
     and 4 and 5 come after them in that order.
 *   **4. Reintegration — planned 2026-11-07; slice 1 done and tested
-    2026-11-07, by machine and by hand in Firefox. → MERGE TO `main`
+    2026-11-07, by machine and by hand in Firefox; slice 2 done and tested
+    by machine 2026-11-07, its Firefox hand run owed. → MERGE TO `main`
     WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
@@ -5627,6 +5628,90 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         bundle inline, so it runs the code it was exported with.
         `self-reproduce`, `static-export` and `export-variant` change with
         it.
+        - **How it is built, written 2026-11-07 before building.**
+          - `modelExportClone(root)` in `model.js` is the helper, since the
+            attributes it removes are the model's. It clones, strips the
+            root's own `contenteditable`, `spellcheck` and `data-exported`,
+            then `modelStripView` walks the clone: every `data-filler`
+            element goes (the empty block's `<br>`, the zero-width stop in
+            front of an equation and the `<br>` behind one), and every
+            descendant loses `data-block` and `contenteditable`. **It is not
+            behind the flag**, because under the old core there is nothing
+            of the model's to remove: what it changes there is the
+            `contenteditable="false"` on a stamped `mjx-container`, and for
+            PDF the root's `contenteditable` and `spellcheck`, which mean
+            nothing in a static page, a PDF or a Word file. Word reads a
+            detached copy rather than the live editor, which it only reads
+            from. The walk
+            goes over `childNodes` rather than `querySelectorAll`, so the
+            `static-export` suite can drive it on a stub tree.
+          - `convertHtmlToDocxElements(root)` takes the clone, and
+            `generateDOCX` and `generatePDF` both ask the helper for it.
+          - **The editable export embeds markdown when there is a model
+            document**, the same condition `documentMarkdown` uses, so an
+            export opened under the flag that still holds HTML re-exports as
+            HTML. `currentModelMarkdown()` in `app.js` is that question,
+            shared with `documentMarkdown`, and a document the model refuses
+            to write stops the export with a notice, as a save stops.
+          - **The markdown is escaped, and the escape is undone on the way
+            in.** A `<script>` element ends at the first `</script` whatever
+            its type, and this repo's own documents say `</script>`. So `&`
+            and `<` are written as `&amp;` and `&lt;`, the one reversible
+            pair that leaves no `<` in the element, and
+            `readEmbeddedMarkdown` in `app.js` decodes them in one pass. No
+            whitespace framing goes around it, so its `textContent` is
+            exactly the escaped markdown.
+          - **The boot asks whether the file carries `#app-document`, not
+            which core is running.** With it, an exported document loads
+            that markdown through `loadDocumentMarkdown`, which either core
+            can render, so a file exported under the model core still opens
+            under `?core=legacy`. Without it, the embedded HTML is kept, as
+            before.
+          - **Suites**: `static-export` drives `modelStripView` on a stub
+            tree and checks the export uses the helper's clone;
+            `self-reproduce` checks the markdown payload, its escaping, the
+            empty editor and a refused document; `export-variant` boots an
+            exported document from `#app-document`. The fixpoint across a
+            re-export needs a real browser and is the spec's. **Playwright**:
+            `exports.spec.mjs` makes each export under the model core and
+            checks no view attribute reaches any of them, then opens the
+            editable export under both cores and re-exports it.
+          - **Hand, in Firefox** (Playwright's does not launch here): the
+            downloads themselves. Export a document holding an equation at a
+            line's edge to HTML, PDF, Word and Editable; open each; the
+            Editable one opened from disk, edited, and exported again.
+        - **Done and tested by machine 2026-11-07; the Firefox hand run is
+          owed.** Built as planned above, with one cost the plan did not
+          name: an Editable export holding markdown shows nothing when the
+          markdown-it CDN cannot be reached, where one holding HTML still
+          showed the document, uneditable.
+          - **`tests/browser/exports.spec.mjs`** is green in Chromium and
+            WebKit. On a document holding an equation at each edge of a
+            line, an empty block, and a code span saying `</script>` and
+            `<!--`, it checks first that the editor carries every kind of
+            view attribute, then that the static export's body, the root
+            handed to Word's converter and the element handed to the PDF
+            library carry none. The PDF library is replaced by a recorder,
+            so nothing is rasterised. The Editable export's `#app-document`
+            decodes to `currentModelMarkdown()`, its editor is empty, and
+            served back from the app's origin it opens under `?core=model`
+            to the same markdown, re-exports the same markdown and the same
+            bundle byte for byte, and under `?core=legacy` saves the same
+            markdown. With `modelStripView` switched off the first two tests
+            fail on `data-block`.
+          - **The suites**: `static-export`, `self-reproduce` and
+            `export-variant` as planned, and the whole of `npm test` passes.
+          - **Opening such an export writes this browser's `source` key**,
+            since `loadDocumentMarkdown` adopts the style and remembers it.
+            An exported document never reads either key back at boot, and
+            its `beforeunload` already wrote `content`, so nothing reads the
+            wrong document; recorded because the boot used to touch no
+            storage at load.
+          - **Owed, by hand in Firefox**, since Playwright's Firefox does
+            not launch here: the recipe above. It is what no machine check
+            reaches — the PDF and Word files themselves, opened, and an
+            Editable export opened from disk as a `file://` page rather than
+            served from the app's origin.
 
     3.  **A tab parks its model, behind the flag.** The swap puts the
         outgoing document's model into its parked bundle beside its history,

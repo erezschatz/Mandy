@@ -268,11 +268,13 @@ function htmlElementToDocx(element) {
 }
 
 /**
- * Convert entire editor content to DOCX document
+ * Convert a document root's content to DOCX elements. The root is the clone
+ * modelExportClone hands over rather than the editor itself, so a caret stop
+ * does not become a zero-width run nor its filler <br> a line break in Word.
  */
-function convertHtmlToDocxElements() {
+function convertHtmlToDocxElements(root) {
   const docxElements = [];
-  const editorChildren = editor.children;
+  const editorChildren = root.children;
 
   for (let i = 0; i < editorChildren.length; i++) {
     const child = editorChildren[i];
@@ -301,7 +303,7 @@ async function generateDOCX() {
   }
 
   const title = extractDocxTitle();
-  const docxElements = convertHtmlToDocxElements();
+  const docxElements = convertHtmlToDocxElements(modelExportClone(editor));
 
   const doc = new docx.Document({
     title: title,

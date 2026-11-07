@@ -2625,6 +2625,42 @@ function modelIsFiller(node) {
   return node.nodeType === 1 && node.hasAttribute(MODEL_FILLER_ATTR);
 }
 
+/**
+ * Take out of a tree everything the DOM builder added for editing — stage 4's
+ * slice 2. Every filler goes (the empty block's `<br>`, the zero-width stop in
+ * front of an equation and the `<br>` behind one), and every element loses its
+ * block id and its `contenteditable`, which here is the equation wrapper's and
+ * MathJax's container's `false`. None of it means anything outside the editor,
+ * and in a Word file the stop is a real character and the `<br>` a real break.
+ *
+ * In place, and over `childNodes` rather than a selector, so a suite can drive
+ * it on a stub tree. Not behind the flag: under the old core the only thing it
+ * finds is the stamped container's `contenteditable`, which means nothing in an
+ * export either.
+ */
+function modelStripView(root) {
+  for (const child of Array.from(root.childNodes)) {
+    if (child.nodeType !== 1) continue;
+    if (modelIsFiller(child)) {
+      root.removeChild(child);
+      continue;
+    }
+    child.removeAttribute(MODEL_BLOCK_ATTR);
+    child.removeAttribute("contenteditable");
+    modelStripView(child);
+  }
+  return root;
+}
+
+// The editor as an export should see it: a deep clone, with the root's own
+// editing attributes and the view above removed. The static export, PDF and
+// Word all start here, so nothing the renderer added for editing reaches a file.
+function modelExportClone(editorRoot) {
+  const clone = editorRoot.cloneNode(true);
+  for (const name of ["contenteditable", "spellcheck", "data-exported"]) clone.removeAttribute(name);
+  return modelStripView(clone);
+}
+
 // The element carrying a block's id, or null when that block owns none.
 function modelElementFor(root, block) {
   return root.querySelector(`[${MODEL_BLOCK_ATTR}="${block.id}"]`);
