@@ -1888,7 +1888,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     app does today" by one behaviour — typing into a cell's text — and that is
     written here rather than only in the slice so the stage cannot be reported
     as at parity by someone reading the criterion alone. Stage 3 lifts it, as
-    TODO 1.1.8.
+    TODO 1.1.8. **Lifted**: cells took the caret on 2026-10-31 and the table
+    its structure on 2026-11-01, and stage 3 closed on 2026-11-07.
 
     **`model.js` joins the three registries in slice 1, not at stage 4.** Slice
     1 above says stage 4, and that was written when the boundary had not been
@@ -2536,7 +2537,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         is the body's text and the info string is not editable from the
         document, which is also true today.
 
-        **A table refuses edits until stage 3.** Decided 2026-09-19, and it
+        **A table refuses edits until stage 3.** (History: stage 3's slice 4
+        lifted it on 2026-10-31.) Decided 2026-09-19, and it
         was this stage's sharpest question. The model cannot address a cell:
         1b's floor is the row, because `td_open` carries no `map` and there is
         no span to hang a block off. Three answers were on the table — extend
@@ -2740,6 +2742,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         **once-per-document** notice the first time a keystroke lands inside a
         table: the argument against a `notify` was that it would fire per
         keystroke, which a once-only one does not. Nobody has asked for it.
+        (History since stage 3's slice 4, 2026-10-31: a cell takes the caret
+        and the edit in every engine, so there is no refusal left to be quiet
+        about.)
 
         **All three engines have since been driven through the whole protocol
         clean** — every step, with the divergence line quiet throughout,
@@ -2912,7 +2917,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             it should go on refusing, because there is nothing for it to
             compose from.
 
-        7.  **A table refuses edits — done and tested.** Decided 2026-09-19,
+        7.  **A table refuses edits — done and tested.** (History: lifted by
+            stage 3's slice 4 on 2026-10-31.) Decided 2026-09-19,
             above. The refusal itself is an absence: the handler already
             cancels every `beforeinput` whether it handles it or not. What lands
             here is the *saying so* — a table's subtree renders
@@ -4392,7 +4398,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
               between levels 1 and 2 keeps its underline style; moving to 3–6
               it becomes ATX, because setext has no level 3.
             - **Several blocks at once** apply to each leaf in range. A table in
-              the range is skipped, because a table refuses edits.
+              the range is skipped, because a table refused edits until
+              stage 3's slice 4, and a cell still refuses a block format.
             - **The code block** is the whole-block half of Code:
               `blocksInRange`'s rules decide which half, as they do today. One
               or more top-level blocks become one fence, joined by newlines.
@@ -4899,7 +4906,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
       would drop unsaved edits at boot.
     - **The new core sits behind a flag, default off** (preamble), so the
       branch stays usable and the input layer can be driven in the running app.
-    - **A table refuses edits until stage 3** (slice 4) rather than being given
+    - **A table refuses edits until stage 3** (slice 4; lifted there on
+      2026-10-31) rather than being given
       a row-as-source stopgap or a tiler that splits on pipes.
     - **An empty block renders a marked filler `<br>`** (slices 1 and 2) rather
       than one recognised by position or replaced by CSS height — and the mark
@@ -4933,7 +4941,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     structure. DECISIONS.md records what the project has settled for good; a
     refusal that ends in a fortnight is plan. If the refusal outlives stage 3
     it stops being plan and wants a D number, which is the thing to notice
-    rather than a thing to pre-empt.
+    rather than a thing to pre-empt. **It did not**: it ended with stage 3's
+    slice 4, so it stayed plan.
 
     **Two decisions inside the rewrite are still open, and neither is this
     stage's**: Enter in a table cell, a no-op or a row insertion, which the
@@ -4942,22 +4951,23 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     live model rather than a frozen string, which the tabs section defers to
     stage 4 and keeps by default until then. (The first was settled on
     2026-10-27 in stage 3's plan: Enter moves down a row.)
-*   **3. The 1.1 items — planned 2026-10-27; slice 1 done and tested
+*   **3. The 1.1 items — done and tested 2026-11-07, closed by a hand pass
+    in Firefox on one document ending in a Save As and a reopen.** Planned
+    2026-10-27; slice 1 done and tested
     2026-10-30, by machine and by hand in Firefox; slice 2 done 2026-10-30,
     tested by machine and, on 2026-10-31, by hand in Firefox; slice 3 done
     and tested 2026-10-31, by machine and through the real Turndown in a
     browser; slice 4 done and tested 2026-10-31, by machine and by hand in
     Firefox; slice 5 done and tested 2026-11-01 by machine, and on 2026-11-07
-    by hand in Firefox for the one thing a machine cannot see.** Not a merge point
+    by hand in Firefox for the one thing a machine cannot see. Not a merge point
     either, for the same reason: reintegration has not happened, so the app
     around the new core is still reading `editor.innerHTML`.
 
-    **It inherits one debt from stage 2, named on both sides so it cannot be
-    lost between them:** a table refuses edits from slice 4 onwards, and TODO
-    1.1.8's structural editing is what lifts the refusal. Until it does, a
-    table is rendered `contenteditable="false"` and is exactly as editable as
-    it is today, which is to say not. The item is the place the refusal ends;
-    stage 2's exit criterion records that it starts.
+    **It inherited one debt from stage 2, and paid it.** A table refused
+    edits from stage 2's slice 4, rendered `contenteditable="false"`, and TODO
+    1.1.8 was named on both sides as the place the refusal ends. It ended in
+    two halves: slice 4 gave the cells the caret on 2026-10-31, and slice 5
+    gave the table its rows and columns on 2026-11-01.
 
     **The exit criterion is the estimate table's**: blockquote, image, table
     insert and structural editing, and the 2.1 formatter. That is TODO 1.1.6,
@@ -5457,12 +5467,21 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           - **The Format menu was taller than a 720px window.** Its panel now
             scrolls, which fixes every menu.
 
-    6.  **The hand pass, and closing the stage.** The new sections of
+    6.  **The hand pass, and closing the stage — done 2026-11-07.** The new sections of
         `tests/fixtures/format-check.md` top to bottom on one document in
         Firefox, ending in a Save As and a reopen, the way stage 2 closed.
         Then 1.1.6, 1.1.7, 1.1.8 and 2.1 get their `## What was done`, and the
         refusal's descriptions in CLAUDE.md, `tasks/1.1-formats.md` and this
         file become history.
+        - **Done 2026-11-07.** The four stage 3 specs passed first, in
+          Playwright's Chromium, Firefox and WebKit. Then the Blockquote, Image
+          and Table cells sections were run by hand in the installed Firefox on
+          one open document, ending in a Save As to a scratch name and a
+          reopen, and the run was reported clean. Table
+          structure's only hand step, Firefox's own table controls, was run the
+          same day. The records were closed in the same change, and
+          `front/input-check.html`'s table step, which still said a table
+          refuses, now says a cell takes typing.
 
     **Order and dependencies.** Slices 1 and 2 stand alone. Slice 3 stands
     alone too, and is the one piece of this stage that changes what the

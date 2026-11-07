@@ -499,8 +499,9 @@ a keyboard, the way `paste-check` does. It reports every event the engine sent
 and, after each one, whether any block's DOM text has come adrift from its
 model's. Slice 4 added eight steps to its protocol — the split, the merge across
 a block boundary, Tab and Shift+Tab, the empty-item rules, a fence edited as
-source, the table refusing the caret, and the guard paragraph that stops a
-trailing table trapping it, and slice 5 added seven more for paste and drop.
+source, the table refusing the caret (typing in a cell since stage 3's slice 4),
+and the guard paragraph that stops a trailing table trapping it, and slice 5
+added seven more for paste and drop.
 **It reports a drag that never begins**, added 2026-09-21: pressing inside a
 selection is the gesture that should start one, so the page logs that and then
 whether a `dragstart` followed — a drag that does not happen logs nothing
@@ -1125,9 +1126,9 @@ default. Slice 2 made it **exact** — it compares atom-aware DOM text against
 `modelBlockText` at every block that owns an element, so a block holding maths
 is checked rather than skipped and one owning no element is covered by its
 container. The one thing it still does not measure is a block bearing no inline
-tree anywhere: a fence, a rule, a gap, and **a table**, whose floor is the row
-because `td_open` carries no `map`. That is the same statement slice 4 makes out
-loud — a table is not editable as text — rather than an exception carved here.
+tree anywhere: a fence, a rule and a gap. **A table was on that list** until
+stage 3's slice 4 gave its cells an inline tree each, and since then the verify
+covers them like any other block.
 
 **Slice 3 gave it input**, 2026-09-20, in [model-input.js](front/model-input.js)
 — its own file because it is an event layer rather than the model, and because
@@ -1688,6 +1689,10 @@ line prefixes out from where it sits** (`modelTablePrefixes`): the recorded ones
 belong to the document it was parsed in, and a pasted table written with them
 lost the `>` of the quote it landed in. WebKit reports Shift+Enter in a cell as
 `insertParagraph`, so the input layer remembers a shifted Enter keydown.
+
+**Stage 3 closed on 2026-11-07**, with a hand pass of its sections in Firefox
+on one document ending in a Save As and a reopen. Stage 4, reintegration, is
+next, and the irreversible merge to `main` comes at its end.
 
 **The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
 and `?core=model` / `?core=legacy` set it for good, resolved once per page load.

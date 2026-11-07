@@ -10122,7 +10122,7 @@ list-indent check, and `inline-code-links.spec.mjs`'s case for Code over a word.
 They are recorded, not fixed. The service worker's version is bumped, since the
 shell changed.
 
-## 2026-11-01 — Table structure, under the model core
+## 2026-11-01 — `d5bdd7c` — Table structure, under the model core
 
 Stage 3's slice 5, the rest of TODO 1.1.8: a table's rows and columns can be
 added and taken away, a column can be aligned, and Insert → Table makes one. On
@@ -10216,3 +10216,30 @@ The rule behind the narrowing is that a hand run is for what an engine cannot
 vouch for, and for real documents once the rewrite is nearly done, not for
 keystroke recipes a spec can press.
 The service worker's version is bumped, since the shell changed.
+
+## 2026-11-07 — Stage 3 is closed
+
+The rewrite's stage 3, the 1.1 formats, is done and tested. Its last step was a
+hand pass, run after the machine had done what it could: the four stage 3
+browser specs (`blockquote`, `image`, `table-cells`, `table-structure`) passed
+in Playwright's Chromium, Firefox and WebKit, 114 cases. Then the stage's
+sections of `tests/fixtures/format-check.md` were run by hand in the installed
+Firefox on one open document, ending in a Save As to a scratch name and a
+reopen, and the run was reported clean. The table-structure section's
+only hand step, Firefox's own table controls, had been run earlier the same
+day.
+
+That closes TODO 1.1.6 (blockquote), 1.1.7 (image), 1.1.8 (tables) and 2.1 (an
+edited table's layout), each of which gets its closing `## What was done`. The
+table refusal stage 2 introduced, and stage 3 lifted, is now written as
+history wherever it was still described as current: CLAUDE.md,
+`tasks/1.1-formats.md` and docs/REWRITE.md. CLAUDE.md also says the stage is
+closed, and no longer lists a table among the blocks `modelVerifyRender` cannot
+see, since its cells have had an inline tree each from slice 4. The same was true of
+`front/input-check.html`, whose protocol still told the tester that typing in
+a table does nothing. Its table step now says a cell takes the typing, and the
+step after it explains the guard paragraph below a trailing table without the
+refusal it was first built around.
+
+Stage 4, reintegration, is next. It is not started, and its plan is written
+before any of its work.
