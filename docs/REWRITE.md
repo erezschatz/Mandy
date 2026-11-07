@@ -5488,12 +5488,300 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     running editor writes to a file. Slice 4 needs slice 3's formatter, and
     slice 5 needs slice 4's cells. So 1, 2 and 3 can be built in any order,
     and 4 and 5 come after them in that order.
-*   **4. Reintegration — not started. → MERGE TO `main` WHEN THIS CLOSES** —
-    D8, and **this is the merge that cannot be taken back.** Autosave changes
-    from HTML to the model's serialised form and the first load after landing
-    converts a pre-rewrite `content` key once, through Turndown. That autosave
-    may be the only copy of someone's unsaved work, so the conversion is tested
-    *before* this lands: a `git revert` does not put the storage back.
+*   **4. Reintegration — planned 2026-11-07, not started. → MERGE TO `main`
+    WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
+    Autosave changes from HTML to the model's serialised form and the first
+    load after landing converts a pre-rewrite `content` key once, through
+    Turndown, so a `git revert` does not put the storage back. **The stakes
+    were settled with the user on 2026-11-07, and they are lower than this
+    line used to say.** Mandy has one user, and the upgrade is done the way
+    any upgrade of it is: save everything, close the app, pull, start it
+    again. Every document is then on disk as markdown, which neither core
+    changes, and the conversion only ever meets documents that match their
+    files. It is still tested before it lands, because a tab left unsaved by
+    mistake should come through, but nothing is kept to undo it with
+    (decision 3).
+
+    **The exit criterion is the estimate table's**: `file-api.js` and `tabs.js`
+    on the model, with the swap moving a model, the stored HTML converted, and
+    the lock decided; the outline and both exports on the model; the tests
+    rewritten; and one input-layer check page run in three engines. Read with
+    the build order's steps 5 to 7 above, which are this stage, it comes to
+    one sentence: **the model writes the file, the flag goes, and nothing the
+    old core needed is left except what converting its storage needs.**
+
+    **What is true now, measured 2026-11-07 while writing this.** Under the
+    flag the model owns every edit, and the app around it still reads
+    `editor.innerHTML`:
+
+    - **Three places write markdown out from the DOM**, all through
+      `htmlToMarkdown`: `saveFileBody` in `file-api.js`, behind both Save and
+      Save As, and Download and Copy markdown in `app.js`. A fourth converts
+      stored HTML on the way *in*: `loadDocumentHtml`, behind the boot restore
+      and a tab adopt. Nothing that writes a file calls `modelSerialise`;
+      its one production caller is `modelSettleLists`, judging a list's shape.
+    - **Autosave writes `editor.innerHTML`** in six places: the debounce,
+      `beforeunload`, Open, upload, Paste markdown's legacy branch, and
+      `format-bar.js`'s `saveSoon`, which runs after every `applyFormat`
+      under both cores.
+    - **The flag is asked on 41 lines across eight files**, comments
+      included, 22 of them in `app.js`. Each call is a legacy branch beside a
+      model branch, and stage 4 deletes the legacy side.
+    - **`runCommand` has 18 call sites outside `execcommand.js`**, and under
+      the flag it lets through `copy` alone. Under the flag only
+      `model-input.js`'s menu clipboard reaches it; the Edit menu's own Cut
+      and Copy return into that first.
+    - **The exports read the editor's DOM**, and the model's view
+      attributes are stripped by none of them: `data-block`, `data-filler`,
+      the caret stops beside an equation, and `contenteditable="false"` on
+      the equation wrapper. `static-export.js` strips only the root's
+      attributes, `pdf-export.js` takes a raw clone, and `docx-export.js`
+      walks `editor.children` itself, so it has to learn to take a root. The
+      editable export embeds `editor.innerHTML` and its boot keeps it as it
+      stands, so under the model core an exported document holds HTML no
+      model has parsed.
+    - **Turndown is not only the save path.** A model paste and the model's
+      Insert TOC both go through `htmlFragmentToMarkdown` and the one shared
+      `turndownService`, so its rules (`table` and its helpers, `listItem`,
+      `autolink`, `strikethrough`, `mathjax`, `referenceLink`, `modelFiller`)
+      serve paste and the TOC as well as a save.
+    - **Storage is read before `window` `load`.** `tabs.js` restores the tab
+      list and `file-api.js` runs `restoreCurrentFile` at script load, and
+      both read `content` through `isBlankContent`, which is HTML-shaped.
+      `tabs.js`'s `BLANK_DOCUMENT` is HTML too.
+
+    **Seven slices.** Each one carries its own suite changes: a slice that
+    deletes a branch rewrites or deletes the checks that drove it, rather
+    than leaving them to a tests slice at the end. Each also has its own
+    Playwright spec where a machine can see it, and a hand run in Firefox
+    for what one cannot.
+
+    1.  **The model writes the file, behind the flag.** One function,
+        `modelDocumentMarkdown()`, which is `modelSerialise` with
+        `modelEmitLeaf` at the sniffed width and `modelEmitTable` for tables,
+        and the three writers call it when the flag is on: `saveFileBody`,
+        Download and Copy markdown. Autosave is untouched and still holds HTML,
+        which is what keeps `?core=legacy` working on the same storage.
+        **This is the slice D1 was for**: an untouched block is emitted from
+        its own bytes, so a save no longer depends on the restore layer
+        finding it. The over-long table row the old save path drops
+        (2026-11-07, stage 3's hand pass) is the case that proves it.
+        - **The parity spec is built here**, as 6.8's "Open, edit, save":
+          open `tests/fixtures/break-test.md`, make the recipe's edits, Save As
+          to a scratch name, under `?core=legacy` and `?core=model`, and
+          compare both against the fixture. **Parity does not mean identical
+          output**, because the model is meant to be better. It means that
+          every line where the two disagree is on a list written into the
+          spec in advance, each entry naming the bug the old core has. A
+          difference that is not on the list fails the run, and so does a
+          listed one that stops showing.
+        - **Hand run**: the `break-test.md` recipe in Firefox under
+          `?core=model`, plus the stage 3 document from 2026-11-07.
+
+    2.  **The exports read the model, behind the flag.** One helper hands the
+        static export, PDF and DOCX a clone of the editor with every view
+        attribute and caret stop removed, with DOCX taught to take a root
+        rather than reading `editor.children`, so nothing the renderer added for
+        editing reaches a file. **The editable export embeds markdown rather
+        than HTML**, in a `<script type="text/markdown" id="app-document">`
+        beside `app-script`, and its boot loads that through
+        `loadDocumentMarkdown` with an empty editor. Embedding HTML would
+        make every exported document a stored-HTML conversion on every open,
+        which is the conversion this stage is trying to run once. **An
+        exported file made before this keeps working**: it carries its own
+        bundle inline, so it runs the code it was exported with.
+        `self-reproduce`, `static-export` and `export-variant` change with
+        it.
+
+    3.  **A tab parks its model, behind the flag.** The swap puts the
+        outgoing document's model into its parked bundle beside its history,
+        and adopting puts the incoming one back with no parse. A tab this
+        session has never shown still hydrates from storage. That is the
+        estimate table's "the swap moves a model reference". "Content before
+        adopt" is derived again rather than carried over: with a model, the
+        content and its history describe each other, so the question is
+        only whether `modelRender` runs before `undoAdopt`, and `tabs`
+        pins the answer. **Every file operation also binds its document
+        at the start** (decision 4): an Open, Save or Save As takes the
+        tab and the model it acts on when it begins, and reads and writes
+        those to the end, whatever the screen shows by then. The switch
+        lock stays as well.
+
+    4.  **Storage converts, and the flag goes.** These have to be one slice:
+        once `content` holds markdown, `?core=legacy` can no longer read it,
+        so the flag cannot outlive the conversion even on this branch.
+        - **Autosave writes `modelDocumentMarkdown()`** to `content`, and
+          every reader takes markdown through `loadDocumentMarkdown`. The
+          `source` key goes, since the content is now the source, and
+          `markdownStyleAdoptStored` sniffs `content` instead (decision 1).
+        - **The conversion runs once, before anything reads a document**,
+          which means at script load, from a file placed after `app.js` and
+          before `tabs.js` and `file-api.js`. `window` `load` is too late,
+          since both of those read `content` when they load. It covers every
+          tab's `mandy-tab-N-content` and the flat `markdownContent`, the
+          second both for a session with no tab list and for one whose tab
+          migration failed (`activeTabId` null). A storage-version key, global
+          rather than per tab, says it has run, so a stored document is never
+          asked whether it looks like HTML. It follows `tabs.js`'s migration:
+          write, read back, and only then mark it done. A tab that fails is
+          converted in memory on every load until a write succeeds, so the
+          document always opens.
+        - **Everything HTML-shaped about storage changes with it**:
+          `isBlankContent`'s stored-content callers ask whether markdown is
+          blank, `tabs.js`'s `BLANK_DOCUMENT` becomes the empty string, and
+          a per-tab key added here joins `DOCUMENT_KEYS`. Without that,
+          `forgetTabStorage` would leak it when a tab closes, and the flat-key
+          migration would skip it.
+        - **What it converts with is the whole of `htmlToMarkdown`**, with
+          that tab's `source` key handed in as `markdownSource`, so every
+          untouched block is restored to its bytes the way a save today does
+          it. A document that is still exactly what its `source` renders to skips
+          the converter and keeps `source` (decision 2).
+        - **The old HTML is not kept** (decision 3).
+        - **`modelCoreEnabled()`, `?core=`, its `mandy-model-core` storage
+          key, the marker and its CSS go**, and `modelOwnsInput()` with them. Every call site keeps its model
+          branch.
+        - **Tested before it lands, on real storage**: the suite drives the
+          converter over fixtures of stored HTML taken from `main`'s
+          autosave and from this branch's under both cores, one per tab
+          shape: one document, several tabs, a tab never shown, a migration
+          that failed halfway, a clean document, and Mermaid and MathJax
+          markup. A Playwright spec seeds a profile with the same keys,
+          loads the app, and compares what it opens with the fixture's
+          expected markdown. **Hand**: the user's own upgrade, done the way
+          decision 3 describes, on this branch.
+
+    5.  **The old core is deleted.** `execcommand.js` leaves all three
+        registries, and the one command it lets through moves to where it is
+        used: the menu clipboard in `model-input.js` calls
+        `document.execCommand("copy")` directly. The source scan that keeps
+        `execCommand` to one door moves out of the `execcommand` suite, which
+        goes, into the `notify` suite, which already scans `front/` the same way
+        for `alert()` and `confirm()`. There it allows exactly that call. Gone with it:
+        - every legacy branch in `app.js`: the list surgery
+          (`outdentListItem`, `canIndentListItem`, `canOutdentListItem`,
+          `listItemAtCaret` and the helpers under it), the Tab and empty-item
+          keydown handlers and their early returns, `insertPastedContent`
+          and `insertPlainText`, and the stage 3 notices;
+        - every legacy branch in `format-bar.js`: `toggleCode`,
+          `toggleInlineCode` and `inlineCodeAt`, and `saveSoon`, which under
+          slice 4 is the debounce's job;
+        - `undo.js`'s HTML state, `undoRefresh`, and the keydown comment
+          that names the `innerHTML` assignment it guards against;
+        - `normaliseEditorMarkup`;
+        - the outline's `innerHTML` fingerprint;
+        - `renderers.js`'s legacy typeset path;
+        - the three `editor.innerHTML` doors, which become one door for
+          markdown.
+
+        The `undo` suite's count of assignments goes to **zero outside
+        render**.
+
+        **What stays**: Turndown, all of its rules and `sanitisePastedHtml`,
+        since paste, drop and Insert TOC convert through them. Also the
+        sniffers, `wrapMarkdownLine`, `hasMathSpan` and the 2.1 formatter,
+        all of which the model calls. Which rules still earn their place in
+        a fragment conversion is decided in this slice. `mermaid` is one:
+        only stored HTML can hold a diagram.
+
+        **What moves**: the restore layer, the re-wrapper and the
+        reference-definition scan and append, into one file whose only
+        caller is the storage conversion (decision 5).
+
+        **Suites**: `execcommand` and `list-indent` are deleted along with
+        their `run.mjs` entries, and `dom.mjs` stops loading
+        `execcommand.js`. `save-fidelity` keeps the sniffers and the
+        formatter, and its restore and re-wrap checks move with the code to
+        the conversion's suite. `format-bar`, `latex`, `links` and `tabs`
+        lose the halves that drove the old core.
+
+        `sw.js`'s `VERSION` moves, because the shell changed.
+
+    6.  **The check pages that watch the old core retire.** `browser-check`,
+        `list-indent-check` and `list-empty-item-check` are deleted, along
+        with their part of `check-pages.spec.mjs`. They are the only names
+        in `CHECK_PAGES`, so `server.ts`'s `/tests/` route and `TESTS_DIR`
+        go too, and `/report` goes if nothing else is found posting to it.
+        `front/input-check.html` is the one input-layer page the criterion
+        names, and it is **run in Chrome and Firefox by hand and in WebKit by
+        machine**, which is what a three-engine run means since 2026-10-17.
+        The machine half is `final-pass.spec.mjs`'s test of that page, which
+        exists today. `paste-check`, `tab-shortcut-check` and
+        `caret-guard-check` measure the browser rather than the core, and
+        stay.
+
+    7.  **The documents.** D4 is marked retired in DECISIONS.md rather than
+        deleted. CLAUDE.md's "Document state", "Save fidelity", "execCommand",
+        "Undo", "The format bar" and "The browser check" sections are
+        rewritten to describe the model as what runs, and the "This branch"
+        preamble is replaced, since after this there is one core. TODO 2.3's
+        emphasis half and ROADMAP.md's "No automated test opens, edits and
+        saves a document" close, since slice 1's spec does exactly that.
+
+    **The closing pass** is a real-document session: a day's work in the
+    user's own documents and tabs on this branch, in Firefox, after slice 4
+    has converted that browser's storage. Then the merge, as D8 has it.
+
+    **Order.** Slices 1, 2 and 3 are behind the flag, independent of each
+    other, and can land in any order; each leaves `?core=legacy` working.
+    Slice 4 needs all three, because once the flag is gone nothing can
+    still read the DOM to write a file. Slices 5, 6 and 7 follow 4 in that
+    order. Slice 5 can be split if it runs long; nothing after it depends
+    on it being one commit.
+
+    **Five decisions, all settled with the user on 2026-11-07.** Three were
+    the user's and two were implementation, which the user left to this plan.
+
+    1.  **New markdown follows the document as it is now (slice 4).** When
+        something new is written, such as a bullet, an emphasis, a wrapped
+        line or a table, its spelling is copied from the document as it
+        stands, edits included, not from the file as it was opened. The
+        user's words: keep what is written and adapt to it. So the style is
+        sniffed from `content`, the autosaved markdown, which is what the
+        tabs section above already planned ("hydration halves"), and the
+        `source` key goes.
+    2.  **An unchanged document is taken from its source, not rebuilt
+        (slice 4). Implementation.** Where the stored HTML is exactly what
+        its `source` renders to, `source` is taken byte for byte rather than
+        converted, since converting loses what the old core already lost
+        (the over-long row). **Decided by comparison, never by the `dirty`
+        flag**: a save clears the flag and never rewrites `source`, which
+        only an Open or Reload sets, so a document edited and then saved
+        reads clean while `source` still holds the bytes it was opened with,
+        and trusting the flag would hand back the pre-edit document. The
+        test is to render `source` with `md`, convert that rendering and the
+        stored HTML through the same `htmlToMarkdown`, and take `source`
+        only if the two come out identical.
+    3.  **No backup of the old storage (slice 4).** Recommended was keeping
+        each tab's HTML under a backup key until stage 5 closed, so a
+        reverted merge would find its unsaved work. Declined: Mandy has one
+        user, who upgrades by saving everything, closing the app, pulling
+        and starting it again, so there is no unsaved work for a revert to
+        lose. The document is markdown on disk either way; only how it is
+        rendered and edited changes.
+    4.  **Tab switching stays blocked during a file operation, and the
+        operation does not rely on it (slices 3 and 4).** The user widened
+        the recommendation, which was the lock alone. **An action carried
+        into another tab is the failure to design out, not to guard
+        against**: whatever the UI prevents, a user will find a way round,
+        so the operation itself has to know what it is for. So both rules
+        hold. The switch lock stays, as the interface's answer. And every
+        Open, Save and Save As binds its tab and its model when it starts,
+        and keeps acting on those whatever happens on screen before it
+        finishes, so that if the lock ever fails, the right document still
+        goes to the right file. This closes the question the tabs section
+        left for this stage, and it is the model handle that section named
+        as the alternative, taken as well as the lock rather than instead of
+        it.
+    5.  **The conversion lives in one file and is deleted when stage 5
+        closes (slice 5). Implementation.** `front/legacy-storage.js` holds
+        the conversion and the old save path it calls: the restore layer,
+        the re-wrapper and the reference-definition scan. It is loaded by
+        `index.html` after `app.js` and before `tabs.js`, and listed in
+        `sw.js`, but not in `ASSETS`, since an exported document ignores
+        autosave. It goes when stage 5 closes, by which time the one browser
+        that needs it has long since converted. With no backup kept (3),
+        there is nothing for it to stay behind for.
 *   **5. Fallout — not started.** Happens on `main` by construction — IME,
     autocorrect, spellcheck and Safari's quirks are what only real documents in
     daily use turn up, which is the same reason D8 gives for merging at all.

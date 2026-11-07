@@ -10217,7 +10217,7 @@ vouch for, and for real documents once the rewrite is nearly done, not for
 keystroke recipes a spec can press.
 The service worker's version is bumped, since the shell changed.
 
-## 2026-11-07 — Stage 3 is closed
+## 2026-11-07 — `ad6b981` — Stage 3 is closed
 
 The rewrite's stage 3, the 1.1 formats, is done and tested. Its last step was a
 hand pass, run after the machine had done what it could: the four stage 3
@@ -10243,3 +10243,44 @@ refusal it was first built around.
 
 Stage 4, reintegration, is next. It is not started, and its plan is written
 before any of its work.
+
+## 2026-11-07 — Stage 4's plan
+
+TODO 3.1's stage 4, reintegration, is planned in docs/REWRITE.md, before any
+of its work, as the project's rule asks. Nothing in `front/` changed.
+
+The plan starts from what was measured while writing it. Under the model
+core, the app around the model still reads `editor.innerHTML`. Three places
+write markdown out of the DOM through Turndown: Save and Save As, Download,
+and Copy markdown. Autosave writes the DOM in six more. Nothing that writes a
+file calls `modelSerialise` yet.
+
+It is seven slices. The first three land behind the flag, so `?core=legacy`
+keeps working for comparison:
+
+- the model writes the file, with a parity spec under both cores;
+- the exports read the model, and the editable export embeds markdown
+  instead of HTML;
+- a tab parks its model instead of reparsing it.
+
+The fourth is the one that cannot be undone. Autosave stores markdown, every
+tab's stored HTML is converted once, and the flag goes in the same slice,
+because once `content` holds markdown the old core cannot read it. After that
+the old core is deleted, the three check pages that watch it retire, and the
+documents are rewritten.
+
+Five decisions were settled with the user the same day, after a discussion
+that first had to be put back into plain terms:
+
+- New markdown copies the document as it is now, edits included, not the file
+  as it was opened.
+- An unchanged document is taken from its file's text rather than rebuilt
+  from the screen. That is decided by comparing the two, because the "edited"
+  mark is cleared by a save that never updates the file's text in storage.
+- No backup of the old storage is kept. Mandy has one user, who upgrades by
+  saving everything, closing the app, pulling and restarting, so the merge's
+  irreversibility is smaller than the plan used to say.
+- Tab switching stays blocked during an Open or Save. On the user's own
+  amendment, the operation also fixes its tab and document when it starts,
+  so it acts on the right document even if that block fails.
+- The conversion code lives in one file and is deleted when stage 5 closes.
