@@ -63,6 +63,8 @@ function parseInlineContent(element) {
             link: href,
           })
         );
+      } else if (tagName === "img" && node.hasAttribute("data-equation")) {
+        children.push(equationRun(node));
       } else if (tagName === "br") {
         children.push(new docx.TextRun({ break: 1 }));
       } else {
@@ -74,6 +76,40 @@ function parseInlineContent(element) {
 
   element.childNodes.forEach((child) => processNode(child));
   return children;
+}
+
+/**
+ * An equation picture from exportEquationImages, as an inline image run lowered
+ * by the equation's depth so it sits on the line's baseline the way it does in
+ * the editor. Word lowers a run by `w:position`, in half-points; docx 7.1.0 has
+ * no option for it, so the element goes into the run's properties directly.
+ * That reaches into the library's internals, which the pinned version keeps
+ * still: re-check it on any upgrade of DOCX_SRC.
+ */
+function equationRun(img) {
+  const base64 = img.getAttribute("src").split(",")[1];
+  const run = new docx.ImageRun({
+    data: Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)),
+    transformation: {
+      width: parseFloat(img.getAttribute("data-width")),
+      height: parseFloat(img.getAttribute("data-height")),
+    },
+  });
+  // A CSS pixel is 0.75pt, so 1.5 half-points.
+  const lower = Math.round(parseFloat(img.getAttribute("data-depth")) * 1.5);
+  if (lower > 0 && run.properties && Array.isArray(run.properties.root)) {
+    run.properties.root.push(new docx.ImportedXmlComponent("w:position", { "w:val": -lower }));
+  }
+  return run;
+}
+
+/**
+ * A paragraph holding nothing but one display equation is centred, as the
+ * editor draws it.
+ */
+function isDisplayEquationOnly(element) {
+  const equations = element.querySelectorAll('img[data-equation="block"]');
+  return equations.length === 1 && !element.textContent.trim();
 }
 
 /**
@@ -131,6 +167,7 @@ function htmlElementToDocx(element) {
         new docx.Paragraph({
           children: parseInlineContent(element),
           spacing: { after: 200 },
+          ...(isDisplayEquationOnly(element) ? { alignment: docx.AlignmentType.CENTER } : {}),
         })
       );
       break;
@@ -303,7 +340,11 @@ async function generateDOCX() {
   }
 
   const title = extractDocxTitle();
-  const docxElements = convertHtmlToDocxElements(modelExportClone(editor));
+  // Equations as pictures, or as their TeX when there is no way to draw one:
+  // the container's own text is MathJax's assistive copy, bare letters.
+  const root = modelExportClone(editor);
+  await exportEquationImages(root, { fallback: "source" });
+  const docxElements = convertHtmlToDocxElements(root);
 
   const doc = new docx.Document({
     title: title,

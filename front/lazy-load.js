@@ -78,6 +78,59 @@ async function ensureMathJax() {
   return window.MathJax;
 }
 
+// MathJax's SVG output, for the PDF and Word exports' pictures of equations.
+// Its own component of the same package, in a hidden frame of its own: loaded
+// into the page beside `tex-mml-chtml` its font data clashes with CHTML's and
+// it throws (measured 2026-11-08), and the frame also keeps its configuration
+// away from the editor's MathJax. `fontCache: "none"` writes every glyph as a
+// path, so the SVG needs no web font when it is drawn as an image.
+const MATHJAX_SVG_SRC = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js";
+let mathSvgPromise = null;
+
+function ensureMathSvg() {
+  if (mathSvgPromise) return mathSvgPromise;
+  mathSvgPromise = new Promise((resolve, reject) => {
+    // A script that loads and never starts would hang the export; past this,
+    // the export draws without pictures instead, and the next one tries again.
+    const timer = setTimeout(() => fail(new Error("MathJax's SVG output did not start")), 30_000);
+    const fail = (error) => {
+      clearTimeout(timer);
+      frame.remove();
+      mathSvgPromise = null;
+      reject(error);
+    };
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.tabIndex = -1;
+    frame.style.cssText =
+      "position:fixed;left:-10000px;top:0;width:2000px;height:600px;border:0;visibility:hidden";
+    document.body.appendChild(frame);
+    const win = frame.contentWindow;
+    win.document.open();
+    win.document.write("<!doctype html><html><head></head><body></body></html>");
+    win.document.close();
+    win.MathJax = {
+      svg: { fontCache: "none" },
+      startup: {
+        typeset: false,
+        ready() {
+          win.MathJax.startup.defaultReady();
+          win.MathJax.startup.promise.then(() => {
+            clearTimeout(timer);
+            resolve({ frame, MathJax: win.MathJax });
+          }, fail);
+        },
+      },
+    };
+    const script = win.document.createElement("script");
+    script.src = MATHJAX_SVG_SRC;
+    // A later export retries rather than finding the failure cached.
+    script.onerror = () => fail(new Error(`Failed to load ${MATHJAX_SVG_SRC}`));
+    win.document.head.appendChild(script);
+  });
+  return mathSvgPromise;
+}
+
 async function ensureHtml2Pdf() {
   if (typeof html2pdf === "undefined") {
     await loadScript(HTML2PDF_SRC);

@@ -106,6 +106,116 @@ function latexSourceOf(root) {
   return root.getAttribute("data-display") === "block" ? `$$${tex}$$` : `$${tex}$`;
 }
 
+// The PDF and Word exports' equations, as pictures. Neither can use what the
+// editor shows. html2canvas paints the hidden assistive MathML over the glyphs,
+// so the PDF drew every equation twice, and it places CHTML's CSS glyphs a few
+// pixels high. Word took the container's text, which is that same assistive
+// copy, so it wrote bare letters. Both had done this since they existed;
+// measured in Firefox on 2026-11-08 under both cores.
+//
+// So each stamped equation in `clone` is replaced by a PNG of MathJax's SVG for
+// its TeX, sized in CSS pixels at the font size its counterpart in `source` is
+// drawn at (a detached clone has no computed style, and the two are matched by
+// order), and lowered by its depth so it sits on the text's baseline. PNG
+// because docx 7.1.0 takes no SVG. Three times the size, so it stays sharp in
+// print. A display equation is a centred block.
+//
+// If the SVG renderer cannot load, or one equation cannot be drawn, `fallback`
+// decides what that equation becomes rather than the export failing: "glyphs"
+// keeps MathJax's rendering and drops only the assistive copy (the PDF: drawn
+// once, slightly high), "source" writes the TeX as text (Word, where the glyphs
+// are CSS and would come out empty).
+const EQUATION_IMAGE_SCALE = 3;
+
+function equationFallback(root, fallback) {
+  if (fallback === "source") root.replaceWith(document.createTextNode(latexSourceOf(root)));
+  else root.querySelectorAll("mjx-assistive-mml").forEach((node) => node.remove());
+}
+
+async function exportEquationImages(clone, { source = editor, fallback = "glyphs" } = {}) {
+  const roots = typesetLatexRoots(clone);
+  if (!roots.length) return clone;
+  const live = typesetLatexRoots(source);
+
+  let svg;
+  try {
+    svg = await ensureMathSvg();
+  } catch (error) {
+    console.warn("[Export] No SVG renderer for the equations:", error);
+    for (const root of roots) equationFallback(root, fallback);
+    return clone;
+  }
+
+  for (const [index, root] of roots.entries()) {
+    const counterpart = live[index] || source;
+    const fontSize = parseFloat(getComputedStyle(counterpart).fontSize) || 16;
+    const display = root.getAttribute("data-display") === "block";
+    let picture;
+    try {
+      picture = await drawEquation(svg, root.getAttribute("data-tex"), display, fontSize);
+    } catch (error) {
+      console.warn("[Export] Could not draw an equation:", error);
+      equationFallback(root, fallback);
+      continue;
+    }
+    const img = document.createElement("img");
+    img.src = picture.src;
+    img.alt = latexSourceOf(root);
+    img.setAttribute("data-equation", display ? "block" : "inline");
+    // Fractional, which the width and height attributes are not.
+    img.setAttribute("data-width", String(picture.width));
+    img.setAttribute("data-height", String(picture.height));
+    img.setAttribute("data-depth", String(picture.depth));
+    img.style.cssText =
+      `width:${picture.width}px;height:${picture.height}px;` +
+      (display ? "display:block;margin:0.5em auto" : `vertical-align:${-picture.depth}px`);
+    root.replaceWith(img);
+  }
+  return clone;
+}
+
+// One equation drawn by the SVG frame: `{ src, width, height, depth }`, the
+// sizes in CSS pixels and `src` a PNG data URL at EQUATION_IMAGE_SCALE.
+async function drawEquation({ frame, MathJax }, tex, display, fontSize) {
+  const body = frame.contentDocument.body;
+  body.style.fontSize = `${fontSize}px`;
+  const node = await MathJax.tex2svgPromise(tex, { display });
+  body.appendChild(node);
+  const svg = node.querySelector("svg");
+  const box = svg.getBoundingClientRect();
+  // MathJax sizes the SVG in ex and lowers it by its depth in ex. The frame's
+  // layout turns the height into pixels, which is the ex to convert the depth by.
+  const exPx = box.height / parseFloat(svg.getAttribute("height"));
+  const depth = Math.max(0, -parseFloat(svg.style.verticalAlign || "0") * exPx);
+  node.remove();
+
+  const width = Math.max(1, box.width);
+  const height = Math.max(1, box.height);
+  const drawn = svg.cloneNode(true);
+  drawn.setAttribute("width", `${width}px`);
+  drawn.setAttribute("height", `${height}px`);
+  drawn.removeAttribute("style");
+  // The glyphs are filled with currentColor, which inside an image is the
+  // SVG's own colour: black, whatever the editor's theme is.
+  drawn.setAttribute("color", "#000");
+  drawn.style.color = "#000";
+  const xml = new XMLSerializer().serializeToString(drawn);
+
+  const image = new Image();
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
+  await image.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(width * EQUATION_IMAGE_SCALE);
+  canvas.height = Math.ceil(height * EQUATION_IMAGE_SCALE);
+  canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+  return {
+    src: canvas.toDataURL("image/png"),
+    width: Math.round(width * 100) / 100,
+    height: Math.round(height * 100) / 100,
+    depth: Math.round(depth * 100) / 100,
+  };
+}
+
 // MathJax is only downloaded once the document actually contains maths.
 //
 // **Maths already typeset goes back to its source first, and is typeset again

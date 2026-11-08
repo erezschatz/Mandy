@@ -27,12 +27,15 @@ useModelPage(test);
 // CDN. The config's 30s was overrun on a slow CDN day with nothing wrong.
 test.setTimeout(120_000);
 
-// An equation at each edge of a line, which is where the stops go; a code span
+// An equation at each edge of a line, which is where the stops go; a display
+// equation on a line of its own; a code span
 // saying the two things that end a script element early; and a list.
 const DOCUMENT = [
   "# Exported",
   "",
   "$x$ starts this line and one ends it $y$",
+  "",
+  "$$\\frac{a}{b}$$",
   "",
   "Say `</script>` and `<!-- x -->` & `&lt;` here.",
   "",
@@ -120,23 +123,46 @@ test("PDF and Word are handed the stripped clone", async ({ page }) => {
   });
   expect(pdf).toContain("data-math");
   expectNoView(pdf, "PDF");
+  expectEquationPictures(pdf, "PDF");
 
   const word = await page.evaluate(async () => {
     await ensureDocx();
     window.saveAs = () => {};
     const convert = convertHtmlToDocxElements;
+    const run = equationRun;
     let captured = null;
+    const runs = [];
     window.convertHtmlToDocxElements = (root) => { captured = root.innerHTML; return convert(root); };
+    window.equationRun = (img) => {
+      const made = run(img);
+      runs.push(made.properties.root.some((child) => child.rootKey === "w:position"));
+      return made;
+    };
     try {
       await generateDOCX();
     } finally {
       window.convertHtmlToDocxElements = convert;
+      window.equationRun = run;
     }
-    return captured;
+    return { html: captured, runs };
   });
-  expect(word).toContain("data-math");
-  expectNoView(word, "Word");
+  expect(word.html).toContain("data-math");
+  expectNoView(word.html, "Word");
+  expectEquationPictures(word.html, "Word");
+  // One image run per equation, and the one with a descender (y) is lowered.
+  expect(word.runs.length, "Word: an image run per equation").toBe(3);
+  expect(word.runs.some(Boolean), "Word: a picture lowered onto the baseline").toBe(true);
 });
+
+// Both equations as pictures, and nothing of MathJax's own markup left: its
+// hidden assistive copy is what was drawn a second time in the PDF and written
+// as bare letters in Word.
+function expectEquationPictures(html, what) {
+  expect(html, `${what}: no MathJax markup`).not.toContain("mjx-");
+  expect(html.match(/<img[^>]*data-equation="inline"/g)?.length, `${what}: a picture per equation`).toBe(2);
+  expect(html.match(/<img[^>]*data-equation="block"/g)?.length, `${what}: the display one too`).toBe(1);
+  expect(html, `${what}: the TeX as alt text`).toContain('alt="$y$"');
+}
 
 test("the editable export carries markdown, and opens and re-exports under both cores", async ({ page }) => {
   await prepare(page);

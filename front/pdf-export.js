@@ -81,6 +81,9 @@ async function generatePDF() {
   // Without the model's view: a caret stop is a zero-width character and its
   // <br> a real line break once the page is drawn to a canvas.
   const element = modelExportClone(editor);
+  // Each equation as one picture: html2canvas paints MathJax's own markup
+  // twice and too high. See exportEquationImages in renderers.js.
+  await exportEquationImages(element, { fallback: "glyphs" });
   const filename = generatePDFFilename();
 
   // Create a temporary wrapper to hold the cloned element

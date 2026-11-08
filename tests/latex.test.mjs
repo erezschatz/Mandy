@@ -274,6 +274,119 @@ export default async function run(check) {
       code.className === "language-mermaid" && code.textContent === "graph TD; A-->B;\n");
   }
 
+  // ── renderers.js: equations as pictures for PDF and Word ──────────────────
+  //
+  // html2canvas painted MathJax's hidden assistive MathML over the glyphs, so
+  // the PDF drew every equation twice, and Word wrote the bare letters of that
+  // same copy. Each export's clone now holds one picture per equation. Drawing
+  // the picture needs a real canvas and a real MathJax, which is
+  // exports.spec.mjs's; this checks what is done with it, and the two ways it
+  // degrades when the renderer cannot load.
+  {
+    const build = () => {
+      const clone = makeEl("div");
+      const roots = [];
+      for (const [tex, display] of [["x", "inline"], ["\\frac{a}{b}", "block"]]) {
+        const root = makeContainer(clone);
+        root.parentNode = clone;
+        root.setAttribute("data-tex", tex);
+        root.setAttribute("data-display", display);
+        const assistive = makeEl("mjx-assistive-mml", { parent: root });
+        assistive.parentNode = root;
+        assistive.parentElement = root;
+        root.querySelectorAll = (sel) =>
+          sel === "mjx-assistive-mml" ? root.children.filter((c) => c.tagName === "MJX-ASSISTIVE-MML") : [];
+        root.replaceWith = (other) => clone.replaceChild(other, root);
+        roots.push(root);
+      }
+      clone.querySelectorAll = (sel) =>
+        sel === "mjx-container[data-tex]" ? clone.children.filter((c) => c.tagName === "MJX-CONTAINER") : [];
+      return { clone, roots };
+    };
+    const source = makeEl("div");
+    const liveA = makeContainer(source);
+    const liveB = makeContainer(source);
+    liveA.fontSize = "20px";
+    liveB.fontSize = "30px";
+    source.querySelectorAll = () => [liveA, liveB];
+
+    const exporter = (ensureMathSvg, draw) => loadSource(
+      "renderers.js",
+      {
+        window: {},
+        editor: source,
+        ensureMathSvg,
+        getComputedStyle: (node) => ({ fontSize: node.fontSize || "16px" }),
+        document: { createElement: (tag) => makeEl(tag), createTextNode: makeText },
+        console: { warn() {} },
+        __draw: draw,
+      },
+      "; if (__draw) drawEquation = __draw; return exportEquationImages;",
+    );
+
+    const drawn = [];
+    const draw = async (renderer, tex, display, fontSize) => {
+      drawn.push({ renderer, tex, display, fontSize });
+      return { src: `data:image/png;base64,${tex.length}`, width: 10.5, height: 12.25, depth: 3.5 };
+    };
+    const renderer = { frame: {}, MathJax: {} };
+    {
+      const { clone } = build();
+      await exporter(async () => renderer, draw)(clone, { source });
+      const [inline, block] = clone.children;
+      check("each equation in the clone becomes one picture",
+        clone.children.length === 2 && inline.tagName === "IMG" && block.tagName === "IMG");
+      check("drawn from its own TeX, display or not, by the frame that was loaded",
+        drawn.length === 2 && drawn[0].tex === "x" && drawn[0].display === false &&
+        drawn[1].tex === "\\frac{a}{b}" && drawn[1].display === true &&
+        drawn.every((d) => d.renderer === renderer));
+      check("at the font size its counterpart in the editor is drawn at",
+        drawn[0].fontSize === 20 && drawn[1].fontSize === 30);
+      check("its alt text is the TeX, delimited as the file writes it",
+        inline.alt === "$x$" && block.alt === "$$\\frac{a}{b}$$");
+      check("its exact size and depth travel with it, for Word",
+        inline.attrs["data-width"] === "10.5" && inline.attrs["data-height"] === "12.25" &&
+        inline.attrs["data-depth"] === "3.5" && inline.attrs["data-equation"] === "inline");
+      check("an inline one is lowered onto the baseline by its depth",
+        /vertical-align:-3\.5px/.test(inline.style.cssText) && /width:10\.5px/.test(inline.style.cssText));
+      check("a display one is a centred block",
+        block.attrs["data-equation"] === "block" && /display:block/.test(block.style.cssText) &&
+        /margin:0\.5em auto/.test(block.style.cssText));
+    }
+    {
+      const { clone } = build();
+      await exporter(async () => { throw new Error("offline"); }, null)(clone, { source, fallback: "source" });
+      check("with no renderer, Word's fallback writes each equation's TeX as text",
+        clone.children.map((c) => c.textContent).join("|") === "$x$|$$\\frac{a}{b}$$" &&
+        clone.children.every((c) => c.nodeType === 3));
+    }
+    {
+      const { clone, roots } = build();
+      await exporter(async () => { throw new Error("offline"); }, null)(clone, { source, fallback: "glyphs" });
+      check("and the PDF's keeps MathJax's glyphs without the assistive copy",
+        clone.children.length === 2 && clone.children.every((c, i) => c === roots[i]) &&
+        roots.every((r) => r.children.length === 0));
+    }
+    {
+      const { clone } = build();
+      const flaky = async (r, tex, ...rest) => {
+        if (tex === "x") throw new Error("decode failed");
+        return draw(r, tex, ...rest);
+      };
+      await exporter(async () => renderer, flaky)(clone, { source, fallback: "source" });
+      check("one equation that cannot be drawn falls back alone, and the export goes on",
+        clone.children[0].nodeType === 3 && clone.children[0].textContent === "$x$" &&
+        clone.children[1].tagName === "IMG");
+    }
+    {
+      let asked = false;
+      const clone = makeEl("div");
+      clone.querySelectorAll = () => [];
+      await exporter(async () => { asked = true; return renderer; }, draw)(clone, { source });
+      check("a document with no equations never loads the renderer", !asked);
+    }
+  }
+
   // ── app.js: the Turndown rule ─────────────────────────────────────────────
   const { rules } = loadApp();
   const rule = rules.mathjax;

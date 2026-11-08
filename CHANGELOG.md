@@ -10383,7 +10383,7 @@ a document holding an equation at a line's edge to HTML, PDF, Word and
 Editable, open each, then open the Editable one from disk, edit it and export
 it again.
 
-## 2026-11-07 — Playwright's Firefox runs stage 4's specs
+## 2026-11-07 — `c9208bd` — Playwright's Firefox runs stage 4's specs
 
 The two entries above say Playwright's Firefox does not launch on this
 machine. Nobody had tried it: the claim was copied from TODO 6.8's record of
@@ -10402,3 +10402,48 @@ the test.
 
 Slice 2's hand run in Firefox is now only what no machine opens: the PDF and
 Word files, and the Editable export opened from disk.
+
+## 2026-11-08 — Equations in the PDF and Word exports are pictures
+
+The PDF drew every equation twice and Word wrote an equation as bare letters.
+Both bugs predate the model core and showed the same under `?core=legacy`, found
+by slice 2's Firefox hand run. The cause is MathJax's assistive MathML, a copy
+of each equation hidden for screen readers:
+- html2canvas, which draws the PDF's page, ignores the CSS that hides it and
+  painted it over the glyphs. It also places CHTML's CSS glyphs a few pixels
+  high.
+- Word's converter read the container's text, which is that same copy.
+
+Both exports now replace each equation in their clone with a picture of it,
+drawn by `exportEquationImages` in `renderers.js`. It is MathJax's own SVG
+output, made by `tex-svg.js` from the same `mathjax@3` package. That runs in a
+hidden frame of its own, through `ensureMathSvg` in `lazy-load.js`, because
+loaded into the page beside `tex-mml-chtml` the two outputs' font data clash and
+it throws. The SVG is sized at the font size the equation is drawn at in the
+editor, then turned into a PNG at three times that, because docx 7.1.0 takes no
+SVG. Each picture:
+- has its TeX as alt text;
+- is drawn black, whatever the editor's theme;
+- sits on the baseline when inline, lowered by its depth;
+- is centred on a line of its own when it is a display equation.
+
+In Word every picture is lowered by its depth through the run's `w:position`.
+docx 7.1.0 has no option for that, so `equationRun` adds the element to the
+run's properties directly. The user chose a picture over the TeX as text and over a native Word equation. Word
+needs a TeX-to-OMML converter for the latter.
+
+Without the renderer the exports degrade rather than fail, both when its
+script cannot load (offline) and when it has not started after 30 seconds. The
+same happens for one equation that cannot be drawn:
+- the PDF keeps MathJax's glyphs and drops only the assistive copy;
+- Word writes the TeX.
+
+A failed load is not cached, so the next export tries again. Once loaded, the
+hidden frame stays for the rest of the session.
+
+The `latex` suite covers what is done with a picture and both fallbacks.
+`exports.spec.mjs` checks both hand-overs hold one picture per equation and no
+MathJax markup in all three engines, display equation included. The files themselves were rendered under
+both cores in Playwright's Firefox, Chromium and WebKit and looked at: each
+equation is drawn once and typeset. How Word itself lays out a lowered picture
+was not checked, since no Word was available.

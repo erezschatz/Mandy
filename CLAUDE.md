@@ -2229,6 +2229,12 @@ use via the memoised loaders in [lazy-load.js](front/lazy-load.js). Only
 markdown-it and Turndown load eagerly. Never add a top-level `<script>` for a
 heavy library — add an `ensure*` loader.
 
+`ensureMathSvg` is the odd one: MathJax's SVG output (`tex-svg.js`, same
+package) in a hidden `<iframe>` of its own, for the pictures of equations the
+PDF and Word exports carry (`exportEquationImages` in `renderers.js`). It cannot
+share the page's MathJax — loaded beside `tex-mml-chtml`, the two outputs' font
+data clash and it throws.
+
 ### The two HTML exports
 
 There are two, and they are different deliverables:
