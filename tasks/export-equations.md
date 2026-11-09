@@ -100,3 +100,10 @@ a display equation; Word's centring of one is seen in the renders only.
 The PDF and docx were rendered and looked at under both cores in all three
 engines, the docx through Quick Look. The one thing not seen is Word itself
 laying out the lowered picture. The CHANGELOG entry has the detail.
+
+## What was done
+
+2026-11-09. **Closed**, at the user's call. Still owed and deferred until a PC
+with Word is available: export a document with `$y$` and `$\frac{a}{b}$` in a
+sentence to Word, open it, and check that each picture's baseline lines up with
+the text around it. If it does not, reopen this task.

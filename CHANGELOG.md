@@ -10403,7 +10403,7 @@ the test.
 Slice 2's hand run in Firefox is now only what no machine opens: the PDF and
 Word files, and the Editable export opened from disk.
 
-## 2026-11-08 — Equations in the PDF and Word exports are pictures
+## 2026-11-08 — `f83e87c` — Equations in the PDF and Word exports are pictures
 
 The PDF drew every equation twice and Word wrote an equation as bare letters.
 Both bugs predate the model core and showed the same under `?core=legacy`, found
@@ -10447,3 +10447,9 @@ MathJax markup in all three engines, display equation included. The files themse
 both cores in Playwright's Firefox, Chromium and WebKit and looked at: each
 equation is drawn once and typeset. How Word itself lays out a lowered picture
 was not checked, since no Word was available.
+
+## 2026-11-09 — Equations in exports: closed, Word check deferred
+
+`tasks/export-equations.md` is closed. The one check left — how Word itself
+lays out a picture lowered onto the baseline — waits until a PC with Word is to
+hand; it is recorded in the task as owed rather than open.
