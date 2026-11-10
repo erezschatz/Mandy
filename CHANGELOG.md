@@ -10448,8 +10448,36 @@ both cores in Playwright's Firefox, Chromium and WebKit and looked at: each
 equation is drawn once and typeset. How Word itself lays out a lowered picture
 was not checked, since no Word was available.
 
-## 2026-11-09 — Equations in exports: closed, Word check deferred
+## 2026-11-09 — `e1c369f` — Equations in exports: closed, Word check deferred
 
 `tasks/export-equations.md` is closed. The one check left — how Word itself
 lays out a picture lowered onto the baseline — waits until a PC with Word is to
 hand; it is recorded in the task as owed rather than open.
+
+## 2026-11-09 — Stage 4's slice 3: tabs park their model
+
+Under the model core a tab switch used to throw the outgoing document's model
+away and parse the incoming tab's stored HTML again, so every return to a tab
+was a rebuild from the screen's own rendering. Now a tab keeps its model. The
+switch parks the document on the outgoing tab beside its undo history, which
+is built from forks of that same document, and adopting the tab renders the
+parked model as it stands. Nothing is parsed on the way back.
+
+A tab this session has never shown still parses its stored HTML once, as it
+did before, and a tab under the legacy core has no model and records none. The
+ordering in the swap is unchanged in substance: the content is rendered before
+the history is adopted, and the history before the file state, because the
+history's savepoint is an id inside that history. `tests/tabs.test.mjs` now has
+a stand-in for the model core, in the style `undo.test.mjs` uses, and it pins
+both content paths ahead of the history. Breaking the parked path fails six of
+its checks, and `tests/browser/tabs-model.spec.mjs` runs the real model in
+Chromium, Firefox and WebKit: a return to a tab adds no parse, and undo reaches
+the tab's own history after a switch away and back.
+
+The service worker's `VERSION` goes to `v1.93`, since the shell changed.
+
+Not in this change: decision 4's binding, under which an Open, Save or Save As
+takes its tab and its model when it starts and keeps acting on them whatever is
+on screen by the time it finishes. The switch lock still refuses a switch during
+those operations, so nothing reaches a wrong document today, but the operations
+do not yet hold their own handle. That is the rest of this slice.

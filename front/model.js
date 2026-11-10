@@ -2850,10 +2850,11 @@ function modelCoreEnabled() {
 
 // ── The open document ────────────────────────────────────────────────────────
 //
-// One document, held here, because this stage has exactly one: a tab switch
-// re-parses on adopt rather than carrying a model bundle, which is what the
-// preamble decided and what keeps tabs.js out of this stage. Stage 4 is where
-// that becomes per-tab, along with the autosave it shares a lifecycle with.
+// One document is on screen at a time, held here. Stage 4's slice 3 made the
+// rest per-tab: a tab switch parks this pointer's document on the outgoing tab
+// (modelParkDocument) and renders the incoming tab's back from its own record,
+// with no parse, and a tab restored from a page load still parses its stored
+// HTML once. The autosave keeps the same lifecycle it had.
 
 /**
  * Say, on screen, which core drew the document.
@@ -7573,6 +7574,22 @@ function modelUnshare(block) {
 function modelRestoreDocument(root, doc, md, selection = null) {
   modelDocument = doc;
   modelRender(root, doc, md, selection);
+  return doc;
+}
+
+/**
+ * The swap's half of the pair, the other being modelRestoreDocument: take the
+ * document on screen off the pointer so a tab can carry it (stage 4's slice 3).
+ *
+ * The pointer is cleared rather than left alone. Between a park and the adopt
+ * that follows it, nothing may reach a document the outgoing tab now owns, and
+ * a stale pointer would let it. The caller decides whether there is a model to
+ * park at all — under the legacy core there is not, and this would return
+ * whatever was last parsed, so it is asked only under the model core.
+ */
+function modelParkDocument() {
+  const doc = modelDocument;
+  modelDocument = null;
   return doc;
 }
 

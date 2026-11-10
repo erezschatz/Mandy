@@ -45,7 +45,7 @@ const DIALOG_IDS = [
 // than racing it.
 function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   quiet = false, hold = null, disk = new Map(), fakeTimers = false,
-  failRender = false, answers = [], entries = [] } = {}) {
+  failRender = false, answers = [], entries = [], modelCore = false } = {}) {
   const store = new Map();
   for (const [key, value] of Object.entries(seed)) store.set(key, value);
   // Every localStorage write, in order. Park and adopt must add none of their
@@ -75,6 +75,9 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   const extra = new Map([["editor", makeEl()]]);
   extra.get("editor").id = "editor";
   for (const id of DIALOG_IDS) extra.set(id, makeEl());
+  // The model core, stood in for when asked: see fakeModelCore. Built here
+  // because it reads the editor, which is what makes its document the screen.
+  const model = modelCore ? fakeModelCore(extra.get("editor")) : null;
 
   const document = {
     createElement: (t) => makeEl(t),
@@ -108,11 +111,18 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
     execCommand() {},
   };
 
+  // With the model stood in for, model.js is left out of the bundle rather than
+  // loaded and overridden: its function declarations would shadow anything
+  // passed in with the same name, the same arrangement undo.test.mjs makes.
+  const files = [
+    "toolbar.js", "markdown-parser.js", "markdown-style.js",
+    ...(model ? [] : ["model.js"]),
+    "app.js", "undo.js", ...(withTabs ? ["tabs.js"] : []), "file-api.js",
+  ];
   const api = loadSource(
-    withTabs
-      ? ["toolbar.js", "markdown-parser.js", "markdown-style.js", "model.js", "app.js", "undo.js", "tabs.js", "file-api.js"]
-      : ["toolbar.js", "markdown-parser.js", "markdown-style.js", "model.js", "app.js", "undo.js", "file-api.js"],
+    files,
     {
+      ...(model ? model.scope : {}),
       document,
       runCommand: () => true,
       localStorage: {
@@ -258,6 +268,7 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
     scrolls,
     carets,
     disk,
+    model,
     pendingTimers: () => timers.size,
     fireInput: () => {
       for (const fn of api.editor.listeners.input || []) fn({});
@@ -303,6 +314,55 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       return prevented;
     },
   };
+}
+
+// The model core, stood in for, so the swap's model branch can be asked about
+// without a parser. What is asked here is which path a tab takes -- a parked
+// model comes back without a parse, a tab never shown is parsed once from its
+// stored HTML -- and that is all a stub can answer honestly; the render itself
+// is the `model` suite's and the browser's.
+//
+// The document on screen is the model's document: `current` is the object the
+// model last rendered, and its html is read from the editor when it is asked
+// for, so a check that writes innerHTML is an edit the model has heard of.
+// That is the invariant the real core keeps, and the reason the stub reads the
+// screen rather than keeping its own copy.
+//
+// Counted, not just answered: `parses` is every time markdown became a document,
+// and a parked tab coming back must not add one.
+function fakeModelCore(editor) {
+  // A session always has a document on screen, so the stand-in starts with one
+  // rather than none. It is not counted as a parse: nothing was parsed, the
+  // boot simply began with an empty document, as the real one does.
+  const core = { parses: 0, renders: 0, seq: 1, current: { id: 1, html: "" } };
+  const snapshot = () => (core.current ? { ...core.current, html: editor.innerHTML } : null);
+  core.scope = {
+    modelCoreEnabled: () => true,
+    modelCurrentDocument: () => snapshot(),
+    modelParkDocument: () => {
+      const doc = snapshot();
+      core.current = null;
+      return doc;
+    },
+    modelLoad: (root, markdown) => {
+      core.parses += 1;
+      core.current = { id: ++core.seq, html: markdown };
+      root.innerHTML = markdown;
+      return core.current;
+    },
+    modelRestoreDocument: (root, doc) => {
+      core.renders += 1;
+      core.current = doc;
+      root.innerHTML = doc.html;
+      return doc;
+    },
+    modelForkDocument: (doc) => ({ ...doc }),
+    modelDocumentMarkdown: (doc) => doc.html,
+    modelReadSelection: () => null,
+    modelRecordSelection: () => null,
+    modelResolveSelection: () => null,
+  };
+  return core;
 }
 
 const TAB_A = {
@@ -1417,9 +1477,93 @@ export default async function run(check) {
     const src = codeOf("tabs.js");
     const adopt = src.slice(src.indexOf("function adoptActive"));
     const body = adopt.slice(0, adopt.indexOf("\n}"));
-    check("adoptActive still loads the content before adopting the history",
+    // Stage 4's slice 3 gave the content two sources: the parked model, or the
+    // stored HTML for a tab with no model. Both have to land before the history
+    // does, and the history before the file state. Each source is pinned on its
+    // own rather than the first one found, since either branch alone would pass
+    // an `indexOf` that only saw the other.
+    check("adoptActive loads the parked model before adopting the history",
+      body.indexOf("modelRestoreDocument") < body.indexOf("undoAdopt"));
+    check("and loads stored HTML before adopting the history, for a tab with no model",
       body.indexOf("loadDocumentHtml") < body.indexOf("undoAdopt"));
     check("and adopts the history before the file state",
       body.indexOf("undoAdopt") < body.indexOf("fileAdopt"));
+    // The one thing it may know about a model: whether the tab has one. A parse
+    // is the other path, and a tab adopted with a model never takes it.
+    check("and reads the parked model only as the tab's own record",
+      /if \(tab\.doc\) modelRestoreDocument\(editor, tab\.doc, md\);/.test(body));
+  }
+
+  // --- stage 4 slice 3: a tab parks its model ----------------------------------
+  //
+  // Under the model core a tab switch used to re-parse the outgoing document's
+  // stored HTML on the way back. Now the document itself is parked beside the
+  // history it describes, and comes back as that object with no parse at all.
+
+  {
+    const app = boot({ withTabs: true, modelCore: true, quiet: true });
+    app.editor.innerHTML = "<p>first</p>";
+    app.newTab();
+    app.editor.innerHTML = "<p>second</p>";
+
+    check("parking the outgoing tab carries its model on the record",
+      app.tabRecord(1).doc !== undefined && app.tabRecord(1).doc !== null);
+    check("and the parked model is the document it was showing",
+      app.tabRecord(1).doc.html === "<p>first</p>");
+
+    const parses = app.model.parses;
+    const renders = app.model.renders;
+    app.switchToTab(1);
+    check("switching back adds no parse", app.model.parses === parses);
+    check("and renders the parked model once", app.model.renders === renders + 1);
+    check("showing the document it had", app.editor.innerHTML === "<p>first</p>");
+    check("as the same object the parked tab held", app.model.current === app.tabRecord(1).doc);
+  }
+
+  // The history parks with the model and comes back with it: the undo depth a
+  // tab had when it left is the depth it has when it returns, and nothing from
+  // the other tab leaks in.
+  {
+    const app = boot({ withTabs: true, modelCore: true, quiet: true });
+    app.editor.innerHTML = "<p>one</p>";
+    app.undoReset();
+    app.editor.innerHTML = "<p>two</p>";
+    app.undoReset();
+    const depth = app.undoDepth();
+    app.newTab();
+    app.editor.innerHTML = "<p>elsewhere</p>";
+    app.switchToTab(1);
+    check("a model tab keeps its undo depth across a switch", app.undoDepth() === depth);
+    check("and its content", app.editor.innerHTML === "<p>two</p>");
+  }
+
+  // A tab this session has never shown has no model on its record. It is
+  // parsed once from storage, as it always was, and then parks like any other.
+  {
+    const app = boot({
+      withTabs: true, modelCore: true, quiet: true,
+      seed: {
+        "mandy-tabs": JSON.stringify({ order: [1, 2], active: 1, seq: 2 }),
+        "mandy-tab-2-content": "<p>stored</p>",
+      },
+    });
+    const before = app.model.parses;
+    app.switchToTab(2);
+    check("a tab never shown is parsed once from its stored HTML",
+      app.model.parses === before + 1);
+    // htmlToMarkdown ends its output with a newline, which the stand-in renders
+    // verbatim; a real model's render has no such byte, so it is not compared.
+    check("and shows what was stored", app.editor.innerHTML.trim() === "<p>stored</p>");
+    check("and has no model on its record until it is switched away from",
+      app.tabRecord(2).doc === undefined || app.tabRecord(2).doc === null);
+  }
+
+  // The legacy core has no model to park, and must not record one.
+  {
+    const app = boot({ withTabs: true, quiet: true });
+    app.editor.innerHTML = "<p>legacy</p>";
+    app.newTab();
+    check("under the legacy core a parked tab records no model",
+      app.tabRecord(1).doc === null);
   }
 }

@@ -5491,8 +5491,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 *   **4. Reintegration — planned 2026-11-07; slice 1 done and tested
     2026-11-07, by machine and by hand in Firefox; slice 2 done and
     tested by machine in three engines 2026-11-07, its Firefox hand run of
-    the files themselves owed. → MERGE TO `main`
-    WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
+    the files themselves owed; slice 3 partly done and tested 2026-11-09 —
+    a tab parks and adopts its model with no parse, and the file operations'
+    binding of their tab and model at start (decision 4) is not started.
+    → MERGE TO `main` WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
     Turndown, so a `git revert` does not put the storage back. **The stakes
@@ -5739,6 +5741,14 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         tab and the model it acts on when it begins, and reads and writes
         those to the end, whatever the screen shows by then. The switch
         lock stays as well.
+        - **Status, 2026-11-09: the parking is done and tested; the binding is
+          not started.** `parkActive` parks the model on `tab.doc` and
+          `adoptActive` renders it back with no parse, both under the model
+          core only. `tabs.test.mjs` pins the path with a stand-in for the
+          model, and `tests/browser/tabs-model.spec.mjs` runs the real one in
+          Chromium, Firefox and WebKit. The binding is the next change to this
+          slice: it changes what the file operations write after an await, and
+          the parking does not prove that for them.
 
     4.  **Storage converts, and the flag goes.** These have to be one slice:
         once `content` holds markdown, `?core=legacy` can no longer read it,

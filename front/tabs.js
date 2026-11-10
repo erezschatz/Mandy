@@ -163,7 +163,8 @@ function tabsSwitchAllowed() {
 const BLANK_DOCUMENT = "<p><br></p>";
 
 // A record is `{ id }` and, once this session has shown a tab and moved off it,
-// the three parked bundles -- `file`, `md`, `undo`. A tab restored from a page
+// the three parked bundles -- `file`, `md`, `undo` -- and, under the model core,
+// the parked model `doc`. A tab restored from a page
 // load has none of them: its persisted half is under its own six storage keys
 // and its undo history did not survive the reload, so switching into one
 // hydrates from storage instead. That is the same split the single-document app
@@ -185,6 +186,11 @@ function parkActive() {
   tab.undo = undoPark();
   tab.file = filePark();
   tab.md = markdownStylePark();
+  // The model is the document; the stored HTML flushed above is only its
+  // rendering, so parking the model is what lets the tab come back without a
+  // parse. Asked only under the model core, since the legacy core has no model
+  // and the flag cannot change within a page load.
+  tab.doc = modelCoreEnabled() ? modelParkDocument() : null;
 }
 
 // The other half, and the ordering in it is the whole of what stage 4 had to
@@ -206,14 +212,21 @@ function parkActive() {
 // orderings that *are* load-bearing are untouched: content before undo, undo
 // before file.
 //
-// This is the whole of what a tab costs this stage. A switch re-parses on
-// adopt, so there is no model bundle on the record and no fourth park -- which
-// is what the preamble means by leaving tabs.js alone.
+// The model is the one part of a tab that is not a bundle of its own. It is
+// parked as the document itself (`tab.doc`) beside the history it describes,
+// because undo states are forks of it: the two have to come back together, and
+// a re-parse would hand the history a document it was never taken from.
 function adoptActive(tab) {
   if (tab.md) markdownStyleAdopt(tab.md);
   else markdownStyleAdoptStored();
 
-  loadDocumentHtml(localStorage.getItem(documentKey("content")) || BLANK_DOCUMENT);
+  // Content first, as ever. A parked model is rendered as it stands, which is
+  // the whole of what this stage bought: no parse, and the document comes back
+  // as the same object the outgoing tab's history describes. A tab with no
+  // model -- never shown, or shown under the legacy core -- takes its stored
+  // HTML, which is the one place a model is built from storage.
+  if (tab.doc) modelRestoreDocument(editor, tab.doc, md);
+  else loadDocumentHtml(localStorage.getItem(documentKey("content")) || BLANK_DOCUMENT);
   undoAdopt(tab.undo || null);
 
   if (tab.file) fileAdopt(tab.file);
