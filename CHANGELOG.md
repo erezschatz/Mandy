@@ -10454,7 +10454,7 @@ was not checked, since no Word was available.
 lays out a picture lowered onto the baseline — waits until a PC with Word is to
 hand; it is recorded in the task as owed rather than open.
 
-## 2026-11-09 — Stage 4's slice 3: tabs park their model
+## 2026-11-09 — `85098ff` — Stage 4's slice 3: tabs park their model
 
 Under the model core a tab switch used to throw the outgoing document's model
 away and parse the incoming tab's stored HTML again, so every return to a tab
@@ -10481,3 +10481,58 @@ takes its tab and its model when it starts and keeps acting on them whatever is
 on screen by the time it finishes. The switch lock still refuses a switch during
 those operations, so nothing reaches a wrong document today, but the operations
 do not yet hold their own handle. That is the rest of this slice.
+
+## 2026-11-10 — Stage 4's slice 3: file operations hold their tab
+
+Every Open, Reload, Save and Save As now takes the tab it started on, and
+checks, before it writes anything or applies a loaded document, that the screen is
+still on that tab. An open's read of the file itself is harmless and comes first;
+the check guards the load that follows it. Before the document is read for a write, or before its text is loaded, an
+operation that finds the screen has moved on stops and says so, so no tab's
+text reaches another tab's file.
+
+Once a save's write has reached the disk, the save belongs to the tab it
+started on, wherever the screen is. If that tab has moved off the screen, the
+save is recorded on its parked record: its file name, its saved mark, its
+modification time and its storage, so a reload keeps it. The tab showing takes
+nothing from it. Reload now confirms and checks its tab before it reopens, and
+it takes an operation turn of its own. `undo.js` gains one accessor,
+`undoBundlePosition`, which answers where a parked history's document was when
+it was parked, so that `tabs.js` never reads a history's fields.
+
+`tests/tabs.test.mjs` moves the screen during a save before its write, during
+a save while its write is in flight, and during an open, and checks each. The
+late save is recorded on its tab, and breaking that recording fails its check.
+The browser specs still pass in Chromium and WebKit. The service worker moves
+to v1.94.
+
+Not in this change:
+- Closing a dirty tab asks the discard question, and it is not bound yet. Closing
+  switches the screen to that tab first so the question names it. Switching on
+  its own asks nothing and changes nothing else.
+- An open whose text is loaded into a tab that moves on during the maths render
+  leaves that text in the tab without its file name. Recording it on the tab
+  would need a fresh savepoint in a parked history, which there is no way to
+  build yet.
+
+## 2026-11-10 — Background tabs check their files on disk
+
+A tab that is not on screen now learns when its file changes on disk, and shows
+the same disk-changed mark a focused tab does. The person working in Mandy often
+has several tabs open and reads the app on one screen while the file is written
+on another, so the window is never focused while they look. Checking on focus
+alone missed every change to a background document.
+
+Two things make that work. While the page is visible, every three seconds the
+active document's file is checked, as before on focus, and each background tab
+with a file is checked too. A background tab's answer goes onto that tab: its
+parked record, or its own field for one restored from a page load and never
+shown. A stat that returns after its tab was saved, shown or closed is dropped,
+and the next pass asks again. The poll starts on window load and only while the
+page is visible, so a hidden window costs nothing.
+
+`tests/tabs.test.mjs` covers a parked tab, a never-shown tab and an unchanged
+file. Breaking the flag fails both changed-file checks. The poll itself runs in
+the browser and has not been exercised by a browser spec yet: that needs a file
+written on disk while the page is open, which no spec does today.
+

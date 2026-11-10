@@ -45,7 +45,8 @@ const DIALOG_IDS = [
 // than racing it.
 function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   quiet = false, hold = null, disk = new Map(), fakeTimers = false,
-  failRender = false, answers = [], entries = [], modelCore = false } = {}) {
+  failRender = false, answers = [], entries = [], modelCore = false,
+  holdWrite = null, modifiedAt = new Map() } = {}) {
   const store = new Map();
   for (const [key, value] of Object.entries(seed)) store.set(key, value);
   // Every localStorage write, in order. Park and adopt must add none of their
@@ -159,6 +160,10 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       },
       fetch: async (url, opts) => {
         if (opts && opts.method === "POST") {
+          // A write that is still in flight when the screen moves on, which is
+          // the case a save has to finish correctly. Held by a deferred, as the
+          // reads are.
+          if (holdWrite) await holdWrite.promise;
           const body = JSON.parse(opts.body);
           disk.set(body.path, body.content);
           return {
@@ -177,7 +182,7 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
             json: async () => ({
               path: filePath,
               content: disk.get(filePath),
-              modified: "2026-09-07T10:00:00.000Z",
+              modified: modifiedAt.get(filePath) ?? "2026-09-07T10:00:00.000Z",
             }),
           };
         }
@@ -236,6 +241,7 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       " openFile, reloadFile, saveFile, saveFileAs, saveCurrentOrPrompt," +
       " showOpenDialog, closeDialog, checkDiskChanged," +
       " fileOperationInFlight, operationCount: () => fileOperations," +
+      " setOperations: (n) => { fileOperations = n; }," +
       " undo, undoReset, undoDepth: () => history.undoStack.length," +
       " runToolbarAction, isBlankContent," +
       (withTabs
@@ -253,7 +259,8 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
           " tabIds: () => openTabs.map((tab) => tab.id)," +
           " activeTab: () => activeTabId," +
           " tabRecord: (id) => openTabs.find((tab) => tab.id === id)," +
-          " tabsSwitchAllowed, newTab, switchToTab, closeTab, tabsBackgroundDirty"
+          " tabsSwitchAllowed, newTab, switchToTab, closeTab, tabsBackgroundDirty," +
+          " checkBackgroundDiskChanged"
         : "") +
       " }; return out;",
   );
@@ -1458,8 +1465,8 @@ export default async function run(check) {
   {
     const src = codeOf("tabs.js");
     const calls = (src.match(/undo[A-Za-z]*\(/g) || []).sort();
-    check("tabs.js uses exactly undoPark and undoAdopt, nothing else from undo.js",
-      calls.join() === "undoAdopt(,undoPark(");
+    check("tabs.js uses undoPark, undoAdopt and undoBundlePosition, nothing else from undo.js",
+      calls.join() === "undoAdopt(,undoBundlePosition(,undoPark(");
     // The two shapes a state can take, neither of which is nameable here.
     check("and never reaches inside a state",
       !/\.undoStack|\.redoStack|\.current\b|\.html\b|\.model\b/.test(src));
@@ -1565,5 +1572,126 @@ export default async function run(check) {
     app.newTab();
     check("under the legacy core a parked tab records no model",
       app.tabRecord(1).doc === null);
+  }
+
+  // --- background tabs learn about disk changes -------------------------------
+  //
+  // A tab that is not on screen has no live state to say whether its file moved
+  // on disk, so the background check asks and records the answer on the tab.
+  {
+    const modifiedAt = new Map();
+    const PLAN = "/home/x/notes/plan.md";
+    const disk = new Map([[PLAN, "a\n"]]);
+    const app = boot({ withTabs: true, disk, modifiedAt, quiet: true });
+    app.setFileState({ ...BLANK, currentFilePath: PLAN, fileMtime: "2026-09-07T10:00:00.000Z" });
+    app.newTab();
+
+    await app.checkBackgroundDiskChanged();
+    check("an unchanged background file is not marked", app.tabRecord(1).file.diskChanged === false);
+
+    modifiedAt.set(PLAN, "2026-09-07T12:00:00.000Z");
+    await app.checkBackgroundDiskChanged();
+    check("a background tab sees its file change on disk", app.tabRecord(1).file.diskChanged === true);
+    check("and the tab on screen is not marked by it", app.fileState().diskChanged === false);
+  }
+
+  // A tab restored from a page load and never shown keeps its mark on the record
+  // until it is.
+  {
+    const modifiedAt = new Map([["/home/x/other.md", "2026-09-07T12:00:00.000Z"]]);
+    const app = boot({
+      withTabs: true, modifiedAt, quiet: true,
+      disk: new Map([["/home/x/other.md", "b\n"]]),
+      seed: {
+        "mandy-tabs": JSON.stringify({ order: [1, 2], active: 1, seq: 2 }),
+        "mandy-tab-2-path": "/home/x/other.md",
+        "mandy-tab-2-mtime": "2026-09-07T10:00:00.000Z",
+      },
+    });
+    await app.checkBackgroundDiskChanged();
+    check("a tab never shown is marked when its file has changed",
+      app.tabRecord(2).diskChanged === true);
+  }
+
+  // --- stage 4 slice 3: an operation holds the tab it started on -----------
+  //
+  // The switch lock keeps the screen still under an operation, so these move it
+  // by hand, the one way past the lock a test has: the operation counter is the
+  // lock's input, and it is set back for the length of the switch alone.
+  {
+    const withLockOff = (app, fn) => {
+      const held = app.operationCount();
+      app.setOperations(0);
+      try { return fn(); } finally { app.setOperations(held); }
+    };
+    const FILE = "/home/x/f.md";
+
+    // A save that moves the screen during its one await. Saving to a path other
+    // than the open file asks nothing of the disk, so the await in front of the
+    // write is the overwrite question's own and the move lands in it. The save
+    // must write nothing, and the tab on screen must take no file name from it.
+    {
+      const disk = new Map([[FILE, "original\n"]]);
+      const app = boot({ withTabs: true, disk, quiet: true });
+      app.editor.innerHTML = "<p>tab one</p>";
+      const saving = app.saveFile("/home/x/other.md");
+      withLockOff(app, () => app.newTab());
+      const saved = await saving;
+      check("a save whose document moved on writes nothing",
+        saved === false && !disk.has("/home/x/other.md") && disk.get(FILE) === "original\n");
+      check("and the tab on screen takes no file name from it",
+        app.label() === "Untitled" && app.fileState().currentFilePath === null);
+    }
+
+    // A save whose write is still in flight when the screen moves on. The write
+    // is the tab's, so the file, the saved mark and the storage are recorded on
+    // that tab, and the tab showing takes nothing from it.
+    {
+      const writing = deferred();
+      const disk = new Map([[FILE, "original\n"]]);
+      const app = boot({ withTabs: true, disk, holdWrite: writing, quiet: true });
+      app.editor.innerHTML = "<p>tab one</p>";
+      const saving = app.saveFile("/home/x/other.md");
+      await Promise.resolve();
+      withLockOff(app, () => app.newTab());
+      writing.resolve();
+      const saved = await saving;
+      check("a save that finishes after its tab moved still reports success", saved === true);
+      check("and writes the document it started on",
+        (disk.get("/home/x/other.md") || "").includes("tab one"));
+      const record = app.tabRecord(1).file;
+      check("the save is recorded on the tab it came from",
+        record.currentFilePath === "/home/x/other.md" && record.isDirty === false);
+      check("and the tab on screen takes no file name from it",
+        app.label() === "Untitled" && app.fileState().currentFilePath === null);
+    }
+
+    // An open waiting on the fetch when the screen moves on. Its text must not
+    // be loaded into the tab that is showing.
+    {
+      const hold = deferred();
+      const disk = new Map([["/home/x/g.md", "from disk\n"]]);
+      const app = boot({ withTabs: true, hold, disk, quiet: true });
+      const opening = app.openFile("/home/x/g.md");
+      await Promise.resolve();
+      withLockOff(app, () => app.newTab());
+      hold.resolve();
+      const opened = await opening;
+      check("an open whose document moved on loads nothing into the tab on screen",
+        opened === false && app.editor.innerHTML === "<p><br></p>");
+      check("and that tab names no file", app.label() === "Untitled");
+    }
+
+    // With no move, the same save goes through: the binding is a check, not a
+    // refusal of every save.
+    {
+      const disk = new Map([[FILE, "original\n"]]);
+      const app = boot({ withTabs: true, disk, quiet: true });
+      app.editor.innerHTML = "<p>tab one</p>";
+      app.setFileState({ ...BLANK, currentFilePath: FILE, fileMtime: "2026-09-07T10:00:00.000Z" });
+      const saved = await app.saveFile(FILE);
+      check("a save that stays on its tab reports success", saved === true);
+      check("and writes the document", disk.get(FILE) !== "original\n");
+    }
   }
 }

@@ -394,6 +394,16 @@ function undoPark() {
 }
 
 /**
+ * The savepoint a parked bundle would answer with: where its document was when
+ * it was parked. For a save that finishes after its tab has left the screen,
+ * which records the save against that bundle rather than the live history. The
+ * bundle is otherwise opaque to its caller, so this is the one thing it may ask.
+ */
+function undoBundlePosition(bundle) {
+  return bundle && bundle.current ? bundle.current.id : null;
+}
+
+/**
  * Install a history bundle as the live one. A bundle is trusted to match the
  * content the caller has already put on screen — nothing is re-snapshotted, so
  * the editor must be swapped first, exactly as undoReset() has to run after the

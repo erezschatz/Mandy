@@ -347,6 +347,85 @@ function closeTab(id) {
   return true;
 }
 
+// A save that finished after its tab had moved off the screen. The tab's state
+// is in its parked bundle, so the save is written there, the way the screen would
+// have written it: the file is the tab's, the tab is clean at the position it was
+// parked with, and its storage says so for a reload. Nothing on the screen moves.
+function recordSaveOnTab(id, path, modified) {
+  const tab = findTab(id);
+  if (!tab || !tab.file || !tab.undo) {
+    console.warn("[Tabs] A save finished for a tab with no parked state:", id);
+    return;
+  }
+  tab.file.currentFilePath = path;
+  tab.file.isDirty = false;
+  tab.file.fileMtime = modified;
+  tab.file.diskChanged = false;
+  tab.file.cleanPosition = undoBundlePosition(tab.undo);
+  try {
+    localStorage.setItem(tabKeyFor(id, "path"), path);
+    if (modified) localStorage.setItem(tabKeyFor(id, "mtime"), modified);
+    else localStorage.removeItem(tabKeyFor(id, "mtime"));
+    localStorage.removeItem(tabKeyFor(id, "dirty"));
+  } catch (error) {
+    console.warn("[Tabs] Could not persist a save for a background tab:", error);
+  }
+  renderTabBar();
+}
+
+
+// A background tab's file, checked against disk. The window the person is
+// reading never gets focus while they read it, so this is the only thing that
+// notices an outside write to a document that is not on screen. Each tab's mark
+// goes onto that tab -- its parked record, or its own field for one never
+// shown -- and never onto the document showing, which the active check keeps.
+//
+// A stat that comes back after the tab has been saved, shown or closed is
+// dropped rather than applied: its baseline is no longer the one it was asked
+// about, and the next pass asks again with the current one.
+async function checkBackgroundDiskChanged() {
+  let changed = false;
+  for (const tab of openTabs.slice()) {
+    if (tab.id === activeTabId) continue;
+    const parked = tab.file;
+    const path = parked ? parked.currentFilePath : localStorage.getItem(tabKeyFor(tab.id, "path"));
+    const baseline = parked ? parked.fileMtime : localStorage.getItem(tabKeyFor(tab.id, "mtime"));
+    if (!path || !baseline) continue;
+
+    let modified;
+    try {
+      ({ modified } = await statFile(path));
+    } catch {
+      // A file that has gone is a different problem, and a toast on every
+      // three-second poll would be no way to raise it.
+      continue;
+    }
+
+    const now = findTab(tab.id);
+    if (!now || now.id === activeTabId) continue;
+    const current = now.file ? now.file.fileMtime : localStorage.getItem(tabKeyFor(now.id, "mtime"));
+    if (current !== baseline) continue;
+
+    const flag = Boolean(modified) && modified !== baseline;
+    if (now.file) now.file.diskChanged = flag;
+    else now.diskChanged = flag;
+    changed = true;
+  }
+  if (changed) renderTabBar();
+}
+
+// The poll. The page is watched on a second screen, so it runs while the page is
+// visible, not only when the window is focused. Started on load, which the
+// suites never fire, so no timer runs under test.
+const DISK_POLL_MS = 3000;
+window.addEventListener("load", () => {
+  setInterval(() => {
+    if (document.hidden) return;
+    if (typeof checkDiskChanged === "function") checkDiskChanged();
+    checkBackgroundDiskChanged();
+  }, DISK_POLL_MS);
+});
+
 // Whether any document other than the one on screen has unsaved edits, for
 // app.js's beforeunload. A tab this session has shown carries the answer in its
 // parked file bundle; one restored from a page load and never opened carries it
@@ -389,10 +468,9 @@ function tabDescriptor(tab) {
   return {
     path: localStorage.getItem(tabKeyFor(tab.id, "path")),
     isDirty: localStorage.getItem(tabKeyFor(tab.id, "dirty")) === "1",
-    // Nothing has stat'd this tab's file since the page loaded, so there is
-    // nothing to claim about it. Switching to it re-baselines and the check on
-    // the next window focus answers properly.
-    diskChanged: false,
+    // Set by the background check, which stats a tab's file while it is not on
+    // screen. Before that check has run there is nothing to claim, so false.
+    diskChanged: tab.diskChanged === true,
   };
 }
 

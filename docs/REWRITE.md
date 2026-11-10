@@ -5491,9 +5491,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
 *   **4. Reintegration — planned 2026-11-07; slice 1 done and tested
     2026-11-07, by machine and by hand in Firefox; slice 2 done and
     tested by machine in three engines 2026-11-07, its Firefox hand run of
-    the files themselves owed; slice 3 partly done and tested 2026-11-09 —
-    a tab parks and adopts its model with no parse, and the file operations'
-    binding of their tab and model at start (decision 4) is not started.
+    the files themselves owed; slice 3 done and tested 2026-11-10 —
+    a tab parks and adopts its model with no parse, and every file operation binds
+    its tab at start, refuses before it reads or writes once the screen has
+    moved on, and records a save whose write was in flight on its own tab (decision 4).
     → MERGE TO `main` WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
@@ -5741,8 +5742,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         tab and the model it acts on when it begins, and reads and writes
         those to the end, whatever the screen shows by then. The switch
         lock stays as well.
-        - **Status, 2026-11-09: the parking is done and tested; the binding is
-          not started.** `parkActive` parks the model on `tab.doc` and
+        - **Status, 2026-11-10: done and tested.** The binding is in `file-api.js`
+          (`operationTab`, `stillOnTab`), the late-save record is
+          `recordSaveOnTab` in `tabs.js`, and the checks are in `tabs.test.mjs`. Parking was done 2026-11-09.
+          Earlier status, kept for the record: `parkActive` parks the model on `tab.doc` and
           `adoptActive` renders it back with no parse, both under the model
           core only. `tabs.test.mjs` pins the path with a stand-in for the
           model, and `tests/browser/tabs-model.spec.mjs` runs the real one in
