@@ -19,7 +19,7 @@
 // toolbar.js, markdown-style.js, app.js, undo.js and file-api.js load
 // concatenated into one scope, the way the page runs them.
 
-import { loadSource, makeEl, markdownitStub, readFront, walk } from "./dom.mjs";
+import { fakeModelCore, loadSource, makeEl, markdownitStub, readFront, walk } from "./dom.mjs";
 
 const HOME = "/home/x";
 
@@ -45,7 +45,7 @@ const DIALOG_IDS = [
 // than racing it.
 function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   quiet = false, hold = null, disk = new Map(), fakeTimers = false,
-  failRender = false, answers = [], entries = [], modelCore = false,
+  failRender = false, answers = [], entries = [], flatUnconverted = false,
   holdWrite = null, modifiedAt = new Map() } = {}) {
   const store = new Map();
   for (const [key, value] of Object.entries(seed)) store.set(key, value);
@@ -76,9 +76,11 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   const extra = new Map([["editor", makeEl()]]);
   extra.get("editor").id = "editor";
   for (const id of DIALOG_IDS) extra.set(id, makeEl());
-  // The model core, stood in for when asked: see fakeModelCore. Built here
-  // because it reads the editor, which is what makes its document the screen.
-  const model = modelCore ? fakeModelCore(extra.get("editor")) : null;
+  // The model, stood in for: see fakeModelCore. Built here because it reads the
+  // editor, which is what makes its document the screen. Always, since stage
+  // 4's slice 4: there is no core without one, and the real one needs a parser
+  // and an HTML parser this stub does not have.
+  const model = fakeModelCore(extra.get("editor"));
 
   const document = {
     createElement: (t) => makeEl(t),
@@ -112,18 +114,20 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
     execCommand() {},
   };
 
-  // With the model stood in for, model.js is left out of the bundle rather than
-  // loaded and overridden: its function declarations would shadow anything
-  // passed in with the same name, the same arrangement undo.test.mjs makes.
+  // model.js is left out of the bundle rather than loaded and overridden: its
+  // function declarations would shadow anything passed in with the same name,
+  // the same arrangement undo.test.mjs makes.
   const files = [
     "toolbar.js", "markdown-parser.js", "markdown-style.js",
-    ...(model ? [] : ["model.js"]),
     "app.js", "undo.js", ...(withTabs ? ["tabs.js"] : []), "file-api.js",
   ];
   const api = loadSource(
     files,
     {
-      ...(model ? model.scope : {}),
+      ...model.scope,
+      // legacy-storage.js's answer, which this suite does not load. Present only
+      // when a case asks, so every other case boots as a converted browser does.
+      ...(flatUnconverted ? { legacyFlatUnconverted: () => true } : {}),
       document,
       runCommand: () => true,
       localStorage: {
@@ -323,55 +327,6 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   };
 }
 
-// The model core, stood in for, so the swap's model branch can be asked about
-// without a parser. What is asked here is which path a tab takes -- a parked
-// model comes back without a parse, a tab never shown is parsed once from its
-// stored HTML -- and that is all a stub can answer honestly; the render itself
-// is the `model` suite's and the browser's.
-//
-// The document on screen is the model's document: `current` is the object the
-// model last rendered, and its html is read from the editor when it is asked
-// for, so a check that writes innerHTML is an edit the model has heard of.
-// That is the invariant the real core keeps, and the reason the stub reads the
-// screen rather than keeping its own copy.
-//
-// Counted, not just answered: `parses` is every time markdown became a document,
-// and a parked tab coming back must not add one.
-function fakeModelCore(editor) {
-  // A session always has a document on screen, so the stand-in starts with one
-  // rather than none. It is not counted as a parse: nothing was parsed, the
-  // boot simply began with an empty document, as the real one does.
-  const core = { parses: 0, renders: 0, seq: 1, current: { id: 1, html: "" } };
-  const snapshot = () => (core.current ? { ...core.current, html: editor.innerHTML } : null);
-  core.scope = {
-    modelCoreEnabled: () => true,
-    modelCurrentDocument: () => snapshot(),
-    modelParkDocument: () => {
-      const doc = snapshot();
-      core.current = null;
-      return doc;
-    },
-    modelLoad: (root, markdown) => {
-      core.parses += 1;
-      core.current = { id: ++core.seq, html: markdown };
-      root.innerHTML = markdown;
-      return core.current;
-    },
-    modelRestoreDocument: (root, doc) => {
-      core.renders += 1;
-      core.current = doc;
-      root.innerHTML = doc.html;
-      return doc;
-    },
-    modelForkDocument: (doc) => ({ ...doc }),
-    modelDocumentMarkdown: (doc) => doc.html,
-    modelReadSelection: () => null,
-    modelRecordSelection: () => null,
-    modelResolveSelection: () => null,
-  };
-  return core;
-}
-
 const TAB_A = {
   currentFilePath: "/home/x/notes/plan.md",
   isDirty: true,
@@ -540,8 +495,7 @@ export default async function run(check) {
   // What a session from before tabs existed leaves behind: one document under
   // the flat names, and no list.
   const LEGACY = {
-    markdownContent: "<p>hello</p>",
-    markdownSource: "hello\n",
+    "mandy-markdown": "<p>hello</p>",
     "mandy-current-file": "/home/x/notes/plan.md",
     "mandy-dirty": "1",
     "mandy-file-mtime": "2026-09-07T10:00:00.000Z",
@@ -549,8 +503,7 @@ export default async function run(check) {
   };
 
   const TAB_1 = {
-    "mandy-tab-1-content": LEGACY.markdownContent,
-    "mandy-tab-1-source": LEGACY.markdownSource,
+    "mandy-tab-1-markdown": LEGACY["mandy-markdown"],
     "mandy-tab-1-path": LEGACY["mandy-current-file"],
     "mandy-tab-1-dirty": LEGACY["mandy-dirty"],
     "mandy-tab-1-mtime": LEGACY["mandy-file-mtime"],
@@ -569,7 +522,7 @@ export default async function run(check) {
     check("migration writes the tab list",
       app.store.get("mandy-tabs") === JSON.stringify({ order: [1], active: 1, seq: 1 }));
     check("documentKey resolves to the active tab once tabs.js is loaded",
-      app.documentKey("content") === "mandy-tab-1-content" &&
+      app.documentKey("markdown") === "mandy-tab-1-markdown" &&
       app.documentKey("dir") === "mandy-tab-1-dir");
     // The chain end to end: file-api.js reads the open file's path out of
     // storage at its own load time, so it has to be given the scoped key by
@@ -594,7 +547,7 @@ export default async function run(check) {
     check("a session that already has a list does not migrate again",
       Object.entries(LEGACY).every(([k, v]) => app.store.get(k) === v));
     check("a stored list decides which tab is active",
-      app.documentKey("content") === "mandy-tab-3-content");
+      app.documentKey("markdown") === "mandy-tab-3-markdown");
   }
 
   {
@@ -603,7 +556,7 @@ export default async function run(check) {
       seed: { ...LEGACY, "mandy-tabs": JSON.stringify({ order: [3, 4], active: 9, seq: 4 }) },
     });
     check("an active id that is not in the order falls back to the first tab",
-      app.documentKey("content") === "mandy-tab-3-content");
+      app.documentKey("markdown") === "mandy-tab-3-markdown");
   }
 
   {
@@ -612,7 +565,7 @@ export default async function run(check) {
       seed: { ...LEGACY, "mandy-tabs": "{not json" },
     });
     check("a corrupt list is treated as no list rather than throwing during load",
-      app.store.get("mandy-tab-1-content") === LEGACY.markdownContent);
+      app.store.get("mandy-tab-1-markdown") === LEGACY["mandy-markdown"]);
   }
 
   // The failure this whole dance exists for. A migration that deleted the flat
@@ -622,8 +575,8 @@ export default async function run(check) {
   // no list, rather than on a tab list pointing at storage the document is not
   // under.
   for (const [label, options] of [
-    ["a write that throws", { refuse: ["mandy-tab-1-source"] }],
-    ["a write that reports success and stores nothing", { swallow: ["mandy-tab-1-content"] }],
+    ["a write that throws", { refuse: ["mandy-tab-1-dir"] }],
+    ["a write that reports success and stores nothing", { swallow: ["mandy-tab-1-markdown"] }],
   ]) {
     const app = boot({ withTabs: true, quiet: true, seed: LEGACY, ...options });
 
@@ -632,9 +585,19 @@ export default async function run(check) {
     check(`${label} leaves no half-migrated tab keys behind`, tabKeys(app).length === 0);
     check(`${label} writes no tab list`, !app.store.has("mandy-tabs"));
     check(`${label} falls back to the flat key names`,
-      app.documentKey("content") === "markdownContent");
+      app.documentKey("markdown") === "mandy-markdown");
     check(`${label} still shows the document's own file`,
       app.label() === "plan.md (edited)");
+  }
+
+  // Stage 4's slice 4: a flat document the conversion could not finish is not
+  // migrated, so it is not left behind under names a tab list never reads.
+  {
+    const app = boot({ withTabs: true, quiet: true, seed: LEGACY, flatUnconverted: true });
+    check("a flat document not yet converted is not migrated",
+      Object.entries(LEGACY).every(([k, v]) => app.store.get(k) === v) && tabKeys(app).length === 0);
+    check("and the session runs on the flat names, with no tab list",
+      app.documentKey("markdown") === "mandy-markdown" && !app.store.has("mandy-tabs"));
   }
 
   // --- stage 3: the switch lock, and flushing the autosave ----------------
@@ -755,7 +718,7 @@ export default async function run(check) {
     app.editor.innerHTML = "<p>two</p>";
     app.flushAutosave();
     check("flushing writes the document as it stands now",
-      app.store.get("mandy-tab-1-content") === "<p>two</p>");
+      app.store.get("mandy-tab-1-markdown") === "<p>two</p>");
     check("flushing cancels the debounce rather than racing it",
       app.pendingTimers() === 0);
   }
@@ -765,7 +728,7 @@ export default async function run(check) {
     app.editor.innerHTML = "<p>only</p>";
     app.flushAutosave();
     check("flushing with nothing pending still writes",
-      app.store.get("mandy-tab-1-content") === "<p>only</p>");
+      app.store.get("mandy-tab-1-markdown") === "<p>only</p>");
   }
 
   // --- stage 4: the list operations ---------------------------------------
@@ -797,10 +760,10 @@ export default async function run(check) {
     // flush on the far side of the flip would write this document under the new
     // tab's key and tab 1's edits would be written nowhere at all.
     check("the outgoing document is written under its own key before the swap",
-      app.store.get("mandy-tab-1-content") === "<p>first</p>");
+      app.store.get("mandy-tab-1-markdown") === "<p>first</p>");
     check("keys now resolve to the new tab",
-      app.documentKey("content") === "mandy-tab-2-content");
-    check("the new tab is a blank document", app.editor.innerHTML === "<p><br></p>");
+      app.documentKey("markdown") === "mandy-tab-2-markdown");
+    check("the new tab is a blank document", app.editor.innerHTML === "");
     // Clean at position 0 rather than at null: a blank tab has a history, it
     // just has nothing in it, so there is a savepoint to measure the first edit
     // against. null is what a document restored across a page load has.
@@ -832,7 +795,7 @@ export default async function run(check) {
     check("switching back returns the document's own bullet marker",
       app.turndownOptions().bulletListMarker === "+");
     check("the tab left behind kept its own content",
-      app.store.get("mandy-tab-2-content") === "<p>second</p>");
+      app.store.get("mandy-tab-2-markdown") === "<p>second</p>");
   }
 
   {
@@ -938,9 +901,8 @@ export default async function run(check) {
   // load-time restore asks about the one document it brings back.
   const RESTORED = {
     "mandy-tabs": JSON.stringify({ order: [1, 2], active: 1, seq: 2 }),
-    "mandy-tab-1-content": "<p>showing</p>",
-    "mandy-tab-2-content": "<p>log</p>",
-    "mandy-tab-2-source": SOURCE,
+    "mandy-tab-1-markdown": "<p>showing</p>",
+    "mandy-tab-2-markdown": SOURCE,
     "mandy-tab-2-path": "/home/x/other/log.md",
     "mandy-tab-2-mtime": "2026-09-07T11:00:00.000Z",
     "mandy-tab-2-dir": "/home/x/other",
@@ -951,15 +913,16 @@ export default async function run(check) {
     app.editor.innerHTML = "<p>showing</p>";
     app.switchToTab(2);
 
-    check("a never-shown tab comes back from its own content key",
-      app.editor.innerHTML === "<p>log</p>");
+    check("a never-shown tab comes back from its own markdown key",
+      app.editor.innerHTML === SOURCE);
     check("a never-shown tab comes back with its file",
       app.label() === "log.md" && app.fileState().fileMtime === RESTORED["mandy-tab-2-mtime"]);
     check("a never-shown tab comes back with its own dialog directory",
       app.fileState().dialogDir === "/home/x/other");
-    // Re-sniffed from the source key rather than left on the previous
+    // Re-sniffed from its stored markdown rather than left on the previous
     // document's options, which is the same failure as a stale bullet marker
-    // and reaches the file the same way.
+    // and reaches the file the same way. The markdown is the document as it is
+    // now, which is what new markdown should follow (stage 4's decision 1).
     check("a never-shown tab re-sniffs its markdown style",
       app.turndownOptions().bulletListMarker === "+" && app.mdState().source.size > 0);
     check("a clean restored tab gets a savepoint in the history now live",
@@ -1016,7 +979,7 @@ export default async function run(check) {
 
     check("closing the tab on screen succeeds", app.closeTab(1) === true);
     check("the neighbour is adopted, not just made active",
-      app.activeTab() === 2 && app.editor.innerHTML === "<p>log</p>" &&
+      app.activeTab() === 2 && app.editor.innerHTML === SOURCE &&
       app.label() === "log.md");
     // Deliberately no flush and no park on the way out: the document is being
     // thrown away, and flushing would write it straight back under the key the
@@ -1037,7 +1000,7 @@ export default async function run(check) {
       app.tabIds().length === 1 && app.activeTab() === app.tabIds()[0]);
     check("closing the last tab does not reuse its id", app.tabIds()[0] === 2);
     check("closing the last tab leaves a blank untitled document",
-      app.editor.innerHTML === "<p><br></p>" && app.label() === "Untitled");
+      app.editor.innerHTML === "" && app.label() === "Untitled");
     check("closing the last tab forgets the document it held",
       [...app.store.keys()].every((k) => !k.startsWith("mandy-tab-1-")));
   }
@@ -1367,9 +1330,9 @@ export default async function run(check) {
       same(app.tabIds(), [1, 2]) && app.activeTab() === 2);
     check("nothing is discarded, so nothing is asked", app.asked.length === 0);
     check("the document New was called from is still open",
-      app.store.get("mandy-tab-1-content") === "<p>hello</p>");
+      app.store.get("mandy-tab-1-markdown") === "<p>hello</p>");
     check("and the new tab is blank, with no file",
-      app.editor.innerHTML === "<p><br></p>" && app.label() === "Untitled");
+      app.editor.innerHTML === "" && app.label() === "Untitled");
     // file-api.js hooks the same action to drop the file association after an
     // in-place reset. There is no in-place reset left, and the tab it would
     // clear is a fresh one that never had a file.
@@ -1430,7 +1393,7 @@ export default async function run(check) {
   // would take the only thing naming that file off the screen.
   {
     const app = boot({
-      withTabs: true, quiet: true, seed: LEGACY, refuse: ["mandy-tab-1-source"],
+      withTabs: true, quiet: true, seed: LEGACY, refuse: ["mandy-tab-1-dir"],
     });
 
     check("the unlisted document still gets a tab", barTabs(app).length === 1);
@@ -1485,20 +1448,20 @@ export default async function run(check) {
     const adopt = src.slice(src.indexOf("function adoptActive"));
     const body = adopt.slice(0, adopt.indexOf("\n}"));
     // Stage 4's slice 3 gave the content two sources: the parked model, or the
-    // stored HTML for a tab with no model. Both have to land before the history
+    // stored markdown for a tab with no model. Both have to land before the history
     // does, and the history before the file state. Each source is pinned on its
     // own rather than the first one found, since either branch alone would pass
     // an `indexOf` that only saw the other.
     check("adoptActive loads the parked model before adopting the history",
       body.indexOf("modelRestoreDocument") < body.indexOf("undoAdopt"));
-    check("and loads stored HTML before adopting the history, for a tab with no model",
-      body.indexOf("loadDocumentHtml") < body.indexOf("undoAdopt"));
+    check("and loads stored markdown before adopting the history, for a tab with no model",
+      body.indexOf("loadDocumentMarkdown") < body.indexOf("undoAdopt"));
     check("and adopts the history before the file state",
       body.indexOf("undoAdopt") < body.indexOf("fileAdopt"));
     // The one thing it may know about a model: whether the tab has one. A parse
     // is the other path, and a tab adopted with a model never takes it.
     check("and reads the parked model only as the tab's own record",
-      /if \(tab\.doc\) modelRestoreDocument\(editor, tab\.doc, md\);/.test(body));
+      /if \(tab\.doc\) \{\s*markdownStyleAdopt\(tab\.md \|\| null\);\s*modelRestoreDocument\(editor, tab\.doc, md\);/.test(body));
   }
 
   // --- stage 4 slice 3: a tab parks its model ----------------------------------
@@ -1508,7 +1471,7 @@ export default async function run(check) {
   // history it describes, and comes back as that object with no parse at all.
 
   {
-    const app = boot({ withTabs: true, modelCore: true, quiet: true });
+    const app = boot({ withTabs: true, quiet: true });
     app.editor.innerHTML = "<p>first</p>";
     app.newTab();
     app.editor.innerHTML = "<p>second</p>";
@@ -1531,7 +1494,7 @@ export default async function run(check) {
   // tab had when it left is the depth it has when it returns, and nothing from
   // the other tab leaks in.
   {
-    const app = boot({ withTabs: true, modelCore: true, quiet: true });
+    const app = boot({ withTabs: true, quiet: true });
     app.editor.innerHTML = "<p>one</p>";
     app.undoReset();
     app.editor.innerHTML = "<p>two</p>";
@@ -1548,30 +1511,19 @@ export default async function run(check) {
   // parsed once from storage, as it always was, and then parks like any other.
   {
     const app = boot({
-      withTabs: true, modelCore: true, quiet: true,
+      withTabs: true, quiet: true,
       seed: {
         "mandy-tabs": JSON.stringify({ order: [1, 2], active: 1, seq: 2 }),
-        "mandy-tab-2-content": "<p>stored</p>",
+        "mandy-tab-2-markdown": "<p>stored</p>",
       },
     });
     const before = app.model.parses;
     app.switchToTab(2);
-    check("a tab never shown is parsed once from its stored HTML",
+    check("a tab never shown is parsed once from its stored markdown",
       app.model.parses === before + 1);
-    // htmlToMarkdown ends its output with a newline, which the stand-in renders
-    // verbatim; a real model's render has no such byte, so it is not compared.
-    check("and shows what was stored", app.editor.innerHTML.trim() === "<p>stored</p>");
+    check("and shows what was stored", app.editor.innerHTML === "<p>stored</p>");
     check("and has no model on its record until it is switched away from",
       app.tabRecord(2).doc === undefined || app.tabRecord(2).doc === null);
-  }
-
-  // The legacy core has no model to park, and must not record one.
-  {
-    const app = boot({ withTabs: true, quiet: true });
-    app.editor.innerHTML = "<p>legacy</p>";
-    app.newTab();
-    check("under the legacy core a parked tab records no model",
-      app.tabRecord(1).doc === null);
   }
 
   // --- background tabs learn about disk changes -------------------------------
@@ -1678,7 +1630,7 @@ export default async function run(check) {
       hold.resolve();
       const opened = await opening;
       check("an open whose document moved on loads nothing into the tab on screen",
-        opened === false && app.editor.innerHTML === "<p><br></p>");
+        opened === false && app.editor.innerHTML === "");
       check("and that tab names no file", app.label() === "Untitled");
     }
 

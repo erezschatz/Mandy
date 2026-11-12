@@ -1,4 +1,4 @@
-// The exports under the model core — TODO 3.1, stage 4's slice 2.
+// The exports, read from the model — TODO 3.1, stage 4's slice 2.
 //
 // Two properties, both of which only a real DOM can show. **No view attribute
 // reaches a file**: the static export, PDF and Word all start from
@@ -6,7 +6,7 @@
 // equation and the wrapper's `contenteditable="false"` stay in the editor. And
 // **the editable export carries markdown**: its editor ships empty, the
 // document sits escaped in `#app-document`, and the file opens to the same
-// document under either core and re-exports itself unchanged.
+// document and re-exports itself unchanged.
 //
 // PDF and Word are checked at the hand-over rather than in the file they make:
 // the PDF library is replaced by a recorder, so no CDN is needed and nothing
@@ -164,7 +164,7 @@ function expectEquationPictures(html, what) {
   expect(html, `${what}: the TeX as alt text`).toContain('alt="$y$"');
 }
 
-test("the editable export carries markdown, and opens and re-exports under both cores", async ({ page }) => {
+test("the editable export carries markdown, and opens and re-exports", async ({ page }) => {
   await prepare(page);
   const markdown = await page.evaluate(() => currentModelMarkdown());
   const first = await download(page, "export-editable");
@@ -178,7 +178,7 @@ test("the editable export carries markdown, and opens and re-exports under both 
   await page.route("**/exported-copy.html*", (route) =>
     route.fulfill({ body: first, contentType: "text/html" }));
 
-  await page.goto("/exported-copy.html?core=model");
+  await page.goto("/exported-copy.html");
   await page.waitForFunction(() =>
     typeof modelCurrentDocument === "function" && modelCurrentDocument() !== null);
   expect(await page.evaluate(() => !!toolbarButton("download-md")), "the export's toolbar").toBe(true);
@@ -190,13 +190,4 @@ test("the editable export carries markdown, and opens and re-exports under both 
   const second = await download(page, "export-editable");
   expect(embedded(second)).toBe(markdown);
   expect(bundle(second) === bundle(first), "the bundle reproduces itself").toBe(true);
-
-  // The old core reads the same file, through the markdown door it has always
-  // had, and writes the same markdown back.
-  await page.goto("/exported-copy.html?core=legacy");
-  await page.waitForFunction(() =>
-    typeof modelCoreEnabled === "function" && !modelCoreEnabled() && !!editor.querySelector("h1"));
-  await page.waitForLoadState("networkidle");
-  expect(await page.evaluate(() => editor.querySelector("h1").textContent)).toBe("Exported");
-  expect(await page.evaluate(() => documentMarkdown()), "the old core saves the same markdown").toBe(markdown);
 });

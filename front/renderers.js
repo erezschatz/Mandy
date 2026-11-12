@@ -242,9 +242,11 @@ async function renderLatex(container) {
   // none, and queues a second pass that lands on the render step's output —
   // and nests a copy of every equation, the bug `5e6efad` fixed for the old
   // core. Measured in Firefox and then Blink on 2026-10-01: 15 equations, 30
-  // nested copies, after one reload. Feature-tested, because the suites load
-  // this file without model.js.
-  if (typeof modelCoreEnabled === "function" && modelCoreEnabled()) return;
+  // nested copies, after one reload. Since stage 4's slice 4 the model is the
+  // only core, so this returns at once and the legacy path below it is slice
+  // 5's to delete. Feature-tested, because the suites load this file without
+  // model.js and drive that path directly.
+  if (typeof modelRender === "function") return;
   if (!typesetLatexRoots(container).length && !containsLatex(container.textContent)) return;
 
   try {

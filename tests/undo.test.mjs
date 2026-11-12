@@ -24,9 +24,9 @@ import { loadSource, makeEl, makeText, readFront } from "./dom.mjs";
 // replaces the document itself. Stage 4 takes app.js to zero as well, when the
 // legacy branch inside each door goes.
 const REPLACEMENT_SITES = {
-  "app.js": 3, // the three doors; their callers still pick a side
+  "app.js": 0, // its two doors hand markdown to the model, which renders
   "file-api.js": 0, // openFile and reload go through loadDocumentMarkdown
-  "tabs.js": 0, // the tab swap goes through loadDocumentHtml
+  "tabs.js": 0, // the tab swap restores a parked model or loads stored markdown
 };
 
 // A fake model core. `live` is the document on screen; `clone` counts as a
@@ -61,7 +61,6 @@ function fakeModel() {
       caret = { block: live.blocks[0], offset: 0 };
     },
     scope: {
-      modelCoreEnabled: () => true,
       modelCurrentDocument: () => live,
       modelForkDocument: clone,
       modelRestoreDocument: (root, doc, md, selection) => {

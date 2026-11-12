@@ -257,11 +257,8 @@ export function markdownitStub(inlineRules = [], renderRules = {}) {
 // app.js calls configureMarkdownParser at its own top level, and `mathSpan`
 // stays reachable below because these share one scope the way <script> tags do.
 // TurndownService is a recorder here: no suite needs conversion, only the rules.
-// `modelCore` stands in for model.js's flag, which this harness does not load:
-// app.js asks the question through `typeof modelCoreEnabled`, so leaving the
-// global out is the running core and supplying it is the model core. A suite
-// that wants the model itself loads model.js on its own.
-export function loadApp({ modelCore = false } = {}) {
+// model.js is not loaded: a suite that wants the model loads it on its own.
+export function loadApp() {
   const noop = () => {};
   // Honours the tag: outdentListItem builds a sublist of the same kind as the
   // one it came out of, so a stub that answers DIV to everything cannot tell
@@ -361,7 +358,6 @@ export function loadApp({ modelCore = false } = {}) {
       // insertLink's dialog. A suite pushes answers onto `inputAnswers` before
       // driving it; an empty queue is the user backing out.
       Node: { ELEMENT_NODE: 1, TEXT_NODE: 3 },
-      ...(modelCore ? { modelCoreEnabled: () => true } : {}),
       askForInput: () => Promise.resolve(inputAnswers.length ? inputAnswers.shift() : null),
       setTimeout: noop,
       clearTimeout: noop,
@@ -389,4 +385,58 @@ export function loadApp({ modelCore = false } = {}) {
       " scanReferenceDefinitions, normalizeReferenceLabel, appendReferenceDefinitions," +
       " referenceDefinitionsNow: () => referenceDefinitions };",
   );
+}
+
+// The model, stood in for, for the suites that boot app.js and file-api.js
+// without a parser: `tabs`, `file-path` and `export-variant`. Since stage 4's
+// slice 4 every document goes into the model, and the real one needs markdown-it
+// and an HTML parser this stub does not have. What can be asked of it honestly
+// is which path a document takes -- a parked model comes back without a parse,
+// a tab never shown is parsed once from its stored markdown, a save writes what
+// the model holds -- and the render itself is the `model` suite's and the
+// browser's.
+//
+// Markdown and HTML are the same string here: a document loaded from `x` shows
+// `x` in the editor, and writes `x` back.
+//
+// The document on screen is the model's document: `current` is the object the
+// model last rendered, and its html is read from the editor when it is asked
+// for, so a check that writes innerHTML is an edit the model has heard of.
+// That is the invariant the real core keeps, and the reason the stub reads the
+// screen rather than keeping its own copy.
+//
+// Counted, not just answered: `parses` is every time markdown became a document,
+// and a parked tab coming back must not add one.
+export function fakeModelCore(editor) {
+  // A session always has a document on screen, so the stand-in starts with one
+  // rather than none. It is not counted as a parse: nothing was parsed, the
+  // boot simply began with an empty document, as the real one does.
+  const core = { parses: 0, renders: 0, seq: 1, current: { id: 1, html: "" } };
+  const snapshot = () => (core.current ? { ...core.current, html: editor.innerHTML } : null);
+  core.scope = {
+    modelCurrentDocument: () => snapshot(),
+    modelParkDocument: () => {
+      const doc = snapshot();
+      core.current = null;
+      return doc;
+    },
+    modelLoad: (root, markdown) => {
+      core.parses += 1;
+      core.current = { id: ++core.seq, html: markdown };
+      root.innerHTML = markdown;
+      return core.current;
+    },
+    modelRestoreDocument: (root, doc) => {
+      core.renders += 1;
+      core.current = doc;
+      root.innerHTML = doc.html;
+      return doc;
+    },
+    modelForkDocument: (doc) => ({ ...doc }),
+    modelDocumentMarkdown: (doc) => doc.html,
+    modelReadSelection: () => null,
+    modelRecordSelection: () => null,
+    modelResolveSelection: () => null,
+  };
+  return core;
 }

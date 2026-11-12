@@ -1,4 +1,4 @@
-// What the model-core specs share: a fresh page on `?core=model` that fails
+// What the model specs share: a fresh page that fails
 // the test on any render divergence or console error, a document loaded the way
 // File → Open loads one, and the ways a person selects and formats.
 
@@ -26,10 +26,9 @@ test.beforeEach(async ({ page }, testInfo) => {
   });
   page.on("pageerror", (err) => problems.push(`pageerror: ${err.message}`));
   testInfo.problems = problems;
-  await page.goto("/?core=model");
+  await page.goto("/");
   await page.waitForFunction(() =>
-    typeof loadDocumentMarkdown === "function" && typeof modelCoreEnabled === "function");
-  expect(await page.evaluate(() => modelCoreEnabled()), "the model core is on").toBe(true);
+    typeof loadDocumentMarkdown === "function" && typeof modelCurrentDocument === "function");
   // Startup finished, not just defined: it fetches the welcome document
   // asynchronously, and under load that fetch could land after a test had
   // loaded its own document, leaving the welcome page in the history under it.

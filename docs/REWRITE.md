@@ -5494,7 +5494,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     the files themselves owed; slice 3 done and tested 2026-11-10 —
     a tab parks and adopts its model with no parse, and every file operation binds
     its tab at start, refuses before it reads or writes once the screen has
-    moved on, and records a save whose write was in flight on its own tab (decision 4).
+    moved on, and records a save whose write was in flight on its own tab (decision 4);
+    slice 4 done and tested by machine 2026-11-12 in three engines — the
+    autosave is markdown, the stored HTML converts once at load, and the flag
+    is gone — its hand run, the user's own upgrade, owed.
     → MERGE TO `main` WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
@@ -5796,6 +5799,125 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           loads the app, and compares what it opens with the fixture's
           expected markdown. **Hand**: the user's own upgrade, done the way
           decision 3 describes, on this branch.
+        - **How it is built, written 2026-11-12 before building.** One
+          change to the plan above, and it is about names.
+          - **The markdown goes under a new key, not into `content`.**
+            `DOCUMENT_KEYS` loses `content` and `source` and gains
+            `markdown` (`mandy-markdown` flat, `mandy-tab-N-markdown` per
+            tab). The plan's version key alone cannot say which tabs were
+            converted when one write fails and the others succeed, and a
+            second run over a tab already holding markdown would read it as
+            HTML: Turndown escapes every `*` and `#` in it. With a new name
+            the key says what it holds, so no stored document is ever
+            asked. A tab whose `markdown` key exists is converted, and its
+            old `content` and `source` are only removed. The version key
+            (`mandy-storage-version`, `2`) stays as the plan has it, written
+            once nothing is left to convert, and makes every later load skip
+            the scan.
+          - **`front/legacy-storage.js`** runs at load, after `app.js` and
+            before `tabs.js`. It finds the flat `markdownContent` and every
+            `mandy-tab-N-content` by scanning the keys rather than by
+            reading the tab list, so a session whose tab migration failed,
+            and a tab the list does not name, are converted the same way.
+            Per document: hand its `source` to `adoptMarkdownStyle`, convert
+            the HTML with `htmlToMarkdown`, take `source` itself when
+            `md.render(source)` converts to the same bytes (decision 2),
+            write, read back, and only then remove the two old keys. A write
+            that fails leaves the old keys alone and keeps the markdown in
+            memory, where `storedDocument()` in `app.js` finds it, so the
+            document opens and the next load tries again. A blank document
+            converts to no key at all. The style is reset to the defaults
+            afterwards, since the conversion borrowed the shared one.
+          - **Every reader goes through `storedDocument()`**: the boot
+            restore, a never-shown tab's adopt, and `restoreCurrentFile`.
+            Each loads markdown through `loadDocumentMarkdown`, which already
+            sniffs the style, so `markdownStyleAdoptStored` goes rather than
+            being re-pointed, and `adoptMarkdownStyle` stops writing
+            `source`. **Every writer goes through `flushAutosave()`**, which
+            writes `currentModelMarkdown()`: the debounce, `beforeunload`,
+            Open, upload and `saveSoon`. A model that refuses to emit leaves
+            the last good write where it was and says so on the console.
+            `BLANK_DOCUMENT` in `tabs.js` becomes the empty string.
+          - **The flag goes at every call site**, keeping the model branch.
+            The legacy functions those branches called stay defined, and
+            unreachable, for slice 5 to delete; their suites keep driving
+            them directly until then. What a suite drove *through* a call
+            site under the old core is rewritten to the model's side or
+            deleted with it. The legacy core's notices ("needs the new
+            editing core") go, since nothing can reach them.
+          - **An exported document whose editor holds HTML** is one made
+            before slice 2, and it runs the bundle it was exported with, so
+            new code never meets one. The boot keeps a fallback anyway — the
+            HTML through `htmlFragmentToMarkdown` into the model — since an
+            editor with no model in it is a dead editor.
+          - **Fixtures first, while the old core still runs.**
+            `tests/fixtures/storage/` holds stored HTML captured from the
+            running app under `?core=legacy` (what `main`'s autosave holds)
+            and `?core=model`, with each one's `source` key and the markdown
+            the old core's save wrote for it, which is the expected answer
+            for an edited document and an oracle the converter did not
+            produce. The script that captured them cannot run after this
+            slice and is not kept. The Mermaid wrapper is written by hand,
+            since nothing can draw one now.
+          - **Suites**: a new `legacy-storage` suite drives the converter's
+            control flow on a stub store — which keys, the readback, a
+            failed write kept in memory, decision 2's branch, the version
+            key, a second run doing nothing. The real conversion needs
+            Turndown with an HTML parser and is
+            `tests/browser/storage-conversion.spec.mjs`'s: each fixture is
+            seeded into a fresh profile, the app loads, and what it opens and
+            what it stored are compared with the fixture's markdown. The
+            specs that loaded `?core=legacy` lose that half:
+            `open-edit-save` compares the model's save with the fixture
+            alone, keeping the parity entries as expectations of the model.
+        - **Done and tested by machine 2026-11-12, in all three engines; the
+          hand run, the user's own upgrade, is owed.** Built as planned above.
+          - **`tests/browser/storage-conversion.spec.mjs`** passes in
+            Chromium, Firefox and WebKit. It covers the flat document from
+            both cores, a document nobody edited coming back as its source
+            from both cores, three tabs with two never shown and one holding
+            a Mermaid wrapper, a migration left half done, a blank tab, and
+            an edit after the conversion autosaving markdown and surviving a
+            reload.
+          - **The `legacy-storage` suite** passes, and fails with the
+            read-back or the version write removed. `tabs`, `file-path` and
+            `export-variant` share `fakeModelCore` in `tests/dom.mjs` now.
+            `list-indent` is deleted along with the handlers it drove. The
+            whole of `npm test` passes.
+          - **What an edited stored document loses** is what the old core's
+            save would have lost: the fixtures show a setext heading coming
+            back as ATX, and a lazy quote line joined to the line above it.
+            A document nobody edited comes back byte for byte. Either way
+            the file on disk is not touched, which is why decision 3's
+            upgrade — save everything first — makes the loss moot.
+          - **Found by the review before committing**: a flat document
+            whose conversion failed would have been left behind by the tab
+            migration, held in memory under a key the session no longer
+            used. `legacyFlatUnconverted` holds the migration back until it
+            converts. The `legacy-storage` and `tabs` suites cover it, and
+            removing the guard fails the `tabs` checks. No browser spec
+            reaches it, since that would need a quota failure on one key.
+          - **What went with the flag, ahead of slice 5**: the editor's own
+            `paste` listener, the Tab and empty-item keydown handlers,
+            `markdownToHtml` and `loadDocumentHtml`, since nothing could reach
+            them once the condition went. What they called is still defined.
+            `documentMarkdown()` throws before boot rather than falling back to
+            Turndown. The `list-indent` suite went with the handlers it drove,
+            so "their suites keep driving them" above is true of the others.
+          - **One bug found on the way**: `modelEnterShifted` started at 0,
+            so for the first 200ms after a load a plain Enter in a table cell
+            read as Shift+Enter and did nothing. The `model-input` suite runs
+            inside that window, and was failing at `dfe0f14` as well.
+          - **The whole Playwright run**: 337 passed in three engines, the
+            two list check pages skipped, and two Firefox failures that are
+            not this slice's. `inline-code-links.spec.mjs`'s Code over a
+            word fails at `dfe0f14` as well, because the format bar's button
+            never shows in Firefox. Edit → Copy failed once and then passed
+            three times out of three.
+          - **Left for later slices**: the legacy functions are defined and
+            unreachable (slice 5); `list-indent-check` and
+            `list-empty-item-check` drive handlers that are gone (slice 6);
+            CLAUDE.md still describes the flag and the HTML autosave (slice 7).
 
     5.  **The old core is deleted.** `execcommand.js` leaves all three
         registries, and the one command it lets through moves to where it is

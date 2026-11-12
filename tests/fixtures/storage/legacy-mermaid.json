@@ -1,0 +1,9 @@
+{
+  "name": "mermaid",
+  "core": "legacy",
+  "edited": false,
+  "handWritten": true,
+  "source": "# Diagram\n\nBefore it.\n\n```mermaid\ngraph TD\n  A-->B\n```\n\nAfter it.\n",
+  "html": "<h1>Diagram</h1>\n<p>Before it.</p>\n<div class=\"mermaid-wrapper\" contenteditable=\"false\"><div class=\"mermaid-diagram\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\"><text x=\"0\" y=\"15\">A→B</text></svg></div><div class=\"mermaid-source\" style=\"display:none\">graph TD\n  A-->B</div></div>\n<p>After it.</p>\n",
+  "expected": "# Diagram\n\nBefore it.\n\n```mermaid\ngraph TD\n  A-->B\n```\n\nAfter it.\n"
+}

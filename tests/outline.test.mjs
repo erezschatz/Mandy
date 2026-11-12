@@ -13,12 +13,7 @@
 
 import { loadSource, makeEl, makeText, markdownitStub, walk } from "./dom.mjs";
 
-// `modelCore` picks which editing core the context is running, because the
-// outline's one immediacy property is reached two different ways by the two and
-// a suite that only ever built one of them would be asserting half of it. The
-// flag resolves once per loaded scope (see modelCoreResolveFlag), so this is a
-// second context rather than a switch inside one.
-function loadOutline({ modelCore = false } = {}) {
+function loadOutline() {
   const noop = () => {};
   const root = makeEl("html");
   const container = makeEl("div");
@@ -38,7 +33,6 @@ function loadOutline({ modelCore = false } = {}) {
   };
 
   const store = new Map();
-  if (modelCore) store.set("mandy-model-core", "on");
   const alerts = [];
   const scrolled = [];
   const observed = [];
@@ -135,7 +129,7 @@ function loadOutline({ modelCore = false } = {}) {
     },
     "; return { ctx: __ctx, outlineDepths, outlineEntries, copyInline," +
       " buildNestedList, insertToc, setOutlineOpen, renderOutline," +
-      " outlineIsOpen, anchorSlug, modelCoreEnabled, modelRender, md };",
+      " outlineIsOpen, anchorSlug, modelRender, md };",
   );
 }
 
@@ -376,13 +370,13 @@ export default function run(check) {
   // being unable to parse what is in front of it, which is why this is a
   // property and not a preference.
   //
-  // How a document announces itself differs by core. The legacy core replaces
-  // it from eight `editor.innerHTML` assignments and the mutation record is the
-  // only signal there is, so the fingerprint -- a childList record on the editor
-  // itself -- is read. The model core says so directly from modelRender, and
-  // must *not* read the fingerprint, because from slice 4 a top-level Enter
-  // produces the identical record and would rebuild the sidebar synchronously
-  // on the commonest structural keystroke there is.
+  // The model says so directly from modelRender, and every mutation record
+  // waits behind the debounce, because from stage 2's slice 4 a top-level
+  // Enter produces a childList record on the editor itself — the record the
+  // old core read as a whole document arriving — and rebuilding the sidebar
+  // synchronously on the commonest structural keystroke there is would be the
+  // debounce's own bug. The inference went with the old core in stage 4's
+  // slice 4.
   //
   // The stub's setTimeout runs its callback at once, so the observable
   // difference is whether the timer was armed at all: `timers` grows by one on
@@ -390,19 +384,9 @@ export default function run(check) {
   const observer = ctx.observed[0].fn;
   setOutlineOpen(true);
   let armed = ctx.timers.length;
-  observer([{ target: editor, type: "childList" }]);
-  check(
-    "on the legacy core a document swap redraws the outline without arming the debounce",
-    ctx.timers.length === armed,
-  );
-  const nav = ctx.container.children.find((c) => c.id === "outline");
-  check("and the sidebar has been redrawn by the time the swap returns",
-    !!nav && nav.children.length === 1);
-
-  armed = ctx.timers.length;
   observer([{ target: editor.children[0], type: "childList" }]);
   check(
-    "a change inside the document still waits behind the debounce",
+    "a change inside the document waits behind the debounce",
     ctx.timers.length === armed + 1,
   );
   armed = ctx.timers.length;
@@ -410,24 +394,21 @@ export default function run(check) {
   check("and so does typing", ctx.timers.length === armed + 1);
   setOutlineOpen(false);
 
-  // The same property, the other way round. A second context, because the flag
-  // resolves once per loaded scope.
+  // A second context, so the sidebar starts from a document with a heading in it.
   {
-    const core = loadOutline({ modelCore: true });
+    const core = loadOutline();
     const c = core.ctx;
-    check("the model core's flag is on in this context", core.modelCoreEnabled() === true);
 
     const coreEditor = c.byId.get("editor");
     withHeadings(coreEditor, [["h1", "Heading"]]);
     core.setOutlineOpen(true);
 
-    // The record the legacy core reads as a swap is, from slice 4, also what an
-    // Enter at the top level produces -- so under this core it must arm the
-    // debounce like any other mutation rather than being read as a swap.
+    // The record the old core read as a swap is also what an Enter at the top
+    // level produces, so it arms the debounce like any other mutation.
     const before = c.timers.length;
     c.observed[0].fn([{ target: coreEditor, type: "childList" }]);
     check(
-      "on the model core that record waits behind the debounce, since an Enter makes it too",
+      "a childList record on the editor itself waits behind the debounce, since an Enter makes it too",
       c.timers.length === before + 1,
     );
 
@@ -468,24 +449,6 @@ export default function run(check) {
         nav().children[0].className === "outline-empty",
     );
     core.setOutlineOpen(false);
-
-    // Insert TOC is shut under this core until slice 7's step 7 writes the
-    // list as model blocks. It wrote to the editor directly, which here is a
-    // divergence rather than an edit: the model never hears of the list, and
-    // the next render throws it away. A document with headings, so the refusal
-    // is the only thing that can stop it -- with none, the no-headings notice
-    // would stop it first and the check would pass for the wrong reason.
-    withHeadings(coreEditor, [["h1", "Heading"]]);
-    const childrenBefore = coreEditor.children.length;
-    const alertsBefore = c.alerts.length;
-    let coreInputs = 0;
-    coreEditor.addEventListener("input", () => coreInputs++);
-    core.insertToc();
-    check(
-      "under the model core Insert TOC leaves the document alone",
-      coreEditor.children.length === childrenBefore && coreInputs === 0,
-    );
-    check("and says nothing about headings it did not look for", c.alerts.length === alertsBefore);
   }
 
   check(

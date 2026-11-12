@@ -167,8 +167,7 @@ function setCurrentFile(filePath) {
 // question a page load asks — which is why it is this function again rather
 // than a second reading of the same three keys somewhere else.
 function restoreCurrentFile() {
-  const savedContent = localStorage.getItem(documentKey("content"));
-  if (savedContent && !isBlankContent(savedContent)) {
+  if (!isBlankMarkdown(storedDocument())) {
     isDirty = localStorage.getItem(documentKey("dirty")) === "1";
     fileMtime = localStorage.getItem(documentKey("mtime"));
     setCurrentFile(localStorage.getItem(documentKey("path")));
@@ -671,7 +670,7 @@ async function openFileBody(filePath, tab) {
     });
     return false;
   }
-  localStorage.setItem(documentKey("content"), editor.innerHTML);
+  flushAutosave();
   // History does not cross a document boundary. Undo handing back the previous
   // file's text would leave it under this file's path, one Ctrl+S from being
   // written there. Reload comes through here too, which is right: discarding

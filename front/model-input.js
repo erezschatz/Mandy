@@ -19,8 +19,9 @@
 // rather than the model, and because slices 4 and 5 grow it: structure edits,
 // then paste. model.js stays the thing a suite can drive with no browser.
 //
-// **Nothing here runs unless `modelCoreEnabled()`.** With the flag off this
-// file loads, registers nothing, and the editor is the one CLAUDE.md describes.
+// It installs itself on `#editor` at load, wherever there is one: since stage
+// 4's slice 4 the model is the only core. input-check.html has no `#editor` of
+// the app's and installs it on its own root.
 
 // What this slice handles. Everything else is still cancelled — see the
 // handler — so an unhandled type is a keystroke that does nothing rather than
@@ -1270,14 +1271,19 @@ function modelIndentAtCaret(outdent) {
 let modelKeyFormatted = null;
 const MODEL_FORMAT_KEYS = { b: "strong", i: "em" };
 
-// When a Shift+Enter keydown last arrived, or 0 after a plain Enter. WebKit
+// When a Shift+Enter keydown last arrived, or never after a plain Enter. WebKit
 // reports Shift+Enter in a table cell as `insertParagraph` — measured
 // 2026-11-01, where Chromium sends `insertLineBreak` — so without this a cell's
 // Enter rule would take Shift+Enter for Enter and move down a row.
-let modelEnterShifted = 0;
+//
+// "Never" is -Infinity and not 0. Zero is a time like any other: it read as a
+// Shift+Enter at the page's first instant, so for the first 200ms after a load
+// a plain Enter in a cell did nothing. Found 2026-11-12, by the `model-input`
+// suite, which runs inside that window.
+let modelEnterShifted = -Infinity;
 
 function modelInputKeydown(event) {
-  if (event.key === "Enter") modelEnterShifted = event.shiftKey ? performance.now() : 0;
+  if (event.key === "Enter") modelEnterShifted = event.shiftKey ? performance.now() : -Infinity;
   // Ctrl/Cmd+B and Ctrl/Cmd+I, slice 7's step 8 and TODO 1.7 for the model
   // core. Matched on a lowercased `key`, CLAUDE.md's rule, so Caps Lock does not
   // hand the key back to the browser. `preventDefault` takes it from the
@@ -2135,6 +2141,6 @@ function modelInputInstall(root) {
   root.addEventListener("drop", modelInputDrop);
 }
 
-if (typeof editor !== "undefined" && editor && modelCoreEnabled()) {
+if (typeof editor !== "undefined" && editor) {
   modelInputInstall(editor);
 }

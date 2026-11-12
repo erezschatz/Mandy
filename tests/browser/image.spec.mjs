@@ -112,18 +112,3 @@ test("one undo takes an image back", async ({ page }) => {
   await page.keyboard.press("ControlOrMeta+z");
   expect(await markdown(page)).toBe("Plain\n");
 });
-
-// D4's amendment: no new format is written against contenteditable, so the
-// old core answers the item with a message and changes nothing.
-test("the old core says where Insert → Image works, and changes nothing", async ({ page }) => {
-  await page.goto("/?core=legacy");
-  await page.waitForFunction(() => typeof modelCoreEnabled === "function" && !modelCoreEnabled());
-  await page.waitForLoadState("networkidle");
-  await page.evaluate(() => { loadDocumentMarkdown("One\n"); undoReset(); });
-  await paragraph(page, 0).click();
-  const before = await page.evaluate(() => editor.innerHTML);
-  await insertMenu(page);
-  await expect(page.getByText("Inserting an image needs the new editing core")).toBeVisible();
-  await expect(dialog(page)).toHaveCount(0);
-  expect(await page.evaluate(() => editor.innerHTML)).toBe(before);
-});

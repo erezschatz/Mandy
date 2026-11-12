@@ -8,10 +8,12 @@
 // fixture is never saved over** — it is the pristine copy every run is measured
 // against — and the scratch is deleted afterwards.
 //
-// Run under both cores, and the two files compared. **Parity does not mean the
-// same bytes**: the model core is meant to be better. It means that every line
-// where the two disagree is one this file names in advance, with the old-core
-// bug that makes it differ. A difference nobody wrote down fails the run.
+// Until stage 4's slice 4 this ran under both cores and compared the two files,
+// with every line where they disagreed named in advance: that was the gate the
+// old core's removal had to pass, and it passed with one entry, CHARLIE's
+// backslash break, which the old core rewrote and the model keeps. With the old
+// core gone, the model's file is checked against the fixture alone, and that
+// entry is one of the expectations below.
 
 import { test, expect } from "@playwright/test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -25,16 +27,15 @@ let scratch;
 test.beforeAll(() => { scratch = mkdtempSync(join(tmpdir(), "mandy-save-")); });
 test.afterAll(() => { rmSync(scratch, { recursive: true, force: true }); });
 
-async function openEditSave(page, core, name) {
+async function openEditSave(page, name) {
   const problems = [];
   page.on("pageerror", (err) => problems.push(err.message));
   page.on("console", (msg) => { if (msg.type() === "error") problems.push(msg.text()); });
 
-  await page.goto(`/?core=${core}`);
+  await page.goto("/");
   await page.waitForFunction(() => typeof openFile === "function" && typeof saveFile === "function");
   await page.waitForLoadState("networkidle");
   await page.waitForFunction(() => editor.children.length > 0);
-  expect(await page.evaluate(() => modelCoreEnabled())).toBe(core === "model");
 
   expect(await page.evaluate((path) => openFile(path), FIXTURE)).not.toBe(false);
   await page.waitForFunction(() => editor.textContent.includes("ECHO"));
@@ -67,37 +68,19 @@ async function openEditSave(page, core, name) {
   return readFileSync(path, "utf8");
 }
 
-// Where the two cores are allowed to write different bytes, and why. Each entry
-// is one line, as the old core writes it and as the model writes it; the line
-// count has to agree, and any other line that differs fails the run.
-const KNOWN_DIFFERENCES = [
-  {
-    // TODO 2.3's residue, which only the model can fix: Turndown has one
-    // hard-break setting for the whole file, so an *edited* paragraph whose
-    // break is spelt the minority way comes back in the majority spelling. The
-    // model records the spelling per node and keeps the backslash.
-    legacy: "must keep doing so  ",
-    model: "must keep doing so\\",
-    why: "CHARLIE's backslash break, rewritten by the old core (TODO 2.3)",
-  },
-];
-
 // The fixture's bytes before the first labelled paragraph and from ECHO on,
-// which nothing typed into and both cores have to hand back untouched.
+// which nothing typed into and the save has to hand back untouched.
 function untouched(text) {
   return { head: text.slice(0, text.indexOf("ALPHA")), tail: text.slice(text.indexOf("ECHO")) };
 }
 
-test("open, edit and save, under both cores", async ({ browser, browserName }) => {
+test("open, edit and save", async ({ browser, browserName }) => {
   const fixture = readFileSync(FIXTURE, "utf8");
-  const legacyPage = await browser.newPage();
-  const legacy = await openEditSave(legacyPage, "legacy", `${browserName}-legacy`);
-  await legacyPage.close();
-  const modelPage = await browser.newPage();
-  const model = await openEditSave(modelPage, "model", `${browserName}-model`);
-  await modelPage.close();
+  const page = await browser.newPage();
+  const model = await openEditSave(page, browserName);
+  await page.close();
 
-  // The model core alone, against the fixture: every case the recipe names.
+  // Against the fixture: every case the recipe names.
   expect(untouched(model), "the model leaves everything outside the edits byte-identical").toEqual(untouched(fixture));
   for (const label of LABELS) expect(model, `${label} was typed into`).toContain(`${label}-x`);
   expect(model, "ALPHA keeps its two-space break").toMatch(/put the break back {2}\nand this is the line that follows ALPHA/);
@@ -107,21 +90,4 @@ test("open, edit and save, under both cores", async ({ browser, browserName }) =
   expect(delta.length, "DELTA was re-wrapped").toBeGreaterThan(1);
   const width = Math.max(...fixture.slice(0, fixture.indexOf("ALPHA")).split("\n").map((l) => l.length));
   for (const line of delta) expect(line.length, `"${line}" fits the file's width`).toBeLessThanOrEqual(width);
-
-  // Parity: the two cores line by line, every disagreement accounted for.
-  const a = legacy.split("\n");
-  const b = model.split("\n");
-  expect(b.length, "both cores write the same number of lines").toBe(a.length);
-  const unexplained = [];
-  const seen = new Set();
-  a.forEach((line, i) => {
-    if (line === b[i]) return;
-    const known = KNOWN_DIFFERENCES.find((d) => d.legacy === line && d.model === b[i]);
-    if (known) seen.add(known);
-    else unexplained.push(`line ${i + 1}: legacy ${JSON.stringify(line)} / model ${JSON.stringify(b[i])}`);
-  });
-  expect(unexplained, "differences nobody wrote down").toEqual([]);
-  // A known difference that stopped happening is news too: either the old core
-  // changed, or the edit no longer reaches the case it was written for.
-  expect([...seen].map((d) => d.why), "every known difference still shows").toEqual(KNOWN_DIFFERENCES.map((d) => d.why));
 });

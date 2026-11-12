@@ -18,7 +18,7 @@
 // `currentFilePath` and `fileDescriptor()`, both of which are `file-api.js`
 // globals, so a bundle without the file throws before a single check runs.
 
-import { loadApp, loadSource, makeEl, markdownitStub, walk } from "./dom.mjs";
+import { fakeModelCore, loadApp, loadSource, makeEl, markdownitStub, walk } from "./dom.mjs";
 
 // The real escape, out of app.js: the file a model-core export writes carries
 // its markdown through it, and the boot below has to undo exactly that.
@@ -40,7 +40,7 @@ function boot({
   stored = null,
   confirmAnswer = true,
 } = {}) {
-  const store = new Map(stored === null ? [] : [["markdownContent", stored]]);
+  const store = new Map(stored === null ? [] : [["mandy-markdown", stored]]);
 
   const container = makeEl();
   container.className = "container";
@@ -106,9 +106,11 @@ function boot({
     execCommand() {},
   };
 
+  const model = fakeModelCore(editorEl);
   const api = loadSource(
-    ["toolbar.js", "markdown-parser.js", "markdown-style.js", "model.js", "app.js"],
+    ["toolbar.js", "markdown-parser.js", "markdown-style.js", "app.js"],
     {
+      ...model.scope,
       document,
       runCommand: () => true,
       localStorage: {
@@ -240,6 +242,11 @@ export default async function run(check) {
   // exercised, and getting it backwards would show the reader somebody else's
   // work in place of the document they were sent.
 
+  // An editor holding HTML is an export made before stage 4's slice 2, which
+  // runs its own bundle and so never meets this code; the boot reads it into
+  // the model through the paste converter anyway rather than leave an editor
+  // with no model behind it. Turndown is a pass-through here, so the HTML is
+  // what comes back.
   const r2 = boot({ embedded: "<h1>Sent to you</h1>", stored: "<p>Your own notes</p>" });
   await settle();
   check("the embedded document is what opens", r2.editorHtml() === "<h1>Sent to you</h1>");
@@ -250,11 +257,9 @@ export default async function run(check) {
   // --- one exported under the model core --------------------------------
   //
   // Its editor is empty and its document is markdown beside the bundle. The
-  // boot asks what the file carries rather than which core is running, so
-  // this harness — the old core, whose markdown door is md.render, a
-  // pass-through in the stub — reads the decoded markdown straight back off
-  // the editor. The model core's half of the same door is a browser's: see
-  // tests/browser/exports.spec.mjs.
+  // model is stood in for, and renders markdown as itself, so the decoded
+  // markdown comes straight back off the editor. The real model's half of the
+  // same door is a browser's: see tests/browser/exports.spec.mjs.
   const sent = "# Sent to you\n\nSay `</script>` & `&lt;`.\n";
   const r3 = boot({ embedded: "", markdown: sent, stored: "<p>Your own notes</p>" });
   await settle();
@@ -324,8 +329,8 @@ export default async function run(check) {
   await n.clickAction("new");
   check("New in an exported document asks the plain question",
     n.asked.length === 1 && n.asked[0].includes("auto-saved copy"));
-  check("and resets the document in place", n.editorHtml() === "<p><br></p>");
-  check("and drops the autosave with it", !n.store.has("markdownContent"));
+  check("and resets the document in place", n.editorHtml() === "");
+  check("and drops the autosave with it", !n.store.has("mandy-markdown"));
 
   // Cancel is the default action on that dialog, so this is the answer Escape
   // and Enter both give.
@@ -333,5 +338,5 @@ export default async function run(check) {
   await settle();
   await n.clickAction("new");
   check("and backing out of it keeps the document", n.editorHtml() === "<h1>Real work</h1>");
-  check("and keeps the autosave", n.store.get("markdownContent") === "<h1>Real work</h1>");
+  check("and keeps the autosave", n.store.get("mandy-markdown") === "<h1>Real work</h1>");
 }

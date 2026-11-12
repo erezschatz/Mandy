@@ -3,13 +3,9 @@
 // (index.html, sw.js's SHELL_ASSETS, html-export.js's ASSETS), because for the
 // editor to draw from the model the app has to load the model.
 //
-// **It draws nothing by default.** modelCoreEnabled() at the bottom of this
-// file is off until the stage 4 merge, so the running editor is still the one
-// CLAUDE.md describes and this is still the thing that will own the document
-// once contenteditable stops owning it — an ordered list of blocks, each
-// holding the exact bytes it arrived with and the exact bytes that followed it.
-// What the flag buys is an A/B of the same document by hand, which is the only
-// way a rendering divergence gets seen rather than inferred.
+// **It owns the document**, since stage 4's slice 4 removed the flag that
+// let the old core draw instead: an ordered list of blocks, each holding the
+// exact bytes it arrived with and the exact bytes that followed it.
 //
 // The one property this stage exists to prove: a file that is opened and saved
 // with nothing edited comes back byte for byte. That is D1, and here it is
@@ -2814,93 +2810,13 @@ function modelVerifyLog(report) {
   if (report.problems.length) console.warn("[model] render diverged from the model", report.problems);
 }
 
-// ── The core's flag ──────────────────────────────────────────────────────────
-//
-// Default off until the stage 4 merge. Two reasons, and neither of them is
-// `main`: the branch stays usable while the input layer is half-built, and an
-// A/B of the same document by hand is the only way a rendering divergence gets
-// *seen* rather than inferred. `?core=model` and `?core=legacy` set it and it
-// sticks; if both cores are wanted running at once the answer is MANDY_PORT,
-// since the two share one localStorage on one origin.
-//
-// Resolved once per page load rather than read per call, so a session cannot
-// half-switch, and behind a try/catch so the Deno suites — which have no
-// location and no localStorage — load this file and get a plain no.
-
-const MODEL_CORE_KEY = "mandy-model-core";
-
-let modelCoreFlag = null;
-
-function modelCoreResolveFlag() {
-  try {
-    const choice = new URLSearchParams(window.location.search).get("core");
-    if (choice === "model" || choice === "legacy") {
-      localStorage.setItem(MODEL_CORE_KEY, choice === "model" ? "on" : "off");
-    }
-    return localStorage.getItem(MODEL_CORE_KEY) === "on";
-  } catch {
-    return false;
-  }
-}
-
-function modelCoreEnabled() {
-  if (modelCoreFlag === null) modelCoreFlag = modelCoreResolveFlag();
-  return modelCoreFlag;
-}
-
 // ── The open document ────────────────────────────────────────────────────────
 //
 // One document is on screen at a time, held here. Stage 4's slice 3 made the
 // rest per-tab: a tab switch parks this pointer's document on the outgoing tab
 // (modelParkDocument) and renders the incoming tab's back from its own record,
-// with no parse, and a tab restored from a page load still parses its stored
-// HTML once. The autosave keeps the same lifecycle it had.
-
-/**
- * Say, on screen, which core drew the document.
- *
- * **The flag's whole purpose is a hand A/B**, and without this you cannot tell
- * which half of it you are looking at — which is worse than not having the
- * comparison, because it invites reporting a difference between two runs of the
- * same core. Slice 1's rule is that the model renders *identically* to
- * `markdownToHtml`, so "it looks the same" is the expected answer and not
- * evidence of anything.
- *
- * It is a link back to `?core=legacy`, because one click is what makes the
- * comparison worth doing and the autosave carries unsaved edits across the
- * reload — so the switch costs nothing. Its `title` names what is missing
- * rather than making the reader look it up: under the flag the formats and undo
- * do nothing, and those are slices 6 and 7.
- *
- * **It goes at stage 4 with the flag**, which is why it is one function, one
- * call site and one CSS rule rather than a spec entry in `toolbar.js`. It is
- * not an action and has no handler; it is a status, like the open file's
- * directory beside it.
- */
-function modelCoreMarkRender(document) {
-  const toolbar = document.querySelector(".toolbar-right") || document.querySelector(".toolbar");
-  if (!toolbar || toolbar.querySelector(".model-core-mark")) return null;
-  const mark = document.createElement("a");
-  mark.className = "model-core-mark";
-  mark.textContent = "model core";
-  mark.href = "?core=legacy";  // relative: the current page, other core
-  mark.title = "TODO 3.1's editing core is drawing this document. " +
-    "Click to switch back to the running core.";
-  // Before the theme toggle rather than at the head of the group, so its place
-  // is the same whatever the open file's path is — the directory beside it is
-  // as wide as the path is deep, and a marker that moved with it would be a
-  // marker you have to look for. The toggle stays last, where every variant has
-  // always had it.
-  toolbar.insertBefore(mark, toolbar.querySelector("#themeToggle"));
-  return mark;
-}
-
-// At load, because `toolbar.js` fills the bar at load and comes first in both
-// bundles. Wrapped because the suites load this file with no `document` at all,
-// which is the property that lets them drive the model with no browser.
-if (typeof document !== "undefined" && document.querySelector && modelCoreEnabled()) {
-  modelCoreMarkRender(document);
-}
+// with no parse, and a tab restored from a page load parses its stored
+// markdown once.
 
 let modelDocument = null;
 

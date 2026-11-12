@@ -314,7 +314,7 @@ function runCommand(command, value = null) {
   // Edit menu's Copy and Cut both go through it. Nothing is normalised after
   // it, since nothing changed and the normaliser would be the one thing here
   // that did.
-  if (typeof modelCoreEnabled === "function" && modelCoreEnabled()) {
+  if (typeof modelRender === "function") {
     return command === "copy" ? document.execCommand("copy", false, null) : false;
   }
 

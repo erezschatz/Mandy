@@ -61,7 +61,6 @@ export default async function run(check) {
         editor,
         md: {},
         markdownStyle: { hardBreak },
-        modelCoreEnabled: () => coreOn,
         modelCurrentDocument: () => state.doc,
         // A list answers one call each, for a case whose edits differ.
         modelInlineSplice: (b, from, to, text) => {

@@ -77,7 +77,7 @@ export default function run(check) {
     modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix,
     modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText,
     modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle,
-    modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled,
+    modelRenderBlock, modelRenderDocument, modelNeedsFiller,
     modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt,
     modelIsAtomNode, configureMarkdownParser, modelPlaceStops, modelInlineSourceRange,
     modelInlineSplice, modelNormaliseTyped, modelInlineTokens,
@@ -112,7 +112,7 @@ export default function run(check) {
     "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix," +
       " modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText," +
       " modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle," +
-      " modelRenderBlock, modelRenderDocument, modelNeedsFiller, modelCoreEnabled," +
+      " modelRenderBlock, modelRenderDocument, modelNeedsFiller," +
       " modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt," +
       " modelIsAtomNode, configureMarkdownParser, modelPlaceStops, modelInlineSourceRange," +
       " modelInlineSplice, modelNormaliseTyped, modelInlineTokens," +
@@ -2399,10 +2399,6 @@ export default function run(check) {
       fence.kind === "fence" && modelNeedsFiller(fence) === false,
     );
   }
-
-  // The flag is off wherever there is no browser to read it from, which is what
-  // lets every suite load this file and get the old behaviour.
-  check("the model core's flag reads off outside a browser", modelCoreEnabled() === false);
 
 
   // ---- Stage 2, slice 2: the selection mapping ---------------------------

@@ -341,47 +341,6 @@
         min-width: 0;
       }
 
-      /* TODO 3.1's flag made visible. It is diagnostic rather than a feature —
-         deliberately not the toolbar's own teal, so it reads as "you are in a
-         special mode" rather than as a control that belongs there — and it goes
-         at stage 4 along with the flag and the two cores. */
-      .model-core-mark {
-        flex: none;
-        font-size: 11px;
-        line-height: 1;
-        letter-spacing: 0.02em;
-        padding: 3px 7px;
-        border-radius: 9px;
-        background: #f0b429;
-        color: #2a1e00;
-        text-decoration: none;
-        white-space: nowrap;
-      }
-
-      .model-core-mark:hover,
-      .model-core-mark:focus-visible {
-        background: #ffd166;
-      }
-
-      /* Six menus, the marker and the theme toggle do not fit 375px together —
-         measured: without the marker the row ends at 361px of 375, and the
-         marker's 75px puts the toggle off the end of a sticky bar it cannot be
-         scrolled back into. So below this width it keeps the colour and the
-         title and loses the words. A dot is a weaker signal than two words and
-         a far better one than an unreachable toggle, and it is the only place
-         the marker competes with a control for room. */
-      @media (max-width: 480px) {
-        .model-core-mark {
-          width: 10px;
-          height: 10px;
-          padding: 0;
-          border-radius: 50%;
-          overflow: hidden;
-          text-indent: 110%;
-          white-space: nowrap;
-        }
-      }
-
       .app-mark {
         width: 17px;
         height: 17px;

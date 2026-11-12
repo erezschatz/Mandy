@@ -430,7 +430,7 @@ function undoAdopt(bundle) {
 // the next edit then patched one block out of the unreverted model into the
 // reverted DOM. The branch is what the refusal was standing in for.
 function undoModelCore() {
-  return typeof modelCoreEnabled === "function" && modelCoreEnabled();
+  return typeof modelForkDocument === "function";
 }
 
 function undo() {

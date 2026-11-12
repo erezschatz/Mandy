@@ -55,29 +55,23 @@ function unwrapInline(text) {
 }
 
 onToolbarAction("export-editable", async () => {
-  // Under the model core the document travels as markdown, beside the bundle,
-  // and the editor ships empty: embedding the rendered HTML would make every
-  // open of the file a conversion from HTML, which stage 4 runs once and then
-  // retires. With no model document it is the HTML, as it always was.
+  // The document travels as markdown, beside the bundle, and the editor ships
+  // empty: embedding the rendered HTML would make every open of the file a
+  // conversion from HTML, which stage 4 ran once and then retired.
   let markdown;
   try {
-    markdown = currentModelMarkdown();
+    markdown = documentMarkdown();
   } catch (err) {
     console.error("[Export] Could not write the document:", err);
     notify(`Could not export the document: ${err.message}`, { severity: "error" });
     return;
   }
-  const currentContent = markdown === null ? editor.innerHTML : "";
-  const needsMathJax = markdown !== null
-    ? containsLatex(markdown)
-    : containsLatex(editor.textContent || "") ||
-      currentContent.includes("mjx-container") ||
-      currentContent.includes("MJX-CHTML");
+  const currentContent = "";
+  const needsMathJax = containsLatex(markdown);
   // Escaped by app.js's encoder, which its boot undoes. No whitespace around
   // it, so the element's textContent is exactly what was written.
-  const documentScript = markdown === null
-    ? ""
-    : `<script type="text/markdown" id="app-document">${encodeEmbeddedMarkdown(markdown)}${CLOSE}\n    `;
+  const documentScript =
+    `<script type="text/markdown" id="app-document">${encodeEmbeddedMarkdown(markdown)}${CLOSE}\n    `;
 
   // file-api.js is the one module deliberately left out: it drives the
   // server-backed Open/Save, and an exported document has no server. app.js

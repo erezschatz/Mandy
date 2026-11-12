@@ -17,10 +17,10 @@ const INLINE_JS = [
   "toolbar.js", "app.js", "static-export.js", "html-export.js",
 ].map(readFront).join("\n\n");
 
-// `markdown` is what the model core would answer: null for no model document,
-// which is the old core and an export that still embeds HTML; a string for the
-// model's document; an Error for a document the emitter refuses to write.
-function runExport({ inlined, markdown = null }) {
+// `markdown` is what the model answers for the document: a string, or an Error
+// for a document the emitter refuses to write. Since stage 4's slice 4 there is
+// no export without a model document, so the export always embeds markdown.
+function runExport({ inlined, markdown = "# Doc\n\nbody\n" }) {
   let written = null;
   let downloaded = null;
   const notices = [];
@@ -68,7 +68,7 @@ function runExport({ inlined, markdown = null }) {
     notify: (message) => notices.push(message),
     console: { ...console, error() {} },
     containsLatex: () => false,
-    currentModelMarkdown: () => {
+    documentMarkdown: () => {
       if (markdown instanceof Error) throw markdown;
       return markdown;
     },
@@ -159,15 +159,14 @@ export default async function run(check) {
   // the markdown door. What can go wrong without a browser to show it is the
   // escaping: a script element ends at the first `</script` whatever its type,
   // and documents — this repo's own — say exactly that.
-  check("an export with no model document embeds no markdown",
-    !genOne.includes('id="app-document"') && genOne.includes("<h1>Doc</h1><p>body</p>"));
+  check("an export made in the app embeds the markdown too", genOne.includes('id="app-document"'));
 
   const MARKDOWN = "# Doc\n\nSay `</script>` and `<!-- x -->` & `&lt;` here.\n";
   const modelExport = runExport({ inlined: true, markdown: MARKDOWN });
   await modelExport.handler();
   const genModel = modelExport.output();
   const embedded = genModel.match(/<script type="text\/markdown" id="app-document">([\s\S]*?)<\/script>/);
-  check("under the model core the export embeds the markdown", !!embedded);
+  check("the export embeds the markdown", !!embedded);
   check("and it decodes to exactly the document",
     !!embedded && decodeEmbeddedMarkdown(embedded[1]) === MARKDOWN);
   check("with no < left inside the element to end it early",

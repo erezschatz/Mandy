@@ -75,20 +75,6 @@ test("one undo takes a quote back", async ({ page }) => {
   expect(await markdown(page)).toBe("One\n");
 });
 
-// D4's amendment: no new format is written against contenteditable, so the
-// old core answers the control with a message and changes nothing.
-test("the old core says where Blockquote works, and changes nothing", async ({ page }) => {
-  await page.goto("/?core=legacy");
-  await page.waitForFunction(() => typeof modelCoreEnabled === "function" && !modelCoreEnabled());
-  await page.waitForLoadState("networkidle");
-  await page.evaluate(() => { loadDocumentMarkdown("One\n"); undoReset(); });
-  await paragraph(page, 0).click();
-  const before = await page.evaluate(() => editor.innerHTML);
-  await menu(page, "quote");
-  await expect(page.getByText("Blockquote needs the new editing core")).toBeVisible();
-  expect(await page.evaluate(() => editor.innerHTML)).toBe(before);
-});
-
 // The menu says what the caret is in. Asked for by the user on 2026-10-30:
 // a caret in a quote is not in plain text, and the Format menu has to show it,
 // the way it shows Bold for a caret in bold text.

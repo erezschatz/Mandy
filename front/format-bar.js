@@ -326,13 +326,13 @@ const MENU_BLOCKS = ["h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "quote"];
 const MENU_CHECKS = Object.keys(MENU_MARKS).concat(MENU_BLOCKS);
 
 function formatMenuState(format) {
-  if (modelOwnsInput() && MENU_BLOCKS.includes(format) && typeof modelInputBlockState === "function") {
+  if (MENU_BLOCKS.includes(format) && typeof modelInputBlockState === "function") {
     return modelInputBlockState(format);
   }
-  if (modelOwnsInput() && format === "code" && typeof modelInputCodeState === "function") {
+  if (format === "code" && typeof modelInputCodeState === "function") {
     return modelInputCodeState();
   }
-  if (modelOwnsInput() && typeof modelInputMarkState === "function") {
+  if (typeof modelInputMarkState === "function") {
     return modelInputMarkState(MENU_MARKS[format]);
   }
   const selection = window.getSelection();
@@ -352,7 +352,7 @@ onMenuOpen("formatMenu", (wrapper) => {
   }
   // The table controls, stage 3's slice 5: live only with the caret in a table
   // under the model core, and the alignment items check the caret's column.
-  const table = modelOwnsInput() && typeof modelInputTableState === "function" ? modelInputTableState() : null;
+  const table = typeof modelInputTableState === "function" ? modelInputTableState() : null;
   for (const item of wrapper.querySelectorAll('[data-action^="table-"]')) {
     item.disabled = !table;
     if (!item.hasAttribute("aria-pressed")) continue;
@@ -467,10 +467,10 @@ function toggleInlineCode(range) {
   }
 }
 
+// The debounce's job since stage 4's slice 4, which writes the model's markdown;
+// slice 5 deletes this with the legacy branches that call it.
 function saveSoon() {
-  setTimeout(() => {
-    localStorage.setItem(documentKey("content"), editor.innerHTML);
-  }, 100);
+  setTimeout(() => flushAutosave(), 100);
 }
 
 // Hand-rolled because there is no execCommand for either kind of code.
@@ -571,27 +571,24 @@ function applyFormat(format) {
   // and the rest of this switch is the old core's. Feature-tested, since an
   // exported document's bundle decides for itself what it ships.
   const mark = { bold: "strong", italic: "em", strikethrough: "strike" }[format];
-  const modelMark = !!mark && modelOwnsInput() && typeof modelInputFormat === "function";
+  const modelMark = !!mark && typeof modelInputFormat === "function";
   if (modelMark) modelInputFormat(mark);
   // Paragraph and the six headings are model commands too, slice 7's step 5.
-  const modelBlock = /^(p|h[1-6])$/.test(format) && modelOwnsInput() && typeof modelInputBlockFormat === "function";
+  const modelBlock = /^(p|h[1-6])$/.test(format) && typeof modelInputBlockFormat === "function";
   if (modelBlock) modelInputBlockFormat(format);
   // And the two lists, slice 7's step 6.
-  const modelList = (format === "ul" || format === "ol") && modelOwnsInput() && typeof modelInputList === "function";
+  const modelList = (format === "ul" || format === "ol") && typeof modelInputList === "function";
   if (modelList) modelInputList(format === "ol");
   // And the blockquote, stage 3's slice 1, which has no old-core version.
-  const modelQuote = format === "quote" && modelOwnsInput() && typeof modelInputQuote === "function";
+  const modelQuote = format === "quote" && typeof modelInputQuote === "function";
   if (modelQuote) modelInputQuote();
 
   switch (modelMark || modelBlock || modelList || modelQuote ? null : format) {
     case null:
       break;
-    // D4's amendment: no new format is written against contenteditable, so
-    // the running editor says where the control works instead.
+    // The blockquote has no old-core version, and a bundle without
+    // model-input.js has nothing to do it with.
     case "quote":
-      if (typeof notify === "function") {
-        notify("Blockquote needs the new editing core (?core=model).", { severity: "info" });
-      }
       return;
     case "bold":
       runCommand("bold");
@@ -618,8 +615,8 @@ function applyFormat(format) {
       // whole block does nothing. The DOM surgery below must never run there:
       // the screen would change under a model that did not, and the next
       // render would put the old block back.
-      if (modelOwnsInput()) {
-        if (typeof modelInputCode === "function") modelInputCode();
+      if (typeof modelInputCode === "function") {
+        modelInputCode();
         break;
       }
       toggleCode(range);

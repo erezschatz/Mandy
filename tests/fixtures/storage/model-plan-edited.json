@@ -1,0 +1,8 @@
+{
+  "name": "plan-edited",
+  "core": "model",
+  "edited": true,
+  "source": "Plan\n====\n\n1. First step\n2. Second step\n\n> A quoted line\n> and its lazy partner\n\nEnds with a backslash break\\\nand the line after it.\n",
+  "html": "<h1 data-block=\"1\">Plan</h1><ol data-block=\"2\"><li data-block=\"5\">First step edited</li><li data-block=\"6\">Second step</li></ol><blockquote data-block=\"3\"><p data-block=\"9\">A quoted line\nand its lazy partner</p></blockquote><p data-block=\"4\">Ends with a backslash break<br>\nand the line after it.</p>",
+  "expected": "# Plan\n\n1. First step edited\n2. Second step\n\n> A quoted line and its lazy partner\n\nEnds with a backslash break\\\nand the line after it.\n"
+}

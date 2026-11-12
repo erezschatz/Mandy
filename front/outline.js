@@ -163,37 +163,17 @@ function renderOutline() {
 // The debounce defends typing, and a document swap is not typing. **The
 // property is immediacy**: a whole document arriving redraws the sidebar at
 // once, because a second's wait reads as the app being unable to parse what is
-// in front of it rather than as a deliberate delay. Which core drew the
-// document decides how that is known, and the two answers are different in
-// kind.
+// in front of it rather than as a deliberate delay.
 //
-// The model core **says so**: modelRender calls renderOutline itself, the way
-// the disk-changed check and the file descriptor announce themselves. Nothing
-// is inferred, which matters from slice 4 onward, because a top-level Enter
-// splices `#editor`'s children and so produces the very record shape below --
-// and rebuilding the whole sidebar synchronously on the commonest structural
-// keystroke there is would be the debounce's own bug wearing the fix's clothes.
-//
-// The legacy core cannot say so: it replaces the document from eight different
-// `editor.innerHTML` assignments, and the record is the only signal there is. A
-// childList record targeting the editor itself is that assignment's fingerprint
-// -- a tab switch, Open, Reload, New, the welcome fetch -- measured 2026-09-18
-// as exactly one such record. Read off the record rather than off a flag, so
-// none of those eight sites has to know the outline exists.
-//
-// So the inference lives exactly as long as the core that needs it, and goes at
-// stage 4 with `editor.innerHTML`. A record inside the subtree, or a text
-// change, is someone typing under either core, and keeps its second.
+// The model **says so**: modelRender calls renderOutline itself, the way the
+// disk-changed check and the file descriptor announce themselves, so every
+// record here is someone editing and waits its second. A top-level Enter
+// splices `#editor`'s children, and rebuilding the whole sidebar synchronously
+// on the commonest structural keystroke there is would be the debounce's own
+// bug wearing the fix's clothes. The old core had to infer a swap from the
+// record shape instead, and that went with it in stage 4's slice 4.
 function scheduleOutline(records) {
-  const swap = !modelCoreEnabled() && (records || []).some(
-    (record) => record.target === editor && record.type === "childList",
-  );
   clearTimeout(outlineTimer);
-  if (swap) {
-    outlineTimer = null;
-    renderOutline();
-    return;
-  }
   outlineTimer = setTimeout(renderOutline, OUTLINE_DEBOUNCE);
 }
 
@@ -295,10 +275,8 @@ function insertToc() {
   // directly, as below, would be a divergence rather than an edit there — the
   // model would never hear of the list, and the next render would throw it
   // away.
-  if (modelOwnsInput()) {
-    if (typeof modelInputToc === "function" && typeof htmlFragmentToMarkdown === "function") {
-      modelInputToc(htmlFragmentToMarkdown(list.outerHTML));
-    }
+  if (typeof modelInputToc === "function" && typeof htmlFragmentToMarkdown === "function") {
+    modelInputToc(htmlFragmentToMarkdown(list.outerHTML));
     return;
   }
   const block = blockAtCaret();

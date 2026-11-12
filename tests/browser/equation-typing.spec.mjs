@@ -33,11 +33,10 @@ test.beforeEach(async ({ page }, testInfo) => {
   page.on("pageerror", (err) => problems.push(`pageerror: ${err.message}`));
   testInfo.problems = problems;
 
-  await page.goto("/?core=model");
+  await page.goto("/");
   await page.waitForFunction(() =>
-    typeof loadDocumentMarkdown === "function" && typeof modelCoreEnabled === "function",
+    typeof loadDocumentMarkdown === "function" && typeof modelCurrentDocument === "function",
   );
-  expect(await page.evaluate(() => modelCoreEnabled()), "the model core is on").toBe(true);
   await page.evaluate((src) => {
     modelVerifySetEnabled(true);
     loadDocumentMarkdown(src);

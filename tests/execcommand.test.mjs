@@ -14,8 +14,9 @@
 import { loadSource, makeEl, makeText, readFront } from "./dom.mjs";
 import { readdirSync } from "node:fs";
 
-// The model core's flag, which runCommand refuses under. Module-scoped so a
-// check can flip it and the next load() sees the change.
+// Whether model.js is in the bundle, which runCommand refuses under: it asks
+// `typeof modelRender`, since stage 4's slice 4 took the flag away. Module-scoped
+// so a check can flip it and the next load() sees the change.
 let modelCore = false;
 
 function load() {
@@ -35,7 +36,7 @@ function load() {
       },
       editor,
       undoRefresh: () => refreshes.push(1),
-      modelCoreEnabled: () => modelCore,
+      ...(modelCore ? { modelRender: () => {} } : {}),
     },
     "; return { normaliseEditorMarkup, runCommand };",
   );
@@ -396,7 +397,7 @@ export default function run(check) {
     const before = rig.commands.length;
     rig.runCommand("bold");
     check(
-      `with the flag off it is the command it always was (${JSON.stringify(rig.commands.slice(before))})`,
+      `with no model in the bundle it is the command it always was (${JSON.stringify(rig.commands.slice(before))})`,
       rig.commands.length === before + 1 && rig.commands[before] === "bold",
     );
   }

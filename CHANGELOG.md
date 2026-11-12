@@ -10482,7 +10482,7 @@ on screen by the time it finishes. The switch lock still refuses a switch during
 those operations, so nothing reaches a wrong document today, but the operations
 do not yet hold their own handle. That is the rest of this slice.
 
-## 2026-11-10 — Stage 4's slice 3: file operations hold their tab
+## 2026-11-10 — `dfe0f14` — Stage 4's slice 3: file operations hold their tab
 
 Every Open, Reload, Save and Save As now takes the tab it started on, and
 checks, before it writes anything or applies a loaded document, that the screen is
@@ -10515,7 +10515,7 @@ Not in this change:
   would need a fresh savepoint in a parked history, which there is no way to
   build yet.
 
-## 2026-11-10 — Background tabs check their files on disk
+## 2026-11-10 — `dfe0f14` — Background tabs check their files on disk
 
 A tab that is not on screen now learns when its file changes on disk, and shows
 the same disk-changed mark a focused tab does. The person working in Mandy often
@@ -10536,3 +10536,121 @@ file. Breaking the flag fails both changed-file checks. The poll itself runs in
 the browser and has not been exercised by a browser spec yet: that needs a file
 written on disk while the page is open, which no spec does today.
 
+## 2026-11-12 — Stage 4's slice 4: the autosave is markdown, and the flag is gone
+
+The model is the only editing core now. `modelCoreEnabled()`, `?core=`, its
+`mandy-model-core` key, the toolbar's `model core` marker and its CSS are gone,
+and so is `modelOwnsInput()`. Every place that asked keeps its model branch.
+Where the old branch was a fallback to `runCommand` or a "needs the new editing
+core" notice, a missing `modelInput*` function now does nothing. That can only
+happen in a bundle without `model-input.js`, which none ships.
+
+Some of the old core went with the flag rather than waiting for slice 5, because
+removing the condition left nothing for it to do:
+- the editor's own `paste` listener, which only ran under the old core;
+- the Tab and empty-item keydown handlers, which only ran under it too;
+- `markdownToHtml` and `loadDocumentHtml`, which nothing calls now.
+
+The list surgery those handlers called (`outdentListItem` and its helpers),
+`insertPastedContent`, `insertPlainText`, `toggleCode`, `normaliseEditorMarkup`
+and undo's HTML state are still defined and unreachable, for slice 5 to delete.
+Three files the suites load without `model.js` ask for the model by feature test
+instead of the flag: `runCommand` refuses when `modelRender` exists, undo takes
+model states when `modelForkDocument` exists, and `renderLatex` returns at once
+when `modelRender` exists.
+
+`documentMarkdown()` no longer falls back to Turndown over `editor.innerHTML`
+when there is no model. There is always one after boot, and before boot it
+throws, so Save, Save As, Download, Copy markdown and the Editable export report
+"no document is loaded yet" rather than writing something other than the
+document. The Editable export asks `documentMarkdown()` and always embeds
+markdown.
+
+**The autosave holds the markdown a save would write**, under a new key:
+`mandy-markdown`, or `mandy-tab-N-markdown` per tab. It replaces two keys:
+`content`, the editor's HTML, and `source`, the markdown that HTML was opened
+from. Every write goes through `flushAutosave()`, which writes
+`currentModelMarkdown()`. That covers the debounce, `beforeunload`, Open,
+upload and `saveSoon`. A model that refuses to write leaves the last good
+autosave in place and says so on the console. Every read goes through
+`storedDocument()` and loads through `loadDocumentMarkdown`, which sniffs the
+style from the stored markdown. So new markdown follows the document as it is
+now, not as it was opened (decision 1), and `markdownStyleAdoptStored` is gone.
+`app.js` has two doors now, and no `editor.innerHTML` assignment. The editable
+export always embeds markdown. The outline no longer infers a whole-document
+swap from a mutation record, which only the old core needed.
+
+**`front/legacy-storage.js` converts the old keys once, at load**, before
+`tabs.js` and `file-api.js` read anything. It finds the flat `markdownContent`
+and every `mandy-tab-N-content` by scanning the keys. Each one converts through
+`htmlToMarkdown`, after `adoptMarkdownStyle` has been handed that document's own
+`source`, so its untouched blocks are restored to their bytes. A document whose
+source converts to the same bytes is taken from the source itself (decision 2).
+The result is written, read back, and only then are the old keys removed. A
+write that fails keeps the markdown in memory so the document still opens, and
+the next load tries again. A document the converter throws on keeps its HTML and
+opens blank on that load. While the flat document is still unconverted, for
+either reason, `tabs.js` does not migrate the flat names onto a first tab: the
+session stays on them for that load, as it does when a migration's own write
+fails. Without that, the document would be left behind under a key a session
+with a tab list never reads. This was found by the review before committing,
+and is covered by the `legacy-storage` and `tabs` suites. `mandy-storage-version` is recorded once nothing is
+left, and later loads skip the scan. The plan had the markdown going into
+`content`. A new name was chosen while building, because a second run over a key
+already holding markdown would read it as HTML and escape every `*` and `#` in
+it. With a new name, the key says what it holds. The file is in `index.html` and
+`sw.js` but not in `ASSETS`, and it goes when stage 5 closes.
+
+An edited stored document converts the way the old core's save would have
+written it, including that path's losses. The `plan` fixture's setext heading
+comes back as `# Plan`, and a lazy quote line is joined to the line above it.
+A document nobody edited comes back byte for byte.
+
+One bug fixed on the way, found by the `model-input` suite, which was failing at
+`HEAD` too. The memory of a Shift+Enter keydown started at 0, which read as a
+Shift+Enter at the page's first instant. For the first 200ms after a load, a
+plain Enter in a table cell did nothing. It starts at -Infinity now.
+
+Tests:
+- `tests/fixtures/storage/` holds stored HTML captured from the running app
+  under both cores before the flag went. Each fixture carries its `source` key
+  and the markdown the old core's save wrote for it. The Mermaid fixture's
+  wrapper is written by hand. The capture script needed the old core, so it is
+  not kept.
+- `tests/browser/storage-conversion.spec.mjs` seeds a fresh profile with each
+  storage shape: one document under the flat names, several tabs with two never
+  shown, a migration that failed halfway, a blank tab, an edit after the
+  conversion, and a reload. It compares what opens and what was stored with the
+  fixture's markdown. It passes in Chromium, Firefox and WebKit.
+- A new `legacy-storage` suite drives the converter's control flow on a stub
+  store. Removing the read-back, or the version write, fails it.
+- `tabs`, `file-path` and `export-variant` now share one stand-in for the model,
+  `fakeModelCore` in `tests/dom.mjs`, because every document now goes into the
+  model and the real one needs a parser the stub does not have.
+- Checks that drove a call site under the old core are rewritten to the model's
+  side or deleted with it. The `list-indent` suite is deleted, because the
+  Tab and empty-item keydown handlers it drove are gone. The `undo` suite now
+  counts zero `editor.innerHTML` assignments in `app.js`.
+- `open-edit-save.spec.mjs` checks the model's save against the fixture alone.
+  Its one parity entry, CHARLIE's backslash break, is one of its expectations.
+  `exports`, `image` and `blockquote` lose their `?core=legacy` halves.
+
+The service worker's `VERSION` is `v1.95`.
+
+Not in this change:
+- The user's own upgrade on real storage, which is this slice's hand test:
+  save everything, close the app, pull, start it again.
+- Slice 2's owed Firefox hand run of the exported files themselves.
+- CLAUDE.md's sections on the flag, the HTML autosave and the old core still
+  describe what ran before this change. Slice 7 rewrites them; a note at the
+  top of "This branch" says so meanwhile.
+- `tests/list-indent-check.html` and `tests/list-empty-item-check.html` drive
+  the old core's list handlers, which are gone. `check-pages.spec.mjs` skips
+  them and says why, and slice 6 deletes them.
+
+The whole Playwright run in three engines: 337 passed, 6 skipped (the two list
+pages above, in each engine), and two Firefox failures that are not this
+change's. **Code over a word fails in Firefox at `dfe0f14` too**, every time:
+the format bar's button never becomes visible (`inline-code-links.spec.mjs`).
+Edit → Copy failed once and then passed three times out of three, so it is
+flaky rather than broken.

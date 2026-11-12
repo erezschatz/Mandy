@@ -71,6 +71,12 @@ function persistTabList() {
 // truth already deleted is the one outcome here that loses the user's work,
 // and localStorage gives no transaction to lean on.
 function migrateSingleDocument(id) {
+  // A flat document legacy-storage.js could not convert on this load is not
+  // moved: see legacyFlatUnconverted. Thrown, so it takes the same road as a
+  // write that fails, and the session runs on the flat names.
+  if (typeof legacyFlatUnconverted === "function" && legacyFlatUnconverted()) {
+    throw new Error("the open document has not been converted to markdown yet");
+  }
   const copied = [];
   try {
     for (const name of Object.keys(DOCUMENT_KEYS)) {
@@ -157,10 +163,9 @@ function tabsSwitchAllowed() {
 
 // ── The list operations ──────────────────────────────────────────────────────
 
-// What a tab with nothing in it holds. The same markup app.js's New writes, and
-// for the same reason: a document with no block in it has nowhere to put the
-// caret.
-const BLANK_DOCUMENT = "<p><br></p>";
+// What a tab with nothing in it holds: no markdown at all, which the model
+// renders as the one empty paragraph a caret needs.
+const BLANK_DOCUMENT = "";
 
 // A record is `{ id }` and, once this session has shown a tab and moved off it,
 // the three parked bundles -- `file`, `md`, `undo` -- and, under the model core,
@@ -186,11 +191,10 @@ function parkActive() {
   tab.undo = undoPark();
   tab.file = filePark();
   tab.md = markdownStylePark();
-  // The model is the document; the stored HTML flushed above is only its
-  // rendering, so parking the model is what lets the tab come back without a
-  // parse. Asked only under the model core, since the legacy core has no model
-  // and the flag cannot change within a page load.
-  tab.doc = modelCoreEnabled() ? modelParkDocument() : null;
+  // The model is the document, and the markdown flushed above is what it would
+  // write, so parking the model is what lets the tab come back without a parse
+  // — and as the same object its history describes.
+  tab.doc = modelParkDocument();
 }
 
 // The other half, and the ordering in it is the whole of what stage 4 had to
@@ -204,29 +208,28 @@ function parkActive() {
 // has to land on top of the history it was measured against or a dirty document
 // reports clean -- and it only misfires when two tabs' edit counts line up, so
 // nothing but the order itself will catch it.
-// The markdown style moves above the content as of stage 2's slice 1, and only
-// that. It is the one adopt here with no ordering constraint of its own -- it
-// reads no other module's result and nothing below reads its -- and the model
-// core needs it early, because loadDocumentHtml converts the stored HTML
-// through htmlToMarkdown and that reads the style and the block index. The two
-// orderings that *are* load-bearing are untouched: content before undo, undo
-// before file.
+// The markdown style has no ordering constraint of its own. A parked tab adopts
+// its bundle; a tab this session has never shown is sniffed by the markdown
+// door from its stored markdown, which is the document as it is now rather
+// than as it was opened (decision 1 of stage 4).
 //
 // The model is the one part of a tab that is not a bundle of its own. It is
 // parked as the document itself (`tab.doc`) beside the history it describes,
 // because undo states are forks of it: the two have to come back together, and
 // a re-parse would hand the history a document it was never taken from.
 function adoptActive(tab) {
-  if (tab.md) markdownStyleAdopt(tab.md);
-  else markdownStyleAdoptStored();
-
   // Content first, as ever. A parked model is rendered as it stands, which is
-  // the whole of what this stage bought: no parse, and the document comes back
-  // as the same object the outgoing tab's history describes. A tab with no
-  // model -- never shown, or shown under the legacy core -- takes its stored
-  // HTML, which is the one place a model is built from storage.
-  if (tab.doc) modelRestoreDocument(editor, tab.doc, md);
-  else loadDocumentHtml(localStorage.getItem(documentKey("content")) || BLANK_DOCUMENT);
+  // the whole of what stage 4's slice 3 bought: no parse, and the document comes
+  // back as the same object the outgoing tab's history describes. A tab with no
+  // model has never been shown this session and takes its stored markdown,
+  // which is the one place a model is built from storage.
+  if (tab.doc) {
+    markdownStyleAdopt(tab.md || null);
+    modelRestoreDocument(editor, tab.doc, md);
+  } else {
+    const stored = storedDocument();
+    loadDocumentMarkdown(stored === null ? BLANK_DOCUMENT : stored);
+  }
   undoAdopt(tab.undo || null);
 
   if (tab.file) fileAdopt(tab.file);

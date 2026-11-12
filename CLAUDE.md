@@ -4,6 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## This branch
 
+**Since stage 4's slice 4 (2026-11-12) the model is the only editing core.**
+There is no `modelCoreEnabled()` and no `?core=`, and the autosave holds
+markdown under the `markdown` key, converted once from the old HTML by
+`front/legacy-storage.js`. Where the sections below still describe the flag,
+the `content` key holding HTML, or the old core's handlers as running, they
+are out of date until slice 7 rewrites them. docs/REWRITE.md's stage 4 is what
+is current.
+
 `rewrite` carries TODO 3.1, the editing-core rewrite. **Everything below still
 describes the running editor and still governs changes to it** — the branch has
 replaced nothing yet, and `main` keeps the working editor until parity.
