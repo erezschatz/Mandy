@@ -10768,7 +10768,7 @@ moves to `v1.96`. CLAUDE.md still describes much of the deleted code as running,
 until slice 7 rewrites it. Also fills `dca7a7b` into the previous entry's
 header.
 
-## 2026-11-14 — Stage 4's slice 6: the old core's check pages retire
+## 2026-11-14 — `5a96325` — Stage 4's slice 6: the old core's check pages retire
 
 `tests/browser-check.html`, `tests/list-indent-check.html` and
 `tests/list-empty-item-check.html` are deleted, with
@@ -10790,3 +10790,34 @@ Playwright harness's config and package description that named the deleted
 pages as present now say they retired, and task 6.8 notes that its
 `MANDY_DEV` gate is moot. docs/PLAN.md lists 6.6 as done. Also fills `bbaa2ce` into the previous
 entry's header.
+
+## 2026-11-14 — Stage 4's slice 7: the documents describe the model
+
+**Slice 6's hand run is done**: `front/input-check.html` in Chrome and Firefox,
+on what no engine-driven run reaches — a real IME, the engine's own undo
+gesture and menu, a formatted paste from another application, the three kinds
+of real drag, and Cmd+B leaving Firefox's bookmarks sidebar shut. Clean in
+both, so slice 6 is closed.
+
+**CLAUDE.md describes the model as what runs.** The "This branch" preamble,
+which said the rewrite had replaced nothing, is replaced. The Tests section
+drops the `execcommand` suite, gains `legacy-storage`, and says the
+open-edit-save loop is tested now, by `open-edit-save.spec.mjs` and the
+`model` suite. "The browser check" becomes "The browser checks": the
+Playwright harness and the pages left. The load order, the registries,
+"Document state", "Save fidelity", "execCommand", "The format bar", "The
+outline" and "Undo" are rewritten around the model, with the tabs storage
+paragraphs, "The unsaved-work guard", "The two HTML exports" and the menu
+bar's clipboard paragraph brought into line, and `latex` and `links` entries
+added to the suite list, which never had them. "The model" keeps its
+slice-by-slice history, under a note saying that "under the flag" there now
+means *now*, and gains a paragraph on what stage 4 changed.
+
+**D4 is retired by D19**, a new decision that supersedes it, since the
+hand-written decisions are never edited. **TODO 2.3 is closed**: its emphasis
+half was measured before closing — an edited paragraph written
+`_underscored_` with a backslash break keeps both in a document whose other
+emphasis is `*`, measured once by a scratch script rather than added as a
+check. **ROADMAP.md's "No automated test opens, edits and saves a
+document" is removed**, since that test now exists. No code changed. Also
+fills `5a96325` into the previous entry's header.

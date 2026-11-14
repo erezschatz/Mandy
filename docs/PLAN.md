@@ -28,7 +28,7 @@ up yet rather than tasks.
 - [1.7-format-shortcuts](../tasks/1.7-format-shortcuts.md) — 1.7 — Format keyboard shortcuts
 - [1.8-insert-line-break](../tasks/1.8-insert-line-break.md) — 1.8 — Nothing in Mandy inserts a line break
 - [2.1-table-reemission](../tasks/2.1-table-reemission.md) — 2.1 — An edited table is re-emitted in house style · done
-- [2.3-minority-spellings](../tasks/2.3-minority-spellings.md) — 2.3 — Minority break and emphasis spellings
+- [2.3-minority-spellings](../tasks/2.3-minority-spellings.md) — 2.3 — Minority break and emphasis spellings · done
 - [3.1-editing-core-rewrite](../tasks/3.1-editing-core-rewrite.md) — 3.1 — Replace the editing core · in progress
 - [4.2-tab-bar-bindings](../tasks/4.2-tab-bar-bindings.md) — 4.2 — Tab bar keyboard bindings are unmeasured
 - [4.3-tab-naming](../tasks/4.3-tab-naming.md) — 4.3 — A tab is named by its file's basename

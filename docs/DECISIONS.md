@@ -737,3 +737,12 @@ Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
 **Why** — A fragment is parsed by `modelParse` with no reference definitions, so `[text][label]` came back as literal brackets rather than a link. The inline form always resolves. The model's own emitter already chooses the reference form for an edited link when the document still defines the label, so nothing about a document's own references is lost.
 
 Source: [tasks/3.1-editing-core-rewrite.md](../tasks/3.1-editing-core-rewrite.md)
+
+## D19 · 2026-11-14 · D4 is retired: no execCommand edits the document
+
+**Decision** — D4 ("execCommand stays, and Mandy normalises after it") no longer describes anything that runs. The editing core is the model; every edit is a model command made from a cancelled `beforeinput`, and the one `execCommand` left in `front/` is the Edit menu's `copy`, which edits nothing. D4 stays in docs/DECISIONS.md as written, as the record of why the old core was built that way; this entry is what marks it retired.
+**Rejected** — Editing D4's text to say it is retired, which the record's rule forbids for the hand-written D0–D9; and deleting it, which loses the reasoning the rewrite answered.
+**Why** — D4's own text said it would be "marked retired, not deleted, when 3.1 ships", and the compiled record's only way to reverse a decision is a new one that names it. execCommand fires `input` and never `beforeinput`, so it cannot coexist with a core that owns every mutation.
+Supersedes: D4
+
+Source: [tasks/3.1-editing-core-rewrite.md](../tasks/3.1-editing-core-rewrite.md)

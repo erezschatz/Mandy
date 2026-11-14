@@ -5501,9 +5501,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     stored HTML converts once at load, and the flag is gone;
     slice 5 done and tested by machine 2026-11-14 — the old core is deleted,
     and its save path lives in `legacy-storage.js` for the conversion alone;
-    slice 6 done 2026-11-14 — the old-core check pages, `/tests/:name` and
-    `/report` are gone; `front/input-check.html` passes its machine half in
-    WebKit and its hand run in Chrome and Firefox is owed.
+    slice 6 done and tested 2026-11-14 — the old-core check pages,
+    `/tests/:name` and `/report` are gone, and `front/input-check.html` passes
+    by machine in WebKit and by hand in Chrome and Firefox;
+    slice 7 done 2026-11-14 — CLAUDE.md describes the model as what runs, D4 is
+    retired by D19, and TODO 2.3 and ROADMAP's open-edit-save entry close.
+    The closing pass, a real-document session in Firefox, is what is left.
     → MERGE TO `main` WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
@@ -6042,7 +6045,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         `caret-guard-check` measure the browser rather than the core, and
         stay.
 
-        - **Done 2026-11-14; the hand run is owed.** The three pages and
+        - **Done and tested 2026-11-14.** The hand run of
+          `front/input-check.html` was made the same day by the user in
+          Chrome and Firefox, on the parts no engine-driven run reaches — a
+          real IME, the engine's own undo gesture and menu, a formatted paste
+          from another application, the three kinds of real drag, and Cmd+B
+          leaving Firefox's bookmarks sidebar shut — and was clean in both. The three pages and
           `check-pages.spec.mjs` are deleted, and `server.ts` loses
           `CHECK_PAGES`, `TESTS_DIR`, the `/tests/:name` route and `/report`:
           nothing else posts there, and `input-check.html` reports on the
@@ -6056,10 +6064,6 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
           - **The whole Playwright run**: 335 passed, 1 failed, nothing
             skipped. The failure is the same Firefox Code-over-a-word test
             slices 4 and 5 recorded.
-          - **Owed by hand**: `front/input-check.html`'s numbered protocol in
-            Chrome and Firefox, at `http://localhost:9130/input-check.html`.
-            A real IME and a real drag are the parts no engine-driven run
-            reaches.
 
     7.  **The documents.** D4 is marked retired in DECISIONS.md rather than
         deleted. CLAUDE.md's "Document state", "Save fidelity", "execCommand",
@@ -6068,6 +6072,26 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         preamble is replaced, since after this there is one core. TODO 2.3's
         emphasis half and ROADMAP.md's "No automated test opens, edits and
         saves a document" close, since slice 1's spec does exactly that.
+
+        - **Done 2026-11-14.** CLAUDE.md's preamble is replaced, and its
+          Tests, browser checks, load order, registries, "Document state",
+          "Save fidelity", "execCommand", "The format bar", "The outline" and
+          "Undo" sections describe the model as what runs; "The model" keeps
+          its slice-by-slice history under a note that says how to read it,
+          and gains a closing paragraph on what stage 4 changed. Also
+          brought into line: the tabs storage-keys and swap paragraphs, "The
+          unsaved-work guard", "The two HTML exports", the menu bar's
+          clipboard paragraph, and `latex` and `links` entries the Tests list
+          never had. **D4 is
+          retired by D19** rather than edited, since the hand-written
+          decisions are not touched and a new entry naming the old one is the
+          record's only way to reverse it. **TODO 2.3's emphasis half was
+          measured before it was closed**: a paragraph written
+          `_underscored_` with a backslash break, in a document whose other
+          emphasis is `*`, keeps both after an edit — measured once by a
+          scratch script, not added as a check. ROADMAP's entry is
+          removed, since `open-edit-save.spec.mjs` and the `model` suite are
+          the test it asked for. No code changed, so no suite was run.
 
     **The closing pass** is a real-document session: a day's work in the
     user's own documents and tabs on this branch, in Firefox, after slice 4

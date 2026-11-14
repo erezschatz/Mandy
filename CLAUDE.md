@@ -4,54 +4,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## This branch
 
-**Since stage 4's slice 4 (2026-11-12) the model is the only editing core.**
-There is no `modelCoreEnabled()` and no `?core=`, and the autosave holds
-markdown under the `markdown` key, converted once from the old HTML by
-`front/legacy-storage.js`. Where the sections below still describe the flag,
-the `content` key holding HTML, or the old core's handlers as running, they
-are out of date until slice 7 rewrites them. docs/REWRITE.md's stage 4 is what
-is current.
-
-`rewrite` carries TODO 3.1, the editing-core rewrite. **Everything below still
-describes the running editor and still governs changes to it** — the branch has
-replaced nothing yet, and `main` keeps the working editor until parity.
-
-That is sequencing, and **D7 in [docs/DECISIONS.md](docs/DECISIONS.md) is the
-warning against reading it as anything more.** "The branch has not replaced the
-core yet" is not "the branch must not touch the editor": a change that fixes
-something or makes a workaround unnecessary is the work, and the fact that it
-lands in a file the app loads costs nothing. What the branch must not do is
-carry the old core's compromises into the new one.
-
-**It goes back to `main` twice, not once** — at the end of stage 1 and at the
-end of stage 4, per **D8** in [docs/DECISIONS.md](docs/DECISIONS.md), so that
-the work is exercised in the editor in daily use and the two branches' documents
-stop drifting. **The first has happened** — `5322693`, 2026-09-18 — and changed
-nothing the editor does; stage 4's is the one left, and it is irreversible,
-because it converts the autosave. The reminders are on the stage lines in
-[docs/REWRITE.md](docs/REWRITE.md), where the status is updated as part of each
-landing.
-
-What the branch has added sat *beside* the running editor until 2026-09-20,
-when stage 2's slice 1 put the model in the bundle:
-
-- [front/model.js](front/model.js) — the document model. It is in all three
-  registries below as of stage 2's slice 1, because for the editor to draw from
-  the model the app has to load the model. **The editor still does not draw from
-  it**: `modelCoreEnabled()` is off until the stage 4 merge, and everything
-  below still describes what runs. Its own section is under Architecture.
-- [spike/block-model.html](spike/block-model.html) — stage 0, which was a gate
-  rather than a first step, and throwaway by design. It asked whether an engine
-  will announce what it is about to do and let us do it instead. Passed by hand
-  in Blink, Gecko and WebKit on 2026-09-10. It is not the first draft of
-  `front/` and nothing in it is meant to be moved there.
-- [tests/model.test.mjs](tests/model.test.mjs) and the root `deno.json`.
+`rewrite` carries TODO 3.1, the editing-core rewrite, and **the rewrite has
+replaced the core.** The document is a markdown model ([front/model.js](front/model.js)),
+the DOM is rendered from it, and the input layer ([front/model-input.js](front/model-input.js))
+cancels every `beforeinput` and makes the edit itself. There is no
+`execCommand` editing, no flag and no second core: the old one was deleted in
+stage 4's slice 5. The model writes the file, and the autosave holds the
+markdown a save would write. The sections below describe that.
 
 [docs/REWRITE.md](docs/REWRITE.md) is the design, the plan, and — in its "Where
-each stage stands" section — the running status, one line per stage, updated as
-part of each landing. Read that before starting any of it. D6 in
-[docs/DECISIONS.md](docs/DECISIONS.md) is why this is 1.0 work rather than the
-roadmap item it was until 2026-09-06.
+each stage stands" section — the running status, one line per stage, updated
+as part of each landing. Read it before starting anything on the core. D6 in
+[docs/DECISIONS.md](docs/DECISIONS.md) is why this is 1.0 work.
+
+**It goes back to `main` twice** — at the end of stage 1 and at the end of
+stage 4, per **D8**. The first happened at `5322693`, 2026-09-18. Stage 4's is
+the one left, and it is the irreversible one, because the first load after it
+converts this browser's old HTML autosave to markdown
+([front/legacy-storage.js](front/legacy-storage.js)). The reminder is on stage
+4's line in REWRITE.md.
+
+**D7 still governs how `main`'s code is treated from here.** A change that
+fixes something or makes a workaround unnecessary is the work; what must not
+happen is carrying the old core's compromises into the new one.
+
+Two things on the branch are not the editor: [spike/block-model.html](spike/block-model.html),
+stage 0's throwaway gate — passed by hand in Blink, Gecko and WebKit on
+2026-09-10 and not the first draft of anything in `front/` — and
+`front/legacy-storage.js`, which converts the old autosave once and holds the
+old core's save path for that alone. It is deleted when stage 5 closes.
 
 ## Commands
 
@@ -59,7 +40,7 @@ roadmap item it was until 2026-09-06.
 npm run serve   # deno task start — server on http://localhost:9130
 npm run dev     # same, with --watch auto-restart
 npm test        # deno run --allow-read tests/run.mjs
-npm run test:browser  # the check pages under Chromium, Firefox and WebKit — see Tests
+npm run test:browser  # Playwright: the app under Chromium, Firefox and WebKit — see Tests
 ```
 
 Type-check the server: `cd server && deno task check`.
@@ -109,11 +90,12 @@ They cover the invariants that fail *silently* rather than loudly:
   `visibleItems` directly, since the real spec strands no separator today.
 - **format-bar** — formatting never replaces `#editor`. Regression cover for a
   bug that detached the editable root and left the app looking unstyled and
-  dead until reload. Also every branch of Code, which is the only format that
-  reads the selection's *extent*: partial versus whole-block versus bare caret,
-  and the three ways a list can be involved. Its stub ranges report intersecting
-  the `<ul>` as well as the `<li>`, the way a real range does — a range that
-  claimed only the `<li>` would quietly excuse the bug the test exists for.
+  dead until reload. `applyFormat` is a router now: every format reaches its
+  model command (stubbed here, since what the command does to a document is the
+  `model` and `model-input` suites' business), a heading inside a list item is
+  refused before the model is asked, and a bundle without the input layer does
+  nothing rather than editing the DOM. Also where the bar sits, the caret bar,
+  and the active states read off the whole selection.
 - **self-reproduce** — an exported document re-exports without touching the
   network, and hands its successor byte-identical CSS and JS.
 - **static-export** / **file-path** — the document-only export's contents, and
@@ -142,6 +124,16 @@ They cover the invariants that fail *silently* rather than loudly:
   without `file-api.js` throws before a check runs. The two suites meet at one
   place instead — `file-path` checks that Ctrl+S in the app does *not* also
   download, which is the same gate from the other side.
+- **latex** — that `stampLatexSource` copies each equation's TeX onto its
+  container and makes it uneditable, never overwrites a stamp and never stamps
+  MathJax's own nested copy; the render cache that puts a typeset equation back
+  without a frame of TeX; the PDF and Word exports' pictures of equations; and
+  the `mathjax` and `modelFiller` Turndown rules.
+- **links** — Ctrl/Cmd+click and its scheme allowlist, the anchor slugs a table
+  of contents needs (and why `slugifyTitle` is not one), the hint as a CSS
+  variable rather than a `title` Turndown would serialise, the address the link
+  dialog's answer becomes, and that a pasted reference link is written inline
+  (D18).
 - **outline** — the depth algorithm, the inline allowlist, and the shape of the
   list Insert TOC writes. The depths are a pure function over heading levels, so
   the pathological document is a table rather than a fixture; the list shape is
@@ -152,36 +144,39 @@ They cover the invariants that fail *silently* rather than loudly:
   also ships `notify.js` ahead of it, and that dismissing a dialog does not
   resolve to the same thing as agreeing with it. The source scan is the half
   that matters: an `alert()` looks fine from inside the app right up until the
-  user has silenced dialogs and their save failure disappears.
-- **execcommand** — the normalisation between execCommand and the file, and the
-  source scan that stops a new call site skipping it. It deliberately does not
-  test what any browser *produces*: the stub has no editing engine, so a suite
-  can only assert what we do with the output. That half is
-  [tests/browser-check.html](tests/browser-check.html), which is not part of
-  `npm test` — see below.
+  user has silenced dialogs and their save failure disappears. **Since stage 4's
+  slice 5 it also scans for `execCommand`**, and allows exactly one call — the
+  Edit menu's Copy in `model-input.js`, which edits nothing. Any other call
+  would be the engine editing behind the model's back.
 - **undo** — the coalescing rules, the redo branch, that history does not
-  survive `undoReset()`, and that `undoPark()`/`undoAdopt()` carry it across a
-  tab switch whole rather than merging two tabs' stacks. Also counts the
-  `editor.innerHTML` assignment sites, because the way this regresses is not a
-  broken stack but a new assignment that never tells the stack about it. Since
-  2026-09-20 that count is **three, all in `app.js`** — `loadDocumentMarkdown`,
-  `loadDocumentHtml` and `loadBlankDocument`, the three doors every route into
-  the document now goes through — and **zero** in `file-api.js` and `tabs.js`,
-  which is an assertion rather than an absence. Stage 4 takes `app.js` to zero
-  too, when the legacy branch inside each door goes.
-- **save-fidelity** — the serialiser options app.js asks for, and then
-  `markdown-style.js` directly: the sniffers, and every guard in the re-wrapper.
-  That second half is the one that writes into the user's file. It also covers
-  the invisible-whitespace rules: that U+00A0 is normalised in both spellings,
-  and the ghost-element predicate, including the `<br>` asymmetry that decides
-  whether a block is a blank line or an inline is a real one. Only the predicate
-  — the traversal around it needs an HTML parser the stub does not have, which
-  is why the decision lives in one pure function. Since 2026-09-13 it also
-  covers the hard break: that the re-wrapper cannot eat one however long the
-  line is, in both spellings, and that `hardBreak` is sniffed off the document
-  and handed to Turndown. That last check sits with the options rather than the
-  re-wrapper deliberately — a sniffer that read the spelling correctly and never
-  handed it over would pass everything else and change nothing.
+  survive `undoReset()`, that `undoPark()`/`undoAdopt()` carry it across a tab
+  switch whole rather than merging two tabs' stacks, and the two seams where a
+  state is captured as a model fork and applied as one, caret and all. The stack
+  checks run on a model stand-in that mirrors the editor; the seam checks on a
+  block-shaped one. It also counts `editor.innerHTML` assignments, because the
+  way this regresses is not a broken stack but a new assignment the stack never
+  hears about: **zero in each of the eight files it names** (`app.js`,
+  `file-api.js`, `tabs.js`, `undo.js`, `format-bar.js`, `model-input.js`,
+  `outline.js`, `renderers.js`). `model.js`'s render, which draws the
+  document into the root it is handed, is the one place allowed to.
+- **save-fidelity** — the conventions a document is written back in. The
+  Turndown options `app.js` asks for, for what Turndown still converts (a paste
+  and the table of contents), and then `markdown-style.js` directly: the
+  sniffers, the line wrapper the model calls on an over-long composed line, and
+  the table formatter. It also covers the invisible-whitespace rules: that
+  U+00A0 is normalised in both spellings, and the ghost-element predicate,
+  including the `<br>` asymmetry that decides whether a block is a blank line or
+  an inline is a real one. Only the predicate — the traversal around it needs an
+  HTML parser the stub does not have, which is why the decision lives in one
+  pure function.
+- **legacy-storage** — `front/legacy-storage.js`, the one-time conversion of the
+  old HTML autosave. Its control flow on a stub store — which keys, the
+  read-back, a failed write held in memory, decision 2's comparison, the version
+  key, a second run doing nothing — and, since stage 4's slice 5, the old core's
+  save path it holds: the restore layer, the whole-document re-wrap (every guard
+  that once wrote into the user's file) and the reference-definition scan and
+  rule. The real conversion of real stored HTML is
+  `tests/browser/storage-conversion.spec.mjs`'s.
 - **model** — `front/model.js`, TODO 3.1's stage 1 and stage 2. It is the suite
   with **no HTML parser** in it, which is the constraint that actually matters
   and is what "no DOM" always meant: the model is string and token work, so it
@@ -291,8 +286,8 @@ They cover the invariants that fail *silently* rather than loudly:
   space and not the inline one, that the empty-item rules are asked before the
   generic edit, and that Tab is taken from the browser inside a list and left to
   it outside one. The half neither suite can reach — does an engine actually
-  send these, is it actually cancelable, what does a real IME do — is
-  `front/input-check.html`.
+  send these, is it actually cancelable, what does a real IME do — is the
+  Playwright specs and, for what only a person can do, `front/input-check.html`.
 - **tabs** — the per-tab state boundaries and the swap between documents: that
   park and adopt are lossless and adopting nothing is a blank document rather
   than a half-cleared one; the migration off the flat keys and both ways a
@@ -304,27 +299,24 @@ They cover the invariants that fail *silently* rather than loudly:
   agree with any order at all. The seam between `file-api.js` and `undo.js` is
   where stage 4's real bug lived, invisible to either suite alone.
 
-**No suite opens a document, edits it and saves it.** The pieces of the save
-path are covered — `markdown-style.js`'s sniffers and re-wrapper, the Turndown
-options `app.js` asks for, the block index, the ghost-element predicate — but
-never the chain they form, because [tests/dom.mjs](tests/dom.mjs) has no HTML
-parser and its Turndown hands back whatever it was given. A bug can therefore
-sit in the seam between two steps that each pass their own test, and the
-hard-break loss fixed on 2026-09-13 is one that did — Turndown wrote the break
-correctly and `reflowMarkdown` then ate it, with each half passing its own
-checks. ROADMAP.md's "No automated test opens, edits and saves a document" is
-the entry; the `model` suite is the counter-example, and only because the model
-needs no browser.
+**Opening a document, editing it and saving it is tested** — by
+`tests/browser/open-edit-save.spec.mjs`, in a real browser through the file
+API, and by the `model` suite with no browser at all, because the model goes
+markdown to markdown. Until stage 4 neither was possible for the running
+editor: the save was markdown → HTML → an editing engine → HTML → markdown, and
+[tests/dom.mjs](tests/dom.mjs) has no HTML parser. The hard-break loss fixed on
+2026-09-13 lived in exactly that seam — Turndown wrote the break and the
+re-wrapper ate it, each passing its own checks.
 
-**So when a change's real verification is open-edit-save in a browser and no
-suite can reach it, say so, and give the recipe** — which file to open, what to
-change, what to look at afterwards. Never report such a change as verified
-because `npm test` passed: it did not test the thing. This is the same rule the
-check pages below exist under, and the same honesty `npm test` gets for what it
-*does* cover.
+**So when a change's real verification is something no suite reaches — a real
+IME, a real clipboard, Safari as shipped, a document in daily use — say so, and
+give the recipe**: what to open, what to do, what to look at afterwards. Never
+report such a change as verified because `npm test` passed. This is the rule
+the check pages below exist under, and the same honesty `npm test` gets for
+what it *does* cover.
 
 [tests/fixtures/break-test.md](tests/fixtures/break-test.md) is the document for
-that recipe on the save path, kept because the alternative was measured: it was
+that recipe on the save path, and `open-edit-save.spec.mjs`'s, kept because the alternative was measured: it was
 generated outside the repo for TODO 2.2's verification, deleted as scratch the
 same day, and by the time it was wanted again it survived only in one browser's
 `localStorage`. Its filler is load-bearing rather than padding — `sniffWrapWidth`
@@ -341,175 +333,64 @@ taken against, so a save over it destroys the only thing that makes the next run
 mean anything. It is also the document TODO 2.3 was found with, and CHARLIE is
 the paragraph that finds it.
 
-### The browser check
+### The browser checks
 
-[tests/browser-check.html](tests/browser-check.html) is not part of `npm test`
-and cannot be: it needs a real editing engine. It loads `front/execcommand.js`
-and pulls in nothing else, so it runs the real execCommand cases in a real
-`contenteditable` and reports the markup each engine produces before and after
-`normaliseEditorMarkup`. Run it with `npm run serve`, then open
-`http://localhost:9130/tests/browser-check.html` in each browser. The two
-check pages live in `tests/`, outside `FRONT_DIR` where the static handler
-looks, so `server.ts` has a two-name route (`CHECK_PAGES`) that serves just
-them, plus a `POST /report` sink that prints each report for a headless run.
-Not a file:// double click: Firefox refuses a script from outside the page's
-own directory, and a page open off disk cannot reach the `/tests/` route or
-`/report` anyway — the page prints one line saying so rather than eleven
-`runCommand is not defined` throws.
+**`npm test` cannot see an editing engine**, so everything about what a real
+browser does is measured in one, in two ways.
 
-**Since 2026-10-13 the three self-running pages also run under a machine.**
-[tests/browser/](tests/browser/) drives `browser-check`, `list-indent-check`
-and `list-empty-item-check` through Playwright's Chromium, Firefox and WebKit
-builds and judges the JSON each one POSTs to `/report` — the same report a hand
-run prints to the server log, so nothing is asserted that the page does not
-already say. Since 2026-10-21 it also drives hand protocols itself:
-`equation-typing.spec.mjs` and, since 2026-10-24, `format-marks.spec.mjs`,
-`inline-code-links.spec.mjs`, `block-kinds.spec.mjs`, `lists.spec.mjs`,
-`insert-clear.spec.mjs` and `keys-clipboard.spec.mjs` type and select their way through
-`tests/fixtures/format-check.md`'s sections for slice 7 in the running app, with
-Playwright's keyboard and mouse, which are trusted (TODO 6.8 has the
-measurement), and stand in for those runs in Chromium and WebKit. Since
-2026-11-07 `open-edit-save.spec.mjs` opens `tests/fixtures/break-test.md`
-through the file API, types into it and saves it to a scratch file under both
-cores — stage 4's parity gate, where every line the two cores write
-differently has to be one the spec names in advance. `exports.spec.mjs` makes
-each export under the model core and checks none carries the renderer's
-editing markup, and opens the Editable one under both cores. `npm run test:browser` from the root. It is not part of `npm test`
-and will not be: it wants a browser engine and a `node_modules`, which is the
-one dependency of that kind this project has agreed to (TODO 6.8 is the
-agreement and the plan). First time only, `cd tests/browser && npm install &&
-npm run engines`, which downloads the three engines. The run starts `deno task
-start` itself when nothing is on the port and uses the dev server when there
-is. Each test is a fresh profile, so a run never reads or writes the autosave
-of any browser you use.
+**The Playwright harness, [tests/browser/](tests/browser/)**, is the machine
+half: `npm run test:browser` from the root, under Playwright's Chromium,
+Firefox and WebKit. Its specs drive the running app with Playwright's keyboard
+and mouse, which are trusted, so the engine raises real `beforeinput`s (TODO
+6.8 has the measurement). They stand in for the hand protocols of stages 2 and
+3 — `tests/fixtures/format-check.md`'s sections through `format-marks`,
+`inline-code-links`, `block-kinds`, `lists`, `blockquote`, `image`,
+`table-cells`, `table-structure`, `insert-clear`, `keys-clipboard` and
+`equation-typing` — and they cover what stage 4 reintegrated:
+`open-edit-save.spec.mjs` opens `tests/fixtures/break-test.md` through the file
+API, types into it and saves it to a scratch file, `exports.spec.mjs` makes each
+export and checks none carries the renderer's view markup, `tabs-model.spec.mjs`
+parks and adopts models, and `storage-conversion.spec.mjs` seeds old HTML
+autosaves captured from both cores and checks what they convert to.
+`model-page.mjs` fails a test on any render divergence or console error.
 
-Three things it measures less than a hand run, stated so a green run is not
-read as more than it is. Playwright's WebKit is WebKit and not Safari — the
-editing code is WebCore's in both, so engine claims carry, but it tracks trunk
-and usually runs ahead of the shipping Safari, so a measurement with a Safari
-version on it still wants real Safari by hand and is recorded as such. Its
-Firefox is likewise a pinned build rather than the one installed. And a run
-with the CDN unreachable is reported as *measured nothing* rather than judged:
-the list pages' own boot wait polls for functions that exist before markdown-it
-is needed, so without the CDN they run anyway and every case reads as the
-handler never firing. The harness fails on any failed resource before it looks
-at the count.
+It is not part of `npm test` and will not be: it wants a browser engine and a
+`node_modules`, the one dependency of that kind this project has agreed to
+(TODO 6.8). First time only, `cd tests/browser && npm install && npm run
+engines`. The run starts `deno task start` itself when nothing is on the port
+and uses the dev server when there is. Each test is a fresh profile, so a run
+never reads or writes the autosave of any browser you use.
 
-The three pages retire with execCommand at stage 4; the harness does not. The
-trusted keystrokes the list pages cannot send, the open-edit-save loop in
-ROADMAP.md's "No automated test opens, edits and saves a document", and the
-legacy-against-model parity that gates the stage 4 merge are what it is for,
-in that order, under 6.8.
+Two things it measures less than a hand run, stated so a green run is not read
+as more than it is. Playwright's WebKit is WebKit and not Safari — the editing
+code is WebCore's in both, so engine claims carry, but it tracks trunk and
+usually runs ahead of the shipping Safari, so a measurement with a Safari
+version on it still wants real Safari by hand. Its Firefox is likewise a pinned
+build rather than the one installed.
 
-**It is the only thing in the repo that can tell measurement from folklore.**
-Every engine-specific claim in `front/` and in the metafiles either came from
-this page or is a guess — and the first run killed two long-standing ones: that
-`styleWithCSS` was needed to stop styled spans (neither engine emits them for
-bold or italic once it is off) and that the list-nesting bug was Chrome's (both
-engines do it). It also found a live bug, where `formatBlock` in a bullet
-destroyed the list in Chrome.
-
-Re-run it when adding a format, and when a browser does something surprising.
-TODO 1.1 carries that instruction now. The two divergences it found are both
-resolved rather than open: the heading-inside-a-list no-op is fixed in
-`applyFormat` (see the format-bar section below), and D5 in
-[docs/DECISIONS.md](docs/DECISIONS.md) settled `indent`-outside-a-list as a
-permanent no-op rather than something a future control needs to reconcile
-itself against.
-
-There are four other pages beside it, same idea and same reason. The first two
-watch our own hand-rolled list surgery in a real editing engine rather than a
-command's output, and both drive the running app in an `<iframe>` pointed at `/` —
-served through the same `/tests/` route, so the frame is same-origin and the
-page reads app internals straight out of its window. `CHECK_PAGES` in
-`server.ts` is the literal set of names that route serves; a new check page has
-to be added there.
-
-**Both of the next two are questions about the old core only, as of stage 2's
-slice 4** (2026-09-20), which made Enter, Backspace and Tab in a list model
-rules with no engine in them. They are not retired yet, because `main` still
-runs the code they watch — they retire with it, at stage 4.
-
-[tests/list-indent-check.html](tests/list-indent-check.html) is for the path
-`outdentListItem` opened when it stopped calling execCommand. It ends with a
-control, raw `execCommand("outdent")` on the same list, so a green run is
-measured against the bug still being there. Chrome 148, Firefox 154 and Safari
-26.6 all mangle that list, three different ways, and all three come out right
-through Shift+Tab.
-
-[tests/list-empty-item-check.html](tests/list-empty-item-check.html) is for the
-keydown handler in `app.js` that does Enter and Backspace on an empty `<li>` by
-hand — the handler that returns early under `modelCoreEnabled()` since slice 4.
-Contenteditable's own handling splits the list and strands `<p><br></p>` blocks,
-which the Deno suite cannot see and only a real engine can confirm gone.
-It reports the resulting shape, the blank-paragraph count and where the caret
-landed. Same run recipe as its sibling; if the app has not booted in the frame
-after ten seconds it says so instead of hanging.
-
-**Run 2026-09-13 in Chrome 152, Firefox 155 and Safari 26.6.2 — no problems in
-any of the three**, all six cases, caret included. **It measures less than it
-claims, though, and the missing half was measured by hand.** The page presses
-its keys with `new KeyboardEvent(...)`, which is untrusted, and a browser runs
-no default action for one — so there is no native Enter for `preventDefault` to
-suppress, and the `prevented` it reports says only that the handler called it.
-Whether the real native split is suppressed was answered separately, by driving
-the running app with trusted keystrokes: `beforeinput` never fired in any of the
-six, so every change in the DOM is the handler's own surgery. Anything wanting
-that half again needs a real keyboard rather than this page.
-
-[tests/paste-check.html](tests/paste-check.html) is the last, and the only one
-that cannot be run by a machine at all: it measures what a browser puts in a
-paste event for the paste-as-plain-text binding, which needs a real clipboard
-and a real keystroke. **It answered the question in all three engines, and the
-answer was no every time** — Chrome 152 and Firefox 154 on 2026-08-30, Safari
-26.6.2 on 2026-09-18: each offers `text/plain` alone on its own plain-text
-binding, so the plain branch in `app.js` already fires and there was never
-anything to build. That is the opposite of what the item behind it predicted for
-all three, which is the whole argument for the check pages, and it is what
-closed that item with no code — see CHANGELOG.md, since the item has left
-docs/TODO.md and its number is free for something else. All three deliver the
-`keydown` to the page as well, so the flag-from-keydown shape stays available if
-a browser ever changes its mind.
-
-**So the page is now a regression check rather than an open question, and that
-is why it stays**: the answer is per browser and per version, and the way it
-comes back is a browser release rather than a change here.
-
-Safari was the last of the three and cost a bug first: until 2026-09-18 the page
-could not have measured it. Its binding is Cmd+Shift+Option+V, the keydown
-matcher tested `e.key === "v"`, and on macOS Option composes characters — Option
-and V make `√` — so the match never fired. **It did not fail loudly**: the
-keydown was dropped and the paste was attributed to whichever keystroke came
-before it, reading as `Ctrl/Cmd+V` if the tester was quick and `menu or unknown`
-if they were not. It now matches `e.code`, names the binding from the modifiers
-actually pressed, logs every keydown it sees, and consumes a keystroke once a
-paste has used it. A check page that drops evidence quietly is worse than none,
-since the whole point is to report what the browser did rather than what we
-expected. Unlike the two before it, it needs no server and no app — open the
-file itself, which is why it is not in `CHECK_PAGES`.
-
-[spike/block-model.html](spike/block-model.html) is a sixth page of the same
-family and the only one outside `tests/`, because it watches a core that does
-not exist yet rather than this one — TODO 3.1's stage 0. It carries its own
-protocol on the page: six numbered actions, and what pass and fail mean. Like
-`paste-check` above it and `tab-shortcut-check` below, it needs no server and no
-app. When the rewrite lands it
-replaces `browser-check`, `list-indent-check` and `list-empty-item-check`, all
-three of which retire with execCommand; `paste-check` and `tab-shortcut-check`
-measure the browser rather than the core and stay.
+**The check pages are the hand half**, for what only a person at a real
+keyboard, clipboard or browser can do. **It is the only thing in the repo that
+can tell measurement from folklore** — every engine-specific claim in `front/`
+and in the metafiles came from a check page, a spec, or is a guess — and the
+pages that watched the old core proved it: their first run killed two
+long-standing beliefs about execCommand. Those three (`browser-check`,
+`list-indent-check`, `list-empty-item-check`) retired with the old core in
+stage 4's slice 6, and with them the server's `/tests/:name` route and its
+`/report` sink. Every page left is opened as a file or from `front/`, and
+reports on the page.
 
 [front/input-check.html](front/input-check.html) is TODO 3.1's, and it is the
 one the rewrite's riskiest stage is measured by: does an engine send a
 `beforeinput` for each thing a keystroke means, is it cancelable, what does
-`getTargetRanges()` say, and what does a real IME do. **A machine cannot run
-it** — measured 2026-09-20 in Blink, automation delivers a trusted `keydown` for
-Backspace and the engine performs no editing command for it, which is the same
-gap stage 0's spike hit. **Playwright's keyboard is a different path and
-does**: measured 2026-10-18 in Playwright's Chromium and WebKit, it yields
-trusted, cancelable editing `beforeinput`s that the engine then performs, and
-Firefox would not launch on that machine — TODO 6.8 has the table, and until a
-spec drives this page that way it carries a numbered protocol and needs a human at
-a keyboard, the way `paste-check` does. It reports every event the engine sent
+`getTargetRanges()` say, and what does a real IME do. Most of what it
+asks is now asked by the Playwright specs above, in the app, in three engines;
+its keyboard step is driven on the page itself by `final-pass.spec.mjs`. **What
+is left for a person** is what no engine-driven run reaches: a real IME (the
+press-and-hold accent), the engine's own undo gesture and menu, a formatted
+paste from another application, a real drag — moving a selection, the two
+refused drags, and a drop from another window — and whether Cmd+B opens
+Firefox's bookmarks sidebar. Run by hand in Chrome and Firefox on 2026-11-14
+for stage 4's slice 6, clean in both. It reports every event the engine sent
 and, after each one, whether any block's DOM text has come adrift from its
 model's. Slice 4 added eight steps to its protocol — the split, the merge across
 a block boundary, Tab and Shift+Tab, the empty-item rules, a fence edited as
@@ -536,15 +417,43 @@ same gate stage 0 set, and the same answer — including the merge, which no
 machine can drive in any of them: a constructed `InputEvent` carries no target
 ranges, so a synthetic Backspace at a block's start is a zero-width deletion
 where a real keystroke hands over a range spanning two blocks. It lives in `front/` so the static handler already serves it
-same-origin with `/model.js`, which is the only thing the `/tests/` route was
-ever buying — so it needs no `CHECK_PAGES` entry and no server change — and it
-installs the input layer itself rather than flipping the model core's flag, so
-running it does not change the app's state on the same origin. It is in none of
-the three registries: it is a page, not a module. **It says on the page that it
-is always the model core and needs no flag**, added 2026-09-21 after somebody
-looked for the toolbar's `model core` marker on it: there is no toolbar here,
-and the marker is the app's answer to *which of two cores drew this*, which is
-not a question this page has.
+same-origin with `/model.js`, and it installs the input layer on its own
+document, so running it does not touch the app's state on the same origin. It is in none of
+the three registries: it is a page, not a module.
+
+[tests/paste-check.html](tests/paste-check.html) cannot be run by a machine at
+all: it measures what a browser puts in a
+paste event for the paste-as-plain-text binding, which needs a real clipboard
+and a real keystroke. **It answered the question in all three engines, and the
+answer was no every time** — Chrome 152 and Firefox 154 on 2026-08-30, Safari
+26.6.2 on 2026-09-18: each offers `text/plain` alone on its own plain-text
+binding, so the plain branch already fires and there was never
+anything to build. That is the opposite of what the item behind it predicted for
+all three, which is the whole argument for the check pages, and it is what
+closed that item with no code — see CHANGELOG.md, since the item has left
+docs/TODO.md and its number is free for something else. All three deliver the
+`keydown` to the page as well, so the flag-from-keydown shape stays available if
+a browser ever changes its mind.
+
+**So the page is now a regression check rather than an open question, and that
+is why it stays**: the answer is per browser and per version, and the way it
+comes back is a browser release rather than a change here.
+
+Safari was the last of the three and cost a bug first: until 2026-09-18 the page
+could not have measured it. Its binding is Cmd+Shift+Option+V, the keydown
+matcher tested `e.key === "v"`, and on macOS Option composes characters — Option
+and V make `√` — so the match never fired. **It did not fail loudly**: the
+keydown was dropped and the paste was attributed to whichever keystroke came
+before it, reading as `Ctrl/Cmd+V` if the tester was quick and `menu or unknown`
+if they were not. It now matches `e.code`, names the binding from the modifiers
+actually pressed, logs every keydown it sees, and consumes a keystroke once a
+paste has used it. A check page that drops evidence quietly is worse than none,
+since the whole point is to report what the browser did rather than what we
+expected. It needs no server and no app — open the file itself.
+
+[spike/block-model.html](spike/block-model.html) is the same family and the
+only page outside `tests/` and `front/`: stage 0's gate, kept as the record of
+it. It carries its own protocol and needs no server.
 
 [tests/tab-shortcut-check.html](tests/tab-shortcut-check.html) is the same kind
 of page and the same kind of question, for the tab bar's keyboard: Ctrl+Tab,
@@ -702,24 +611,24 @@ are no imports. Consequences that bite:
   be *before* `app.js` in both bundles, and a bundle that gets that backwards
   throws on load and takes the whole editor with it, which is why the `latex`
   suite checks the order in both;
-  `markdown-style.js` defines `sniffMarkdownStyle`,
-  `reflowMarkdown`, `indexMarkdownBlocks` and `restoreSourceWrapping`, which
-  `app.js` calls at top level and on every save;
+  `markdown-style.js` defines `sniffMarkdownStyle`, `wrapMarkdownLine` and the
+  table formatter, which `app.js` and `model.js` call;
   `model.js` calls `wrapMarkdownLine` and `hasMathSpan` rather than carrying a
   second copy of either, so it sits after `markdown-style.js` — at emit time
   rather than at load, so it only has to be *present*, but the dependency is
   real and the model suite loads the two in that order for the same reason;
-  `app.js` defines `editor`, `markdownToHtml`, `htmlToMarkdown`, and the three
-  doors a document arrives through, all of which call into `model.js` at run
-  time, so it follows it;
+  `app.js` defines `editor`, `md`, the Turndown service, `documentMarkdown`
+  and the two doors a document arrives through, all of which call into
+  `model.js` at run time, so it follows it;
+  `model-input.js` reads `editor` and `md` at load, so it follows `app.js`;
   `undo.js` binds to `editor` and so must follow `app.js`;
-  `execcommand.js` defines `runCommand`, which `app.js` and `format-bar.js` both
-  call — at click time rather than at load, so it only has to be *present* in
-  the bundle, but it reads `editor` and calls `undoRefresh` and so sits after
-  both;
+  `legacy-storage.js` converts the old autosave at its own load, with app.js's
+  Turndown service, before `tabs.js` and `file-api.js` read storage at theirs,
+  so it sits between them;
   `outline.js` defines `outlineIsOpen`, `outlineEntries` and `buildNestedList`,
   which `static-export.js` calls at export time;
-  `renderers.js` defines `renderLatex` and `unwrapMermaidDiagrams`;
+  `renderers.js` defines `renderAfterModel`, which the model's render calls, and
+  `stampLatexSource`;
   `lazy-load.js` defines the `ensure*` loaders. Later files call these freely.
 - **Global-name collisions are real bugs, not hypotheticals.** `file-api.js`
   names its function `saveFileAs` rather than `saveAs` because FileSaver.js
@@ -744,137 +653,108 @@ in a way that only shows up later:
 Bump `VERSION` in [sw.js](front/sw.js) when the shell changes; `activate` deletes
 caches whose names don't match.
 
-**`model.js` joined all three on 2026-09-20**, in stage 2's slice 1, and it had
-to: for the editor to draw from the model the app has to load the model, and an
-editable export whose core is the model needs it in `ASSETS` too or it ships a
-dead editor. It joined *none* of them until then, which was a statement about
-how far the model had got rather than a quarantine — D7 in
-[docs/DECISIONS.md](docs/DECISIONS.md) is there because this sentence used to
-claim the second thing. Its place in the load order is load-bearing in one
-direction: **after `markdown-style.js`**, whose `wrapMarkdownLine` and
-`hasMathSpan` it calls rather than carrying a second copy of either.
+**`model.js` joined all three on 2026-09-20**, in stage 2's slice 1: for the
+editor to draw from the model the app has to load the model, and an editable
+export needs it in `ASSETS` too or it ships a dead editor. Its place in the
+load order is load-bearing in one direction: **after `markdown-style.js`**,
+whose `wrapMarkdownLine` and `hasMathSpan` it calls rather than carrying a
+second copy of either.
 
 [model-input.js](front/model-input.js) joined all three with slice 3, and sits
 **after `app.js`**, whose `editor` and `md` it reads at its own load time. It
-sits *before* `undo.js` and calls `undo` / `redo` anyway, which is the same rule
-`runCommand` follows: the call is at event time, so the function only has to be
-**present** in the bundle rather than defined by then — and since slice 6's step
-4 it is feature-tested besides, because one bundle deliberately lacks it.
-
-**Loading them is not running them.** `modelCoreEnabled()` is off until the
-stage 4 merge, so the editor still draws through `markdownToHtml`, the input
-layer registers no listeners, and everything below still describes what runs.
+sits *before* `undo.js` and calls `undo` / `redo` anyway: the call is at event
+time, so the function only has to be **present** in the bundle rather than
+defined by then — and it is feature-tested besides, because one bundle
+(`front/input-check.html`) deliberately lacks it.
 
 Skipping a registry is otherwise a bug, and where it is deliberate the reason is
 written down — `tabs.js` is absent from `ASSETS` because an exported document
-holds one document and has no file API.
+holds one document and has no file API, and `legacy-storage.js` because an
+exported document never reads the autosave.
 
 ### Document state
 
-The document lives in `editor.innerHTML` as HTML, always. Markdown is a
-boundary format: markdown-it parses on the way in, Turndown serialises on the
-way out. Nothing keeps a markdown copy in memory.
+**The document is a markdown model, and the DOM is drawn from it.**
+[front/model.js](front/model.js) holds it as blocks that tile the file's bytes,
+`modelRender` draws `#editor` from it through markdown-it's own renderer, and
+[front/model-input.js](front/model-input.js) cancels every `beforeinput` and
+makes each edit on the model, so the DOM changes only by a render. The next
+section is the model in detail; [docs/REWRITE.md](docs/REWRITE.md) is the
+design and D6 the decision.
 
-**This is the design being replaced.** TODO 3.1 ([tasks/3.1-editing-core-rewrite.md](tasks/3.1-editing-core-rewrite.md))
-rewrites the editing core so that a block-granular markdown model owns the
-document and the DOM is rendered from it — [docs/REWRITE.md](docs/REWRITE.md)
-is the design, D6 in [docs/DECISIONS.md](docs/DECISIONS.md) the decision. Until
-it lands on `main`, everything below describes the running code and still
-governs changes to it, with one rule from D4's amendment: no new format is
-written against contenteditable in the meantime.
+**Two doors and one way out.** A document arrives through
+`loadDocumentMarkdown` or `loadBlankDocument` in `app.js` — Open and Reload,
+the welcome document, upload, New, the boot restore, a tab this session has
+never shown, an exported document's boot — and nothing else assigns
+`editor.innerHTML` (the `undo` suite counts it in every file that might). It leaves through
+`documentMarkdown()`, which asks the model for the markdown a save writes:
+Save, Save As, Download, Copy markdown and the autosave all ask it, so an
+untouched block goes back as the bytes it was parsed from and only an edited
+one is composed. Turndown is not on that path any more; it converts what
+arrives as HTML from outside — a paste, a drop — and the table of contents
+`outline.js` builds.
 
-The replacement has begun and is the next section. It runs beside this design
-rather than over it: the model parses and re-emits a document today, and nothing
-in the app has heard of it.
+**Autosave holds that same markdown**, under the open document's `markdown`
+key (see `documentKey` below), written by `flushAutosave` on a one-second
+debounce, a tab switch and `beforeunload`. A model the emitter refuses to write
+leaves the last good autosave where it was and says so on the console. A
+browser whose autosave predates stage 4 holds HTML under `content` instead;
+`front/legacy-storage.js` converts it once at load and records
+`mandy-storage-version`.
 
 The `#editor` div in `index.html` ships **empty**. The welcome document is
-[front/welcome.md](front/welcome.md), fetched and rendered by `app.js` when
-there is no non-blank `localStorage["markdownContent"]` to restore. Edit the
-markdown, not the markup — and note `welcome.md` is a shell asset, so it needs
-its `sw.js` entry to survive offline.
+[front/welcome.md](front/welcome.md), fetched and loaded by `app.js` when there
+is no stored document to restore. Edit the markdown, not the markup — and note
+`welcome.md` is a shell asset, so it needs its `sw.js` entry to survive
+offline.
 
-LaTeX is the one exception worth knowing: its renderer destroys the source it
-renders from, so the source has to be stashed somewhere Turndown can find it
-again. Break that and the content round-trips to nothing — silently, because the
-document still looks right on screen.
+**Mermaid diagrams were removed on 2026-10-01.** A ` ```mermaid ` fence is an
+ordinary code block, shown as its source. What remains is the conversion of a
+diagram drawn before then and still in an old HTML autosave: the `mermaid`
+Turndown rule in `legacy-storage.js` turns the wrapper back into its fence.
 
-**Mermaid diagrams were removed on 2026-10-01.** There was no way to create
-one without writing the fence by hand, which is the thing this project exists
-to spare people. A ` ```mermaid ` fence is now an ordinary code block, shown as
-its source, and files are unaffected, since the fence was always the fence.
-What remains is compatibility for a document drawn before then, still in a
-browser's autosave or tab storage as the old wrapper — the SVG plus the source
-in a hidden `.mermaid-source`. `unwrapMermaidDiagrams` in `renderers.js` turns
-one back into its fenced code block wherever stored HTML enters the editor (the
-boot restore and a tab swap), and the `mermaid` Turndown rule in `app.js` does
-the same for any that reach a save another way. Drop the rule and such a
-document saves the SVG's text in place of the diagram.
+**Maths** is the one construct whose rendering destroys its source, and the
+model sidesteps that by never reading the rendering: an equation is an atom in
+the model, holding its TeX. On screen:
 
-- **LaTeX** — MathJax leaves nothing but glyphs behind, so `stampLatexSource`
-  in `renderers.js` copies the original TeX onto each `<mjx-container>` as
-  `data-tex` / `data-display`, reading it out of `MathJax.startup.document.math`
-  while the two are still associated. The `mathjax` Turndown rule in `app.js`
-  turns those attributes back into `$…$` / `$$…$$`. The stamp is an attribute
-  rather than an element so it survives being written into an exported file and
-  parsed back; an existing stamp is never overwritten, because MathJax
-  re-typesets already-rendered maths on load and reports MathML the second time.
+- **`<span data-math>`** wraps what markdown-parser.js's `math` rule writes, so
+  an equation is one node — one character in the model's offset space — before
+  and after MathJax runs.
+- **`renderAfterModel`** in `renderers.js` typesets what each render built, and
+  puts back a cached copy of an equation it has typeset before, by source,
+  synchronously, so a render never paints a frame of TeX.
+- **`stampLatexSource`** copies the TeX onto each `<mjx-container>` as
+  `data-tex` / `data-display` while MathJax still knows it. The cache, the
+  clipboard, the PDF and Word exports' pictures of equations and the `mathjax`
+  Turndown rule (for an equation pasted back) all read it. An existing stamp is
+  never overwritten, because MathJax re-typesets already-rendered maths in an
+  exported document and reports MathML the second time.
+- **A stamped container is `contenteditable="false"`**, with its wrapper. Left
+  editable, Firefox walked the caret into MathJax's own elements and letters
+  typed there vanished. An equation at a line's edge gets a caret stop from the
+  DOM builder, which every walk counts as nothing.
 
-  **The stamp is also what `renderLatex` typesets from.** Maths already typeset
-  is put back to its `$…$` source and typeset afresh, never typeset a second
-  time as it stands: the `tex-mml-chtml` bundle reads MathML as input, so a
-  second pass typeset each container's own assistive MathML and nested a copy
-  inside it — on every reload, since the boot restores typeset HTML, and on
-  every Paste markdown — and the autosave kept every copy. That pass was also,
-  by accident, what regenerated MathJax's stylesheet for restored maths, which
-  typesetting afresh now does on purpose. It happens only once MathJax has
-  loaded: offline the stamped containers stay, and a save still reads them.
-  The editable export's own MathJax is a separate load and is untouched.
-
-  **A stamped container is also `contenteditable="false"`**, set in the same
-  pass as the stamp. Left editable, Firefox walked the caret into MathJax's
-  own elements — it vanished for several presses — and letters typed there
-  landed inside the container, where nothing showed them and the `mathjax`
-  rule, which writes from the stamp, dropped them on save. Uneditable, every
-  engine steps over an equation in one press and deletes it whole.
-
-There is a third rule, and it is on the way *in* rather than the way out.
-markdown-it has no notion of maths, so `$…$` used to reach MathJax only by
-passing through as text — with every inline rule applied to it en route.
-`\{` and `\}` resolved as markdown escapes before MathJax ever saw them, and
-`$x = a*b*c$` came back italicised with the asterisks gone. `mathSpan` and the
-`math` rule in [markdown-parser.js](front/markdown-parser.js) claim the span
-ahead of markdown-it's `escape` rule and re-emit the source verbatim, so the
-parser now hands MathJax what the author wrote.
-
-**Since 2026-09-20 the rule wraps what it writes in `<span data-math>`**, and
-the reason is the selection mapping rather than anything about maths: TODO
-3.1's stage 2 counts an equation as **one character**, and until MathJax has run
-there is no element to count — the source it re-emits is bare text, so
-`a $x = a*b*c$ b` is fifteen characters in the DOM where the model says five,
-and the same model maps to two different DOMs. The wrapper is one node in both
-states. Every objection to it was measured rather than argued: MathJax typesets
-*inside* the span and leaves it standing, `normaliseEditorMarkup` unwraps a
-`<span>` only when it carries a `style`, Turndown's output is byte-identical to
-before in both states so nothing reaches a file differently, and layout is
-pixel-identical inline and display, so there is no CSS for it.
-
-Two things follow from where it sits: the rule runs before `backticks`
-in the chain but positionally after it, so `` `$HOME` `` is still code, not
-maths; and it decides equation-versus-price on two heuristics — an opening `$`
-is never followed by whitespace, a closing one never by a digit — which
-`hasMathSpan` in `markdown-style.js` deliberately repeats, so the re-wrapper
-and the parser cannot disagree about what is an equation.
-
-Display maths broken across a blank line is still not handled. It does not need
-to be: a blank line inside `$$…$$` is an error in TeX itself, and markdown-it
-has split the paragraph in two before any inline rule runs.
+On the way *in*, markdown-it has no notion of maths, so `$…$` used to pass
+through every inline rule: `\{` and `\}` resolved as escapes and `$x = a*b*c$`
+came back italicised. `mathSpan` and the `math` rule in
+[markdown-parser.js](front/markdown-parser.js) claim the span ahead of the
+`escape` rule. The rule runs before `backticks` in the chain but positionally
+after it, so `` `$HOME` `` is still code; and it decides equation-versus-price on
+two heuristics — an opening `$` is never followed by whitespace, a closing one
+never by a digit — which `hasMathSpan` in `markdown-style.js` repeats, so the
+line wrapper and the parser cannot disagree about what is an equation. Display
+maths broken across a blank line is not handled, and need not be: a blank line
+inside `$$…$$` is an error in TeX itself.
 
 ### The model
 
-[model.js](front/model.js) is the start of what replaces the section above.
-**Stage 1 closed on 2026-09-18** and stage 2's slice 1 — the renderer — on
-2026-09-20; where each stage stands is in
-[docs/REWRITE.md](docs/REWRITE.md). Everything down to the renderer is pure
+[model.js](front/model.js) is the document, and this section is how it came to
+be, stage by stage. **It was written as each slice landed**, while the model
+ran behind a flag beside the old core: where it says "under the flag" or "under
+the model core", read *now*, since the flag went in stage 4's slice 4 and the
+old core in slice 5; where it names an old-core function as running, that
+function is gone. The closing paragraph says what stage 4 changed. Where each
+stage stands is in [docs/REWRITE.md](docs/REWRITE.md). Everything down to the renderer is pure
 string and token work, which is what lets the `model` suite drive it with no DOM
 anywhere; the renderer's own DOM half is the exception, and the end of this
 section says how it is watched instead.
@@ -1214,17 +1094,13 @@ meaning the same thing. Four things about it:
   closed by construction. Its other half goes more quietly still: the browser
   cannot rewrite a trailing space behind our back when it is not the one
   writing.
-- **`runCommand` refuses under the model core, except `copy`**, and that is a measurement
-  rather than tidiness: Chrome 152, `execCommand` fires `input` but **never
-  `beforeinput`**, so it cannot be intercepted at all. Every call site would be
-  a DOM mutation the model can neither cancel nor hear about. The formats and
-  Clear therefore do nothing while the flag is on — slices 5 and 7 bring them
-  back as model commands, and `execcommand.js` is deleted at the end of them.
-  Tab came back in slice 4. `runCommand` is not the only door that had to be
-  shut: `app.js`'s Tab handler and its empty-`<li>` keydown handler both do DOM
-  surgery **without** going through it, so both return early under the flag,
-  and the two Format-menu items call `modelIndentAtCaret` instead of falling
-  through to `outdentListItem`.
+- **No `execCommand` edits anything**, and that is a measurement rather than
+  tidiness: Chrome 152, `execCommand` fires `input` but **never
+  `beforeinput`**, so it cannot be intercepted at all. Every call would be a
+  DOM mutation the model can neither cancel nor hear about. So the formats,
+  Clear and the list moves are model commands, and the one `execCommand` left
+  in `front/` is the Edit menu's `copy`, which edits nothing — the `notify`
+  suite's scan allows exactly that one.
 - **`undo.js` refused too, between 2026-09-21 and slice 6's step 2, and it was
   the door nobody shut.** Found 2026-09-21,
   after the marker above had been claiming for a day that Ctrl+Z does nothing
@@ -1432,11 +1308,13 @@ What is worth knowing:
   `dropEffect` is set alongside it, because the cursor has to promise what will
   actually happen — a move for a drag that started here, a copy for anything
   from outside, which we cannot remove from wherever it came from.
-- **`htmlFragmentToMarkdown` is the Turndown half alone.** `htmlToMarkdown` is a
-  *document* function — it appends the reference definitions, re-wraps to the
-  sniffed width and restores the opened file's bytes — and none of that means
-  anything for a fragment from somebody else's clipboard. Extracted rather than
-  copied so the two cannot drift.
+- **`htmlFragmentToMarkdown` is the Turndown half alone.** The old core's
+  document conversion also appended the reference definitions, re-wrapped to
+  the sniffed width and restored the opened file's bytes, and none of that means
+  anything for a fragment from somebody else's clipboard. That conversion is
+  `legacy-storage.js`'s now, for the old autosave alone; a fragment never had a
+  `referenceLink` rule to resolve against (D18), so a pasted reference link
+  comes in inline.
 - **Both converters are feature-tested, and that is not defensive coding.**
   `front/input-check.html` deliberately ships no `app.js`, so there the HTML
   branch falls through to the plain text and the page says so. The questions
@@ -1745,36 +1623,26 @@ lost the `>` of the quote it landed in. WebKit reports Shift+Enter in a cell as
 on one document ending in a Save As and a reopen. Stage 4, reintegration, is
 next, and the irreversible merge to `main` comes at its end.
 
-**The new core's flag.** `modelCoreEnabled()` is off until the stage 4 merge,
-and `?core=model` / `?core=legacy` set it for good, resolved once per page load.
-**With it on the toolbar carries a `model core` marker**, which is a link back
-to `?core=legacy` — added 2026-09-21, because the flag's whole purpose is a hand
-A/B and there was no way to tell which half of it you were looking at. That is
-worse than having no comparison: slice 1's rule is that the model renders
-*identically* to `markdownToHtml`, so "it looks the same" is the expected answer
-and not evidence of anything, and the differences are all things that stop
-working; the marker's `title` once named what was left, and does not now,
-because nothing the plan knows of is. One function
-in `model.js`, one call site and one CSS rule, because it goes at stage 4 with
-the flag.
-It is not for `main` — no merge is planned before stage 4 — it is so the branch
-stays usable while the input layer is half-built, and so an A/B of the same
-document by hand is possible, which is the only way a rendering divergence gets
-*seen* rather than inferred. Two cores want two `localStorage`s, so running both
-at once means `MANDY_PORT`.
+**Stage 4 put the model in charge of the file**, 2026-11-07 to 2026-11-14 —
+reintegration, in seven slices, each in REWRITE.md. What it changed from
+outside:
 
-With the flag on, three things follow that do not with it off. Markdown reaching
-the editor goes through the model rather than through `markdownToHtml`; the
-`content` key still holds **HTML**, so the boot restore and a tab adopt convert
-it with the whole of `htmlToMarkdown` — the same call the save path makes, which
-is why a tab needs no model bundle and `tabs.js` costs one line. And the save
-path is **unchanged**: `file-api.js` still reads `editor.innerHTML`, Turndown
-still serialises it, and `indexMarkdownBlocks` / `restoreSourceWrapping` still
-run. The model owns *editing* — every keystroke, paste and undo goes through it,
-and the DOM changes only by `modelRender` — but the file belongs to the old core
-until stage 4: a save serialises the DOM the model rendered, not the model. That
-is what lets every slice before stage 4 be wrong without a file on disk being
-wrong.
+- **The model writes the file.** Save, Save As, Download and Copy markdown ask
+  `documentMarkdown()`, which is `modelDocumentMarkdown` over the current
+  document, and a document the emitter refuses is reported rather than written
+  (slice 1). Every file operation binds its tab and its model when it starts,
+  and refuses to read or write once the screen has moved on, so an action
+  cannot land in another tab's document (slice 3, decision 4).
+- **The exports start from the model.** The editable export carries its
+  document as markdown in `<script type="text/markdown" id="app-document">`,
+  and the static, PDF and Word exports clone the editor through
+  `modelExportClone`, which strips the renderer's view markup (slice 2).
+- **The autosave is markdown, and the flag is gone** (slice 4). The old HTML
+  autosave is converted once by `legacy-storage.js`, which takes the source
+  itself for a document nobody edited (decision 2) and keeps nothing to undo
+  the conversion with (decision 3).
+- **The old core is deleted** (slice 5), and its check pages and the server's
+  test routes with it (slice 6).
 
 ### Links and heading anchors
 
@@ -1813,14 +1681,19 @@ Two traps here, both of which write into the user's file if you get them wrong:
   `#editor[contenteditable="true"]` so the static export — where links are
   ordinary links needing no modifier — does not advertise a shortcut.
 
-Autosave writes `editor.innerHTML` to the open document's content key on a 1s
-debounce — separate from, and unaware of, the file on disk.
+Autosave writes the model's markdown to the open document's `markdown` key on a
+1s debounce — separate from, and unaware of, the file on disk.
 
 **Every storage key naming part of the open document goes through
-`documentKey(name)` in `app.js`, never a literal.** There are six — `content`,
-`source`, `path`, `dirty`, `mtime`, `dir` — and `DOCUMENT_KEYS` in `app.js`
-holds the flat names they had while Mandy could only hold one document
-(`markdownContent`, `mandy-current-file` and so on). [tabs.js](front/tabs.js)
+`documentKey(name)` in `app.js`, never a literal.** There are five —
+`markdown`, `path`, `dirty`, `mtime`, `dir` — and `DOCUMENT_KEYS` in `app.js`
+holds the flat names they have while Mandy holds one document (`mandy-markdown`,
+`mandy-current-file` and so on). `markdown` replaced the old `content` (the
+editor's HTML) and `source` (the markdown it was opened from) in stage 4's slice
+4, under a new name so that no stored document is ever asked which it holds.
+**Every reader goes through `storedDocument()`**, because a document
+`legacy-storage.js` converted on this load but could not write is held in
+memory there. [tabs.js](front/tabs.js)
 scopes them to the active tab when it is loaded; without it — an exported
 document, and the test suites that boot the same modules without it — the flat
 names are what everything resolves to. One indirection in one place, so the
@@ -1840,9 +1713,12 @@ active tab's key by then.
 it are load-bearing.** `switchToTab` gates on `tabsSwitchAllowed()`, then
 `flushAutosave()` — while `documentKey` still resolves to the *outgoing* tab,
 since the timer resolves its key when it fires and a flush after the flip would
-write the outgoing document under the incoming tab's name — then parks all three
-bundles onto the outgoing record, flips `activeTabId`, and only then swaps
-`editor.innerHTML` and adopts. **Content before adopt**: `undoAdopt` trusts the
+write the outgoing document under the incoming tab's name — then parks the
+history, file and style bundles and **the model itself** onto the outgoing
+record, flips `activeTabId`, and only then puts the incoming document on screen
+and adopts. A parked model is rendered as it stands, with no parse, so it comes
+back as the same object its history's states were forked from; a tab never
+shown this session is loaded from its stored markdown. **Content before adopt**: `undoAdopt` trusts the
 bundle to describe what is on screen and never re-snapshots. **Undo before
 file**: `cleanPosition` is an id minted inside one history bundle, so the file
 state has to land on top of the history it was measured against, or a dirty
@@ -1850,10 +1726,11 @@ document reports clean — which switches off the unsaved-work guard and the
 `beforeunload` warning together, and only when two tabs' edit counts line up.
 
 A tab this session has never shown — one restored from a page load — is an id
-and six storage keys, with no parked bundle and no undo history, which does not
+and five storage keys, with no parked bundle and no undo history, which does not
 survive a reload. So an adopt with no bundle hydrates from storage instead:
-`fileAdoptStored()` and `markdownStyleAdoptStored()` are the load-time restore
-reused rather than a second reading of the same keys, which is why
+`loadDocumentMarkdown` sniffs the style from the stored markdown, and
+`fileAdoptStored()` is the load-time restore reused rather than a second
+reading of the same keys, which is why
 `restoreCurrentFile` is a function with two callers rather than the IIFE it was.
 `closeTab` is the one operation that neither parks nor flushes: the document is
 being thrown away, and flushing would write it straight back under the key the
@@ -2004,8 +1881,8 @@ starting a document over, and the wrong one for emptying the document you have
 open, which should read like Ctrl+A then Delete: the content goes, the file
 you're editing doesn't. So New kept all of Clear's old weight — same handler
 body, same guard, same reset — and Clear became an ordinary edit:
-`runCommand("selectAll")` then `runCommand("delete")`, which raises `input` the
-same way typing does, so it undoes as one step and needs no dialog of its own.
+one model edit (`modelInputClear`), which raises `input` the same way typing
+does, so it undoes as one step and needs no dialog of its own.
 Clear no longer touches `file-api.js` at all — nothing it does can leave a
 filename pointed at the wrong content, so there is nothing for that module to
 guard.
@@ -2018,254 +1895,99 @@ after an in-place reset, and there is no in-place reset left for it to follow.
 
 ### Save fidelity
 
-Turndown serialises to its own house style, so a save used to rewrite every
-list, rule, emphasis and line break in the file — spec-legal on both sides, and
-an unmergeable diff. [markdown-style.js](front/markdown-style.js) answers that
-from the source rather than from a house style, in three layers, cheapest last
-(Decision D1 in [docs/DECISIONS.md](docs/DECISIONS.md) records why, and what it deliberately does
-not cover):
+D1 is the promise: **a saved file gets its own bytes back**, and an edit costs
+the diff of the edit. Under the old core that took three layers of repair around
+Turndown's house style; under the model it is mostly structural, and the repair
+layers survive only inside the old autosave's conversion.
 
-1.  **Sniff.** `sniffMarkdownStyle` reads the incoming markdown for the
-    conventions it already follows — rule character, bullet marker and pad (per
-    nesting depth, since alternating by level is common), emphasis delimiters,
-    ordered-list delimiter and whether it was numbered all-`1.`, autolinks, the
-    hard-break spelling (two trailing spaces or a backslash, document-wide like
-    the emphasis delimiters, so a file mixing both has its minority one
-    rewritten in every block Turndown serialises — which since 2026-09-18 is
-    only an **edited** block, because layer 3's key stopped reading the break
-    spelling; the emphasis delimiter is still rewritten everywhere, and both
-    halves are TODO 2.3), and the wrap width. `adoptMarkdownStyle` in `app.js`
-    pushes the Turndown-option subset onto the live options object; the rest is
-    read by the `listItem` and `autolink` rules. Every default is Turndown's
-    own, so a document that sniffs to nothing behaves exactly as it did before
-    any of this.
-2.  **Re-wrap.** `reflowMarkdown` breaks the serialiser's one-line paragraphs
-    back to the sniffed width. Five guards, each of which silently corrupts the
-    file if dropped: fenced code, table rows and maths — a `$$` display block,
-    read as fence-like state, and any line carrying a `$…$` span — are never
-    touched, and a break never strands a `#`, `-`, `1.`, `>` or `---` at the
-    start of a line, where it reparses as a block marker. A blockquote's `> ` chain and a list item's
-    content indent are re-applied to every continuation line.
+- **An untouched block is its source.** Every character of a file is in
+  exactly one block's `source` or `separator`, and `modelSerialise`
+  concatenates them, so a block nobody edited goes back as the bytes it was
+  parsed from — not because anything restored them, but because nothing threw
+  them away. `modelTouch` is the one door to `source = null`, and it walks up,
+  so only the edited block and its containers are re-emitted, and a container
+  re-emits from its children rather than around them.
+- **An edited block is composed from what it recorded.** Each node keeps its
+  spelling as written — a mark its delimiter, a heading its ATX or setext
+  shape, an item its marker and continuation indent, a quote its `>` chain per
+  line, a hard break its two spaces or backslash — and `modelEmitLeaf` puts the
+  affixes back around the inline source. So a block written the minority way
+  keeps its own spelling when edited, which closed TODO 2.3.
+- **New content follows the document as it is now** (stage 4's decision 1).
+  `sniffMarkdownStyle` in [markdown-style.js](front/markdown-style.js) reads the
+  conventions the document follows — rule character, bullet marker and pad per
+  nesting depth, emphasis delimiters, ordered-list delimiter and numbering,
+  autolinks, the hard-break spelling, table convention and wrap width — every
+  time a document arrives, including from the autosave, which holds the
+  document as it now stands. A new mark takes the delimiter the document's own
+  marks already use most, counted off the model's tree.
+- **Re-wrapping is one block's, and only a line the edit made too long.**
+  `modelEmitLeaf` hands an over-long composed line to `wrapMarkdownLine` with
+  the prefixes it recorded at parse, at the sniffed width. Never a heading,
+  never a line carrying maths, never a line already inside the width. The width
+  is measured, not assumed: `sniffWrapWidth` takes the **95th percentile** of
+  prose line lengths and gives up (width 0, no wrap) on a file with fewer than
+  three wrapped paragraphs, fewer than ten prose lines, or a result outside
+  40–120 columns — so a file like README.md that is not hard-wrapped is never
+  wrapped. A break never strands a `#`, `-`, `1.`, `>` or `---` at the start of
+  a line, where it would reparse as a block marker.
+- **An edited table is laid out in the document's convention** by
+  `formatMarkdownTable` — compact, one-space or padded to width, with or without
+  edge pipes — read by `sniffTableConvention` **by reproduction**: a table keeps
+  to a convention when the formatter writes it back byte for byte, and one that
+  keeps to none is not guessed at. A table that keeps to none keeps its
+  untouched lines and writes the edited row alone. That is TODO 2.1.
+- **A reference link stays a reference.** `referenceAwareLink` in
+  [markdown-parser.js](front/markdown-parser.js) replaces markdown-it's own
+  inline `link` rule — a near-verbatim copy of markdown-it 13.0.1's, so **an
+  upgrade of the CDN markdown-it needs this diffed against the new source** —
+  and stamps the label a link resolved through as `data-ref-label`. The model's
+  emitter writes `[text][label]` off the stamp when it rebuilds a link, if the
+  document still defines the label (`modelReferenceLabels`, which asks the
+  parser, so a definition wrapped onto a second line counts); otherwise the
+  inline form. A definition is an ordinary block in its own position, so it
+  stays where the author put it. **A reference *image* is the one thing this
+  cannot reach**: the stamp is on links only, so an edited image resolved
+  through a reference comes back inline.
 
-    The width itself is measured rather than assumed, and has to be exact:
-    wrapping is greedy, so a file wrapped at 80 reproduces its own breaks only
-    if 80 is what comes back — guess 82 and every break in the document moves.
-    `sniffWrapWidth` therefore takes the **95th percentile** of prose line
-    lengths rather than the longest line, which one unbreakable URL would
-    otherwise set, and gives up entirely (width 0, no re-wrap) on a file with
-    fewer than three wrapped paragraphs, fewer than ten prose lines, or a
-    result outside 40–120 columns. It stays a heuristic: a file that mixes
-    one-sentence-per-line with wrapped prose has no single width and gets
-    whichever wins. The cost of a bad guess is bounded by layer 3, which only
-    lets the width near blocks that actually changed.
-3.  **Restore.** The one that actually does the work. Re-wrapping only ever
-    guesses at how the author broke their lines, and measured against this
-    repo's own files it guesses badly — they break after a sentence, or let a
-    line run long rather than split a link. So `indexMarkdownBlocks` indexes
-    every segment of the opened file under a whitespace-insensitive key, and
-    `restoreSourceWrapping` gives back the original bytes for any segment whose
-    text still matches. An edited segment misses and falls through to layer 2.
+**One category is deliberately exempt: whitespace nobody can see.** D3 is the
+argument. U+00A0 is normalised to a plain space at the boundary — typed text in
+`modelNormaliseTyped`, pasted HTML in `normaliseNbsp` before Turndown, which
+also lets the code-span shield see a trailing space — and the engine can no
+longer write one in place of a trailing space, since it writes nothing.
+`sanitisePastedHtml` drops the empty inline wrappers and blank `<p>`/`<div>`
+blocks a paste brings in. It is targeted rather than a round-trip through
+markdown, so a pasted page keeps its bold, links and tables; and
+`isGhostElement` treats `<br>` asymmetrically on purpose — a `<p>` or `<div>`
+holding only one *is* the ghost line Word and Docs emit, while inside an inline
+element it is a real break. The predicate is a pure function because the test
+stub has no HTML parser, so the decision is testable and the walk is not.
 
-The index is keyed on **content, not position**, and that is the whole trick.
-A source map into the DOM would have to survive contenteditable splitting a node
-on Enter, merging two on Backspace and restoring stale markup on undo; a content
-key cannot go stale, because a segment that changed is exactly the segment that
-should miss. Segments are consumed as matched, so a repeated paragraph gets each
-original back in turn.
+**Turndown converts what arrives as HTML**, and nothing else: a paste, a drop,
+and the table of contents. Its rules in `app.js` exist because Turndown 7 ships
+no GFM: `table` and its helpers (laying a pasted table out in the document's
+convention, with U+0000-marked pieces handed up from the cell and row rules),
+`strikethrough`, a `listItem` that takes the pad and numbering from the
+document, `autolink` (gated on the sniff, and on a scheme, since `<notes.md>` is
+not an autolink), `mathjax` (an equation copied out of a document comes back as
+its stamped TeX) and `modelFiller` (the renderer's caret stops and filler
+`<br>`s are not content). There is **no `referenceLink` rule** on it — D18: a
+pasted fragment is parsed with no definitions, so a reference would come back as
+literal brackets.
 
-The segment boundaries in `markdownSegments` are load-bearing and non-obvious:
-they split on list markers, headings and fences as well as blank lines, because
-the two sides disagree about blank lines. A tight list whose items contain
-sub-paragraphs is *loose* by CommonMark's definition, so markdown-it wraps each
-item in `<p>` and Turndown puts a blank line back between items the author wrote
-flush. Match whole blank-line-separated blocks and every such list fails to
-match — which in this repo's own `docs/TODO.md` is most of the file. Each segment
-also carries the separator that followed it, so a restored run comes back tight
-or loose the way the author had it.
+**The old core's three layers live on in
+[front/legacy-storage.js](front/legacy-storage.js)**, for the one-time
+conversion of an old HTML autosave and nothing else: the sniff, the
+whole-document `reflowMarkdown`, and the restore layer (`indexMarkdownBlocks` /
+`restoreSourceWrapping`, which keyed every segment of the opened file on its
+whitespace-insensitive content and handed back the original bytes of any that
+still matched), with the reference scan and the `referenceLink` and `mermaid`
+rules, which fire only while it converts. Its own comments carry the design as
+it was. It is deleted when stage 5 closes.
 
-**That separator describes the segment's old neighbour, so it is only handed
-to that one.** A tight `\n` in front of anything but a block marker is a lazy
-continuation: delete a list's last item, give the item before it back its
-`\n`, and the paragraph after the list saved *into* the bullet — on screen
-nothing wrong, reopened and it was merged. `restoredSeparator` keeps the
-source's tight separator only when the segment that follows is still its old
-successor, or a list item still follows a list item, so deleting or editing
-an item beside it leaves a list tight; anywhere else the serialiser's stands.
-
-The key ignores whitespace, but a pipe table needs more than that: the `table`
-rule writes its own cell padding and its own three-dash delimiter, so `|---|---|`
-and `| --- | --- |` are the same table and would never be the same key.
-`normaliseTableRows` collapses padding around pipes and the delimiter row's dash
-runs before the key is taken — but only in a block that holds a delimiter row, so
-a `---` rule and a paragraph containing a pipe both stay literal.
-
-**The key has to ignore everything the serialiser rewrites**, or a block that
-changed in no other way stops matching itself, misses the index, and is handed
-to layer 2 — rewritten and re-wrapped despite the user never touching it. That
-is why `normaliseTableRows` and the punctuation-unescape are in
-`markdownBlockKey` at all, and **layer 1's own sniffed options were the case
-nobody covered**, which is TODO 2.3. Turndown writes the sniffed hard break and
-emphasis delimiter into every block before layer 3 runs, so a block spelling
-either the minority way keyed differently from its own source. It loses no
-content — the break is still a break — but "an untouched block comes back
-byte-identical" is layer 3's whole promise, and that is where it was not true.
-
-**The hard break is fixed; the emphasis delimiter is not, and the split is
-measured rather than chosen.** `markdownBlockKey` drops a trailing backslash
-before it collapses whitespace, so the two spellings of a break land on one key:
-measured across all six oracle files, that makes **no two different blocks key
-alike**. The emphasis delimiter has no such normalisation available without a
-parser — folding `_` into `*` keys the rules `***` and `___` identically on
-`tests/fixtures/torture.md`, so the restore layer could hand back the wrong
-bytes, which is worse than the bug — and telling a delimiter from a
-`snake_case` identifier or a code span is a second parser free to disagree with
-the first. The model records each node's spelling as written, so that half waits
-for TODO 3.1 rather than for something to be invented.
-
-**It is fixed for an untouched block only, which is exactly what layer 3
-promises.** Edit a paragraph whose break is spelt the minority way and it still
-comes back in the document's spelling, because Turndown has one setting for the
-whole file. That residue is 3.1's, where the spelling is per node.
-
-CLAUDE.md, README.md and welcome.md all round-trip byte-identical. Editing one
-word in CLAUDE.md changes exactly the paragraph it was in.
-
-**One category is deliberately exempt: whitespace nobody can see.** Decision D3
-in [docs/DECISIONS.md](docs/DECISIONS.md) is the argument; the mechanics are two functions
-and where they sit.
-
-`normaliseNbsp` converts U+00A0 — and the `&nbsp;` entity, which is how
-`innerHTML` gives the character back — to a plain space. It runs *before*
-Turndown and on the HTML, which is load-bearing in both respects. On the
-markdown after `restoreSourceWrapping` it would strip a U+00A0 the author really
-wrote out of a block nobody touched, destroying exactly the fidelity D1 promises;
-running it here means only edited text is normalised. And the code-span shield
-below it tests for a literal space, so converting first is also what lets the
-shield see a trailing one at the edge of a span — an unconverted NBSP was
-invisible to the shield's `/ $/` while Turndown's own edge-trim saw it perfectly
-well (JS `\s` matches U+00A0) and moved the character outside the backticks and
-into the file. One conversion, two bugs.
-
-`sanitisePastedHtml` handles the way in. It drops empty inline wrappers and the
-blank `<p>`/`<div>` blocks a paste leaves behind, which render as a hairline and
-space bullets unevenly. Two things about it:
-
-- **It is targeted, not a round-trip through markdown.** Pasting a web page
-  should keep its bold, its links and its tables; only what nobody can see goes.
-- **`isGhostElement` treats `<br>` asymmetrically, and that is the point.** A
-  `<p>` or `<div>` whose only content is one *is* the ghost line — that is the
-  markup Word and Docs emit for a blank one. Inside an inline element the same
-  tag is a real break in a real line, and removing its parent would take the
-  break with it. The predicate is a separate pure function from the traversal
-  because the test stub has no HTML parser, so the decision is testable and the
-  walk over it is not.
-
-Neither reaches the live DOM in between, so a U+00A0 the browser writes while you
-type still travels if you select that text and paste it into another application.
-That is TODO 1.4 and is known rather than overlooked.
-
-Two Turndown rules in `app.js` exist for the same reason. **`table`** (with
-`tableCell` / `tableRow` / `tableSection`) is not an optimisation: Turndown 7
-ships no table rule at all — GFM tables live in `turndown-plugin-gfm`, which
-this project does not carry — so a `<table>` fell through to the default and
-every cell came back as its own paragraph. Opening a file with a table and
-saving it destroyed the table, unrecoverably, with nothing wrong on screen
-either side of the save. **Since 2026-10-31 the `table` rule lays an edited
-table out in the document's own convention** — compact, one-space or padded to
-width, with or without edge pipes — through `formatMarkdownTable` in
-`markdown-style.js`, which is TODO 2.1. The cell and row rules hand their pieces
-up marked with U+0000 and the `table` rule formats once every row is in, since a
-cell's width depends on its whole column. The convention is the document's
-commonest, read by `sniffTableConvention` **by reproduction**: a table keeps to
-a convention when the formatter can write it back byte for byte, and one that
-keeps to none is not guessed at. **`listItem`** overrides a core rule to make the pad and
-the numbering come from the document instead of Turndown's hardcoded `*   one` /
-`1.  one`.
-
-`autolink` is the one rule gated on a sniff, and it needs the scheme check it
-carries: `[notes](notes.md)` also has matching text and href, and `<notes.md>`
-is not an autolink — CommonMark renders it as literal text.
-
-**Reference-style links are a third problem in this family, and the one none
-of the above could reach.** `[text][label]` and `[text](url)` parse to the
-identical `link_open` token once markdown-it resolves the reference — same
-href, same title, nothing left to say which syntax the author wrote — so
-Turndown always serialised every link as inline, and the `[label]: url`
-definition it depended on had no DOM node to survive on and simply vanished.
-A document that cited one URL twenty times over a reference arrived with one
-definition and would have left with twenty copies, unrecoverably.
-
-The fix is the same two-part shape as LaTeX's: stash what parsing
-would otherwise destroy, read it back at serialise time.
-
-- **`referenceAwareLink` in `markdown-parser.js` replaces markdown-it's own
-  inline `link` rule** via `md.inline.ruler.at("link", …)`, rather than being layered
-  alongside it — the two syntaxes share one function with no seam to hook, so
-  this is a near-verbatim copy of markdown-it 13.0.1's own
-  `lib/rules_inline/link.js` with one addition: when the reference branch
-  resolves, it stamps the token with `data-ref-label`, the raw label text as
-  written. Copied rather than reimplemented from scratch for the same reason
-  execCommand is not reimplemented (D4) — label matching has its own escaping
-  and nesting rules, and `state.md.helpers.parseLinkLabel` already gets them
-  right. An upgrade of the CDN markdown-it version needs this diffed against
-  the new source, not just left in place.
-- **`scanReferenceDefinitions` reads the raw markdown a document arrived
-  with** for `[label]: destination "title"` lines — skipping fenced code —
-  and keys their exact source line by label. `adoptMarkdownStyle` runs it
-  alongside the style sniff and the block index, so it shares their lifecycle:
-  rebuilt on every open, reload and restore-from-autosave, reset on New.
-  Deliberately narrow: only the common single-line form is recognised, and a
-  definition markdown-it parses but this regex misses simply never finds a
-  match at save time — the link that used it saves as a plain inline link
-  instead of losing its target.
-- **The `referenceLink` Turndown rule reads the stamp back off the `<a>`,**
-  confirms `scanReferenceDefinitions` still has that label, and writes
-  `[text][label]` instead of the default. It records which labels it actually
-  used (`usedReferenceLabels`, reset at the top of every `htmlToMarkdown`
-  call), and `appendReferenceDefinitions` appends each one's exact original
-  line — never a regenerated `[label]: url`, so an untouched definition
-  restores byte-for-byte the same way an untouched paragraph does — after a
-  blank line at the end of the document, regardless of where the source
-  placed it: a definition has no DOM node to track a position with, so
-  "collected once at the end" is deliberate rather than a gap. A label used
-  twice gets one definition; a label no longer used by anything gets none.
-
-  **The rule never reads the href**, so anything that changes a link's address
-  has to drop the stamp or the change is thrown away on save. Link… does, in
-  `retargetLink`: a retargeted reference link saves inline, and its definition
-  stays for any other link using the label. An Update to the same address keeps
-  the stamp and the reference form.
-- **`isReferenceDefinitionLine` in `markdown-style.js`** keeps
-  `reflowMarkdown` from ever wrapping a definition line — the destination is
-  one word with nowhere to break, so wrapping would either overflow anyway or
-  fold it onto a continuation line at an indent CommonMark never promised
-  meant anything.
-
-Three things this does not reach, all consequences of the same root cause —
-markdown-it giving a definition no DOM node — and all accepted rather than
-solved. **A definition spanning more than one line** is invisible to the
-scan, so a reference resolved through one saves as a plain inline link
-instead. **An edited or freshly-typed reference link** — one whose usage
-syntax does not byte-match what the source wrote, which includes every
-`[text][]` or bare `[text]` shortcut form, since the rule always writes the
-explicit `[text][label]` — falls out of the segment-matching restore the same
-way any edited paragraph does, and saves in the explicit form rather than the
-collapsed one the author chose. Neither of those loses the link or the
-definition; both just cost the byte-perfection an untouched, already-explicit
-reference gets for free.
-
-**A reference *image* is the third, and it is the one that does lose
-something.** Measured 2026-09-18 while building slice 3's step 4:
-`referenceAwareLink` replaces markdown-it's inline `link` rule and nothing
-else, so `![alt][label]` gets no `data-ref-label` at all — and the
-`referenceLink` rule filters on `nodeName !== "A"` besides. So an image
-resolved through a reference always serialises inline, and if it was the only
-use of that label the definition is dropped with it. Reaching it means copying
-markdown-it's `image` rule the way its `link` rule was copied, which is worth
-doing under 3.1's parser configuration rather than bolted onto this one; the
-model retires the first of these three by construction (a definition is an
-ordinary block, so a wrapped one is only a taller one) and the rewrite is where
-the other two belong too.
+[tests/fixtures/break-test.md](tests/fixtures/break-test.md) is the document
+the hard-break and wrap behaviour is checked against, by hand or by
+`open-edit-save.spec.mjs` — see Tests.
 
 ### Lazy loading
 
@@ -2294,10 +2016,12 @@ There are two, and they are different deliverables:
   anyone's `.md`. See the outline section below.
 - **Editable** ([html-export.js](front/html-export.js)) — bundles the editor
   *with* the document so recipients can edit in-browser and send it back.
-  **Under the model core the document travels as markdown** (stage 4's slice
-  2): escaped in `<script type="text/markdown" id="app-document">`, with an
-  empty editor, and the boot loads it through `loadDocumentMarkdown` whichever
-  core is running. A file without that element keeps the HTML in its editor.
+  **The document travels as markdown** (stage 4's slice 2): escaped in
+  `<script type="text/markdown" id="app-document">`, with an empty editor, and
+  the boot loads it through `loadDocumentMarkdown`. A file exported before then
+  carries HTML in its editor instead and runs the bundle it was exported with;
+  should this code ever meet one, the HTML goes into the model through the paste
+  converter.
 
 The static export, PDF and Word all start from `modelExportClone` in
 `model.js`, which strips the model renderer's block ids, fillers, caret stops
@@ -2354,54 +2078,15 @@ the shared global scope — see the load-order section above.
 
 ### execCommand
 
-Twelve of the thirteen formats, plus paste and Tab-indent, go through
-`document.execCommand`. [execcommand.js](front/execcommand.js) is the only file
-allowed to call it — `runCommand(command, value)` is the door, and the
-`execcommand` suite scans `front/` to keep it the only one, because the way this
-regresses is not a broken fix but a new call site that never reaches it.
-
-Decision D4 in [docs/DECISIONS.md](docs/DECISIONS.md) is why execCommand stays rather than
-being reimplemented, and carries the boundary rule for new formats. What the code
-does:
-
-- **`styleWithCSS` is turned off once, at load.** Its default was never specified
-  and is per-browser. Turndown has no rule for `<span style="font-weight:bold">`,
-  so it drops the span and keeps the text — bold would vanish on save with
-  nothing wrong on screen until the file was reopened. This one line is what
-  actually closes that; the retagging below is a backstop for pasted markup.
-- **`normaliseEditorMarkup` fixes what markdown cannot absorb, and only that.**
-  Most vendor disagreement never reaches the file: `<b>` and `<strong>` are both
-  `**bold**`. What does reach it is styled spans and `<font>`, sublists placed
-  beside their item instead of inside it, headings or paragraphs wrapped around a
-  list, an `<li>` nested directly in an `<li>`, and Chrome's `id="null"` on a
-  rule.
-- **Retagging moves the children, it does not copy the text.** A selection points
-  at a text node; rebuilding the text would drop the caret on every command that
-  needed normalising.
-- **Four subtrees are never touched** — `pre`, `code`, `.mermaid-wrapper` and
-  `mjx-container`. The last two hold the only copy of their own source, and
-  rewriting one breaks the round-trip to markdown irrecoverably with the document
-  still looking right on screen. Since Mermaid's removal on 2026-10-01 a
-  `.mermaid-wrapper` can no longer reach the editor — every way in unwraps it —
-  so that guard is inert, and goes with this file at stage 4.
-- **It reports whether it changed anything, and that drives `undoRefresh()`.**
-  execCommand dispatches `input` synchronously, so the undo stack snapshotted the
-  un-normalised document before `runCommand` got to fix it. Refreshing corrects
-  that snapshot in place. Dispatching a second `input` would work and would be
-  wrong: one action would cost two Ctrl+Z, the first appearing to do nothing.
-
-Three divergences survived it, all measured rather than assumed. The one with
-teeth — Firefox merging a bullet into the item above on outdent — could not be
-normalised at all, because that markup is indistinguishable from a deliberate
-hard break in a list item, so `outdentListItem` in `app.js` does the move by
-hand in both engines instead of calling `execCommand("outdent")` — watched
-since in Chrome, Firefox and Safari by
-[tests/list-indent-check.html](tests/list-indent-check.html), which also found
-that the followers of an outdented item were coming back reversed. The other two
-were questions about what a block control does inside a list, both now settled:
-a heading inside a list item is refused in `applyFormat` (below), and D5 in
-[docs/DECISIONS.md](docs/DECISIONS.md) settled `indent` outside a list as a
-permanent no-op rather than a way to make a blockquote.
+**There is none, bar one.** Until stage 4's slice 5 twelve of the thirteen
+formats, paste and Tab-indent went through `document.execCommand`, behind one
+door (`execcommand.js`) and a normaliser that fixed what each engine left
+behind; D4 was the decision, and D19 retired it. The model core cannot use it:
+`execCommand` fires `input` but never `beforeinput` (measured in Chrome 152), so
+every call is a mutation the model can neither cancel nor hear about. The one
+call left is the Edit menu's `execCommand("copy")` in `model-input.js`, which
+edits nothing and raises the `copy` event the model answers — and the `notify`
+suite's source scan allows exactly that one.
 
 ### The menu bar
 
@@ -2425,15 +2110,17 @@ export to the clipboard rather than to a file, and *Paste markdown* moved to
 it stopped replacing the document. Nothing was renamed — the menu each one sits
 in is what tells them apart.
 
-Cut and Copy are `execCommand` and need nothing else, since `mousedown` is
-prevented over the bar and the selection survives the click. **Paste is the
-exception, and it is a browser restriction rather than a choice:**
-`execCommand("paste")` is refused in web content, so the two Paste items read
-`navigator.clipboard` themselves and share `insertPastedContent` /
-`insertPlainText` with the editor's own `paste` listener rather than
-reimplementing the sanitise-and-insert path. Reading the clipboard is a
-permission the app may not have, so both report failure by pointing at the
-keyboard, which never needed it.
+Cut and Copy go through the model's own clipboard handler: Copy runs
+`execCommand("copy")`, which raises the same `copy` event Ctrl/Cmd+C does and
+which the model answers, and Cut is that copy and then the model's own
+deletion. `mousedown` is prevented over the bar, so the selection survives the
+click. **Paste is the exception, and it is a browser restriction rather than a
+choice:** `execCommand("paste")` is refused in web content, so the two Paste
+items read `navigator.clipboard` themselves and hand what they read to
+`modelPasteInto` / `modelPastePlain`, the same pipeline the editor's own
+`paste` event reaches. Reading the clipboard is a permission the app may not
+have, so both report failure by pointing at the keyboard, which never needed
+it.
 
 **The menus never give way to the path.** `.toolbar-left` does not shrink and
 `.toolbar-right` may shrink below its content, which between them decide who
@@ -2563,24 +2250,22 @@ already open — hovering a closed bar must not spring menus at you.
 `applyFormat` in [format-bar.js](front/format-bar.js) is the one entry point —
 the bar's own buttons and the Format menu both go through it for the ten the
 bar can show; the menu is a second way to reach those, not a second
-implementation of them, and reaches three more (Heading 4–6) that only it has
-room for — see the menu-bar section below. Twelve of the thirteen are
-`execCommand` calls. Code is the exception, and everything interesting about
-*what a format does* is about Code. Everything interesting about *when the bar
-is there at all* is the caret bar below it.
+implementation of them, and reaches more (Heading 4–6, Blockquote) that only it
+has room for — see the menu-bar section below. **It is a router**: each format
+is a model command in `model-input.js` — the marks through `modelInputFormat`,
+Paragraph and the headings through `modelInputBlockFormat`, the lists through
+`modelInputList`, Blockquote through `modelInputQuote` and Code through
+`modelInputCode` — feature-tested, so a bundle without the input layer does
+nothing rather than editing the DOM behind a model that is not there. What a
+format *does* is the model section's; everything interesting about *when the
+bar is there at all* is the caret bar below.
 
-**No format has a keyboard shortcut of Mandy's, and that is a bug rather than a
-decision** — TODO 1.7. `app.js` binds Ctrl+S, Ctrl+O, Ctrl+Shift+P and Ctrl+K
-and never binds Ctrl/Cmd+B or Ctrl/Cmd+I, so the three formats that have a
-conventional shortcut at all are left to whatever the engine does with the key
-inside a `contenteditable`. Measured 2026-09-10, while running something else:
-Blink bolds, **Gecko on macOS opens its bookmarks sidebar** and the page never
-sees the key, and **WebKit does nothing**. So bold-by-keyboard has been dead in
-two engines out of three for as long as there has been a format bar. A `keydown`
-binding with `preventDefault` takes the key back in all three, and it lands with
-3.1's stage 2, where the formats become model commands there is something to
-call — writing it against `execCommand` first is what D4's amendment says not to
-do.
+**Ctrl/Cmd+B and Ctrl/Cmd+I are bound** (TODO 1.7, slice 7's step 8), with
+`preventDefault`, because the engines disagreed about the key entirely:
+measured 2026-09-10, Blink bolded, **Gecko on macOS opened its bookmarks
+sidebar** and the page never saw the key, and WebKit did nothing. Taking the
+key is what makes the shortcut work in all three, and `front/input-check.html`
+carries the hand check that Firefox's sidebar stays shut.
 
 **Every letter binding in `front/` matches a lowercased `key`, and that is a
 rule rather than a style.** Caps Lock moves `event.key` and leaves `shiftKey`
@@ -2593,19 +2278,13 @@ non-Latin layout, and would also give a Dvorak user Save on the key that types
 `o`, which is a measurement nobody has made.
 
 The Format menu also carries **Indent**/**Outdent list item** (TODO 1.1.3),
-which is not part of this count: they call `outdentListItem` and
-`runCommand("indent")` in `app.js` directly, the same path Tab and Shift+Tab
-already used, rather than going through `applyFormat`.
+which do not go through `applyFormat`: they call `modelIndentAtCaret`, the same
+model rule Tab and Shift+Tab reach.
 
 **A heading targeting a list item is refused, not attempted.** `applyFormat`
-checks for it before calling `formatBlock` at all (TODO 1.1.5's settled
-answer): a heading nested in a bullet is expressible in both HTML and
-markdown, but not something the editor should offer a way to make by
-accident. Chrome and Firefox used to disagree about what happens if you try —
-Chrome ended up unwrapping the list into destruction, `normaliseEditorMarkup`
-then made that a no-op, Firefox just nested the heading inside the `<li>` —
-and the settled behaviour is the no-op in both, done here where the selection
-still exists rather than after the fact in `normaliseEditorMarkup`.
+checks for it before the model is asked (TODO 1.1.5's settled answer): a
+heading nested in a bullet is expressible in both HTML and markdown, but not
+something the editor should offer a way to make by accident.
 
 **The bar appears at a bare caret too, and it is a different bar there.**
 `showFormatBar` used to bail on `selection.isCollapsed`, so "make this line an
@@ -2628,10 +2307,9 @@ selection. Three decisions settle what it does instead:
   it is the only way back out of a heading, and a bar that could make one but
   not unmake it would send the user to the menu for the return trip — which is
   the gap this variant exists to close.
-- **So `code` means the block at a caret**, and that needed no new code: a
-  collapsed range already reads as the whole block in `coversWholeBlocks`. One
-  button still, with the selection deciding which of markdown's two code
-  constructs it means, exactly as it does everywhere else.
+- **So `code` means the block at a caret**: `modelInputCode` reads a bare caret
+  outside a code span as the whole block. One button still, with the selection
+  deciding which of markdown's two code constructs it means.
 
 Three mechanics behind it, each wrong in a way that shows:
 
@@ -2691,59 +2369,31 @@ document has no tab bar, so the `querySelector` misses and it contributes
 nothing. **`scrollToAnchor` in `app.js` calls it too**, having had the same
 one-element copy and parked Ctrl/Cmd+clicked headings under the tab strip for
 the same reason. That is a cross-file call in the direction the load order does
-not allow at load time, and it is fine for the same reason `runCommand` is: a
-click is long past load, so the function only has to be *present* in the bundle.
+not allow at load time, and it is fine because a click is long past load, so
+the function only has to be *present* in the bundle.
 
 **Code is the only format with both a block and an inline spelling**, and
 markdown draws that line as sharply as HTML does: ` ``` ` fences a block, single
-backticks span text inside a line. There is no `execCommand` for either, so the
-choice has to be made here — and it is made from the selection rather than from a
-second button:
+backticks span text inside a line. The choice is made from the selection rather
+than from a second button, in `modelInputCode`: a range inside one block makes
+a code span, and one inside a code span turns it back into text; a whole block,
+several whole blocks side by side, or a bare caret make one fenced code block,
+and a caret in a code block turns it back. Selecting two words used to fence the
+whole paragraph, under the old core, before that split existed.
 
-- **A partial selection** inside one block gives inline `<code>`. This is the
-  common case and the button used to get it wrong, turning the whole paragraph
-  into a fenced block over two selected words.
-- **A whole block, or several** gives `<pre><code>`. Several collapse into one
-  fenced block joined by newlines, because there is no inline construct that
-  spans a block boundary to offer instead.
-- **A bare caret** counts as the whole block. Every other block format acts on
-  the whole block from a caret, and Code being the one that made you select the
-  line first would read as broken rather than as precise.
-
-**`blocksInRange` answers with the innermost blocks, not `editor.children`.**
-That distinction is load-bearing and it was destructive to get wrong: a selection
-inside one bullet reported the whole `<ul>`, so Code replaced the list with a
-single `<pre>` and ran every item together. The innermost block is the `<li>` the
-text is actually in. Nested lists report both `<li>`s, so the result is filtered
-to those containing none of the others.
-
-**A `<pre>` only ever stands in for a direct child of `#editor`.** Putting one
-where an `<li>` was is invalid markup, and the honest version — a fence nested
-inside the list item — is a separate feature with a save-fidelity question behind
-it. So a whole bullet falls back to inline, and a selection covering several
-bullets declines with a `notify` rather than falling back: inline across two
-blocks would have `deleteContents` pull the blocks themselves apart to build a
-code span markdown cannot write anyway.
-
-**p / h1 / h2 / h3 act on the whole block from a partial selection, by design.**
-There is no such thing as half a heading. The alternative on the table was
-disabling them unless the selection covered a whole line, which would have read
-as a broken button; `formatBlock` already behaves this way and so does every
-editor people arrive from. Code is the only one that reads the extent, because
-it is the only one with somewhere else to go.
-
-**The Code branch dispatches a synthetic `input` event.** Every `execCommand`
-raises one for free, and autosave, the dirty flag, the outline and the undo stack
-all hang off exactly that — so the hand-rolled branch was invisible to Ctrl+Z and
-left the toolbar claiming the document still matched the file on disk. Same
-convention as `insertToc` and the undo section below.
+**The block formats act on the whole block from a partial selection, by
+design.** There is no such thing as half a heading. Disabling them unless the
+selection covered a whole line would read as a broken button, and every editor
+people arrive from behaves this way. Code is the only one that reads the
+extent, because it is the only one with somewhere else to go.
 
 **`updateActiveButtons` reads the whole selection, not just where it started.**
 It used to walk up from `selection.anchorNode` alone, so a selection spanning
 both bold and plain text lit the Bold button up or left it dark purely on which
 end of the drag the browser calls the anchor — never mind that neither answer
 described the selection. It now collects every non-blank text node the range
-touches (`textNodesInRange`) and asks each of the ten `FORMAT_PREDICATES`
+touches (`textNodesInRange`) and asks the `FORMAT_PREDICATES` entry for each
+button
 whether *all*, *some*, or *none* of them carry that format — a text node's own
 formatting cannot be partial, so per-node is the right granularity to fake a
 selection at without a real editing engine, which is also why the test suite
@@ -2754,19 +2404,19 @@ filled, so it cannot be mistaken for `.active` at a glance.
 ### The outline
 
 The sidebar is chrome and lives **outside `#editor`**, and that is the whole
-design. Everything inside the editor is the document — Turndown serialises it on
-every save — so a self-updating table of contents in there would rewrite a block
-of the user's file every time any heading changed, and it is exactly the block
-that can never match `indexMarkdownBlocks`, because a segment that changed is a
-segment that misses. A live TOC inside the document would be a feature whose
-only output is the diff noise `markdown-style.js` exists to eliminate. It would
+design. Everything inside the editor is the document — the model writes it on
+every save — so a self-updating table of contents in there would rewrite a
+block of the user's file every time any heading changed. A live TOC inside the
+document would be a feature whose only output is the diff noise D1 exists to
+eliminate. It would
 also sit inside a `contenteditable`, where regeneration fights the caret.
 
 **Insert TOC** is the honest version of the same idea, and it is a different
 feature: it writes a nested markdown list once, and that list is then ordinary
-content the author owns. It does not recognise a list it inserted before — a
-marker class does not survive a save and reload, since Turndown drops it — so a
-second invocation inserts a second list rather than guessing. Taking one back
+content the author owns. It builds the list as HTML and converts it through
+Turndown (`htmlFragmentToMarkdown`) into the model, after the caret's block. It
+does not recognise a list it inserted before — nothing in markdown could mark
+one — so a second invocation inserts a second list rather than guessing. Taking one back
 is Ctrl+Z, which works: see the Undo section.
 
 **Depth comes from nesting, not from the heading level.** People use headings as
@@ -2810,16 +2460,11 @@ Three more things worth knowing:
   and the welcome fetch. It is debounced by a second for typing and **not for
   a document swap**, and that second is not a preference: a sidebar lagging the
   document reads as the app being unable to parse what is in front of it.
-  **The property is immediacy; how a document announces itself depends on
-  which core drew it.** The running core replaces the document from
-  `editor.innerHTML`, and a record whose target is the editor itself with
-  `childList` is that assignment's fingerprint — measured 2026-09-18 as exactly
-  one such record — so it is read off the record rather than off a flag and the
-  assignment sites need not know. The model core cannot use that: from stage
-  2's slice 4 a top-level Enter produces the identical record, so `modelRender`
-  calls `renderOutline` itself and the fingerprint is skipped whenever
-  `modelCoreEnabled()`. The inference lives exactly as long as the core that
-  needs it, and goes at stage 4 with `editor.innerHTML`. The click
+  **The property is immediacy, and the model says so**: `modelRender` calls
+  `renderOutline` itself when a whole document is drawn, so every mutation
+  record the observer sees is someone editing and waits its second. Reading a
+  swap off the record shape, as the old core did, cannot work here — a
+  top-level Enter produces the identical record. The click
   handler captures the heading *element* rather than looking it up by slug,
   since a slug goes stale the moment its heading is edited and the rebuild can
   be a second behind.
@@ -2832,62 +2477,62 @@ pane that would hold the real control is in
 
 ### Undo
 
-[undo.js](front/undo.js) keeps the document's history, because the browser's own
-does not survive this app. `execCommand("undo")` works right up until something
-assigns `editor.innerHTML` — open, reload, clear, paste markdown, upload, the
-restore-or-welcome path at startup — at which point the native stack is thrown
-away and Ctrl+Z quietly stops answering for the rest of the session.
+[undo.js](front/undo.js) keeps the document's history. The browser's own stack
+has nothing on it: every `beforeinput` is cancelled, so the engine never edits
+anything — Safari's own Edit → Undo is disabled for exactly that reason — and
+Ctrl/Cmd+Z, Ctrl+Shift+Z and Ctrl+Y are taken with `preventDefault` and routed
+here. The engine's own undo gesture arrives as `historyUndo` / `historyRedo` and
+is routed here too, though on the desktop no engine raises one.
 
-Snapshots of the whole `innerHTML`, not a diff or a command log. Contenteditable
-is not a data structure we control: the browser splits nodes on Enter, merges
-them on Backspace, normalises markup on paste and rewrites a trailing space to
-an NBSP behind our back. Anything finer-grained would have to model all of that,
-and getting it wrong corrupts the document.
+**A state is a fork of the model**, with the caret beside it as a
+`(blockId, offset)`. `modelForkDocument` copies the document's outline — which
+blocks exist, nested in what, with every affix each records — and shares its
+contents, the inline tree and the parser's tokens, marking each block `shared`;
+`modelUnshare` gives a block its own contents before anything writes to them.
+That makes a state about 84KB on a large document where a full copy was
+1,610KB, and a hundred states smaller than the old core's HTML strings were.
+What a state is lives in exactly two functions, `undoCaptureState` and
+`undoApplyState`; the rest of the file is the stack and never asks.
 
-Four things worth knowing:
+Five things worth knowing:
 
 - **`undoReset()`, `undoPark()` and `undoAdopt()` are the whole API, and they
   turn on a document boundary.** History never crosses one. Undo after an Open
   must not hand back the previous file's text, because that text would then be
   sitting under the new file's path, one Ctrl+S away from being written there.
-  Every site that assigns `editor.innerHTML` picks a side — `undoReset()`, or
-  raise an `input` event and be undoable — and the `undo` suite counts those
-  sites so a new one cannot skip the choice. The one sanctioned crossing is a
-  **tab switch**, where the outgoing document is set aside rather than replaced:
-  the seven pieces of history state are collapsed into one detachable `history`
-  object, `undoPark()` hands it back for the caller to keep on the outgoing tab
-  and leaves a fresh one in place, and `undoAdopt(bundle)` installs the incoming
-  tab's — `undoAdopt(null)` being exactly `undoReset()`. The bundle moves whole
-  and the two stacks are never merged, so an undo in one tab cannot reach
-  another's content. The caller swaps `editor.innerHTML` before adopting: adopt
-  trusts the bundle matches what is on screen and never re-snapshots, the same
-  ordering `undoReset()` needs against the content settling first.
-- **A programmatic edit announces itself with a synthetic `input` event.** That
-  was already the convention for autosave and the dirty flag, which is why
-  `insertToc` needed no change at all to become undoable. `paste-md` needs
-  none either: it inserts through `runCommand("insertHTML", …)` rather than
-  replacing the document, so execCommand raises the event for free, the same
-  door every other paste goes through — and it stopped being an
-  `editor.innerHTML` assignment site the `undo` suite has to count at all.
-- **The caret is stored as a character offset, not a Range.** A Range points at
-  nodes that restoring a snapshot destroys. `undoTextOffset` counts characters
-  across element boundaries, and `undoLocateOffset` walks back to a text node —
-  landing at the end rather than nowhere when the content got shorter.
+  Every caller of the two document doors picks a side — `undoReset()`, or raise
+  an `input` event and be undoable — and the `undo` suite counts that none of
+  the files that might assigns `editor.innerHTML`. The one sanctioned
+  crossing is a **tab switch**: the history is one detachable `history` object,
+  `undoPark()` hands it back for the caller to keep on the outgoing tab and
+  leaves a fresh one, and `undoAdopt(bundle)` installs the incoming tab's —
+  `undoAdopt(null)` being exactly `undoReset()`. The bundle moves whole and two
+  stacks are never merged. The caller puts the document on screen before
+  adopting: adopt trusts the bundle matches it and never re-snapshots.
+- **Applying installs a fork of the stored state**, never the entry, and
+  resolves the caret against that fork. The next edit mutates what was
+  installed, so handing over the entry would edit the history — the failure is
+  undo, redo, undo finding what the first visit left behind.
+- **What an undo restores is where the caret was when the undone edit began.**
+  The current state follows the caret on `selectionchange` until the next edit
+  pushes it (`undoFollowCaret`); a caret outside the editor, or one while an IME
+  holds the text, does not count. Until 2026-09-23 a state carried the caret it
+  was taken with, which was wrong whenever the caret moved between edits.
 - **Coalescing is by `inputType`, not just by time.** Consecutive `insertText`
   or `deleteContentBackward` inside 600ms collapse into one step; everything
-  else — Enter, a format button, a paste, a synthetic event with no `inputType`
-  at all — starts its own. Time alone would merge two Enters into one step.
-
-Applying a snapshot dispatches `input` so autosave, the dirty flag and the
-outline all hear it, and does so behind a re-entrancy guard so the undo does not
-record itself as an edit. **The position moves before that event, not after
-it** — `file-api.js` asks `undoPosition()` from inside its own input handler, so
-dispatching first told it the document was still in the state undo had just
-left, and undoing back to the last save went on reporting `(edited)`.
-
-`onToolbarAction("undo"/"redo")` are registered with no buttons behind them
-until the menu bar gave them somewhere to go, which was a spec entry rather than
-new wiring.
+  else — Enter, a format, a paste, a synthetic event with no `inputType` —
+  starts its own. **`undoJoin()` merges the next edit whatever its type**, for
+  an edit that rewrites what was just typed: the macOS press-and-hold accent
+  types the vowel, waits on the popup, then replaces it, and one Ctrl+Z should
+  take back the accented letter whole. `modelInputRevises` decides when.
+- **The position moves before the `input` event an undo raises, not after.**
+  Applying a state dispatches `input` so autosave, the dirty flag and the
+  outline hear it, behind a re-entrancy guard so the undo does not record itself.
+  `file-api.js` asks `undoPosition()` from inside its own input handler, so
+  dispatching first told it the document was still in the state undo had just
+  left, and undoing back to the last save went on reporting `(edited)`.
+  `undoPosition()` is an id minted once per state, never a stack index, which
+  `UNDO_LIMIT` would recycle into naming a different state.
 
 ### Notifications
 
