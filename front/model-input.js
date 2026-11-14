@@ -1223,20 +1223,7 @@ function modelInputLineBreak(doc, span) {
 
 /**
  * Tab and Shift+Tab, and the Format menu's two items, which ask the identical
- * question — the same arrangement `canIndentListItem` already has on the old
- * core.
- *
- * Hands back whether it answered, so `app.js`'s toolbar handlers know not to
- * fall through to `outdentListItem` — which mutates the DOM directly, behind
- * the model's back, which is exactly what this layer exists to stop.
- *
- * **It does not ask whether the flag is on**, and that is the boundary this
- * file keeps: the install block at the bottom is the one place the flag is
- * read, and once the layer is installed it works. `front/input-check.html`
- * installs it deliberately without flipping the flag for the app on the same
- * origin, and a second guard in here made Tab do nothing on the one page built
- * to measure it. The caller that has a fallback asks the flag; the layer does
- * its job.
+ * question. Hands back whether it answered.
  */
 function modelIndentAtCaret(outdent) {
   const doc = modelCurrentDocument();
@@ -1587,8 +1574,8 @@ function modelPasteBlocks(doc, html) {
 /**
  * Put a clipboard's two flavours into the document at a model position.
  *
- * HTML first and plain text as the fallback, which is the order
- * `insertPastedContent` has always used. **Plain text is never parsed as
+ * HTML first and plain text as the fallback, which is the order the old
+ * core's paste always used. **Plain text is never parsed as
  * markdown** — today's behaviour, and the reason Insert → *Paste markdown* is a
  * separate action: that one is this pipeline without the Turndown step.
  */
@@ -1777,11 +1764,9 @@ function modelInputDrop(event) {
 
 // ── The clipboard, reached from the menu ─────────────────────────────────────
 //
-// Edit → Paste, Edit → Paste without formatting and Insert → Paste markdown all
-// reach `runCommand` on the old core, which refuses under the flag — so without
-// these three they would silently do nothing. Same arrangement the two list
-// items got in slice 4: app.js asks whether the model core is on, and these do
-// the work when it is.
+// Edit → Paste, Edit → Paste without formatting and Insert → Paste markdown.
+// The menu reads the clipboard itself, since execCommand("paste") is refused in
+// web content, and hands what it read to these.
 
 function modelPasteInto(html, text) {
   const doc = modelCurrentDocument();
@@ -2093,21 +2078,23 @@ function modelInputClipboard(event, cut) {
 }
 
 /**
- * Edit → Copy and Edit → Cut under the model core, slice 7's step 8.
+ * Edit → Copy and Edit → Cut, slice 7's step 8.
  *
- * Copy is `runCommand("copy")`, the one command `runCommand` lets through under
- * the flag: it raises the same `copy` event Ctrl/Cmd+C does, and
- * `modelInputClipboard` answers it, so the menu and the keyboard put the same
- * thing on the clipboard. **Cut is that copy and then the model's own
+ * Copy is `document.execCommand("copy")`, the one `execCommand` left in the
+ * app — `execcommand.js` went with the old core in stage 4's slice 5, and this
+ * was the one command it still let through. It raises the same `copy` event
+ * Ctrl/Cmd+C does, and `modelInputClipboard` answers it, so the menu and the
+ * keyboard put the same thing on the clipboard. It edits nothing, which is why
+ * it may stay when every other command could not. **Cut is that copy and then the model's own
  * deletion**, run only when the copy reached the handler — a copy the engine
  * refused deletes nothing. `cut` itself is never run here: a cut event the
  * handler did not cancel would edit the page behind the model's back.
  */
 function modelInputMenuClipboard(cut) {
   const doc = modelCurrentDocument();
-  if (!doc || typeof runCommand !== "function") return false;
+  if (!doc) return false;
   modelClipboardWritten = false;
-  runCommand("copy");
+  document.execCommand("copy");
   if (!modelClipboardWritten || !cut) return modelClipboardWritten;
   const span = modelInputSpan({}, doc);
   if (!span || span.collapsed) return true;

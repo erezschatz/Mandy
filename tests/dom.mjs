@@ -258,18 +258,18 @@ export function markdownitStub(inlineRules = [], renderRules = {}) {
 // stays reachable below because these share one scope the way <script> tags do.
 // TurndownService is a recorder here: no suite needs conversion, only the rules.
 // model.js is not loaded: a suite that wants the model loads it on its own.
-export function loadApp() {
+//
+// `legacy` loads legacy-storage.js after app.js as well, the way index.html
+// does, for the suites that drive the old core's save path it now holds. Its
+// conversion runs at load against the stub storage below, which holds nothing,
+// so it converts nothing.
+export function loadApp({ legacy = false } = {}) {
   const noop = () => {};
-  // Honours the tag: outdentListItem builds a sublist of the same kind as the
-  // one it came out of, so a stub that answers DIV to everything cannot tell
-  // an <ol> that stayed an <ol> from one that did not.
   const el = (tag = "div") => makeEl(tag);
   const rules = {};
   const opts = {};
   const opened = [];
   const scrolled = [];
-  const commands = [];
-  const inputAnswers = [];
   const root = makeEl("html");
 
   const inlineRules = [];
@@ -296,7 +296,7 @@ export function loadApp() {
   };
 
   return loadSource(
-    ["markdown-parser.js", "markdown-style.js", "app.js"],
+    ["markdown-parser.js", "markdown-style.js", "app.js", ...(legacy ? ["legacy-storage.js"] : [])],
     {
       window: {
         markdownit: markdownitStub(inlineRules, renderRules),
@@ -338,16 +338,7 @@ export function loadApp() {
         documentElement: root,
         querySelector: () => null,
         body: { appendChild: noop, removeChild: noop },
-        execCommand: (cmd) => commands.push(cmd),
         createRange: () => ({ setStart: noop, collapse: noop }),
-      },
-      // app.js reaches execCommand through execcommand.js's wrapper now. The
-      // recorder stands in for it, so a suite reads the command the module asked
-      // for rather than the normalisation a browser would run afterwards — that
-      // half has its own suite.
-      runCommand: (cmd) => {
-        commands.push(cmd);
-        return true;
       },
 
       localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
@@ -355,10 +346,7 @@ export function loadApp() {
       onToolbarAction: noop,
       toolbarButton: () => null,
       runToolbarAction: noop,
-      // insertLink's dialog. A suite pushes answers onto `inputAnswers` before
-      // driving it; an empty queue is the user backing out.
       Node: { ELEMENT_NODE: 1, TEXT_NODE: 3 },
-      askForInput: () => Promise.resolve(inputAnswers.length ? inputAnswers.shift() : null),
       setTimeout: noop,
       clearTimeout: noop,
       console,
@@ -368,22 +356,24 @@ export function loadApp() {
       __opts: opts,
       __opened: opened,
       __scrolled: scrolled,
-      __commands: commands,
-      __inputAnswers: inputAnswers,
       __selection: selection,
       __root: root,
       __byId: byId,
     },
     "; return { rules: __rules, inlineRules: __inlineRules," +
       " renderRules: __renderRules, mathSpan, options: __opts, opened: __opened," +
-      " scrolled: __scrolled, commands: __commands, selection: __selection," +
-      " inputAnswers: __inputAnswers, insertLink," +
+      " scrolled: __scrolled, selection: __selection," +
       " documentElement: __root, byId: __byId," +
-      " htmlToMarkdown, anchorSlug, headingAnchors, openExternalLink, normaliseLinkHref," +
-      " slugifyTitle, encodeEmbeddedMarkdown, decodeEmbeddedMarkdown, isBlankContent, sniffMarkdownStyle, reflowMarkdown," +
-      " adoptMarkdownStyle, normaliseNbsp, isGhostElement," +
-      " scanReferenceDefinitions, normalizeReferenceLabel, appendReferenceDefinitions," +
-      " referenceDefinitionsNow: () => referenceDefinitions };",
+      " htmlFragmentToMarkdown, anchorSlug, headingAnchors, openExternalLink, normaliseLinkHref," +
+      " slugifyTitle, encodeEmbeddedMarkdown, decodeEmbeddedMarkdown, sniffMarkdownStyle," +
+      " adoptMarkdownStyle, markdownStyleAdopt, normaliseNbsp, isGhostElement" +
+      (legacy
+        ? ", legacyHtmlToMarkdown, legacyConvertDocument, isBlankContent," +
+          " scanReferenceDefinitions, normalizeReferenceLabel, appendReferenceDefinitions," +
+          " legacyState: () => ({ source: legacySource, references: legacyReferenceDefinitions })," +
+          " converting: (on) => { legacyConverting = on; }"
+        : "") +
+      " };",
   );
 }
 

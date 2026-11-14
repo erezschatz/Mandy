@@ -93,7 +93,6 @@ onToolbarAction("export-editable", async () => {
     "/app.js",
     "/model-input.js",
     "/undo.js",
-    "/execcommand.js",
     "/outline.js",
     "/renderers.js",
     "/format-bar.js",

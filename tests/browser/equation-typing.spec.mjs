@@ -9,7 +9,7 @@
 // document is the one a hand run opens, without the file dialog. What each step
 // says should happen is asserted three ways, as a tester would judge it: what
 // the new paragraph shows, where the next letters typed land, and — for the
-// save — what htmlToMarkdown, the save path, would write.
+// save — what documentMarkdown, the save path, would write.
 //
 // Like the protocol, every test fails on a `[model] render diverged` warning or
 // on any console error.
@@ -88,10 +88,10 @@ async function shown(page, id) {
 const equations = (page, id) =>
   page.locator(`#editor [data-block="${id}"] mjx-container`);
 
-// What the save path writes, without the reference definitions it collects at
-// the end of the file wherever the source put them — so "the document's last
-// lines" are the last lines the steps typed, whatever the fixture defines.
-const saved = (page) => page.evaluate(() => htmlToMarkdown(editor.innerHTML)
+// What the save path writes, without any reference definitions the fixture
+// ends with — so "the document's last lines" are the last lines the steps
+// typed, whatever the fixture defines.
+const saved = (page) => page.evaluate(() => documentMarkdown()
   .replace(/(\n\[[^\]\n]+\]:[^\n]*)+\n*$/, "\n"));
 
 test("1. an equation forms at the space after it, and typing carries on", async ({ page }) => {

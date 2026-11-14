@@ -10,23 +10,26 @@
 // a seventh assignment added somewhere that never tells the stack about it —
 // after which undo hands back text from a document you are no longer editing.
 
-import { loadSource, makeEl, makeText, readFront } from "./dom.mjs";
+import { fakeModelCore, loadSource, makeEl, readFront } from "./dom.mjs";
 
 // Every site that replaces the document has to pick a side: undoReset() to
 // forget the history, or an input event to record the change as undoable.
-// Update this when a site is added or removed, having made that choice.
-// Stage 2's slice 1 funnelled seven of these into three: loadDocumentMarkdown,
-// loadDocumentHtml and loadBlankDocument in app.js, which exist because the
-// model core is behind a flag and the alternative was the same branch written
-// out at every call site. The property is unchanged and the surface is smaller
-// -- a new route into the document now has three doors to pick from rather than
-// seven places to add an eighth. A zero is an assertion too: that file no longer
-// replaces the document itself. Stage 4 takes app.js to zero as well, when the
-// legacy branch inside each door goes.
+// Stage 2's slice 1 funnelled seven of these into three doors in app.js, and
+// stage 4 took every door to the model, which renders: **nothing outside
+// model.js's render assigns `editor.innerHTML` any more**, and a zero is an
+// assertion that a file does not replace the document behind the model. A new
+// route into the document goes through loadDocumentMarkdown or
+// loadBlankDocument, which hand the model markdown and leave the history to
+// their callers.
 const REPLACEMENT_SITES = {
-  "app.js": 0, // its two doors hand markdown to the model, which renders
-  "file-api.js": 0, // openFile and reload go through loadDocumentMarkdown
-  "tabs.js": 0, // the tab swap restores a parked model or loads stored markdown
+  "app.js": 0,
+  "file-api.js": 0,
+  "tabs.js": 0,
+  "undo.js": 0, // a state is a model, and applying one renders it
+  "format-bar.js": 0,
+  "model-input.js": 0,
+  "outline.js": 0,
+  "renderers.js": 0,
 };
 
 // A fake model core. `live` is the document on screen; `clone` counts as a
@@ -83,6 +86,11 @@ function harness({ html = "<p>start</p>", modelCore = false } = {}) {
   const editor = makeEl("div");
   editor.innerHTML = html;
   const model = fakeModel();
+  // The stack's checks read the document off the editor, which is the easiest
+  // thing to compare: a model stand-in whose document *is* the editor's HTML,
+  // the one the `tabs` suite boots with. `modelCore: true` is the block-shaped
+  // one above instead, for the checks about what a state is.
+  const mirror = fakeModelCore(editor);
 
   const actions = new Map();
   const keydowns = [];
@@ -108,8 +116,8 @@ function harness({ html = "<p>start</p>", modelCore = false } = {}) {
       },
       createRange: () => ({ setStart() {}, setEnd() {} }),
     },
-    // No selection: the offset maths is exercised directly below instead, so
-    // the stack tests compare snapshots on their HTML alone.
+    // No selection: the stack tests compare states on their content alone,
+    // and the caret is the model checks' business below.
     window: { getSelection: () => ({ rangeCount: 0 }) },
     Date: { now: () => now },
     Event,
@@ -119,16 +127,13 @@ function harness({ html = "<p>start</p>", modelCore = false } = {}) {
     // arrangement and is the same call model-input.test.mjs makes. What is
     // under test here is the *stack*: that a state is captured and applied at
     // the two seams and that nothing else in the file learned about the model.
-    // The clone itself is covered against the real tree and the real oracle in
+    // The fork itself is covered against the real tree and the real oracle in
     // `model`, so stubbing it is what lets this assert the seams rather than
-    // re-assert that. Absent by default, because that is how this file loads
-    // for every other check here and in an exported document's bundle -- the
-    // `typeof` in undoModelCore is what makes that a plain no rather than a
-    // throw.
-    ...(modelCore ? model.scope : {}),
+    // re-assert that.
+    md: {},
+    ...(modelCore ? model.scope : mirror.scope),
     console,
-  }, "; return { undo, redo, undoReset, undoBreak, undoJoin, undoPark, undoAdopt," +
-     " undoTextOffset, undoLocateOffset," +
+  }, "; return { undo, redo, undoReset, undoJoin, undoPark, undoAdopt," +
      " undoDepth: () => history.undoStack.length," +
      " redoDepth: () => history.redoStack.length, undoPosition };");
 
@@ -176,17 +181,11 @@ export default function run(check) {
     );
   }
 
-  // The native stack is not merely unused after an innerHTML assignment, it is
-  // wrong — so nothing may quietly go on driving it alongside ours.
+  // The native stack has nothing on it, since the engine never edits — so
+  // nothing may quietly go on driving it alongside ours.
   check(
-    "app.js no longer drives execCommand undo",
+    "app.js does not drive execCommand undo",
     !/execCommand\("(undo|redo)"\)/.test(readFront("app.js")),
-  );
-  // The plain-paste branch raises `insertText`, exactly as typing does, so the
-  // explicit break is the only thing keeping a paste out of the run around it.
-  check(
-    "app.js breaks coalescing before the plain-text paste",
-    /undoBreak\(\);\s*\n\s*runCommand\("insertText"/.test(readFront("app.js")),
   );
   // Load order: undo.js binds to `editor`, which app.js defines.
   const bundle = [...readFront("index.html").matchAll(/src="\/([a-z-]+\.js)"/g)].map((m) => m[1]);
@@ -251,46 +250,6 @@ export default function run(check) {
   h.undo();
   check("and is undoable on its own", h.editor.innerHTML === "<p>starta</p>");
 
-  // --- the break ------------------------------------------------------------
-  //
-  // The one edit the allowlist cannot tell apart on its own: a plain paste goes
-  // in through execCommand("insertText") and so reports the same inputType a
-  // keystroke does. Chrome 152 and Firefox 154 both strip text/html on
-  // Ctrl/Cmd+Shift+V (measured by tests/paste-check.html), so that binding
-  // lands in app.js's plain branch — which means this is the live path, not a
-  // hypothetical one.
-
-  h = harness();
-  h.undoReset();
-  h.type("a");
-  h.undoBreak();
-  h.type("pasted");
-  check("a broken step does not join the typing before it", h.undoDepth() === 2);
-  h.undo();
-  check("so one undo takes back the paste alone",
-    h.editor.innerHTML === "<p>starta</p>");
-
-  h = harness();
-  h.undoReset();
-  h.type("a");
-  h.undoBreak();
-  h.type("pasted");
-  h.type("b");
-  check("and nothing typed after it merges in either", h.undoDepth() === 3);
-
-  // The flag is consumed by the edit it isolates rather than left standing.
-  // "b" starts its own step because nothing merges into a broken one; "c"
-  // merging into "b" is what says the break is spent — were it still set,
-  // every keystroke after a paste would be its own undo for the rest of the
-  // session.
-  h = harness();
-  h.undoReset();
-  h.undoBreak();
-  h.type("a");
-  h.type("b");
-  h.type("c");
-  check("the break is spent on the edit it isolates", h.undoDepth() === 2);
-
   // --- undoJoin: a composition rewriting what was just typed ---------------
   //
   // The press-and-hold accent types the vowel, waits on a popup far longer
@@ -316,14 +275,6 @@ export default function run(check) {
   h.advance(2000);
   h.type("c");
   check("the join is spent on the edit it merges", h.undoDepth() === 2);
-
-  h = harness();
-  h.undoReset();
-  h.type("a");
-  h.undoBreak();
-  h.undoJoin();
-  h.type("b");
-  check("and a break wins over a join", h.undoDepth() === 2);
 
   // --- redo ----------------------------------------------------------------
 
@@ -508,18 +459,15 @@ export default function run(check) {
   h.key({ ctrlKey: true, key: "b", preventDefault: () => ignored.push("b") });
   check("and nothing else is intercepted", ignored.length === 0);
 
-  // --- the model core: the two seams ---------------------------------------
+  // --- what a state is: the two seams --------------------------------------
   //
-  // Slice 6's step 2. Everything above this line is core-independent and is
-  // meant to stay that way: what a state *is* changes at exactly two functions,
-  // and the stack machinery around them -- coalescing, the limit, the redo
-  // branch, the ids file-api.js reads, park and adopt -- is the same code
-  // either way. So the checks here are the two seams and then a re-run of the
-  // stack's own rules with a model state in place of an HTML one, because
-  // "nothing else moves" is a claim about this file and not a plan.
-  //
-  // The caret is step 3's: a state's selection is null under the flag today, so
-  // an undo restores the document and not yet the place you were in it.
+  // Slice 6's step 2. Everything above this line is about the stack: what a
+  // state *is* is decided at exactly two functions, and the stack machinery
+  // around them -- coalescing, the limit, the redo branch, the ids file-api.js
+  // reads, park and adopt -- never asks. So the checks here are the two seams
+  // and then a re-run of the stack's own rules with a block-shaped model in
+  // place of the mirror, because "nothing else moves" is a claim about this
+  // file and not a plan.
 
   h = harness({ modelCore: true });
   h.undoReset();
@@ -673,12 +621,10 @@ export default function run(check) {
 
   // --- slice 6's step 5: the switch, where a bundle meets a re-parsed document
   //
-  // This stage re-parses on adopt -- the incoming tab's `content` key holds
-  // HTML, converted through htmlToMarkdown -- so after a switch the document on
-  // screen is a different *object* from the one the parked bundle's states
-  // describe, with its own ids. "undoAdopt trusts the bundle to describe what
-  // is on screen" therefore means something weaker here than it does on the old
-  // core, and what makes it survivable is that a restore installs the state's
+  // A tab never shown this session is parsed from its stored markdown, so after
+  // a switch the document on screen can be a different *object* from the one
+  // a parked bundle's states describe, with its own ids. What makes that
+  // survivable is that a restore installs the state's
   // own clone wholesale and never compares it against the live tree.
   //
   // This is also where step 3's choice pays: the caret resolves inside the
@@ -728,53 +674,12 @@ export default function run(check) {
   check("whose own stack is empty at that point", h.undoDepth() === 0);
   check("while the parked bundle still has its step", parkedFirst.undoStack.length === 1);
 
-  // The refusal this replaces is gone, and the source says so rather than
-  // leaving a reader to wonder whether it was forgotten.
+  // The old core's half of the seams went in stage 4's slice 5, and the source
+  // says so rather than leaving a reader to wonder whether one is left: a state
+  // has no HTML in it, and applying one never assigns the editor's markup.
   const undoSrc = readFront("undo.js");
-  check("undo() no longer refuses under the flag",
-    !/function undo\(\) \{\s*\n\s*if \(undoModelCore\(\)\) return false;/.test(undoSrc));
-  // The claim the whole step rests on: the branch is at the seams and nowhere
-  // else in the file. One call and the definition -- capture asks the flag
-  // once, and apply does not ask it at all.
-  check("and the core is asked once, in capture",
-    (undoSrc.match(/undoModelCore\(\)/g) || []).length === 2);
-  // Apply reads the *state's* own shape instead, which is the stronger
-  // property and worth pinning as one: a state says which core took it, so it
-  // can only ever be put back the way it was taken. Asking the flag again
-  // would make a state's meaning depend on when it is applied rather than on
-  // what it is.
-  check("while applying one branches on the state rather than the flag",
-    /function undoApplyState\(snapshot\) \{\s*\n\s*if \(snapshot\.model\)/.test(undoSrc));
-
-  // --- the caret ------------------------------------------------------------
-  //
-  // A Range cannot be stored across a snapshot: restoring one replaces every
-  // node it points at. A character offset describes a position in the content
-  // instead, so it survives the tree being rebuilt.
-
-  const root = makeEl("div");
-  const p1 = makeEl("p", { parent: root });
-  p1.appendChild(makeText("Hello "));
-  const strong = makeEl("strong", { parent: p1 });
-  strong.appendChild(makeText("brave"));
-  p1.appendChild(makeText(" world"));
-  const p2 = makeEl("p", { parent: root });
-  p2.appendChild(makeText("second"));
-
-  const { undoTextOffset, undoLocateOffset } = h;
-  check("an offset counts across element boundaries",
-    undoTextOffset(root, strong.childNodes[0], 3) === 9);
-  check("and across blocks",
-    undoTextOffset(root, p2.childNodes[0], 2) === 19);
-  check("a container offset counts its children's text",
-    undoTextOffset(root, p1, 2) === 11);
-  check("a node outside the root has no offset",
-    undoTextOffset(root, makeText("elsewhere"), 0) === null);
-
-  const at = undoLocateOffset(root, 9);
-  check("locating an offset finds the text node", at.node === strong.childNodes[0]);
-  check("and the position within it", at.offset === 3);
-  const past = undoLocateOffset(root, 9999);
-  check("an offset past the end lands at the end rather than nowhere",
-    past.node === p2.childNodes[0] && past.offset === 6);
+  check("undo.js keeps no HTML state",
+    !/\bhtml:/.test(undoSrc) && !/snapshot\.html/.test(undoSrc) && !/innerHTML\s*=[^=]/.test(undoSrc));
+  check("and asks no question about which core is running",
+    !/undoModelCore|modelCoreEnabled/.test(undoSrc));
 }

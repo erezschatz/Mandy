@@ -13,16 +13,21 @@ import { test, expect } from "@playwright/test";
 
 const PAGES = ["browser-check", "list-indent-check", "list-empty-item-check"];
 
-// The two list pages watch the old core's hand-rolled list surgery in the
-// running app, and stage 4's slice 4 took the handlers they drive away: Enter,
-// Backspace and Tab in a list are model rules now, covered by lists.spec.mjs.
-// Skipped rather than deleted, because deleting the pages, this half of the
-// spec and the server's /tests/ route together is slice 6.
-const RETIRED = new Set(["list-indent-check", "list-empty-item-check"]);
+// All three watch the old core, and it is gone. The two list pages drive the
+// hand-rolled list surgery stage 4's slice 4 took away: Enter, Backspace and
+// Tab in a list are model rules now, covered by lists.spec.mjs. browser-check
+// loads execcommand.js, which slice 5 deleted with the rest of the old core.
+// Skipped rather than deleted, because deleting the pages, this spec and the
+// server's /tests/ route together is slice 6.
+const RETIRED = new Map([
+  ["browser-check", "execcommand.js is gone; slice 6 deletes this page"],
+  ["list-indent-check", "the old core's list handlers are gone; slice 6 deletes this page"],
+  ["list-empty-item-check", "the old core's list handlers are gone; slice 6 deletes this page"],
+]);
 
 for (const name of PAGES) {
   test(name, async ({ page }, testInfo) => {
-    test.skip(RETIRED.has(name), "the old core's list handlers are gone; slice 6 deletes this page");
+    test.skip(RETIRED.has(name), RETIRED.get(name));
     // The two list pages boot the whole app in a frame, and the app pulls
     // markdown-it and Turndown from a CDN. The page's own "has the app come
     // up" wait polls for functions that exist before those scripts are needed,

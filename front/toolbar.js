@@ -134,18 +134,17 @@ const TOOLBAR_MENUS = [
     { separator: true, variants: ALL },
     { action: "format-ul", label: "Bullet list", checkable: true, variants: ALL },
     { action: "format-ol", label: "Numbered list", checkable: true, variants: ALL },
-    // Stage 3's slice 1. A toggle, model core only — D4's amendment writes no
-    // new format against contenteditable, so the old core says so instead.
+    // Stage 3's slice 1. A toggle, and a model command like every format.
     { action: "format-quote", label: "Blockquote", checkable: true, variants: ALL },
     // "Code", not "Code block": one control does both, and the selection
     // decides which — a code span inside a line, a code block for whole lines.
     // Checkable for the same reason as the three marks above.
     { action: "format-code", label: "Code", checkable: true, variants: ALL },
     { separator: true, variants: ALL },
-    // TODO 1.1.3: the engine-side move (outdentListItem, Tab/Shift+Tab) was
-    // already there with no control reaching it outside a keypress, which left
-    // touch with no way to nest a bullet at all. Not part of applyFormat's ten
-    // — these call app.js's indent/outdent handlers directly, same as Tab does.
+    // TODO 1.1.3: the list move (Tab/Shift+Tab) was already there with no
+    // control reaching it outside a keypress, which left touch with no way to
+    // nest a bullet at all. Not part of applyFormat — these reach the same
+    // model rules Tab and Shift+Tab do, through app.js's handlers.
     { action: "indent-list-item", label: "Indent list item", shortcut: "Tab", variants: ALL },
     { action: "outdent-list-item", label: "Outdent list item", shortcut: "Shift+Tab", variants: ALL },
     { separator: true, variants: ALL },

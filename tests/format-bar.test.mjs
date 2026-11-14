@@ -8,13 +8,27 @@
 
 import { loadSource, makeEl, makeText } from "./dom.mjs";
 
-function scenario(format, buildSelection) {
+// Every format is a model command now, so what applyFormat owes is the right
+// command for each format, the selection check in front of it, and never
+// touching #editor itself. The model commands are stood in for by recorders:
+// what they do to a document is the `model` and `model-input` suites' business,
+// and the browser specs'. `model: false` is a bundle without model-input.js.
+function scenario(format, buildSelection, { model = true } = {}) {
   const container = makeEl();
   const editor = makeEl("div", { parent: container });
   const p1 = makeEl("p", { parent: editor, text: "line one" });
   const p2 = makeEl("p", { parent: editor, text: "line two" });
 
   const commands = [];
+  const recorders = model
+    ? {
+      modelInputFormat: (mark) => commands.push(`mark:${mark}`),
+      modelInputBlockFormat: (tag) => commands.push(`block:${tag}`),
+      modelInputList: (ordered) => commands.push(`list:${ordered ? "ol" : "ul"}`),
+      modelInputQuote: () => commands.push("quote"),
+      modelInputCode: () => commands.push("code"),
+    }
+    : {};
   loadSource(
     "format-bar.js",
     {
@@ -23,10 +37,8 @@ function scenario(format, buildSelection) {
         querySelector: () => null,
         querySelectorAll: () => [],
         addEventListener() {},
-        execCommand: (cmd, _ui, val) => commands.push(val ? `${cmd}:${val}` : cmd),
       },
-      runCommand: (cmd, val) => commands.push(val ? `${cmd}:${val}` : cmd),
-
+      ...recorders,
       window: { addEventListener() {}, getSelection: () => buildSelection(editor, p1, p2) },
       editor,
       formatBar: { classList: { remove() {}, add() {} } },
@@ -101,7 +113,6 @@ function position({
         querySelector: (sel) => (sel in chrome ? chromeEl(chrome[sel]) : null),
         querySelectorAll: () => [],
         addEventListener() {},
-        execCommand() {},
         documentElement: { clientWidth: windowWidth, scrollTop },
       },
       window: {
@@ -168,58 +179,6 @@ const outsideEditor = () => ({
 });
 
 
-// Code is the only format that reads the *extent* of the selection rather than
-// just its position, so it needs a tree and a range built per case rather than
-// the fixed two-paragraph document `scenario` sets up.
-function codeCase(build) {
-  const container = makeEl();
-  const editor = makeEl("div", { parent: container });
-  const inserted = [];
-  const inputs = [];
-  const notices = [];
-  editor.addEventListener("input", () => inputs.push(1));
-
-  const range = build(editor);
-  range.deleteContents ||= () => {};
-  range.insertNode ||= (node) => inserted.push(node);
-
-  loadSource(
-    "format-bar.js",
-    {
-      document: {
-        createElement: (t) => makeEl(t),
-        createTextNode: makeText,
-        querySelector: () => null,
-        querySelectorAll: () => [],
-        addEventListener() {},
-        execCommand() {},
-      },
-      runCommand: () => true,
-      window: { addEventListener() {}, getSelection: () => ({ rangeCount: 1, getRangeAt: () => range }) },
-      editor,
-      formatBar: { classList: { remove() {}, add() {} } },
-      localStorage: { setItem() {} },
-      Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
-      setTimeout: () => {},
-      onToolbarAction: () => {},
-      onMenuOpen: () => {},
-      notify: (message) => notices.push(message),
-    },
-    "; applyFormat('code');",
-  );
-
-  const all = [];
-  (function walk(node) {
-    for (const child of node.children || []) {
-      if (child.nodeType !== 1) continue;
-      all.push(child);
-      walk(child);
-    }
-  })(editor);
-
-  return { editor, inserted, inputs, notices, tag: (t) => all.find((n) => n.tagName === t) };
-}
-
 // A text node inside `block`, which is what a real selection's containers are.
 function textIn(block) {
   const node = makeText(block.textContent);
@@ -277,9 +236,7 @@ function activeCase(build) {
         },
         querySelectorAll: (sel) => (sel === ".format-btn" ? Object.values(buttons) : []),
         addEventListener() {},
-        execCommand() {},
       },
-      runCommand: () => {},
       window: {
         addEventListener() {},
         getSelection: () => ({
@@ -326,9 +283,7 @@ function menuCase(build) {
         querySelector: () => null,
         querySelectorAll: () => [],
         addEventListener() {},
-        execCommand() {},
       },
-      runCommand: () => {},
       window: {
         addEventListener() {},
         getSelection: () => ({
@@ -407,10 +362,8 @@ function caretCase(build, { windowWidth = 1000, toolbarHeight = 69, barWidth = 2
         },
         querySelectorAll: (sel) => (sel === ".format-btn" ? Object.values(buttons) : []),
         addEventListener() {},
-        execCommand() {},
         documentElement: { clientWidth: windowWidth, scrollTop: 0 },
       },
-      runCommand: () => {},
       window: { addEventListener() {}, pageYOffset: 0, getSelection: () => selection },
       editor,
       formatBar: bar,
@@ -478,30 +431,33 @@ export default function run(check) {
     }
   }
 
-  // Headings and lists go through execCommand, which works inside the editable
-  // root rather than on it, and spans multi-block selections natively.
-  check("h1 issues formatBlock", scenario("h1", multiBlock).commands[0] === "formatBlock:<h1>");
-  check("h2 issues formatBlock", scenario("h2", multiBlock).commands[0] === "formatBlock:<h2>");
-  check("p issues formatBlock", scenario("p", multiBlock).commands[0] === "formatBlock:<p>");
-  check("ul issues insertUnorderedList",
-    scenario("ul", multiBlock).commands[0] === "insertUnorderedList");
-  check("ol issues insertOrderedList",
-    scenario("ol", multiBlock).commands[0] === "insertOrderedList");
-  check("bold issues bold", scenario("bold", multiBlock).commands[0] === "bold");
-  check("strikethrough issues strikeThrough",
-    scenario("strikethrough", multiBlock).commands[0] === "strikeThrough");
-
-  // Code is the one hand-rolled format: no execCommand equivalent exists.
-  const { editor } = scenario("code", multiBlock);
-  const pre = editor.children.find((c) => c.tagName === "PRE");
-  check("code builds a <pre> inside the editor", !!pre);
-  check("code folds both selected lines in",
-    pre && pre.children[0].textContent === "line one\nline two");
-  check("code removes the absorbed block", editor.children.length === 1);
+  // Each format reaches its model command, and only that one.
+  for (const [format, command] of [
+    ["h1", "block:h1"], ["h2", "block:h2"], ["h6", "block:h6"], ["p", "block:p"],
+    ["ul", "list:ul"], ["ol", "list:ol"], ["quote", "quote"], ["code", "code"],
+    ["bold", "mark:strong"], ["italic", "mark:em"], ["strikethrough", "mark:strike"],
+  ]) {
+    const { commands } = scenario(format, multiBlock);
+    check(`${format} is the model's ${command}`, commands.length === 1 && commands[0] === command);
+  }
+  // A bundle without the input layer has nothing to format with, and does
+  // nothing rather than editing the DOM behind a model that is not there.
+  const bare = scenario("h1", multiBlock, { model: false });
+  check("without model-input.js a format does nothing to the editor",
+    bare.commands.length === 0 && bare.editor.children.length === 2 &&
+      bare.editor.children.every((c) => c.tagName === "P"));
 
   const outside = scenario("h1", outsideEditor);
   check("selection outside the editor is ignored",
     outside.commands.length === 0 && !outside.container.replaced);
+  // TODO 1.1.5: refused before the model is asked, where the selection still
+  // exists.
+  const inItem = scenario("h2", (editor) => {
+    const ul = makeEl("ul", { parent: editor });
+    const li = makeEl("li", { parent: ul, text: "item" });
+    return { rangeCount: 1, isCollapsed: true, getRangeAt: () => ({ commonAncestorContainer: textIn(li) }) };
+  });
+  check("a heading in a list item is refused", inItem.commands.length === 0);
 
   // --- staying inside the window -------------------------------------------
   //
@@ -557,181 +513,6 @@ export default function run(check) {
   check("the bar is up before the scroll", p.isVisible());
   p.scroll();
   check("and a scroll hides it rather than carrying it off screen", !p.isVisible());
-
-  // --- block versus inline ---------------------------------------------------
-  //
-  // Code was the one format reaching only half of what markdown offers. There
-  // is no execCommand for either kind, so the choice between them had to be
-  // made here — and it was made once, at load, in favour of the block.
-
-  const para = (editor) => {
-    const p = makeEl("p", { parent: editor, text: "line one" });
-    return { p };
-  };
-
-  let c = codeCase((editor) => {
-    const { p } = para(editor);
-    return {
-      commonAncestorContainer: textIn(p),
-      intersectsNode: (n) => n === p,
-      toString: () => "line",
-      collapsed: false,
-    };
-  });
-  check("a partial selection makes inline code, not a block", !c.tag("PRE"));
-  check("and the inline code holds only what was selected",
-    c.inserted.length === 1 && c.inserted[0].tagName === "CODE" &&
-      c.inserted[0].textContent === "line");
-
-  c = codeCase((editor) => {
-    const { p } = para(editor);
-    return {
-      commonAncestorContainer: textIn(p),
-      intersectsNode: (n) => n === p,
-      toString: () => "line one",
-      collapsed: false,
-    };
-  });
-  check("selecting the whole line still makes a block", !!c.tag("PRE"));
-
-  // A caret is a position, not an extent. Every other block format acts on the
-  // whole block from one, so Code doing otherwise would read as broken.
-  c = codeCase((editor) => {
-    const { p } = para(editor);
-    return {
-      commonAncestorContainer: textIn(p),
-      intersectsNode: (n) => n === p,
-      toString: () => "",
-      collapsed: true,
-    };
-  });
-  check("a bare caret still makes a block", !!c.tag("PRE"));
-
-  // The destructive one. blocksInRange answered with editor.children, so a
-  // selection in one bullet reported the whole <ul> — and Code replaced the
-  // list with a single <pre> holding every item run together.
-  // A range inside an <li> intersects the <ul> too — that is the whole reason
-  // editor.children was the wrong answer, so a stub range that reports only the
-  // <li> would quietly excuse the bug it is meant to catch.
-  const list = (editor, items) => {
-    const ul = makeEl("ul", { parent: editor, text: items.join("") });
-    const lis = items.map((t) => makeEl("li", { parent: ul, text: t }));
-    return { ul, lis };
-  };
-
-  c = codeCase((editor) => {
-    const { ul, lis } = list(editor, ["first", "second"]);
-    return {
-      commonAncestorContainer: textIn(lis[0]),
-      intersectsNode: (n) => n === lis[0] || n === ul,
-      toString: () => "fir",
-      collapsed: false,
-    };
-  });
-  check("a selection inside a bullet leaves the list standing", !c.tag("PRE"));
-  check("and the list keeps both its items",
-    c.tag("UL") && c.tag("UL").children.filter((n) => n.tagName === "LI").length === 2);
-  check("and the bullet gets inline code",
-    c.inserted.length === 1 && c.inserted[0].tagName === "CODE");
-
-  // A whole bullet nests its fence inside the <li> rather than swapping the
-  // <li> itself out — that would be invalid markup — or falling back to inline.
-  c = codeCase((editor) => {
-    const { ul, lis } = list(editor, ["first"]);
-    return {
-      commonAncestorContainer: textIn(lis[0]),
-      intersectsNode: (n) => n === lis[0] || n === ul,
-      toString: () => "first",
-      collapsed: false,
-    };
-  });
-  check("selecting a whole bullet gets a nested <pre>", !!c.tag("PRE"));
-  check("the <pre> lives inside the <li>, not in place of it",
-    c.tag("PRE") && c.tag("PRE").parentNode.tagName === "LI");
-  check("the list item survives",
-    c.tag("UL") && c.tag("UL").children.filter((n) => n.tagName === "LI").length === 1);
-  check("and nothing goes through inline code", c.inserted.length === 0);
-
-  // A caret in an otherwise-empty bullet counts as the whole block too, same
-  // as every other block format.
-  c = codeCase((editor) => {
-    const { ul, lis } = list(editor, ["only"]);
-    return {
-      commonAncestorContainer: textIn(lis[0]),
-      intersectsNode: (n) => n === lis[0] || n === ul,
-      toString: () => "",
-      collapsed: true,
-    };
-  });
-  check("a bare caret in a bullet also nests a <pre>", !!c.tag("PRE"));
-
-  // Toggling back off: the <pre> comes out and the li's own text returns,
-  // rather than the top-level revert's <p> wrapper — a bullet never had one.
-  c = codeCase((editor) => {
-    const { ul, lis } = list(editor, [""]);
-    const li = lis[0];
-    const pre = makeEl("pre", { parent: li });
-    const code = makeEl("code", { parent: pre, text: "already" });
-    return {
-      commonAncestorContainer: textIn(code),
-      intersectsNode: (n) => n === li || n === ul || n === pre,
-      toString: () => "already",
-      collapsed: false,
-    };
-  });
-  check("code nested in a bullet unwraps back to the bullet", !c.tag("PRE"));
-  check("no stray <p> wrapper is left behind", !c.tag("P"));
-
-  // The original report: select the list, get one <pre> with every item run
-  // together and the <ul> gone. Inline is not the fallback here — a code span
-  // cannot cross a block boundary, and deleteContents would take the list apart
-  // to build one — so it declines and says why.
-  c = codeCase((editor) => {
-    const { ul, lis } = list(editor, ["first", "second"]);
-    return {
-      commonAncestorContainer: ul,
-      intersectsNode: (n) => n === ul || lis.includes(n),
-      toString: () => "firstsecond",
-      collapsed: false,
-    };
-  });
-  check("selecting a whole list does not collapse it into a <pre>", !c.tag("PRE"));
-  check("and the items survive",
-    c.tag("UL") && c.tag("UL").children.filter((n) => n.tagName === "LI").length === 2);
-  check("and nothing is inserted in their place", c.inserted.length === 0);
-  check("and it says so rather than doing nothing quietly",
-    /single block/.test(c.notices.at(-1) || ""));
-
-  // Toggling back off, which is what makes it a format rather than a one-way
-  // conversion.
-  c = codeCase((editor) => {
-    const p = makeEl("p", { parent: editor });
-    const code = makeEl("code", { parent: p, text: "already" });
-    return {
-      commonAncestorContainer: textIn(code),
-      intersectsNode: (n) => n === p,
-      toString: () => "already",
-      collapsed: false,
-    };
-  });
-  check("code inside an existing span unwraps it",
-    c.tag("P").replaced && c.tag("P").replaced.oldNode.tagName === "CODE");
-  check("and puts the text back", 
-    c.tag("P").replaced && c.tag("P").replaced.newNode.textContent === "already");
-
-  // The hand-rolled branch raises no input event of its own, and autosave, the
-  // dirty flag, the outline and the undo stack all hang off that one event. A
-  // code block used to be invisible to Ctrl+Z for exactly this reason.
-  c = codeCase((editor) => {
-    const { p } = para(editor);
-    return {
-      commonAncestorContainer: textIn(p),
-      intersectsNode: (n) => n === p,
-      toString: () => "line one",
-      collapsed: false,
-    };
-  });
-  check("formatting as code announces itself with an input event", c.inputs.length === 1);
 
   // --- the whole selection, not just where it started ----------------------
   //

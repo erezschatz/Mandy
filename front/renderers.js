@@ -1,25 +1,3 @@
-// Mermaid diagrams were removed on 2026-10-01. A ```mermaid fence is now an
-// ordinary code block, shown as its source, and the file never changes: the
-// fence was always the fence. What is left here is for documents drawn before
-// that, still sitting in a browser's autosave or tab storage as the wrapper the
-// old renderer built — the SVG, plus the diagram's source in a hidden
-// `.mermaid-source`. Each one goes back to the fenced code block it came from,
-// so no wrapper is ever in the editor again; the "mermaid" Turndown rule in
-// app.js does the same for any that reach a save by another way.
-function unwrapMermaidDiagrams(container) {
-  for (const wrapper of container.querySelectorAll(".mermaid-wrapper")) {
-    const source = wrapper.querySelector(".mermaid-source");
-    const pre = document.createElement("pre");
-    const code = document.createElement("code");
-    code.className = "language-mermaid";
-    // markdown-it ends a fence's body with a newline; matching it keeps the
-    // restore layer's key for this block the same as the file's.
-    code.textContent = (source ? source.textContent : "") + "\n";
-    pre.appendChild(code);
-    wrapper.parentNode.replaceChild(pre, wrapper);
-  }
-}
-
 // What an earlier render typeset, by the source it was typeset from, so a render
 // that throws the DOM away can put the same equation back **synchronously**
 // instead of showing TeX until MathJax catches up. TODO 3.1, stage 2, slice 7's
@@ -51,11 +29,11 @@ function containsLatex(text) {
   );
 }
 
-// MathJax renders the `$$…$$` source away: by the time Turndown runs there is
-// nothing left in the DOM but glyphs, so a save writes `\frac{a}{b}` back out as
-// "ab". MathJax does keep the original TeX — in the math list it builds while
-// typesetting — so stamp it onto each container while the two are still
-// associated. The "mathjax" Turndown rule in app.js reads it back.
+// MathJax renders the `$$…$$` source away: once it has run there is nothing
+// left in the DOM but glyphs. It does keep the original TeX — in the math list
+// it builds while typesetting — so stamp it onto each container while the two
+// are still associated. The render cache, the clipboard, the exports' pictures
+// of equations and the "mathjax" Turndown rule in app.js all read it back.
 //
 // The source survives as an attribute so it can survive an export, which is why
 // it lives nowhere but the document itself.
@@ -216,62 +194,13 @@ async function drawEquation({ frame, MathJax }, tex, display, fontSize) {
   };
 }
 
-// MathJax is only downloaded once the document actually contains maths.
-//
-// **Maths already typeset goes back to its source first, and is typeset again
-// from that.** A typeset container holds MathJax's assistive MathML, and the
-// `tex-mml-chtml` bundle reads MathML as input — so a second pass over one
-// typeset the assistive copy and nested a new container inside the old. Every
-// reload restores typeset HTML from autosave and every Paste markdown re-runs
-// this over the whole editor, so each one added another copy of every equation,
-// which the next autosave kept: measured 2026-09-29, one equation became three
-// containers on a single reload. Nothing showed, because the copies sit inside
-// hidden assistive markup. Typesetting fresh from the stamp also regenerates
-// MathJax's stylesheet, which restored maths needs and which that second pass
-// was, by accident, the only thing providing.
-//
-// After the load, never before it: offline the containers stay as they are,
-// stamped, and a save still writes their TeX back. Put back as text before
-// then, the TeX would reach Turndown as prose and be escaped.
-async function renderLatex(container) {
-  // **Under the model core this is the render step's job and nobody else's.**
-  // `renderAfterModel` typesets what each render builds; the load paths go on
-  // calling this as the old core needs them to. On a fresh page that was a
-  // race: MathJax not yet loaded, so the render step's typeset waits for it,
-  // this call looks for stamped maths before that typeset has finished, finds
-  // none, and queues a second pass that lands on the render step's output —
-  // and nests a copy of every equation, the bug `5e6efad` fixed for the old
-  // core. Measured in Firefox and then Blink on 2026-10-01: 15 equations, 30
-  // nested copies, after one reload. Since stage 4's slice 4 the model is the
-  // only core, so this returns at once and the legacy path below it is slice
-  // 5's to delete. Feature-tested, because the suites load this file without
-  // model.js and drive that path directly.
-  if (typeof modelRender === "function") return;
-  if (!typesetLatexRoots(container).length && !containsLatex(container.textContent)) return;
-
-  try {
-    const mathJax = await ensureMathJax();
-    // Read after the await, since the document can change while MathJax loads.
-    // The list entries go first, while the containers they describe are still
-    // inside `container` to be found.
-    const typeset = typesetLatexRoots(container);
-    if (typeset.length) mathJax.typesetClear([container]);
-    for (const root of typeset) root.replaceWith(document.createTextNode(latexSourceOf(root)));
-    await mathJax.typesetPromise([container]);
-    stampLatexSource(container);
-  } catch (error) {
-    console.error("[MathJax] Render error:", error);
-  }
-}
-
 // ── After a model render ─────────────────────────────────────────────────────
 //
 // The model core's renderer hands markdown-it's output to the DOM, and that
 // output is a `<span data-math>` holding TeX: what the reader sees is typeset
-// over it afterwards, by MathJax. The old core only
-// ever needed that at load, because contenteditable never re-rendered anything;
-// the model core re-renders on every edit, so model.js calls this after each
-// one with what it just built. Feature-tested there, since
+// over it afterwards, by MathJax. The model re-renders on every edit, so
+// model.js calls this after each render with what it just built — which is
+// also the only place maths is typeset: a document arriving is a render too. Feature-tested there, since
 // `front/input-check.html` ships the model without this file.
 
 // Equations in `container` not yet typeset. A cached one is put back here and
@@ -327,10 +256,11 @@ function mathTypesetNow(pending, container) {
   return true;
 }
 
-// The asynchronous path is the pending equations alone, never `renderLatex`
-// over the container: that puts every stamped equation back to source and
-// typesets it again, which would redo the ones just restored from the cache.
-// An equation a later render has already thrown away is skipped rather than
+// The asynchronous path is the pending equations alone, never the whole
+// container: that would typeset the ones just restored from the cache again,
+// and the `tex-mml-chtml` bundle reads a typeset container's assistive MathML
+// as input, so a second pass nests a copy of the equation inside itself. An
+// equation a later render has already thrown away is skipped rather than
 // typeset where nobody will see it.
 function renderAfterModel(container) {
   const pending = mathTakeFromCache(container);

@@ -151,11 +151,12 @@ export default async function run(check) {
   openExternalLink("mailto:erez@example.com");
   check("mailto is allowed", opened.length === before + 1);
 
-  // --- authoring: the href the Insert > Link dialog hands to createLink ----
+  // --- authoring: the href the Insert > Link dialog hands to the model ------
 
   // A bare domain typed into the dialog is almost never a relative path, so it
-  // gets a scheme. This is the one transformation insertLink makes; everything
-  // else is passed through, because markdown puts no constraint on an href.
+  // gets a scheme. This is the one transformation the dialog's answer gets;
+  // everything else is passed through, because markdown puts no constraint on
+  // an href.
   check("a bare domain gains https://",
     normaliseLinkHref("example.com") === "https://example.com");
   check("so does one with a path",
@@ -183,53 +184,26 @@ export default async function run(check) {
     app.documentElement.style["--link-hint"] === '"Cmd+Click to open link"',
   );
 
-  // --- retargeting a reference link ------------------------------------------
+  // --- a reference link in a fragment ----------------------------------------
   //
-  // The referenceLink rule writes [text][label] off the data-ref-label stamp and
-  // never reads the href, so a retarget that left the stamp behind was lost on
-  // save. Asked of the rule itself rather than of the attribute alone, since
-  // the rule is what decides which syntax the file gets.
+  // A link the model's clipboard copies carries its data-ref-label stamp. The
+  // shared Turndown service writes it inline, because the pasted fragment is
+  // parsed with no definitions and `[text][label]` would come back as literal
+  // brackets. The reference form is legacy-storage.js's, and only while it
+  // converts stored HTML that came with its source.
 
-  app.adoptMarkdownStyle("See [the docs][docs].\n\n[docs]: https://old.example\n");
-  const refRule = app.rules.referenceLink;
+  check("the app registers no referenceLink rule on the shared service",
+    !("referenceLink" in app.rules));
 
-  function refLink() {
-    const link = makeEl("a");
-    link.nodeName = "A"; // what the rule filters on; makeEl sets only tagName
-    link.setAttribute("href", "https://old.example");
-    link.setAttribute("data-ref-label", "docs");
-    editor.appendChild(link);
-    return link;
-  }
-  function caretIn(link) {
-    app.selection.rangeCount = 1;
-    app.selection.getRangeAt = () => ({
-      commonAncestorContainer: link,
-      collapsed: true,
-      cloneRange() { return this; },
-    });
-  }
-
-  const moved = refLink();
-  caretIn(moved);
-  check("an untouched reference link is written as a reference", refRule.filter(moved));
-  app.inputAnswers.push("https://new.example");
-  await app.insertLink();
-  check("a retarget takes the new address", moved.getAttribute("href") === "https://new.example");
-  check("and is no longer written as the reference, which would drop that address",
-    !moved.hasAttribute("data-ref-label") && !refRule.filter(moved));
-
-  const kept = refLink();
-  caretIn(kept);
-  app.inputAnswers.push("https://old.example");
-  await app.insertLink();
-  check("an Update to the same address keeps the reference form",
-    kept.getAttribute("data-ref-label") === "docs" && refRule.filter(kept));
-
-  const backedOut = refLink();
-  caretIn(backedOut);
-  await app.insertLink();
-  check("backing out of the dialog leaves the reference alone",
-    backedOut.getAttribute("data-ref-label") === "docs" &&
-      backedOut.getAttribute("href") === "https://old.example");
+  const legacy = loadApp({ legacy: true });
+  const refRule = legacy.rules.referenceLink;
+  legacy.legacyConvertDocument("", "See [the docs][docs].\n\n[docs]: https://old.example\n");
+  const link = makeEl("a");
+  link.nodeName = "A"; // what the rule filters on; makeEl sets only tagName
+  link.setAttribute("href", "https://old.example");
+  link.setAttribute("data-ref-label", "docs");
+  check("legacy-storage.js's rule stays out of a fragment conversion", !refRule.filter(link));
+  legacy.converting(true);
+  check("and writes the reference only while it converts", refRule.filter(link));
+  legacy.converting(false);
 }

@@ -10676,7 +10676,7 @@ checked by hand: it is left to ordinary use, since `open-edit-save.spec.mjs`
 already covers it. docs/REWRITE.md's stage 4 status line and slice 4 say so.
 Nothing in the code changed.
 
-## 2026-11-14 — The Unities, brought up to the 2026-11-11 procedure
+## 2026-11-14 — `dca7a7b` — The Unities, brought up to the 2026-11-11 procedure
 
 docs/UNITIES.md was an undated copy of the adoption procedure. It is now the
 master dated 2026-11-11, and the run installed what that version adds.
@@ -10716,3 +10716,54 @@ points at CLAUDE.md for the how. CLAUDE.md's Unities section gained a read-first
 list and a *Division of labour*. tasks/README.md and the template describe the
 new sections. 1.6, 2.1 and export-equations gained the closing line the plan
 reads. tasks/adopt-unities.md has the rest.
+
+## 2026-11-14 — Stage 4's slice 5: the old core is deleted
+
+The code the old editing core ran on is gone, since nothing could reach it
+after slice 4 removed the flag. **`front/execcommand.js` is deleted** and has
+left all three registries. Its one command still in use, the Edit menu's Copy,
+is a direct `document.execCommand("copy")` in `model-input.js`. The scan that
+kept execCommand to one door moved into the `notify` suite, which already scans
+`front/` for `alert()` and `confirm()`: it now allows exactly that one call.
+
+Gone with it from `app.js`: the old link command and its retarget and unwrap,
+the paste helpers `insertPastedContent` and `insertPlainText`, and the list
+surgery (`outdentListItem`, the indent guards, the caret helpers). From
+`format-bar.js`: the Code toggles, the block walk they used and `saveSoon`, so
+`applyFormat` now only routes each format to its model command. From
+`undo.js`: the HTML state, the character-offset caret, `undoRefresh`, and
+`undoBreak`, whose one caller was the old plain paste. A state is a model fork
+and nothing else. From `renderers.js`: `renderLatex`, the load-time typeset the
+model's own render had replaced, and `unwrapMermaidDiagrams`, since stored HTML
+never reaches the editor now. Opening a file no longer waits for the maths, so
+the check for the tab moving while it rendered went with it.
+
+**The old save path moved into `front/legacy-storage.js`** (decision 5), since
+converting the old autosave is its one caller left. That is the restore layer,
+the whole-document re-wrap and the reference-definition scan and append, out of
+`markdown-style.js` and `app.js`. `markdown-style.js` now holds the sniffers, the
+line wrapper, the table formatter and the small predicates they share
+(`hasMathSpan`, `isHorizontalRule`, `isTableDelimiterRow`). `htmlToMarkdown` is
+`legacyHtmlToMarkdown` there. Turndown stays in `app.js` for what still
+converts HTML, a paste and the table of contents, through
+`htmlFragmentToMarkdown`.
+
+Two Turndown rules moved with the save path, and only fire while a conversion
+runs. `mermaid` is one, since only stored HTML can hold a diagram. **The other,
+`referenceLink`, was doing harm in a paste.** A link copied out of a document
+carries its reference label, and the rule wrote it back as `[text][label]`. The
+pasted fragment is then parsed with no definitions, so the link came back as
+literal brackets. A paste now gets Turndown's inline link. Recorded as a
+decision in the 3.1 task file, compiled into docs/DECISIONS.md as D18.
+
+Tests: `execcommand` is deleted. `save-fidelity` keeps the sniffers, the
+formatter and the line wrapper; its restore, re-wrap and reference checks moved
+to `legacy-storage`, which now loads the real save path. `format-bar` checks that
+each format reaches its model command. `undo` runs its stack checks on a model
+that mirrors the editor, and counts zero `editor.innerHTML` assignments across
+eight files. `latex`, `links` and `tabs` lost the halves that drove the old
+core. `check-pages.spec.mjs` skips `browser-check`, which loads the deleted
+file, along with the two list pages; slice 6 deletes all three. Service worker
+moves to `v1.96`. CLAUDE.md still describes much of the deleted code as running,
+until slice 7 rewrites it. Also fills `dca7a7b` into the previous entry's
+header.

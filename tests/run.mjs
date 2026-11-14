@@ -16,7 +16,6 @@ const SUITES = [
   ["outline", "./outline.test.mjs"],
   ["notify", "./notify.test.mjs"],
   ["undo", "./undo.test.mjs"],
-  ["execcommand", "./execcommand.test.mjs"],
   ["model", "./model.test.mjs"],
   ["model-input", "./model-input.test.mjs"],
 ];

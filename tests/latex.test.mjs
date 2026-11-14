@@ -1,11 +1,13 @@
-// Regression cover for silent LaTeX data loss on save.
+// Regression cover for silent LaTeX data loss.
 //
-// MathJax replaces the `$$…$$` source with rendered CHTML, so Turndown used to
-// serialise the glyphs instead of the maths: `$$\frac{a}{b}$$` was written back
-// to the file as "ab", and `$$E = mc^2$$` as "E\=mc2". Irrecoverable, and quiet
-// — the document still looked right on screen.
+// MathJax replaces the `$$…$$` source with rendered CHTML, so the old core's
+// Turndown save used to serialise the glyphs instead of the maths:
+// `$$\frac{a}{b}$$` was written back to the file as "ab", and `$$E = mc^2$$` as
+// "E\=mc2". Irrecoverable, and quiet — the document still looked right on
+// screen. The model writes the file now, from its own tree, but an equation
+// copied out of a document and pasted back still goes through Turndown.
 //
-// Two halves have to hold for the round trip to survive, and each fails
+// Two halves have to hold for that round trip to survive, and each fails
 // silently on its own, so both are tested here:
 //   renderers.js  stamps data-tex onto the container while MathJax still knows
 //                 which TeX produced it;
@@ -103,8 +105,8 @@ export default async function run(check) {
   check("maths stamped before this existed is made uneditable too",
     older.attrs.contenteditable === "false" && older.attrs["data-tex"] === "z");
 
-  // Absent MathJax must be survivable: renderLatex is a no-op without maths,
-  // but stampLatexSource is reachable from an exported document either way.
+  // Absent MathJax must be survivable: stampLatexSource is reachable from an
+  // exported document either way.
   let threw = null;
   try {
     loadRenderers(undefined, makeEl("div"), []);
@@ -112,88 +114,6 @@ export default async function run(check) {
     threw = error;
   }
   check("no MathJax is not an error", threw === null);
-
-  // ── renderers.js: typesetting again ────────────────────────────────────────
-  //
-  // A second typeset pass over maths already typeset nested a new container
-  // inside the old one, every reload and every Paste markdown, and the
-  // autosave kept each copy: one equation was three containers after a single
-  // reload. renderLatex now puts stamped maths back to its source and typesets
-  // that afresh. The stub has no MathJax and no selector engine, so what is
-  // asserted is what renderLatex hands MathJax, and in what order.
-  {
-    const loadRenderLatex = (container, ensureMathJax) => {
-      container.querySelectorAll = (sel) =>
-        sel === "mjx-container[data-tex]"
-          ? walk(container).filter((n) => n.tagName === "MJX-CONTAINER" && "data-tex" in n.attrs)
-          : [];
-      return loadSource(
-        "renderers.js",
-        {
-          window: { MathJax: undefined },
-          MathJax: undefined,
-          document: {
-            documentElement: { getAttribute: () => "light" },
-            createTextNode: makeText,
-          },
-          editor: container,
-          ensureMathJax,
-          console: { error() {} },
-        },
-        "; return renderLatex;",
-      );
-    };
-    // A typeset container that can be swapped out, the way a real one can.
-    const typesetIn = (parent, tex, display) => {
-      const root = makeContainer(parent);
-      root.setAttribute("data-tex", tex);
-      root.setAttribute("data-display", display);
-      root.replaceWith = (node) => {
-        parent.children[parent.children.indexOf(root)] = node;
-        node.parentElement = parent;
-        root.parentElement = null;
-      };
-      return root;
-    };
-    const textOf = (node) => node.children.map((c) => c.nodeType === 3 ? c.textContent : "<" + c.tagName + ">").join("");
-
-    const para = makeEl("p");
-    typesetIn(para, "\\frac{a}{b}", "block");
-    const inlineRoot = typesetIn(para, "x^2", "inline");
-    // Earlier reloads' nesting, stamped: a container inside the assistive
-    // MathML of another. Only the outer one is authored maths.
-    const assistive = makeEl("mjx-assistive-mml", { parent: inlineRoot });
-    assistive.parentElement = inlineRoot;
-    const nestedRoot = typesetIn(assistive, "<math>copy</math>", "inline");
-
-    const calls = [];
-    const fake = {
-      typesetClear: () => calls.push(`clear:${textOf(para)}`),
-      typesetPromise: async () => calls.push(`typeset:${textOf(para)}`),
-    };
-    await loadRenderLatex(para, async () => fake)(para);
-    check("typeset maths goes back to its source before typesetting",
-      calls[calls.length - 1] === "typeset:$$\\frac{a}{b}$$$x^2$");
-    check("MathJax forgets the old containers while they are still there to find",
-      calls[0] === "clear:<MJX-CONTAINER><MJX-CONTAINER>");
-    check("a nested copy goes with its outer container rather than on its own",
-      !walk(para).includes(nestedRoot) && calls.length === 2);
-
-    // Offline, the stamped containers are what a save reads the TeX from. Put
-    // back as text before MathJax has loaded, it would reach Turndown as prose.
-    const offline = makeEl("p");
-    const kept = typesetIn(offline, "y", "inline");
-    await loadRenderLatex(offline, async () => { throw new Error("offline"); })(offline);
-    check("with MathJax unavailable the typeset maths is left as it was",
-      offline.children[0] === kept && kept.attrs["data-tex"] === "y");
-
-    // And a document with no maths at all still never fetches MathJax.
-    let fetched = false;
-    const plain = makeEl("p");
-    plain.children.push(makeText("Just prose, no maths."));
-    await loadRenderLatex(plain, async () => { fetched = true; return fake; })(plain);
-    check("a document with no maths does not load MathJax", fetched === false);
-  }
 
   // ── renderers.js: typesetting again after a model render ──────────────────
   //
@@ -244,34 +164,6 @@ export default async function run(check) {
     unstamped.setAttribute("data-tex", "y");
     r.mathRemember(waiting);
     check("a stamped one is", r.renderedCache.get("math:$y$") === unstamped);
-  }
-
-  // ── renderers.js: diagrams drawn before Mermaid was removed ───────────────
-  //
-  // Mermaid went on 2026-10-01, but a document drawn before then still sits in
-  // autosave and tab storage as the old wrapper: the SVG, plus the source in a
-  // hidden .mermaid-source. Loading one puts back the fenced code block it came
-  // from, so the source shows and no wrapper is ever in the editor again.
-  {
-    const container = makeEl("div");
-    const wrapper = makeEl("div", { parent: container });
-    wrapper.parentNode = container;
-    wrapper.className = "mermaid-wrapper";
-    const hidden = makeEl("pre", { text: "graph TD; A-->B;" });
-    wrapper.querySelector = (sel) => (sel === ".mermaid-source" ? hidden : null);
-    container.querySelectorAll = (sel) => (sel === ".mermaid-wrapper" && container.children.includes(wrapper) ? [wrapper] : []);
-    const unwrap = loadSource(
-      "renderers.js",
-      { window: {}, document: { createElement: (tag) => makeEl(tag) }, console },
-      "; return unwrapMermaidDiagrams;",
-    );
-    unwrap(container);
-    const pre = container.children[0];
-    const code = pre && pre.children[0];
-    check("an old diagram goes back to a fenced code block in the wrapper's place",
-      container.children.length === 1 && pre.tagName === "PRE" && code && code.tagName === "CODE");
-    check("tagged mermaid, holding its source as markdown-it renders a fence's body",
-      code.className === "language-mermaid" && code.textContent === "graph TD; A-->B;\n");
   }
 
   // ── renderers.js: equations as pictures for PDF and Word ──────────────────
@@ -392,15 +284,17 @@ export default async function run(check) {
   const rule = rules.mathjax;
 
   check("app.js registers a mathjax rule", !!rule);
-  check("the mermaid rule is still registered", !!rules.mermaid);
+  // Only stored HTML can hold a diagram drawn before Mermaid went, so its rule
+  // is legacy-storage.js's since stage 4's slice 5 (see that suite).
+  check("the mermaid rule is not the shared service's any more", !rules.mermaid);
 
   // The model core's caret stops beside an equation at a line's edge, and its
-  // empty-block filler, are view: a save drops them. Without the rule the
-  // zero-width character reaches the file and a trailing stop becomes a hard
-  // break, since the save is still Turndown over the DOM until stage 4.
+  // empty-block filler, are view: a conversion drops them. Without the rule the
+  // zero-width character reaches the document and a trailing stop becomes a
+  // hard break.
   const filler = rules.modelFiller;
   const stopNode = { nodeType: 1, nodeName: "SPAN", hasAttribute: (n) => n === "data-filler" };
-  check("app.js drops the model core's caret stops on save",
+  check("app.js drops the model core's caret stops in a conversion",
     !!filler && filler.filter(stopNode) && filler.replacement("\u200B", stopNode) === "");
   check("and only those",
     !filler.filter({ nodeType: 1, nodeName: "SPAN", hasAttribute: (n) => n === "data-math" }));

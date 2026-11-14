@@ -729,3 +729,11 @@ also wrote the rules. tasks/README.md is the format and CLAUDE.md is the working
 practice. Write the guide the day a second person works here.
 
 Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D18 · 2026-11-14 · A paste writes a reference link inline
+
+**Decision** — The `referenceLink` Turndown rule moves to `front/legacy-storage.js` with the old save path, and fires only while stored HTML is being converted with its own source. A pasted or dropped fragment, and the table of contents, are converted without it, so a link carrying a `data-ref-label` stamp comes out inline. The `mermaid` rule moves and is gated the same way.
+**Rejected** — Keeping `referenceLink` on the shared Turndown service, so a link copied within a document would paste back in its reference form.
+**Why** — A fragment is parsed by `modelParse` with no reference definitions, so `[text][label]` came back as literal brackets rather than a link. The inline form always resolves. The model's own emitter already chooses the reference form for an edited link when the document still defines the label, so nothing about a document's own references is lost.
+
+Source: [tasks/3.1-editing-core-rewrite.md](../tasks/3.1-editing-core-rewrite.md)

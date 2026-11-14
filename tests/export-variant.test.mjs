@@ -112,7 +112,6 @@ function boot({
     {
       ...model.scope,
       document,
-      runCommand: () => true,
       localStorage: {
         getItem: (k) => (store.has(k) ? store.get(k) : null),
         setItem: (k, v) => store.set(k, v),
@@ -127,8 +126,6 @@ function boot({
         getSelection: () => ({ removeAllRanges() {}, addRange() {} }),
       },
       navigator: { clipboard: {} },
-      unwrapMermaidDiagrams: () => {},
-      renderLatex: async () => {},
       // An exported document has no origin to fetch from, and nothing here
       // should try: the stored content is what it opens with. A request is a
       // failure rather than a stub, so the welcome path cannot pass silently.

@@ -5498,7 +5498,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     moved on, and records a save whose write was in flight on its own tab (decision 4);
     slice 4 done and tested 2026-11-12, by machine in three engines, and by
     hand 2026-11-14 on the user's own storage — the autosave is markdown, the
-    stored HTML converts once at load, and the flag is gone.
+    stored HTML converts once at load, and the flag is gone;
+    slice 5 done and tested by machine 2026-11-14 — the old core is deleted,
+    and its save path lives in `legacy-storage.js` for the conversion alone.
     → MERGE TO `main` WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
@@ -5977,6 +5979,52 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         lose the halves that drove the old core.
 
         `sw.js`'s `VERSION` moves, because the shell changed.
+
+        - **Done and tested by machine 2026-11-14.** Built as planned above,
+          in one commit. `sw.js` is `v1.96`.
+          - **More went than the list names**, all of it unreachable once
+            the flag had gone: the old link command with its retarget and
+            unwrap, `undoBreak` (its one caller was the old plain paste),
+            `renderLatex` and `unwrapMermaidDiagrams` in `renderers.js`, and
+            `isBlankContent` from `app.js` (it moved to the conversion, its
+            last reader; `file-api.js`'s in-place New asks the model
+            instead). Opening a file no longer awaits the maths, so the
+            second "did the tab move" check inside `openFile` went with it.
+            The three doors and the outline's fingerprint had already gone
+            in slice 4.
+          - **What moved** is the restore layer (`indexMarkdownBlocks`,
+            `restoreSourceWrapping` and the helpers only they used), the
+            whole-document `reflowMarkdown`, `isReferenceDefinitionLine`, and
+            the reference scan and append, into `legacy-storage.js`, with
+            its own index and definitions rather than app.js's.
+            `htmlToMarkdown` is `legacyHtmlToMarkdown` there.
+          - **Which rules stay in a fragment conversion**, decided here:
+            everything except `mermaid` and `referenceLink`, which moved and
+            fire only while a conversion runs. `referenceLink` was harmful
+            in a paste: it wrote `[text][label]` into a fragment parsed with
+            no definitions, so a copied reference link pasted back as
+            literal brackets. Recorded in the 3.1 task file's decisions,
+            compiled as D18.
+          - **Suites**: as planned, and `notify` allows exactly
+            `model-input.js`'s `execCommand("copy")`. `undo` runs its stack
+            checks on a model that mirrors the editor and counts zero
+            `editor.innerHTML` assignments across eight files. `tabs` throws
+            from a parse where it threw from MathJax. The whole of `npm test`
+            passes.
+          - **The whole Playwright run**: 335 passed, 9 skipped, 1 failed.
+            The skips are the three old-core check pages in each engine:
+            `browser-check` loads the deleted `execcommand.js`, so it joins
+            the two list pages until slice 6 deletes all three. The failure
+            is `inline-code-links.spec.mjs`'s Code over a word in Firefox,
+            which slice 4 recorded as failing before it too.
+          - **No hand run is owed** beyond the closing pass: the slice
+            removes code nothing could reach, and the paths it touched are
+            the ones the browser specs drive. One change a person would
+            notice, a copied reference link pasting back inline, is the
+            decision above.
+          - **CLAUDE.md is further out of date** — it still describes
+            `execcommand.js`, `htmlToMarkdown`, `undoRefresh` and the rest as
+            running — until slice 7 rewrites it, as planned.
 
     6.  **The check pages that watch the old core retire.** `browser-check`,
         `list-indent-check` and `list-empty-item-check` are deleted, along

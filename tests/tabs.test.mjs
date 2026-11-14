@@ -45,7 +45,7 @@ const DIALOG_IDS = [
 // than racing it.
 function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   quiet = false, hold = null, disk = new Map(), fakeTimers = false,
-  failRender = false, answers = [], entries = [], flatUnconverted = false,
+  failLoad = null, answers = [], entries = [], flatUnconverted = false,
   holdWrite = null, modifiedAt = new Map() } = {}) {
   const store = new Map();
   for (const [key, value] of Object.entries(seed)) store.set(key, value);
@@ -81,6 +81,16 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   // 4's slice 4: there is no core without one, and the real one needs a parser
   // and an HTML parser this stub does not have.
   const model = fakeModelCore(extra.get("editor"));
+  // A parse that throws, for the one case that needs an operation to throw out
+  // of itself. It was MathJax's render until stage 4's slice 5, when the
+  // renderer stopped being something a load awaits.
+  if (failLoad) {
+    const load = model.scope.modelLoad;
+    model.scope.modelLoad = (root, markdown) => {
+      if (markdown === failLoad) throw new Error("the parser blew up");
+      return load(root, markdown);
+    };
+  }
 
   const document = {
     createElement: (t) => makeEl(t),
@@ -111,7 +121,6 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       range.selectNodeContents = () => {};
       return range;
     },
-    execCommand() {},
   };
 
   // model.js is left out of the bundle rather than loaded and overridden: its
@@ -129,7 +138,6 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       // when a case asks, so every other case boots as a converted browser does.
       ...(flatUnconverted ? { legacyFlatUnconverted: () => true } : {}),
       document,
-      runCommand: () => true,
       localStorage: {
         getItem: (k) => (store.has(k) ? store.get(k) : null),
         setItem: (k, v) => {
@@ -156,12 +164,6 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
         scrollTo: (x, y) => scrolls.push([x, y]),
       },
       navigator: { clipboard: {} },
-      // openFile awaits the renderer outside its own try, so a renderer that
-      // throws throws out of the whole operation -- the path the counter's
-      // `finally` exists for.
-      renderLatex: async () => {
-        if (failRender) throw new Error("MathJax blew up");
-      },
       fetch: async (url, opts) => {
         if (opts && opts.method === "POST") {
           // A write that is still in flight when the screen moves on, which is
@@ -237,8 +239,7 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       "   isDirty = o.isDirty; fileMtime = o.fileMtime;" +
       "   diskChanged = o.diskChanged; cleanPosition = o.cleanPosition;" +
       "   dialogDir = o.dialogDir; renderCurrentFile(); }," +
-      " mdState: () => ({ style: markdownStyle, source: markdownSource," +
-      "   references: referenceDefinitions })," +
+      " mdState: () => ({ style: markdownStyle })," +
       " turndownOptions: () => turndownService.options," +
 
       " documentKey, flushAutosave, editor, markClean," +
@@ -247,7 +248,7 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       " fileOperationInFlight, operationCount: () => fileOperations," +
       " setOperations: (n) => { fileOperations = n; }," +
       " undo, undoReset, undoDepth: () => history.undoStack.length," +
-      " runToolbarAction, isBlankContent," +
+      " runToolbarAction," +
       (withTabs
         // Read as functions rather than captured once: every stage-4 check is
         // about what the list looks like *after* an operation moved it.
@@ -439,11 +440,9 @@ export default async function run(check) {
     const live = app.mdState();
     const parked = app.markdownStylePark();
 
-    check("markdownStylePark returns the state it found",
-      parked.style === live.style && parked.source === live.source &&
-      parked.references === live.references);
-    check("markdownStylePark leaves nothing indexed",
-      app.mdState().source.size === 0);
+    check("markdownStylePark returns the style it found", parked.style === live.style);
+    check("markdownStylePark leaves the defaults behind",
+      app.mdState().style !== live.style && app.mdState().style.bulletListMarker === "*");
     check("markdownStylePark restores Turndown's own bullet marker",
       app.turndownOptions().bulletListMarker === "*");
   }
@@ -457,13 +456,10 @@ export default async function run(check) {
 
     check("markdownStyleAdopt restores the sniffed style",
       back.style === parked.style);
-    check("markdownStyleAdopt restores the block index", back.source === parked.source);
-    check("markdownStyleAdopt restores the reference definitions",
-      back.references === parked.references);
-    // The failure this exists for: one shared Turndown instance serialises every
-    // tab, so an adopt that moved the index but left the previous document's
-    // marker behind would write `*` into a file written with `+`, in a block
-    // that had not been edited.
+    // The failure this exists for: one shared Turndown instance converts for
+    // every tab, so an adopt that moved the style but left the previous
+    // document's marker on the service would write `*` into a paste into a
+    // document written with `+`.
     check("markdownStyleAdopt pushes the document's own marker onto Turndown",
       app.turndownOptions().bulletListMarker === "+");
     check("markdownStyleAdopt pushes the document's own emphasis delimiter",
@@ -484,7 +480,6 @@ export default async function run(check) {
     const app = boot();
     app.adoptMarkdownStyle(SOURCE, false);
     app.markdownStyleAdopt(null);
-    check("markdownStyleAdopt(null) indexes nothing", app.mdState().source.size === 0);
     check("markdownStyleAdopt(null) is Turndown's own defaults",
       app.turndownOptions().bulletListMarker === "*" &&
       app.turndownOptions().emDelimiter === "_");
@@ -662,13 +657,13 @@ export default async function run(check) {
       app.fileOperationInFlight() === false);
   }
 
-  // The case the counter's `finally` is actually for. openFile awaits the
-  // renderer outside its own try/catch, so it throwing throws out of
+  // The case the counter's `finally` is actually for. openFile loads the
+  // document outside its own try/catch, so a load that throws throws out of
   // the operation -- and a turn left behind would refuse every switch for the
   // rest of the session, with nothing on screen saying why.
   {
     const app = boot({
-      withTabs: true, failRender: true, disk: new Map([["/home/x/f.md", "hi\n"]]),
+      withTabs: true, failLoad: "hi\n", disk: new Map([["/home/x/f.md", "hi\n"]]),
     });
     let threw = false;
     try {
@@ -780,8 +775,8 @@ export default async function run(check) {
     app.newTab();
     check("switching away leaves Turndown on its own defaults",
       app.turndownOptions().bulletListMarker === "*");
-    check("switching away leaves nothing of the outgoing document indexed",
-      app.mdState().source.size === 0);
+    check("switching away leaves nothing of the outgoing document's style",
+      app.mdState().style.bulletListMarker === "*");
 
     app.editor.innerHTML = "<p>second</p>";
     const returned = app.switchToTab(1);
@@ -924,7 +919,7 @@ export default async function run(check) {
     // and reaches the file the same way. The markdown is the document as it is
     // now, which is what new markdown should follow (stage 4's decision 1).
     check("a never-shown tab re-sniffs its markdown style",
-      app.turndownOptions().bulletListMarker === "+" && app.mdState().source.size > 0);
+      app.turndownOptions().bulletListMarker === "+" && app.mdState().style.bulletListMarker === "+");
     check("a clean restored tab gets a savepoint in the history now live",
       app.fileState().isDirty === false && app.fileState().cleanPosition === 0);
   }

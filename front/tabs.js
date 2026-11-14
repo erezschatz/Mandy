@@ -10,7 +10,7 @@
 // never sees a tab list -- which is also what the test suites that boot without
 // this file are exercising.
 //
-// It must load after app.js, which defines DOCUMENT_KEYS and isBlankContent,
+// It must load after app.js, which defines DOCUMENT_KEYS and storedDocument,
 // and before file-api.js, which reads the open file's path out of storage at
 // its own load time and has to be given the active tab's key by then.
 

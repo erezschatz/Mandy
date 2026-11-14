@@ -53,10 +53,10 @@
 //
 // So the rule wraps. Everything that could have objected was measured on
 // 2026-09-20 rather than argued: MathJax typesets *inside* the span and leaves
-// it standing with the `<mjx-container>` as its child; `normaliseEditorMarkup`
-// unwraps a `<span>` only when it carries a `style`, so this one survives every
-// execCommand; Turndown output is byte-identical to before the wrapper in both
-// states, so nothing reaches anybody's file differently; layout is
+// it standing with the `<mjx-container>` as its child; the old core's markup
+// normaliser unwrapped a `<span>` only when it carried a `style`, so this one
+// survived every execCommand; Turndown output was byte-identical to before the
+// wrapper in both states, so nothing reached anybody's file differently; layout is
 // pixel-identical inline and display, so there is no CSS for it; and MathJax
 // already skips `<code>`, so `` `$HOME` `` is untouched.
 //
@@ -137,8 +137,9 @@ function mathRule(state, silent) {
 // just dropped in.
 //
 // The stamp records the raw label text, not markdown-it's normalised form --
-// app.js does its own normalising (normalizeReferenceLabel) to look it back
-// up, so this half never has to match markdown-it's exact Unicode case-folding
+// the model normalises it the way markdown-it does (modelReferenceLabels), and
+// the old autosave's conversion in legacy-storage.js with its own
+// normalizeReferenceLabel, so this half never has to match markdown-it's exact Unicode case-folding
 // for the two to agree with each other.
 function referenceAwareLink(state, silent) {
   var attrs, code, label, labelEnd, labelStart, pos, res, ref, token,

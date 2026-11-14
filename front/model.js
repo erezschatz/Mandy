@@ -1459,12 +1459,12 @@ function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
  *
  * Lines no token covers become blocks of kind `"gap"`, at any depth. That is
  * where **reference definitions** live: markdown-it consumes a `[label]: url`
- * line and emits no token at all, which is why today they have no DOM node to
- * survive on and `appendReferenceDefinitions` has to collect them at the end
- * of the file regardless of where the author put them. Here the line simply
- * stays where it is, in its own block, rendered to nothing — and a definition
- * spanning several lines, which `scanReferenceDefinitions` cannot see today,
- * is just a taller gap. Inside a container the same mechanism catches the two
+ * line and emits no token at all, which is why the old core had no DOM node
+ * for them to survive on and `appendReferenceDefinitions` collected them at
+ * the end of the file regardless of where the author put them. Here the line
+ * simply stays where it is, in its own block, rendered to nothing — and a
+ * definition spanning several lines, which `scanReferenceDefinitions` could not
+ * see, is just a taller gap. Inside a container the same mechanism catches the two
  * lines that belong to a container and to none of its children: a table's
  * delimiter row, and a blockquote's bare `>`.
  */
@@ -1510,11 +1510,11 @@ function modelMintId(doc) {
  * The reference labels the document defines **as it now stands**, normalised
  * the way markdown-it normalises them. Slice 3's step 4.
  *
- * The model can answer this where `main` cannot, and that is the whole reason
- * the step exists. On the running editor a definition has no DOM node to
- * survive on, so `scanReferenceDefinitions` reads the markdown the document
- * *arrived* with and `appendReferenceDefinitions` collects every definition at
- * the end of the file; here a definition is an ordinary block in its own
+ * The model can answer this where the old core could not, and that is the
+ * whole reason the step exists. There a definition had no DOM node to survive
+ * on, so `scanReferenceDefinitions` read the markdown the document *arrived*
+ * with and `appendReferenceDefinitions` collected every definition at the end
+ * of the file (both are legacy-storage.js's now, for the old autosave); here a definition is an ordinary block in its own
  * position (slice 1), so the document is a list that can be searched and one
  * that is still there stays where the author put it.
  *
@@ -2208,8 +2208,8 @@ function modelTouch(block) {
 //
 // **Never a hand-written HTML emitter.** Everything below goes through
 // `md.renderer`, for two reasons and the second is the load-bearing one: the
-// output is then identical to what `markdownToHtml` produces today, which is
-// what keeps outline.js's observer, `headingAnchors`, the format bar's
+// output is then identical to what the old core's `markdownToHtml` produced,
+// which is what kept outline.js's observer, `headingAnchors`, the format bar's
 // geometry, the static export's clone and renderers.js reading a DOM that still
 // looks the same — and a second renderer would be a second thing free to
 // disagree with the parser, which is the mistake `modelInlines` already refuses
@@ -2630,9 +2630,7 @@ function modelIsFiller(node) {
  * and in a Word file the stop is a real character and the `<br>` a real break.
  *
  * In place, and over `childNodes` rather than a selector, so a suite can drive
- * it on a stub tree. Not behind the flag: under the old core the only thing it
- * finds is the stamped container's `contenteditable`, which means nothing in an
- * export either.
+ * it on a stub tree.
  */
 function modelStripView(root) {
   for (const child of Array.from(root.childNodes)) {
@@ -6239,11 +6237,11 @@ function modelLeafBeside(doc, block, step) {
 // ── Structure: lists ─────────────────────────────────────────────────────────
 //
 // Slice 4's step 5. The two hand-rolled clusters move here and stop depending
-// on an engine: `app.js`'s keydown handler for Enter and Backspace on an empty
-// `<li>`, which exists because contenteditable splits the list and strands
-// `<p><br></p>` blocks, and `outdentListItem`, which exists because Firefox
-// merges a bullet into the item above and that markup is indistinguishable from
-// a deliberate hard break.
+// on an engine: the old core's keydown handler for Enter and Backspace on an
+// empty `<li>`, which existed because contenteditable splits the list and
+// strands `<p><br></p>` blocks, and `outdentListItem`, which existed because
+// Firefox merges a bullet into the item above and that markup is
+// indistinguishable from a deliberate hard break. Both went in stage 4.
 //
 // **As model rules they are one implementation with no engine in it**, which is
 // what retires tests/list-indent-check.html and tests/list-empty-item-check.html
@@ -6395,7 +6393,7 @@ function modelMarkerColumn(marker) {
  * engine showed it.
  *
  * Refuses an item that is not nested inside another item, which is the same
- * guard `canOutdentListItem` makes today: markdown has no way to write a first
+ * guard the old core's `canOutdentListItem` made: markdown has no way to write a first
  * item nested under nothing.
  */
 function modelOutdentItem(doc, item) {
@@ -6468,7 +6466,7 @@ function modelAdoptItems(doc, item, items) {
  * **A first item cannot be indented**, and that is markdown's rule rather than
  * a preference: there is nothing for it to nest under, and an indent written
  * anyway reparses as a continuation of whatever came before the list. The same
- * guard `canIndentListItem` makes today.
+ * guard the old core's `canIndentListItem` made.
  *
  * It joins the previous item's existing sublist when there is one, so two Tabs
  * on two consecutive items give one nested list rather than two — and it takes
@@ -7499,9 +7497,7 @@ function modelRestoreDocument(root, doc, md, selection = null) {
  *
  * The pointer is cleared rather than left alone. Between a park and the adopt
  * that follows it, nothing may reach a document the outgoing tab now owns, and
- * a stale pointer would let it. The caller decides whether there is a model to
- * park at all — under the legacy core there is not, and this would return
- * whatever was last parsed, so it is asked only under the model core.
+ * a stale pointer would let it.
  */
 function modelParkDocument() {
   const doc = modelDocument;

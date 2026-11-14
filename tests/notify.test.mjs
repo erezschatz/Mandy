@@ -89,6 +89,20 @@ export default async function run(check) {
     check(`${file} asks no confirm()`, !/(^|[^.\w])confirm\s*\(/.test(src));
   }
 
+  // The same kind of scan for execCommand, moved here from the `execcommand`
+  // suite when execcommand.js went with the old core in stage 4's slice 5. The
+  // engine edits nothing behind the model: every `beforeinput` is cancelled,
+  // and execCommand cannot be, since it fires `input` and never `beforeinput`
+  // (measured in Chrome 152). So the only call allowed is the menu's Copy,
+  // which edits nothing and raises the `copy` event the model answers.
+  const commands = FRONT_JS.flatMap((file) =>
+    [...code(file).matchAll(/execCommand\s*\(\s*([^)]*)\)/g)].map((m) => `${file}: ${m[1]}`));
+  check(`front/ calls execCommand once, for the menu's Copy (${commands.join("; ") || "none"})`,
+    commands.length === 1 && commands[0] === 'model-input.js: "copy"');
+  check("and execcommand.js, its old door, is gone from every registry",
+    !FRONT_JS.includes("execcommand.js") &&
+      !/execcommand\.js/.test(readFront("index.html") + readFront("sw.js") + readFront("html-export.js")));
+
   for (const variant of ["app", "export"]) {
     const bundle = bundleOf(variant);
     const callers = bundle.filter(

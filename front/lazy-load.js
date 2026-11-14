@@ -64,8 +64,8 @@ async function ensureMathJax() {
       // again, and nested a copy of every equation inside itself through the
       // assistive MathML. Measured 2026-10-01: three equations, three nested
       // copies, after one reload. `5e6efad` never saw it, because its reload
-      // test restored maths that was already typeset, which `renderLatex` puts
-      // back to source first. The editable export loads its own MathJax and
+      // test restored maths that was already typeset, which the old core's
+      // loader put back to source first. The editable export loads its own MathJax and
       // relies on exactly this startup pass; that configuration is separate.
       startup: { typeset: false },
     };

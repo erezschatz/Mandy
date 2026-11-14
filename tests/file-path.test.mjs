@@ -52,8 +52,7 @@ function boot({
   const askedActions = [];
   const toasts = [];
   // Clear is the model's edit rather than a replacement of the document, and
-  // this suite loads neither model-input.js nor execcommand.js — recorded
-  // rather than executed.
+  // this suite does not load model-input.js — recorded rather than executed.
   const commands = [];
   // One bag for both targets: file-api.js binds `focus` on window and
   // `visibilitychange` on document, and no name is claimed by both.
@@ -108,12 +107,6 @@ function boot({
     {
       ...model.scope,
       document,
-      // execcommand.js is not in this suite's bundle: Clear's own weight is
-      // the recording below, not what a real execCommand does with it.
-      runCommand: (cmd) => {
-        commands.push(cmd);
-        return true;
-      },
       // Clear is a model edit (model-input.js, which this suite does not load):
       // recorded, so a check can see it went there rather than through New's
       // reset.
@@ -132,9 +125,6 @@ function boot({
         getSelection: () => ({ removeAllRanges() {}, addRange() {} }),
       },
       navigator: { clipboard: {} },
-      // Loaded by renderers.js in the app, which this suite does not need — but
-      // openFile calls both on every read, reload included.
-      renderLatex: async () => {},
       // /api/home on boot; a save echoes back the path it was given, which is
       // what the real endpoint does and what setCurrentFile reads. /api/browse
       // answers 400 for anything outside `realDirs`, the way the server does
@@ -325,7 +315,7 @@ function boot({
     // fake the emptied editor and dispatch, because app.js's confirm() returned
     // before the dispatcher moved on. Now app.js stops on a dialog, so this has
     // to settle — which is the ordering the whole thing hinges on: run it too
-    // early and isBlankContent sees the document still full and keeps the path.
+    // early and the blank check sees the document still full and keeps the path.
     newDocument: async () => {
       toolbar.listeners.click[0]({
         target: document.querySelector('[data-action="new"]'),

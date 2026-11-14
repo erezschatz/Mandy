@@ -262,10 +262,9 @@ function fileAdoptStored() {
   renderCurrentFile();
 }
 
-// Typing, formatting and paste all land here: execCommand fires input too, so
-// the format bar marks the document edited without needing its own hook.
-// Assigning editor.innerHTML does not, which is why opening a file and clearing
-// do not trip this — and applying an undo/redo snapshot does, deliberately
+// Every model edit lands here, since each one dispatches input once it has
+// rendered. Loading a document does not, which is why opening a file does not
+// trip this — and applying an undo/redo snapshot does, deliberately
 // (see undo.js): that is what lets undoing back to cleanPosition report clean
 // again instead of the flag only ever latching true. undo.js registers its own
 // input listener first, so undoPosition() already reflects the post-edit id by
@@ -291,7 +290,13 @@ onToolbarAction("new", () => {
   // it no longer has.
   if (typeof newTab === "function") return;
 
-  if (isBlankContent(editor.innerHTML)) {
+  let blank = false;
+  try {
+    blank = isBlankMarkdown(documentMarkdown());
+  } catch {
+    // A document the emitter refuses is not blank, so the association stays.
+  }
+  if (blank) {
     markClean();
     setFileMtime(null);
     setCurrentFile(null);
@@ -327,7 +332,8 @@ function fileDialogIsOpen() {
 // already decided which file it is acting on. Every such operation
 // has an await between naming a path and reading or writing the bytes -- the
 // worst is saveFile, which takes a path, then awaits confirmOverwrite and
-// possibly the whole save browser, and only then reads editor.innerHTML. Switch
+// possibly the whole save browser, and only then asks the model for the
+// document's markdown. Switch
 // tabs in that window and one document's content goes over another document's
 // file, with the toast reporting success.
 //
@@ -658,18 +664,9 @@ async function openFileBody(filePath, tab) {
   }
 
   if (!stillOnTab(tab)) return reportTabMoved("opened");
+  // Nothing is awaited from here to the end, so the tab this checked is the
+  // tab the file state lands on. The maths typesets inside the render.
   loadDocumentMarkdown(data.content);
-  await renderLatex(editor);
-  // The content is in the editor now, which belongs to whichever tab is showing.
-  // If that has moved on while the maths rendered, the text has been parked
-  // with the tab it came into, unnamed; the file state below must not land on
-  // the tab on screen instead, so this stops here and says so.
-  if (!stillOnTab(tab)) {
-    notify("The file did not finish opening: the document changed tab while it loaded. That tab keeps the text without its file name.", {
-      severity: "error",
-    });
-    return false;
-  }
   flushAutosave();
   // History does not cross a document boundary. Undo handing back the previous
   // file's text would leave it under this file's path, one Ctrl+S from being
