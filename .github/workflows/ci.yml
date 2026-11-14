@@ -15,6 +15,10 @@ jobs:
           deno-version: v2.x
       - name: Tests
         run: deno run --allow-read tests/run.mjs
+      # The commit hook is the gate; this catches one it never saw (--no-verify,
+      # a clone without `deno task hooks`). See tasks/adopt-unities.md.
+      - name: Compiled record is current
+        run: deno run --allow-read scripts/compile-record.mjs --check
       - name: Type-check server
         run: deno task check
         working-directory: server

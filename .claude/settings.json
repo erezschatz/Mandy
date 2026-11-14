@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "deno run --quiet --allow-run=git --allow-read \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-unit.mjs\" --staged"
+            "command": "deno run --quiet --allow-run=git,deno --allow-read \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-unit.mjs\" --staged"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "deno run --quiet --allow-run=git --allow-read \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-unit.mjs\" --tree"
+            "command": "deno run --quiet --allow-run=git,deno --allow-read \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-unit.mjs\" --tree"
           }
         ]
       }

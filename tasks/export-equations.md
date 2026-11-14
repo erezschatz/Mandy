@@ -107,3 +107,12 @@ laying out the lowered picture. The CHANGELOG entry has the detail.
 with Word is available: export a document with `$y$` and `$\frac{a}{b}$` in a
 sentence to Word, open it, and check that each picture's baseline lines up with
 the text around it. If it does not, reopen this task.
+
+## What was done
+
+2026-11-14: the closing line the compiled plan reads, added when the plan began
+to be compiled from task files (tasks/adopt-unities.md). The task closed on
+2026-11-09 with the section above, and the Word check it names is still owed.
+
+Status: done
+Reviewed by: a read-only subagent that had not seen the work, against the staged diff

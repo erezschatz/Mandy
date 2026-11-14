@@ -11,10 +11,15 @@
   // its own cache: package.json's presence otherwise sends it looking for a
   // node_modules this project does not have and does not want.
   "nodeModulesDir": "none",
-  // Points git at the committed .githooks/, whose pre-commit refuses a change
-  // that arrives without its record (CLAUDE.md, The Unities). Run once per clone.
+  // `hooks` points git at the committed .githooks/, whose pre-commit refuses a
+  // change that arrives without its record (CLAUDE.md, The Unities); run once per
+  // clone. `record` compiles docs/DECISIONS.md and docs/PLAN.md from tasks/, and
+  // a commit that changes a task file carries its output. `hooks:test` is the
+  // check script's own suite.
   "tasks": {
-    "hooks": "git config core.hooksPath .githooks"
+    "hooks": "git config core.hooksPath .githooks",
+    "record": "deno run --allow-read --allow-write=docs scripts/compile-record.mjs",
+    "hooks:test": "deno test --allow-run=git,deno --allow-read --allow-write --allow-env .claude/hooks/check-unit.test.mjs"
   },
   "imports": {
     "markdown-it": "npm:markdown-it@13.0.1"

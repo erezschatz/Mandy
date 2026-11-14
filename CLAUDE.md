@@ -607,10 +607,17 @@ on the page. It needs no server and no app.
 
 ## The Unities
 
-**Adopted 2026-10-19 as an evaluation** — the rules are deliberately lenient so
-that what fits this project's way of working can be told from what does not.
-[tasks/adopt-unities.md](tasks/adopt-unities.md) records what was installed and
-what was left out on purpose.
+**Adopted 2026-10-19 as an evaluation, and brought up to the 2026-11-11
+procedure on 2026-11-14** — the rules are deliberately lenient where this
+project's way of working differs from the procedure's defaults.
+[tasks/adopt-unities.md](tasks/adopt-unities.md) records what was installed,
+what was left out on purpose, and why; its decisions are D10 onwards.
+
+**Read first, in this order**, for anything beyond a one-line fix:
+[docs/SPEC.md](docs/SPEC.md) (what Mandy is and is not),
+[docs/DECISIONS.md](docs/DECISIONS.md) (what was decided and why),
+[docs/PLAN.md](docs/PLAN.md) (every task and where it stands), and
+[tasks/README.md](tasks/README.md) (how a task file is written).
 
 The work, its record and its location are the same thing at the same time.
 Every change to `front/` or `server/src/` is one commit that also carries its doc
@@ -618,26 +625,56 @@ line — the CHANGELOG entry counts, and is still written by hand as above — a
 `## What was done` section appended to its task file in [tasks/](tasks/). A
 small fix that never had a task gets one created in the same commit; see
 [tasks/README.md](tasks/README.md) for the format. The task's section can be two
-sentences and a pointer, since the CHANGELOG entry carries the prose.
+sentences and a pointer, since the CHANGELOG entry carries the prose, and it
+ends with a `Reviewed by:` line naming the reader below. The section that
+closes a task carries a `Status: done` line; a task gathers one section per
+landing, so having sections does not make it done.
 [docs/TODO.md](docs/TODO.md) is retired: its items are task files now, and "TODO
 3.1" names `tasks/3.1-*.md`.
 
-`.claude/hooks/check-unit.mjs` checks it in two places, and only one of them
-refuses:
+**Decisions are written in the task file, never in `docs/DECISIONS.md`.** Any
+choice with a rejected alternative gets a dated `### YYYY-MM-DD · title` entry
+under `## Decisions` in the task file of the work that made it, with
+**Decision** / **Rejected** / **Why** and no number. `deno task record` compiles
+it into `docs/DECISIONS.md` below D0–D9, which stay as written, and rebuilds
+`docs/PLAN.md` from the task files; the commit carries the compiler's output,
+staged. A listed decision is not reopened quietly but by a new entry carrying
+`Supersedes: D<n>`. A review item (`## Review · <date>` in the task file) is
+done when every *Done when* line holds for the running program, not when its
+wording is satisfied; whatever a fix needs beyond its item is recorded as a
+decision before it is built.
+
+`.claude/hooks/check-unit.mjs` checks all of this in two places, and only one of
+them refuses:
 
 - **At commit** — a `PreToolUse` hook on `git commit` and `.githooks/pre-commit`
   (`deno task hooks` once per clone) refuse a staged set with source but no doc
-  line or no task record. A missing test is a note, never a refusal.
-  **Stage in a separate call from the commit**: the hook reads the index before
-  the command runs, so `git add … && git commit` is judged on what was staged
-  before the `add`.
+  line or no task record, a record with no `Reviewed by:` line, a compiled
+  record that is stale or unstaged or whose hand-written head was edited, an
+  acceptance box naming an outcome rather than a check, a review item missing
+  its parts, and an edit to the retired TODO. A missing test is a note, never a
+  refusal. **Stage in a separate call from the commit**: the hook reads the
+  index before the command runs, so `git add … && git commit` is judged on what
+  was staged before the `add`. `deno task hooks:test` is its own suite.
 - **At the end of a turn** — the `Stop` hook reports what the uncommitted tree is
   missing and never sends the turn back, because stopping mid-change to ask a
   design question or hand over a browser recipe is how work goes here.
 
 Before committing a change, have a reader that has not seen the work — a
-read-only subagent — check that the task record describes the staged diff. The
-hooks test presence, not truth.
+read-only subagent — check that the task record describes the staged diff, and
+name it in the `Reviewed by:` line. The hooks test presence, not truth.
+
+### Division of labour
+
+Claude writes the code and its record, and runs the automated suites the change
+reaches, by the rule in "Making a change" above — the suite that names the
+touched file, `npm test` when the change reaches across `front/`, and `npm run
+test:browser` under Playwright's Chromium, Firefox and WebKit when only a real
+engine can see it. **Erez is who says a change works**
+— in a real browser, by hand, for what no engine-driven run can see (a real IME,
+a real clipboard, Safari as shipped, a real document in daily use). Claude never
+reports a change as working because a suite passed when the suite does not
+reach it; it says so and gives the recipe (Tests, above).
 
 ## Architecture
 

@@ -10664,7 +10664,7 @@ pass the user will make once stage 4 is finished. Any problem it finds in the
 PDF or Word export is reopened as its own item. docs/REWRITE.md's stage 4
 status line and slice 2 say so. Nothing in the code changed.
 
-## 2026-11-14 — Stage 4's slice 4 passes by hand, on real storage
+## 2026-11-14 — `2b8bdb4` — Stage 4's slice 4 passes by hand, on real storage
 
 Slice 4's hand run is done, on the user's own storage, and slice 4 is closed.
 It did not run as planned, as a save, close, pull and restart: the user's Mandy
@@ -10675,3 +10675,44 @@ and every tab came back with its document. A save of an edited document was not
 checked by hand: it is left to ordinary use, since `open-edit-save.spec.mjs`
 already covers it. docs/REWRITE.md's stage 4 status line and slice 4 say so.
 Nothing in the code changed.
+
+## 2026-11-14 — The Unities, brought up to the 2026-11-11 procedure
+
+docs/UNITIES.md was an undated copy of the adoption procedure. It is now the
+master dated 2026-11-11, and the run installed what that version adds.
+**docs/DECISIONS.md and docs/PLAN.md are now compiled from the task files.** A
+decision is written in the task file of the work that made it, under
+`## Decisions`, and `deno task record` (`scripts/compile-record.mjs`) numbers it
+and copies it below a marker line. D0–D9 stay above that line as they were
+written. The plan lists every task file with its status, which is derived
+rather than kept: open, in progress, or done once the last `## What was done`
+section carries `Status: done`. That closing line is new because a task here
+gathers one section per landing, and the procedure's own rule would have
+reported 3.1 as finished. Its number search was also widened to read `D9.`
+headings, or the first compiled decision would have been D1 again. Both are D12
+and D13.
+
+The commit gate checks more now. A commit must carry the compiled record up to
+date and staged. Every `## What was done` section it adds must end with a
+`Reviewed by:` line naming the cold reader. It must not edit the hand-written
+head of either compiled file or remove a compiled decision. Acceptance boxes
+must be checks rather than outcomes, and review items must say what was found,
+when each case is done and what was not asked. The script stays Deno-native,
+with a suite of its own (`deno task hooks:test`, run in throwaway
+repositories), and CI now checks the compiled record too. Two things the run's
+own checks found: this clone's `core.hooksPath` was unset, so the git hook had
+not been running here and a probe commit went through until `deno task hooks`
+was run again; and the procedure's way of telling which record a commit added,
+by its heading line, flags every older record in the same file, since every
+record's heading is the same. The script compares whole sections against HEAD
+instead. It also gained the procedure's merge handling (a merge commit is judged
+only on what the merge itself writes), and the compiled record counts as no
+change's doc line.
+
+Kept as they were, and recorded as decisions this time: the commit is the
+scene and the end-of-turn check only reports (D10), and this file stays
+hand-written (D11). docs/SPEC.md is new, a page on what Mandy is and is not that
+points at CLAUDE.md for the how. CLAUDE.md's Unities section gained a read-first
+list and a *Division of labour*. tasks/README.md and the template describe the
+new sections. 1.6, 2.1 and export-equations gained the closing line the plan
+reads. tasks/adopt-unities.md has the rest.

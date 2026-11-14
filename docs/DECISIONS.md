@@ -1,18 +1,25 @@
 # Decisions
 
 Questions that came up while building Mandy, were argued out, and are settled.
-They are here rather than in [TODO.md](TODO.md) because they are not work
-waiting to happen, and rather than in [CLAUDE.md](../CLAUDE.md) because that
+They are here rather than in a task file under [tasks/](../tasks/) because they
+are not work waiting to happen, and rather than in [CLAUDE.md](../CLAUDE.md) because that
 describes how the code works — this is why it works that way, and what
-changing it would cost. Reopen one by editing it here, not by filing it as a
-TODO again. Where a decision points forward rather than at the current code,
-that part lives in [TODO.md](TODO.md) or [ROADMAP.md](ROADMAP.md) instead — D4,
+changing it would cost. Where a decision points forward rather than at the current code,
+that part lives in a task file or [ROADMAP.md](ROADMAP.md) instead — D4,
 D6, D7 and D8 all point at [REWRITE.md](REWRITE.md), and D9 at the theme section
 of [ROADMAP.md](ROADMAP.md).
 
 D0 is the exception to that description: it is not a question that was argued
 out but the position the rest of them follow from. It is numbered zero because
 it was written last and belongs first.
+
+**Since 2026-11-14 this file is compiled below its marker line.** D0–D9 above
+it were written here by hand and stay as they are, numbers and all. A decision
+taken since is written in the task file of the work that made it, under
+`## Decisions`, and `deno task record` (`scripts/compile-record.mjs`) numbers it
+and copies it below the marker — so nothing here is edited by hand any more,
+and a decision is reopened by a new entry carrying `Supersedes: D<n>`, never by
+changing the old one. [tasks/README.md](../tasks/README.md) has the format.
 
 ## D0. Humans should not be writing markup
 
@@ -602,3 +609,123 @@ after half of it is built. The evidence that would reopen this entry is cheap
 and should be collected: each time an HTML document arrives for editing, note
 whether the change wanted is to the text or to the layout. A run of layout is
 the signal. A run of text is this decision confirmed.
+
+<!-- Compiled from tasks/ by scripts/compile-record.mjs. Do not edit below this line by hand. -->
+
+## D10 · 2026-11-14 · Strict staging, with the end-of-turn check reporting only
+
+**Decision** — The commit is the scene: `git commit` refuses an incomplete one,
+through the `PreToolUse` hook and `.githooks/pre-commit`. The `Stop` hook
+reports what the tree is missing and never sends a turn back. Chosen
+2026-10-19 and recorded here, when the procedure first asked for it by name.
+**Rejected** — Adapted staging, where the pull request is the scene: this is
+one developer, and `rewrite` reaches `main` by merge (D8), not through pull
+requests. Strict's refusing `Stop` hook: a turn here often stops mid-change on
+purpose, to argue a design before writing it or to hand over a browser recipe,
+and a hook that sent those turns back would be fought rather than followed.
+**Why** — The commit already is a complete unit here, so strict costs nothing at
+the commit. At the end of a turn the scene is often not meant to be finished yet.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D11 · 2026-11-14 · CHANGELOG.md stays hand-written
+
+**Decision** — One dated entry per commit, in prose, with the hash backfilled by
+the next commit. It counts as a change's doc line and is not a protected file.
+The procedure's changelog compiler (its Appendix F), its marker and the release
+check are not installed.
+**Rejected** — Compiling CHANGELOG.md from the task records at release.
+**Why** — That compiler stops several developers colliding in one file at
+release. This is one developer with no tags and no release schedule, and the
+hand-written entries carry the reasoning a compiled one would not. Revisit if
+either changes. First deferred 2026-10-19.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D12 · 2026-11-14 · The record compiler reads the hand-written D0–D9 numbers
+
+**Decision** — `scripts/compile-record.mjs` is the procedure's Appendix K, with
+its number search accepting `D9.` as well as `D9 ·`. D0–D9 stay where and as
+they are, above the marker, and the first compiled decision is D10.
+**Rejected** — The appendix verbatim. It recognises only `D<n> ·`, would see no
+number above the marker, and would number the next decision D1, which collides
+with an entry cited across CLAUDE.md and the code.
+**Rejected** — Renumbering or retitling D0–D9 to the compiled form. That edits
+ten settled entries to suit a regular expression.
+**Why** — The procedure says the old entries keep their numbers. This is what
+it takes for the compiler to see them.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D13 · 2026-11-14 · A task is done when its last record says Status: done
+
+**Decision** — The compiled plan reads three states: no `## What was done` is
+open, sections without the closing line are in progress, and a last section
+carrying a `Status: done` line is done. The three tasks already closed (1.6, 2.1
+and export-equations) each got a short appended section carrying that line, and
+so did this one.
+**Rejected** — The appendix's rule that any `## What was done` section means
+done. Seven task files have one, and 3.1 has seventeen and is not finished, so
+the plan would have reported the rewrite as done.
+**Rejected** — Reading "closed" or "done" out of the prose. Wording that cannot
+be checked mechanically drifts.
+**Why** — A task here gathers one section per landing, which tasks/README.md
+already said. Done has to be a line someone writes on purpose.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D14 · 2026-11-14 · The check script stays Deno-native and strict-only
+
+**Decision** — `.claude/hooks/check-unit.mjs` keeps its own Deno form and its
+two modes (`--staged` refuses, `--tree` reports). It gains the procedure's new
+checks: the compiled record current and staged, its hand-written head
+untouched, a compiled decision never removed, a `Reviewed by:` line on every
+record a commit adds, acceptance boxes that are checks rather than outcomes,
+the shape of review items, and a tombstone that may be deleted though not
+edited. Its tests are `.claude/hooks/check-unit.test.mjs` (`deno task
+hooks:test`), cut from the procedure's Appendix J to this staging.
+**Rejected** — The procedure's Appendix A script verbatim. It is written for
+Node, and under Deno its `node:child_process` calls need `--allow-env`, which
+is how the first attempt's hook silently failed on every turn in October. Its
+`--pr` gate, release check and adapted mode serve nothing in this staging.
+**Why** — Same rules, in the runtime the repo already uses, without the parts
+this staging has no use for.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D15 · 2026-11-14 · CI checks the compiled record; no pull-request gate
+
+**Decision** — `.github/workflows/ci.yml` runs `compile-record.mjs --check`, so a
+commit that reached a push without the hook (`--no-verify`, a clone without
+`deno task hooks`) is caught there.
+**Rejected** — The procedure's full pull-request gate (`check-unit.mjs --pr`):
+the check script has no `--pr` mode here, see the decision above, and in strict
+staging the gate is an optional backstop.
+**Why** — The cheap half of the backstop catches the one thing a bypassed hook
+would let through silently, a record out of step with its task files. A missing
+doc line or task record shows up in review of the commit itself.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D16 · 2026-11-14 · docs/SPEC.md is short and points at CLAUDE.md
+
+**Decision** — `docs/SPEC.md` holds why Mandy exists, what 1.0 is and is not, a
+two-paragraph architecture and the stack table. For everything about how the
+code works it points to CLAUDE.md's Architecture section and docs/REWRITE.md.
+**Rejected** — A full spec that restates the architecture.
+**Why** — CLAUDE.md already records the how at length, with the why for each
+mechanism. A second copy would drift, and a fresh session needs the what in one
+page and a pointer to the rest.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D17 · 2026-11-14 · No developer's guide
+
+**Decision** — `docs/working-on-a-task.md` is not written. CLAUDE.md's Unities
+section does not point to one.
+**Rejected** — Writing the guide the procedure's 4.8 describes.
+**Why** — It is for people who receive tasks, and there is one developer, who
+also wrote the rules. tasks/README.md is the format and CLAUDE.md is the working
+practice. Write the guide the day a second person works here.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
