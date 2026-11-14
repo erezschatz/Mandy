@@ -44,7 +44,7 @@ up yet rather than tasks.
 - [6.3-single-executable](../tasks/6.3-single-executable.md) — 6.3 — Ship Mandy as a single executable
 - [6.4-open-html](../tasks/6.4-open-html.md) — 6.4 — Open HTML, save markdown
 - [6.5-sw-navigations](../tasks/6.5-sw-navigations.md) — 6.5 — The service worker intercepts navigations
-- [6.6-test-routes](../tasks/6.6-test-routes.md) — 6.6 — /tests/:name and /report exist in every deployment
+- [6.6-test-routes](../tasks/6.6-test-routes.md) — 6.6 — /tests/:name and /report exist in every deployment · done
 - [6.7-file-handler](../tasks/6.7-file-handler.md) — 6.7 — Register Mandy as a file handler
 - [6.8-check-pages-under-machine](../tasks/6.8-check-pages-under-machine.md) — 6.8 — The check pages run under a machine · in progress
 - [adopt-unities](../tasks/adopt-unities.md) — Adopt the Unities · done

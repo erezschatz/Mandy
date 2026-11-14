@@ -6244,8 +6244,8 @@ function modelLeafBeside(doc, block, step) {
 // indistinguishable from a deliberate hard break. Both went in stage 4.
 //
 // **As model rules they are one implementation with no engine in it**, which is
-// what retires tests/list-indent-check.html and tests/list-empty-item-check.html
-// as open questions — what those pages watch is three engines doing our surgery
+// what retired the list-indent-check and list-empty-item-check pages (stage
+// 4's slice 6) — what those pages watched was three engines doing our surgery
 // to their DOM, and there is no surgery left to watch.
 
 /**

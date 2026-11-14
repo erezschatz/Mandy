@@ -5500,7 +5500,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     hand 2026-11-14 on the user's own storage — the autosave is markdown, the
     stored HTML converts once at load, and the flag is gone;
     slice 5 done and tested by machine 2026-11-14 — the old core is deleted,
-    and its save path lives in `legacy-storage.js` for the conversion alone.
+    and its save path lives in `legacy-storage.js` for the conversion alone;
+    slice 6 done 2026-11-14 — the old-core check pages, `/tests/:name` and
+    `/report` are gone; `front/input-check.html` passes its machine half in
+    WebKit and its hand run in Chrome and Firefox is owed.
     → MERGE TO `main` WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
@@ -6038,6 +6041,25 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
         exists today. `paste-check`, `tab-shortcut-check` and
         `caret-guard-check` measure the browser rather than the core, and
         stay.
+
+        - **Done 2026-11-14; the hand run is owed.** The three pages and
+          `check-pages.spec.mjs` are deleted, and `server.ts` loses
+          `CHECK_PAGES`, `TESTS_DIR`, the `/tests/:name` route and `/report`:
+          nothing else posts there, and `input-check.html` reports on the
+          page. That is TODO 6.6 closed by deletion, as its own entry
+          predicted. `deno task check` passes.
+          - **The machine half is narrower than "WebKit by machine" reads.**
+            `final-pass.spec.mjs` drives one step of the page, the keyboard
+            step, and it passes in WebKit. The rest of the protocol in WebKit
+            is covered by the specs that drive the same input layer in the
+            app, not by the page.
+          - **The whole Playwright run**: 335 passed, 1 failed, nothing
+            skipped. The failure is the same Firefox Code-over-a-word test
+            slices 4 and 5 recorded.
+          - **Owed by hand**: `front/input-check.html`'s numbered protocol in
+            Chrome and Firefox, at `http://localhost:9130/input-check.html`.
+            A real IME and a real drag are the parts no engine-driven run
+            reaches.
 
     7.  **The documents.** D4 is marked retired in DECISIONS.md rather than
         deleted. CLAUDE.md's "Document state", "Save fidelity", "execCommand",

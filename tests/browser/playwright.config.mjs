@@ -4,8 +4,7 @@
 // already up it uses that one. MANDY_PORT is honoured either way.
 //
 // Each test gets a fresh browser profile, so a run never reads or writes the
-// localStorage of any browser you use — the list pages' snapshot-and-restore of
-// the autosave is for hand runs and is moot here.
+// localStorage of any browser you use.
 
 import { defineConfig, devices } from "@playwright/test";
 

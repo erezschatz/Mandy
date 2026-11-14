@@ -3271,8 +3271,8 @@ export default function run(check) {
   }
 
   {
-    // Tab and Shift+Tab as model rules, which is what retires
-    // list-indent-check.html as an open question. The tab case is 1b's step 5
+    // Tab and Shift+Tab as model rules, which is what retired the
+    // list-indent-check page. The tab case is 1b's step 5
     // one layer along: the same column in different bytes is a file the author
     // did not write.
     const cases = [

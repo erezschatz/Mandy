@@ -10717,7 +10717,7 @@ list and a *Division of labour*. tasks/README.md and the template describe the
 new sections. 1.6, 2.1 and export-equations gained the closing line the plan
 reads. tasks/adopt-unities.md has the rest.
 
-## 2026-11-14 — Stage 4's slice 5: the old core is deleted
+## 2026-11-14 — `bbaa2ce` — Stage 4's slice 5: the old core is deleted
 
 The code the old editing core ran on is gone, since nothing could reach it
 after slice 4 removed the flag. **`front/execcommand.js` is deleted** and has
@@ -10767,3 +10767,26 @@ file, along with the two list pages; slice 6 deletes all three. Service worker
 moves to `v1.96`. CLAUDE.md still describes much of the deleted code as running,
 until slice 7 rewrites it. Also fills `dca7a7b` into the previous entry's
 header.
+
+## 2026-11-14 — Stage 4's slice 6: the old core's check pages retire
+
+`tests/browser-check.html`, `tests/list-indent-check.html` and
+`tests/list-empty-item-check.html` are deleted, with
+`tests/browser/check-pages.spec.mjs`, which only drove those three. They watched
+execCommand and the old core's list surgery, and both are gone. They were the
+only pages the server's `/tests/:name` route served and the only ones that
+posted to `/report`, so **both routes are gone from `server.ts`**, with
+`CHECK_PAGES` and `TESTS_DIR`. The server is a file server and a file API again.
+That closes TODO 6.6 by deletion, as its entry predicted, rather than with the
+`MANDY_DEV` gate it proposed.
+
+`front/input-check.html` is the one input-layer check page left. Its machine
+half, the keyboard step in `final-pass.spec.mjs`, passes in WebKit. Its hand run
+in Chrome and Firefox is owed. `paste-check`, `tab-shortcut-check` and
+`caret-guard-check` measure the browser and stay. The whole Playwright run is
+335 passed, with the one Firefox failure slices 4 and 5 recorded. Comments in
+`input-check.html`, `paste-check.html`, `model.js`, the `model` suite and the
+Playwright harness's config and package description that named the deleted
+pages as present now say they retired, and task 6.8 notes that its
+`MANDY_DEV` gate is moot. docs/PLAN.md lists 6.6 as done. Also fills `bbaa2ce` into the previous
+entry's header.

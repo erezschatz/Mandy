@@ -8,7 +8,9 @@
   about to go, and does a real IME behave the way the design assumes. Those are
   per browser and per version, and the way the answer changes is a browser
   release rather than a change here — which is the same reason paste-check.html
-  and tab-shortcut-check.html stay while the execCommand pages retire.
+  and tab-shortcut-check.html stay. The pages that watched execCommand and the
+  old core's list surgery retired with the old core in stage 4's slice 6, and this is
+  the one input-layer page left.
 
   **A machine cannot run it.** Automation delivers a trusted keydown and no
   editing command for Backspace — measured 2026-09-20 in Blink, the same gap
@@ -16,8 +18,9 @@
   a real keyboard. That is what the numbered protocol is for.
 
   It is in front/ rather than tests/ so the static handler that already serves
-  front/ serves it too, same-origin with /model.js. No route, no CHECK_PAGES,
-  no /report: the server stays a file server. It is in none of the three
+  front/ serves it too, same-origin with /model.js. It needs no route and
+  reports nowhere but the page: the server is a file server, and since slice 6
+  has no test routes at all. It is in none of the three
   registries either — it is a page, not a module.
 
     npm run serve   →   http://localhost:9130/input-check.html
@@ -93,7 +96,7 @@ which is why there is no toolbar here.</p>
 
   <li><b>Press Enter mid-paragraph.</b> <i>It splits into two, the caret is at the start of the second, and the divergence line stays quiet.</i> Then <b>Enter at the end of the heading</b>: <i>what opens is a paragraph, not a second heading.</i></li>
   <li><b>Press Enter in the middle of a list item.</b> <i>You get a second bullet, not two paragraphs inside one</i> — Enter splits the block and then the item above it. Then <b>Enter at the end of the last bullet</b> <i>to get an empty one</i>, and <b>Enter again</b>: <i>the empty item leaves the list for a paragraph.</i></li>
-  <li><b>Press Tab and Shift+Tab inside a bullet.</b> <i>Tab nests the item under the one above it, alone; Shift+Tab brings it back out.</i> <b>Then Shift+Tab on a nested item that has items below it in its sublist</b>: <i>only that item moves out; the items below it stay where they are</i>, because they now belong to it rather than to the item above. This is the move <code>tests/list-indent-check.html</code> watches three engines make on the old core; here there is no engine in it.</li>
+  <li><b>Press Tab and Shift+Tab inside a bullet.</b> <i>Tab nests the item under the one above it, alone; Shift+Tab brings it back out.</i> <b>Then Shift+Tab on a nested item that has items below it in its sublist</b>: <i>only that item moves out; the items below it stay where they are</i>, because they now belong to it rather than to the item above. This is the move the retired <code>list-indent-check</code> page watched three engines make on the old core; here there is no engine in it.</li>
   <li><b>Press Shift+Enter mid-line.</b> <i>A hard break: the line wraps and the caret is on the second half.</i></li>
   <li><b>Click inside the fenced code block and type.</b> Its body is edited as source — the second text space — and <i>Enter inside it is a newline in the body rather than a new block.</i></li>
   <li><b>Click inside a table cell and type.</b> <i>The letters land in the cell, and the divergence line stays quiet.</i> A table refused every edit from stage 2's slice 4 until stage 3's slice 4 gave its cells the caret, and was rendered <code>contenteditable="false"</code> to say so — which, measured on 2026-09-21, kept the caret out only in Blink. <i>Selecting across the table still works.</i></li>
