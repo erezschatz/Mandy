@@ -10655,7 +10655,7 @@ the format bar's button never becomes visible (`inline-code-links.spec.mjs`).
 Edit → Copy failed once and then passed three times out of three, so it is
 flaky rather than broken.
 
-## 2026-11-14 — Stage 4's slice 2: the exports' hand run is closed
+## 2026-11-14 — `fd81ea7` — Stage 4's slice 2: the exports' hand run is closed
 
 Slice 2's owed Firefox hand run is closed without being run, by the user's
 decision. It covered the PDF and Word files themselves, and an Editable export
@@ -10663,3 +10663,15 @@ opened from disk as a `file://` page. All of that goes into a thorough export
 pass the user will make once stage 4 is finished. Any problem it finds in the
 PDF or Word export is reopened as its own item. docs/REWRITE.md's stage 4
 status line and slice 2 say so. Nothing in the code changed.
+
+## 2026-11-14 — Stage 4's slice 4 passes by hand, on real storage
+
+Slice 4's hand run is done, on the user's own storage, and slice 4 is closed.
+It did not run as planned, as a save, close, pull and restart: the user's Mandy
+window is served live from this checkout. So the conversion ran on that
+window's first reload after the slice's files changed. Checked afterwards in
+that window: `mandy-storage-version` is `"2"`, only `-markdown` keys remain,
+and every tab came back with its document. A save of an edited document was not
+checked by hand: it is left to ordinary use, since `open-edit-save.spec.mjs`
+already covers it. docs/REWRITE.md's stage 4 status line and slice 4 say so.
+Nothing in the code changed.

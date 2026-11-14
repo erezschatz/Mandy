@@ -5496,9 +5496,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     a tab parks and adopts its model with no parse, and every file operation binds
     its tab at start, refuses before it reads or writes once the screen has
     moved on, and records a save whose write was in flight on its own tab (decision 4);
-    slice 4 done and tested by machine 2026-11-12 in three engines — the
-    autosave is markdown, the stored HTML converts once at load, and the flag
-    is gone — its hand run, the user's own upgrade, owed.
+    slice 4 done and tested 2026-11-12, by machine in three engines, and by
+    hand 2026-11-14 on the user's own storage — the autosave is markdown, the
+    stored HTML converts once at load, and the flag is gone.
     → MERGE TO `main` WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
@@ -5873,8 +5873,18 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             specs that loaded `?core=legacy` lose that half:
             `open-edit-save` compares the model's save with the fixture
             alone, keeping the parity entries as expectations of the model.
-        - **Done and tested by machine 2026-11-12, in all three engines; the
-          hand run, the user's own upgrade, is owed.** Built as planned above.
+        - **Done and tested by machine 2026-11-12, in all three engines, and
+          by hand 2026-11-14 on the user's own storage.** Built as planned
+          above.
+          - **The hand run happened in a different order from the plan.**
+            The user's Mandy window is served live from this checkout, so it
+            converted on its first reload after the slice's files changed,
+            not at a deliberate save-close-pull-restart. Checked afterwards
+            in that window: `mandy-storage-version` is `"2"`, only
+            `-markdown` keys remain, and every tab came back with its
+            document. A save of an edited document diffing to only that
+            paragraph is left to ordinary use, since the `open-edit-save`
+            spec already covers it.
           - **`tests/browser/storage-conversion.spec.mjs`** passes in
             Chromium, Firefox and WebKit. It covers the flat document from
             both cores, a document nobody edited coming back as its source
