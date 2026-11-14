@@ -10536,7 +10536,7 @@ file. Breaking the flag fails both changed-file checks. The poll itself runs in
 the browser and has not been exercised by a browser spec yet: that needs a file
 written on disk while the page is open, which no spec does today.
 
-## 2026-11-12 — Stage 4's slice 4: the autosave is markdown, and the flag is gone
+## 2026-11-12 — `728741b` — Stage 4's slice 4: the autosave is markdown, and the flag is gone
 
 The model is the only editing core now. `modelCoreEnabled()`, `?core=`, its
 `mandy-model-core` key, the toolbar's `model core` marker and its CSS are gone,
@@ -10654,3 +10654,12 @@ change's. **Code over a word fails in Firefox at `dfe0f14` too**, every time:
 the format bar's button never becomes visible (`inline-code-links.spec.mjs`).
 Edit → Copy failed once and then passed three times out of three, so it is
 flaky rather than broken.
+
+## 2026-11-14 — Stage 4's slice 2: the exports' hand run is closed
+
+Slice 2's owed Firefox hand run is closed without being run, by the user's
+decision. It covered the PDF and Word files themselves, and an Editable export
+opened from disk as a `file://` page. All of that goes into a thorough export
+pass the user will make once stage 4 is finished. Any problem it finds in the
+PDF or Word export is reopened as its own item. docs/REWRITE.md's stage 4
+status line and slice 2 say so. Nothing in the code changed.

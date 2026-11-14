@@ -5490,8 +5490,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     and 4 and 5 come after them in that order.
 *   **4. Reintegration — planned 2026-11-07; slice 1 done and tested
     2026-11-07, by machine and by hand in Firefox; slice 2 done and
-    tested by machine in three engines 2026-11-07, its Firefox hand run of
-    the files themselves owed; slice 3 done and tested 2026-11-10 —
+    tested by machine in three engines 2026-11-07, its hand run closed by
+    the user on 2026-11-14 in favour of a thorough export pass after stage 4;
+    slice 3 done and tested 2026-11-10 —
     a tab parks and adopts its model with no parse, and every file operation binds
     its tab at start, refuses before it reads or writes once the screen has
     moved on, and records a save whose write was in flight on its own tab (decision 4);
@@ -5727,10 +5728,12 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
             download a navigation cancelled as a console error (status
             NS_BINDING_ABORTED), which Blink and WebKit do not, so that one
             message no longer fails a test.
-          - **Owed, by hand in Firefox**: the recipe above, for what no
-            machine check reaches — the PDF and Word files themselves,
-            opened, and an Editable export opened from disk as a `file://`
-            page rather than served from the app's origin.
+          - **The hand run is closed without being run**, by the user's
+            decision on 2026-11-14: the PDF and Word files themselves, and
+            an Editable export opened from disk as a `file://` page, go into
+            a thorough export pass the user will make once stage 4 is
+            finished, and any problem found there is reopened as its own
+            item rather than held against this slice.
 
     3.  **A tab parks its model, behind the flag.** The swap puts the
         outgoing document's model into its parked bundle beside its history,
