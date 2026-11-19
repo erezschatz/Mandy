@@ -746,3 +746,18 @@ Source: [tasks/3.1-editing-core-rewrite.md](../tasks/3.1-editing-core-rewrite.md
 Supersedes: D4
 
 Source: [tasks/3.1-editing-core-rewrite.md](../tasks/3.1-editing-core-rewrite.md)
+
+## D20 · 2026-11-19 · An empty paragraph is written as a blank line
+
+**Decision** — An empty paragraph between two others is saved as one more
+blank line, and extra blank lines in a file are read back as empty
+paragraphs, so a gap typed with Enter survives save, reopen and copy.
+**Rejected** — Drawing an empty paragraph with no height or with a marker, so
+the screen never shows what the file cannot keep; and leaving the behaviour
+alone while making Shift+Enter easier to discover.
+**Why** — The user chose it on 2026-11-19. It is the only option of the three where the gap the user typed is the
+gap they get, and the file still reads correctly as plain text. The cost is
+that other markdown renderers collapse the gap, and that existing files with
+stray double blank lines will show them.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)

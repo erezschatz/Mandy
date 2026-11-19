@@ -5509,7 +5509,7 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     retired by D19, and TODO 2.3 and ROADMAP's open-edit-save entry close.
     The closing pass, a real-document session in Firefox, was reported by the
     user on 2026-11-19 with nothing to raise, which closes the stage.
-    → MERGED TO `main` 2026-11-19** — D8, and **the merge a revert does not fully undo.**
+    → MERGED TO `main` 2026-11-19, `9acdafe`** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
     Turndown, so a `git revert` does not put the storage back. **The stakes

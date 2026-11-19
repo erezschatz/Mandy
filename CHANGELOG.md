@@ -10836,7 +10836,7 @@ docs/SPEC.md's Turndown row, which still said it served the old core's save
 path, now names what it does since slice 5. No code changed. Also fills `22f3671` into the previous entry's
 header.
 
-## 2026-11-19 — `rewrite` merges back: the model is the editor on `main`
+## 2026-11-19 — `9acdafe` — `rewrite` merges back: the model is the editor on `main`
 
 D8's second merge, at the end of stage 4, and **the one a revert does not fully
 undo**: the first load after it converts a browser's old HTML autosave to
@@ -10856,4 +10856,23 @@ passages in it and in docs/REWRITE.md that still put the merge ahead say it
 happened. Stage 5, the
 fallout, happens on `main`. No code changed in the merge itself. Also fills
 `8d7fb48` into the previous entry's header.
+
+## 2026-11-19 — Task 1.12: a blank line typed between paragraphs is kept
+
+**A new task, planned and not started.** The user found that a gap typed with
+an extra Enter, between the verses of a song, vanished on save, on reopen and
+on copy. The cause is stage 2's rule that a block emitting nothing takes the
+separator before it with it, so an empty paragraph costs no bytes and the
+screen showed a gap the file could not keep; an ordinary copy lost it for
+another reason, since it copies the screen's text, where an empty paragraph
+is no line at all. Of the three ways out offered,
+the user chose to keep the gap: an empty paragraph between two others is to be
+written as one more blank line, and extra blank lines read back as empty
+paragraphs. [tasks/1.12-blank-lines-kept.md](tasks/1.12-blank-lines-kept.md)
+has the plan in five stages, the decision, and the questions left open:
+blank lines inside quotes and lists, what the exports show, and that other
+markdown renderers will still collapse the gap. Until it lands, Shift+Enter
+between a verse's lines is the spelling that survives. No code changed. Also
+fills `9acdafe` into the previous entry's header and into docs/REWRITE.md's
+stage 4 line.
 
