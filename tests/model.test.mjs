@@ -2303,7 +2303,9 @@ export default function run(check) {
     for (const path of ORACLE_FILES) {
       const src = repoFile(path);
       const want = md.render(src);
-      const got = modelRenderDocument(parse(src), md);
+      // Less the empty paragraphs extra blank lines read back as (TODO 1.12):
+      // markdown-it never renders one, and the model draws each as `<p></p>`.
+      const got = modelRenderDocument(parse(src), md).replace(/<p><\/p>\n?/g, "");
       if (got === want) continue;
       const at = [...want].findIndex((c, i) => c !== got[i]);
       diverged.push(`${path} at ${at}: ${JSON.stringify(want.slice(at, at + 40))} vs ${JSON.stringify(got.slice(at, at + 40))}`);
@@ -3162,6 +3164,10 @@ export default function run(check) {
     for (let i = 0; i < total; i++) {
       const doc = parse(text);
       const leaf = leavesOf(doc)[i];
+      // A gap read back from extra blank lines holds no bytes of its own to
+      // rewrite — they are its separator — and editing one is checked on its
+      // own, beside the parse that makes it (TODO 1.12).
+      if (leaf.source === "") continue;
       // Since stage 3's slice 4 an edit inside a table hands the emitter the
       // whole table, because a cell has no bytes of its own; whether the
       // emitter then writes back only the row is the table sweep's question,
@@ -3278,7 +3284,8 @@ export default function run(check) {
     // A separator that already held two blank lines, from a file written that
     // way, comes out the same whichever side of it the Enter was pressed.
     const below = after("one\n\n\ntwo\n", (d, l) => modelInsertParagraph(d, l[0], 3, md));
-    const above = after("one\n\n\ntwo\n", (d, l) => modelInsertParagraph(d, l[1], 0, md));
+    // `l[1]` is the empty paragraph the second blank line reads back as.
+    const above = after("one\n\n\ntwo\n", (d, l) => modelInsertParagraph(d, l[2], 0, md));
     check(`Enter on either side of two blank lines writes the same bytes (${JSON.stringify([below, above])})`,
       below === above && below === "one\n\n\n\ntwo\n");
     // And a CRLF file gets its gap in CRLF. Only the gap: the edited block
@@ -3287,6 +3294,114 @@ export default function run(check) {
     // in one throws. That is a task of its own.
     const crlf = after("# Title\r\n\r\nA.\r\n", (d, l) => modelInsertParagraph(d, l[1], 0, md));
     check(`a gap in a CRLF file is written with its line endings (${JSON.stringify(crlf)})`, crlf.startsWith("# Title\r\n\r\n\r\nA."));
+  }
+
+  {
+    // **And a file's extra blank lines read back as empty paragraphs** (TODO
+    // 1.12's stage 3): a gap saved is a gap shown when the file is reopened.
+    const texts = (doc) => doc.blocks.map((b) => (b.inlines ? modelInlineText(b.inlines) : b.kind));
+    const song = parse("a\n\nb\n\n\nc\n\nd\n");
+    check(`a song reopened has its gap back, as an empty paragraph (${JSON.stringify(texts(song))})`,
+      JSON.stringify(texts(song)) === JSON.stringify(["a", "b", "", "c", "d"]) &&
+        song.blocks[2].kind === "paragraph" && song.blocks[2].source === "");
+    const unused = () => { throw new Error("emitter asked"); };
+    for (const src of ["a\n\nb\n\n\nc\n\nd\n", "one\n\n\n\ntwo\n", "one\n\n\n  \ntwo\n", "one\r\n\r\n\r\ntwo\r\n", "# H\n\n\n---\n\n\n- x\n"]) {
+      let out;
+      try { out = modelSerialise(parse(src), unused); } catch (error) { out = error.message; }
+      check(`and the file comes back byte for byte without the emitter being asked (${JSON.stringify(src)})`, out === src);
+    }
+    const count = (src) => parse(src).blocks.filter((b) => b.kind === "paragraph" && b.source === "").length;
+    check("two blank lines more are two empty paragraphs", count("one\n\n\n\ntwo\n") === 2);
+    check("a line of spaces is a blank line, and is one of them", count("one\n\n\n  \ntwo\n") === 2);
+    check("blank lines before the first block and after the last stay bytes",
+      count("\n\n\none\n\n\n") === 0 && parse("\n\n\none\n\n\n").blocks.length === 1);
+    check("and so do blank lines inside a list or a quote, where the file's rule writes no gap",
+      count("- a\n\n\n- b\n") === 0 && count("> a\n>\n>\n> b\n") === 0 &&
+        modelFlatten(parse("- a\n\n\n- b\n")).every((b) => !(b.kind === "paragraph" && b.source === "")));
+
+    // Every edit around one: each written as the screen shows it, and read
+    // back as that. The gap's separator is an Enter's, so typing into it does
+    // not leave the next block to be read as the same paragraph.
+    const shape = (src) => texts(parse(src)).join("|");
+    const edits = [
+      ["typing into it", (d) => modelInlineSplice(d.blocks[1], 0, 0, "x"), "one\n\nx\n\ntwo\n", "one|x|two"],
+      ["Enter in it", (d) => modelInsertParagraph(d, d.blocks[1], 0, md), "one\n\n\n\ntwo\n", "one|||two"],
+      ["Enter at the end of the block before it", (d) => modelInsertParagraph(d, d.blocks[0], 3, md), "one\n\n\n\ntwo\n", "one|||two"],
+      ["Enter at the start of the block after it", (d) => modelInsertParagraph(d, d.blocks[2], 0, md), "one\n\n\n\ntwo\n", "one|||two"],
+      ["Backspace in it", (d) => modelPruneBlock(d, d.blocks[1]), "one\n\ntwo\n", "one|two"],
+      ["Backspace at the start of the block after it", (d) => modelMergeBlocks(d, d.blocks[1], d.blocks[2]), "one\n\ntwo\n", "one|two"],
+      ["Delete at the end of the block before it", (d) => modelMergeBlocks(d, d.blocks[0], d.blocks[1]), "one\n\ntwo\n", "one|two"],
+    ];
+    for (const [label, act, want, reads] of edits) {
+      const d = parse("one\n\n\ntwo\n");
+      act(d);
+      const got = emit(d);
+      check(`${label} writes ${JSON.stringify(want)} and reads back as it shows (${JSON.stringify(got)})`,
+        got === want && shape(got) === reads);
+    }
+    const kept = parse("one\n\n\n  \ntwo\n");
+    modelInlineSplice(kept.blocks[1], 0, 0, "x");
+    check(`typing into the first of two keeps the second's line as written (${JSON.stringify(emit(kept))})`,
+      emit(kept) === "one\n\nx\n\n  \ntwo\n");
+    const held = parse("one\n\n\ntwo\n");
+    const state = modelForkDocument(held);
+    modelInlineSplice(held.blocks[1], 0, 0, "x");
+    check("an undo state forked before typing into one still writes the gap", emit(state) === "one\n\n\ntwo\n");
+
+    // The shape check reads what it serialises back through the parse, which
+    // now makes a gap's blank line a block: an Enter that leaves a quote, with
+    // a block after it, puts an empty paragraph between two others, and the
+    // check must still agree. The Playwright quote spec found this one.
+    const leaving = parse("> One\n\nAfter\n");
+    const split = modelInsertParagraph(leaving, modelFlatten(leaving).find((b) => b.kind === "paragraph"), 3, md);
+    const out = modelQuoteKey(leaving, split.block, md, false);
+    check(`Enter on an empty last line of a quote leaves it, and the shape check agrees (${JSON.stringify(emit(leaving))})`,
+      !!out && modelSettleShape(leaving, out.block, md) && emit(leaving) === "> One\n\n\nAfter\n");
+
+    // A list or a quote made over a selection covering a gap drops the gaps
+    // between the blocks it formats and leaves the ones at its edges where
+    // they are; and a paragraph made a bullet beside a list across a gap
+    // joins that list (TODO 1.12, both decided by the user on 2026-11-19).
+    // Markdown can keep neither gap, so either way what is drawn is what the
+    // file reopens as.
+    const reopen = (d) => {
+      const out = emit(d);
+      const again = parse(out);
+      return { out, same: modelRenderDocument(again, md) === modelRenderDocument(d, md) };
+    };
+    const formats = [
+      ["a bullet list over one, a gap and two", "one\n\n\ntwo\n", (d) => modelWrapList(d, d.blocks.slice(0, 3), false, md), "- one\n- two\n"],
+      ["a numbered list over the same", "one\n\n\ntwo\n", (d) => modelWrapList(d, d.blocks.slice(0, 3), true, md), "1. one\n2. two\n"],
+      ["a blockquote over the same", "one\n\n\ntwo\n", (d) => modelToggleQuote(d, d.blocks.slice(0, 3), md), "> one\n>\n> two\n"],
+      ["a blockquote over one and the gap after it, which stays", "one\n\n\ntwo\n", (d) => modelToggleQuote(d, d.blocks.slice(0, 2), md), "> one\n\n\ntwo\n"],
+      ["a bullet over a paragraph a gap below a bullet list", "- a\n\n\nb\n", (d) => modelWrapList(d, [d.blocks[2]], false, md), "- a\n- b\n"],
+      ["a number over a paragraph a gap below a numbered list", "1. a\n2. x\n\n\nb\n", (d) => modelWrapList(d, [d.blocks[2]], true, md), "1. a\n2. x\n3. b\n"],
+      ["a bullet over a paragraph a gap above a bullet list", "b\n\n\n- c\n", (d) => modelWrapList(d, [d.blocks[0]], false, md), "- b\n- c\n"],
+    ];
+    for (const [label, src, act, want] of formats) {
+      const d = parse(src);
+      const made = act(d);
+      const { out, same } = made ? reopen(d) : { out: "refused", same: false };
+      check(`${label} writes ${JSON.stringify(want)}, and reopens as drawn (${JSON.stringify(out)})`, out === want && same);
+    }
+    const typedGap = parse("- a\n\nb\n");
+    modelInsertParagraph(typedGap, typedGap.blocks[1], 0, md);
+    const typedWrapped = modelWrapList(typedGap, [typedGap.blocks[2]], false, md);
+    check(`and the same with the gap made by Enter (${JSON.stringify(typedWrapped && emit(typedGap))})`,
+      !!typedWrapped && emit(typedGap) === "- a\n- b\n");
+    const lone = parse("one\n\n\ntwo\n");
+    check("a gap selected on its own is still refused a list", !modelWrapList(lone, [lone.blocks[1]], false, md) ||
+      !modelSettleLists(lone, lone.blocks.find((b) => b.kind === "list"), md));
+    const apart = parse("- a\n\n\n* b\n");
+    check("two lists with different bullets keep their gap, as the file has it",
+      apart.blocks.map((b) => b.kind).join() === "list,paragraph,list");
+
+    // A quote holding two blank lines unwraps into a gap, rather than being
+    // refused for handing back a block it did not hold.
+    const quote = parse("> a\n>\n>\n> b\n");
+    const unwrapped = modelToggleQuote(quote, modelFlatten(quote).filter((b) => b.kind === "paragraph"), md);
+    check(`a quote holding two blank lines unwraps into a gap (${JSON.stringify(unwrapped && emit(quote))})`,
+      !!unwrapped && emit(quote) === "a\n\n\nb\n" && texts(parse(emit(quote))).join("|") === "a||b");
   }
 
   {
@@ -4338,7 +4453,9 @@ export default function run(check) {
         // The document's reference definitions go along, as in the marks
         // sweep, or a neighbour's `[text][label]` renders as literal text.
         const env = modelReferenceEnv(doc, md);
-        return modelRenderDocument({ blocks: chunk }, md, {}) === md.renderer.render(md.parse(src, env), md.options, env);
+        // Less the empty paragraphs, which markdown-it never renders.
+        const mine = modelRenderDocument({ blocks: chunk }, md, {}).replace(/<p><\/p>\n?/g, "");
+        return mine === md.renderer.render(md.parse(src, env), md.options, env);
       };
       let done = 0;
       let refused = 0;
@@ -4745,6 +4862,7 @@ export default function run(check) {
     {
       let done = 0;
       let rows = 0;
+      let empties = 0;
       const wrong = [];
       for (const file of ORACLE_FILES) {
         const src = repoFile(file);
@@ -4753,6 +4871,15 @@ export default function run(check) {
           const doc = parse(src);
           const leaf = live(doc)[i];
           if (quoted(leaf)) continue;
+          // An empty paragraph quoted is a quote of nothing, which the parser
+          // cannot see, so the shape check refuses it — one made by Enter as
+          // much as one read back from a blank line (TODO 1.12).
+          if (leaf.kind === "paragraph" && modelIsEmptyBlock(leaf)) {
+            const made = modelToggleQuote(doc, [leaf], md);
+            if (made && modelSettleShape(doc, made.block, md)) wrong.push(`${file} #${leaf.id} empty quoted`);
+            else empties++;
+            continue;
+          }
           const made = modelToggleQuote(doc, [leaf], md);
           if (!made) {
             if (leaf.kind === "cell") rows++;
@@ -4769,7 +4896,7 @@ export default function run(check) {
         (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 5).join(" | ")}` : ""), wrong.length === 0 && done > 800);
       // A cell since stage 3's slice 4, where it was the row before: either
       // way a block format inside a table is refused.
-      check(`and the only refusals were table cells, ${rows} of them`, rows > 0);
+      check(`and the only refusals were table cells, ${rows} of them, and empty paragraphs, ${empties} of them`, rows > 0);
     }
 
     // And the other way round, on the quotes torture.md holds: out and back in

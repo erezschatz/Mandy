@@ -804,3 +804,50 @@ reader's text is what every editor people arrive from writes. The marker makes
 the answer the same in all three engines.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D23 · 2026-11-19 · A gap read back from a file holds an Enter's separator
+
+**Decision** — An empty paragraph `modelParse` makes of an extra blank line
+carries a line end and then that line as its separator, the shape an Enter's
+empty paragraph has, so the top level holds one byte more than the file at
+each gap and the joiner writes it back without.
+**Rejected** — Holding the blank line alone, which keeps the top level an exact
+tiling of the file, and converting it to an Enter's shape on the first edit.
+Built first and probed: every edit path that takes a block's separator over —
+a split, a removal, an insertion after it — reads it before any touch, so Enter
+in the gap wrote one blank line too many and a removal left the block before it
+with no blank line under it, and each path would have needed teaching.
+**Why** — With an Enter's shape a parsed gap is an empty paragraph made by
+Enter in every respect but its `source`, so no edit needs to know where it came
+from; nothing reads the top level as a concatenation, only through the joiner,
+and a container's children, where a gap never is, still tile it exactly.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D24 · 2026-11-19 · A list beside a gap joins across it
+
+**Decision** — Making a paragraph a list item beside a list of the same kind,
+with only gaps between them, joins the two lists and takes the gaps out.
+**Rejected** — Refusing the command and keeping the gap; and giving the new
+list a different bullet character, which markdown reads as a separate list, so
+the gap survives at the cost of mixed bullets.
+**Why** — The user chose it on 2026-11-19. Markdown keeps two lists of a kind
+apart only with something between them that is not a blank line, so the file
+would reopen as one list without the gap whatever the screen drew; joining is
+what the command did before a file's gaps were read back.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D25 · 2026-11-19 · A list or a quote over a selection drops the gaps inside it
+
+**Decision** — Bulleted list, Numbered list and Blockquote over a selection
+covering gaps take the empty paragraphs between two of the formatted blocks
+out of the document, and leave the ones at either edge of the selection where
+they are; a selection holding nothing but gaps is refused as before.
+**Rejected** — Refusing the command, with a notice saying the gap is why.
+**Why** — The user chose it on 2026-11-19. A gap cannot be a list item, and
+one inside a list or a quote is not written to the file, so formatting around
+it would draw what the file cannot keep; until stage 3 the same selection
+formatted, because the file's gap was not a block to be in the way.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)

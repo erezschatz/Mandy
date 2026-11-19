@@ -10938,7 +10938,7 @@ script's reworked `--pr` mode, which this strict-only copy has never had.
 `deno task hooks:test` passes. Also fills `d339929` into the previous entry's
 header.
 
-## 2026-11-19 — Task 1.12's stage 2: a copy keeps the gap
+## 2026-11-19 — `9f223f5` — Task 1.12's stage 2: a copy keeps the gap
 
 Ctrl/Cmd+C and Edit → Copy now carry a gap typed with Enter. An empty paragraph
 between two others at the top level is one more blank line in the plain text,
@@ -10968,3 +10968,54 @@ back into Mandy still loses the gap**: the paste reads the HTML, and the
 sanitiser drops a paragraph holding only a `<br>` as the ghost line Word and
 Docs emit, so that is recorded as open in the task. Also fills `d138818` into
 the previous entry's header.
+
+## 2026-11-19 — Task 1.12's stage 3: a reopened file shows its gaps
+
+A gap typed with Enter now survives a reopen. `modelParse` reads each extra
+blank line between two top-level blocks as an empty paragraph
+(`modelReadGaps`), so a song saved with its verse gaps opens with them, from a
+file, after Reload, and from the autosave a page load restores. The first blank
+line between two blocks is still the ordinary one, a line of spaces counts as
+blank, and blank lines at the very start or end of a file, or inside a list or
+a quote, stay bytes as before. An untouched file still comes back byte for
+byte without the emitter being asked about the gaps, since each one's `source`
+is `""`. **This changes what existing files look like**: a stray double blank
+line anywhere in a document now shows as a gap.
+
+The empty paragraph is given an Enter's separator, a line end and then the
+line it stands for, rather than the line alone. That costs the top level its
+exact tiling at a gap, one byte the model holds that the file does not, and
+buys every edit for nothing. A first version that held the line alone broke
+twice under the probe: typing into the gap ran the next paragraph into it, and
+Enter in it wrote one blank line too many, because a split rewrites the
+separator before anything could convert it. The task file records the
+decision.
+
+Two places that re-parse what the model writes had to know about the new
+block. The shape check behind the list, rule and quote commands leaves a
+parsed gap out of the parser's side, as it already left an empty paragraph out
+of the model's. The Playwright quote spec found that one, since Enter twice at
+the end of a quote with a paragraph after it was refused. And the quote wrap
+and unwrap leave out the gap two blank lines inside a quote read back as.
+
+The review found two places where the screen and the file could now disagree,
+and the user decided both. **A paragraph made a bullet beside a list, with a
+gap between them, joins the list** and the gap goes, since markdown cannot
+keep two lists of a kind apart with blank lines and the file would reopen as
+one. **A list or a quote over a selection covering gaps drops the ones between
+the blocks it formats** and leaves those at its edges where they are, where
+until now it was refused. Both are decisions in the task file. Taking out the
+block between two lists of a kind leaves two lists on screen that reopen as
+one, with or without a gap; that is older, and recorded rather than fixed.
+
+`tests/fixtures/torture.md` gains a verse with a gap, and a whitespace line
+among two extra blank lines. Four `model` sweeps meet empty paragraphs for the
+first time. Two compare the model's rendering with markdown-it's and now leave
+out the `<p></p>` it never draws. The edit-each-block sweep skips a gap, whose
+bytes are its separator. The quote sweep counts empty paragraphs with table
+cells among its refusals, since an empty paragraph made by Enter is refused the
+same way. One more check, Enter on either side of two blank lines, names the
+block it meant, since the second blank line is now a block. The new checks
+cover both decisions, the reopened song, untouched round trips, what
+is and is not read, seven edits around a gap, a fork, the quote unwrap, and the
+quote exit. Also fills `9f223f5` into the previous entry's header.

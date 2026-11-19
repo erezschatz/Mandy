@@ -1495,7 +1495,63 @@ function modelParse(markdown, md, env = null) {
     lines.length,
   );
 
-  return { prefix: tiled.leading, blocks: tiled.blocks, nextId };
+  const blocks = modelReadGaps(tiled.blocks, md, () => nextId++);
+  return { prefix: tiled.leading, blocks, nextId };
+}
+
+/**
+ * Extra blank lines between two top-level blocks are empty paragraphs —
+ * TODO 1.12's stage 3, and the read half of D20. `modelJoinBlocks` writes an
+ * empty paragraph between two blocks as one more blank line, so a file holding
+ * one is read back with the paragraph there and the gap the user typed is the
+ * gap they see when they reopen it.
+ *
+ * A separator between two blocks is the line end of the first, then its blank
+ * lines, each whole. The first blank line is the ordinary one and stays with
+ * the block before; **each line after it becomes an empty paragraph**, whose
+ * `source` is `""` — the one block a parse produces that emits nothing, so an
+ * untouched file still never asks the emitter about it and comes back byte for
+ * byte.
+ *
+ * **Its separator is an Enter's shape, not the line it stands for**: a line end
+ * and then that blank line, whitespace and ending as written. The joiner writes
+ * only the part after the first line end while the paragraph is empty, so the
+ * bytes are the same either way; the difference is what happens once it is not
+ * empty. Holding the blank line alone, the block after it would follow whatever
+ * was typed on the very next line and read back as part of the same paragraph,
+ * and every edit that takes a block's separator over — a split, a removal, an
+ * insertion after it — would have to be taught the difference first. **So the
+ * top level does not tile its file at a gap**: the extra line end is the one
+ * byte the model holds that the file does not, and nothing reads the top level
+ * as a concatenation, only through the joiner. A container's children still
+ * tile it exactly, and a gap is never inside one.
+ *
+ * **Not the prefix and not the last block's separator**: blank lines at the
+ * start or the end of a file have no block on one side, the joiner writes no
+ * gap there, and they stay bytes. **Not inside a container either**, which
+ * keeps the joiner's rule: inside a list a second blank line means nothing the
+ * reader sees, and a quote's blank lines carry its `>`.
+ *
+ * Tokens from the parser, as for every block the editor makes —
+ * `modelEmptyParagraph`. The line end is a bare `\n`, as an Enter's is: in a
+ * CRLF file a block's `\r` is in its source.
+ */
+function modelReadGaps(blocks, md, mint) {
+  const out = [];
+  blocks.forEach((block, i) => {
+    out.push(block);
+    if (i === blocks.length - 1) return;
+    const lines = block.separator.split(/(?<=\n)/);
+    if (lines.length < 3) return;
+    block.separator = lines[0] + lines[1];
+    for (const line of lines.slice(2)) {
+      const gap = modelEmptyParagraph(md, mint());
+      gap.source = "";
+      gap.separator = "\n" + line;
+      out.push(gap);
+    }
+  });
+  return out;
 }
 
 // The next free id on a document, for a block the editor creates rather than
@@ -2127,16 +2183,17 @@ function modelDocumentMarkdown(doc, md, width = 0) {
  * first line ending**. What an empty paragraph carries depends on how it was
  * made: an Enter hands it the split block's old separator, which is a blank
  * line already, so the first line ending is the one the block before it has
- * just been given; a parse leaves a single line ending, which is the gap's own
- * line and is kept whole, whitespace and all. So `A`, one empty paragraph and
+ * just been given; a parse gives it a line ending and then the gap's own line,
+ * whitespace and all, which is the same shape on purpose (`modelReadGaps`); and
+ * a separator holding a single line ending is that line whole. So `A`, one empty paragraph and
  * `B` are `A\n\n\nB` however the empty one came to be there, and a separator
  * that already held two blank lines comes out the same whichever side of it the
  * Enter was pressed. Line endings are the file's: a gap in a CRLF file is
  * written with `\r\n`.
  *
- * Nothing the parser produces emits empty — every block spans at least one
- * non-blank line — so this is exactly as it was for a document that was opened
- * and saved.
+ * The only block a parse produces that emits empty is the one `modelReadGaps`
+ * makes of an extra blank line, and that is written back as the same blank
+ * line, so a document opened and saved is still byte for byte the file.
  */
 function modelJoinBlocks(blocks, emit, leading, gaps = false) {
   let out = leading;
@@ -4704,6 +4761,26 @@ function modelSetParagraphHidden(block, hidden) {
 }
 
 /**
+ * The blocks a list or a quote is made of, out of a selection that covers
+ * gaps (TODO 1.12, decided by the user on 2026-11-19): **the empty paragraphs
+ * between two filled ones are taken out of the document, and the ones at
+ * either edge are left where they are.** A gap cannot be a list item, and
+ * one inside a list or a quote is not written to the file, so formatting
+ * around it would draw what the file cannot keep; and a selection is a
+ * request to format what it covers. A selection holding nothing but empty
+ * paragraphs is handed back as it is, for the command to refuse.
+ */
+function modelFormatBlocks(doc, blocks) {
+  const filled = (block) => !(block.kind === "paragraph" && !block.children && block.inlines && modelIsEmptyBlock(block));
+  const first = blocks.findIndex(filled);
+  if (first < 0) return blocks;
+  let last = blocks.length - 1;
+  while (!filled(blocks[last])) last--;
+  for (const block of blocks.slice(first, last + 1)) if (!filled(block)) modelPruneBlock(doc, block);
+  return blocks.filter(filled);
+}
+
+/**
  * Contiguous sibling paragraphs become one tight list with an item each, and
  * the list is handed back — or null when they are not that.
  *
@@ -4717,6 +4794,7 @@ function modelSetParagraphHidden(block, hidden) {
  * taken either.
  */
 function modelWrapList(doc, blocks, ordered, md, fallback) {
+  blocks = modelFormatBlocks(doc, blocks);
   if (!blocks.length || blocks.some((block) => block.kind !== "paragraph" || !block.inlines)) return null;
   // An item's first paragraph cannot become a list: the item's first child
   // would be the list, and the model has no way to write the item's own marker
@@ -4796,6 +4874,31 @@ function modelJoinAdjacentList(doc, list, md, keep = false) {
   const moved = list.children.slice();
   let offset = 0;
   const siblings = modelSiblings(doc, list);
+  // **A gap between two lists that would read as one is taken out, and the
+  // lists join across it** (TODO 1.12, decided by the user on 2026-11-19).
+  // Markdown keeps two lists of a kind apart only with something between
+  // them that is not a blank line, so the file would reopen as one list and
+  // without the gap whatever the screen drew.
+  const gapsBeside = (from, step) => {
+    const gaps = [];
+    for (let i = from; siblings[i] && siblings[i].kind === "paragraph" && !siblings[i].children &&
+      siblings[i].inlines && modelIsEmptyBlock(siblings[i]); i += step) gaps.push(siblings[i]);
+    return gaps;
+  };
+  const joinAcross = (gaps, other) => {
+    if (!gaps.length || !modelListsJoin(other, list)) return;
+    for (const gap of gaps) siblings.splice(siblings.indexOf(gap), 1);
+  };
+  {
+    const at = siblings.indexOf(list);
+    const gaps = gapsBeside(at - 1, -1);
+    joinAcross(gaps, siblings[at - 1 - gaps.length] || null);
+  }
+  {
+    const at = siblings.indexOf(list);
+    const gaps = gapsBeside(at + 1, 1);
+    joinAcross(gaps, siblings[at + 1 + gaps.length] || null);
+  }
   const at = siblings.indexOf(list);
   const before = at > 0 ? siblings[at - 1] : null;
   if (modelListsJoin(before, list)) {
@@ -4874,14 +4977,14 @@ function modelSettleLists(doc, block, md) {
   // An empty paragraph is the model's place for a caret and writes nothing, so
   // the parser cannot see it; it is left out of the comparison on this side.
   // At the top level between two blocks it writes a blank line (TODO 1.12),
-  // which the parser cannot see either: a second blank line between blocks
-  // changes nothing it builds, until stage 3 reads one back as a block.
+  // which `modelParse` reads back as an empty paragraph of its own — so those
+  // are left out on the parser's side, and the two lists still line up.
   // An empty cell is not one of those: `| |` is in the file and parses to a
   // cell.
   const writes = (b) => b.kind === "cell" || !(!b.children && b.inlines && modelIsEmptyBlock(b));
   const shape = (list) => list.map((b) => b.kind + (b.children ? b.children.filter(writes).length : ""));
   const mine = modelFlatten({ blocks: chunk }).filter(writes);
-  const theirs = modelFlatten({ blocks: parsed.blocks });
+  const theirs = modelFlatten({ blocks: parsed.blocks }).filter((b) => !(b.kind === "paragraph" && b.source === ""));
   if (shape(mine).join() !== shape(theirs).join()) return false;
   mine.forEach((leaf, i) => {
     // The renderer looks one token back, so the hidden token before each block
@@ -5217,7 +5320,9 @@ function modelQuoteReplace(doc, parent, from, to, bytes, md) {
   if (parsed.prefix !== "" || !parsed.blocks.length) return null;
   const leaves = (blocks) => modelFlatten({ blocks }).filter((block) => !block.children && block.kind !== "gap");
   const before = leaves(old);
-  const after = leaves(parsed.blocks);
+  // A blank line too many reads back as an empty paragraph (TODO 1.12), which
+  // the run going in did not hold as a block: it is new, and left out here.
+  const after = leaves(parsed.blocks).filter((block) => block.source !== "");
   if (before.length !== after.length || before.some((block, i) => block.kind !== after[i].kind)) return null;
 
   for (const block of modelFlatten(parsed)) block.id = modelMintId(doc);
@@ -5373,6 +5478,7 @@ function modelUnwrapQuote(doc, quote, from, to, md) {
 function modelToggleQuote(doc, leaves, md) {
   leaves = leaves.filter((leaf) => leaf.kind !== "gap");
   if (!leaves.length) return null;
+  leaves = modelFormatBlocks(doc, leaves);
   const ids = leaves.map((leaf) => leaf.id);
   const find = (group) => group.map((id) => modelBlockById(doc, id)).filter(Boolean);
   let made = null;
@@ -5839,8 +5945,14 @@ function modelContainerLike(doc, like) {
  * is cloned off a block that already exists, which is where the tokens are.
  */
 function modelParagraphBlock(doc, md) {
+  return modelEmptyParagraph(md, modelMintId(doc));
+}
+
+// The same paragraph for a caller minting its own ids — `modelReadGaps`, which
+// runs inside a parse, before there is a document to mint from.
+function modelEmptyParagraph(md, id) {
   const tokens = md.parse("x", {}).map((token) => modelCloneToken(token));
-  const block = modelBlockShape(modelMintId(doc), "paragraph");
+  const block = modelBlockShape(id, "paragraph");
   block.tokens = tokens;
   block.inline = tokens.find((token) => token.type === "inline") || null;
   if (block.inline) {

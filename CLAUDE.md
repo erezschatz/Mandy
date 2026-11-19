@@ -769,7 +769,10 @@ makes the rest work is that **every character of the input is in exactly one of
 `prefix`, a block's `source`, or a block's `separator`**. `modelSerialise`
 concatenates them, so an unedited document comes back byte-identical *because
 nothing ever threw the bytes away* — not because a restore pass got most of them
-back. That is the inversion the whole rewrite is for. Two identical paragraphs
+back. That is the inversion the whole rewrite is for. (One exception since
+2026-11-19: an empty paragraph read back from an extra blank line holds one
+line end more than the file, and the joiner writes it back without — see the
+empty-paragraph bullet in the model section.) Two identical paragraphs
 cannot be confused for one another by a source span, and `indexMarkdownBlocks`
 keys on content precisely because it has no span to use instead.
 
@@ -1175,8 +1178,13 @@ cleared everywhere. Seven steps, and the ones worth knowing from outside:
   produces emits empty, so an opened-and-saved file is untouched. **Since
   2026-11-19 there is one exception** (TODO 1.12, D20): an empty paragraph
   between two blocks at the top level is a gap the user can see, so it is
-  written as one more blank line. At either end of the document, and inside
-  any container, the rule above still holds.
+  written as one more blank line — and read back as one: `modelReadGaps`
+  makes each extra blank line between two top-level blocks an empty
+  paragraph, whose `source` is `""` and whose separator is an Enter's shape, a
+  line end and then that line. **That one byte is the only place the top level
+  does not tile its file**; nothing reads the top level but the joiner. At
+  either end of the document, and inside any container, the rule above still
+  holds.
 - **The two hand-rolled list clusters are model rules now**, with no engine in
   them — Enter and Backspace on an empty `<li>`, and `outdentListItem`. What
   `app.js`'s handler does is the specification, because it is what users have;

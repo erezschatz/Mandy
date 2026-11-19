@@ -284,6 +284,18 @@ text it is:
 
 An inline <span class="x">span</span> and a self-closing <br/> likewise.
 
+A verse typed a line to a paragraph, with an extra blank line between verses,
+which reads back as an empty paragraph where the gap is:
+
+Over the ford
+
+and up the hill,
+
+
+down to the mill.
+
+
+  
 Three rules, three spellings:
 
 ---
