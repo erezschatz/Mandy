@@ -1,0 +1,3 @@
+# A file whose bytes are the test. crlf.md is held with CRLF line endings
+# on purpose (TODO 1.13), so no checkout or commit may convert them.
+tests/fixtures/crlf.md -text

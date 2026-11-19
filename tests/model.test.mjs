@@ -3288,12 +3288,100 @@ export default function run(check) {
     const above = after("one\n\n\ntwo\n", (d, l) => modelInsertParagraph(d, l[2], 0, md));
     check(`Enter on either side of two blank lines writes the same bytes (${JSON.stringify([below, above])})`,
       below === above && below === "one\n\n\n\ntwo\n");
-    // And a CRLF file gets its gap in CRLF. Only the gap: the edited block
-    // after it ends in a bare `\n`, which is the split's and predates this —
-    // editing a CRLF file mixes its line endings, and an edited last paragraph
-    // in one throws. That is a task of its own.
+    // And a CRLF file gets its gap in CRLF — the whole file, since TODO 1.13.
     const crlf = after("# Title\r\n\r\nA.\r\n", (d, l) => modelInsertParagraph(d, l[1], 0, md));
-    check(`a gap in a CRLF file is written with its line endings (${JSON.stringify(crlf)})`, crlf.startsWith("# Title\r\n\r\n\r\nA."));
+    check(`a gap in a CRLF file is written with its line endings (${JSON.stringify(crlf)})`, crlf === "# Title\r\n\r\n\r\nA.\r\n");
+  }
+
+  {
+    // ── A CRLF file (TODO 1.13) ─────────────────────────────────────────────
+    //
+    // `modelParse` records the file's commonest line ending as the document's
+    // and holds the text as LF, and `modelSerialise` writes the document's
+    // ending back. Until 2026-11-19 the model kept a CRLF file's bytes as they
+    // were and composed every new line with `\n`, so an edit mixed the file's
+    // endings — and the affix checks compared a source line ending in `\r`
+    // against markdown-it's normalised content, so an edited last paragraph
+    // threw and the save refused the document.
+    //
+    // `crlfOnly` is the property every case asserts: no bare `\n`, no lone `\r`.
+    const crlfOnly = (text) => !/(^|[^\r])\n/.test(text) && !/\r(?!\n)/.test(text);
+    const lf = (text) => text.replace(/\r\n/g, "\n");
+    const cases = [
+      ["Enter in the middle of a CRLF file", "# Title\r\n\r\nA B.\r\n\r\nC.\r\n", (d, l) => modelInsertParagraph(d, l[1], 1, md), "# Title\r\n\r\nA\r\n\r\nB.\r\n\r\nC.\r\n"],
+      ["Enter at the end of a CRLF file's only paragraph", "A.\r\n", (d, l) => modelInsertParagraph(d, l[0], 2, md), "A.\r\n"],
+      ["Enter at the end of a CRLF file's last paragraph", "A.\r\n\r\nB.\r\n", (d, l) => modelInsertParagraph(d, l[1], 2, md), "A.\r\n\r\nB.\r\n"],
+      ["Enter in a CRLF bullet", "- one two\r\n- three\r\n", (d, l) => modelInsertParagraph(d, l[0], 3, md), "- one\r\n- two\r\n- three\r\n"],
+      ["Backspace merging two CRLF paragraphs", "A.\r\n\r\nB.\r\n\r\nC.\r\n", (d, l) => modelMergeBlocks(d, l[0], l[1]), "A.B.\r\n\r\nC.\r\n"],
+      ["an inline edit in a CRLF file's last paragraph", "# T\r\n\r\nA.\r\n", (d, l) => modelInlineSplice(l[1], 1, 1, " b"), "# T\r\n\r\nA b.\r\n"],
+      ["a hard break typed into a CRLF paragraph", "one two\r\n", (d, l) => modelInsertBreak(l[0], 3, "  "), "one  \r\ntwo\r\n"],
+      ["a fence edited as source in a CRLF file", "```\r\na\r\n```\r\n", (d, l) => modelSourceSplice(l[0], 1, 1, "\nb", md), "```\r\na\r\nb\r\n```\r\n"],
+      ["a paste of several blocks into a CRLF file", "A B.\r\n", (d, l) => modelInsertBlocks(d, l[0], 1, parse("x\n\n```\ny\n```\n\nz").blocks), "Ax\r\n\r\n```\r\ny\r\n```\r\n\r\nz B.\r\n"],
+      ["a CRLF fragment pasted into an LF file is written LF", "A B.\n", (d, l) => modelInsertBlocks(d, l[0], 1, parse("x\r\n\r\nz").blocks), "Ax\n\nz B.\n"],
+      ["plain text pasted into a CRLF file", "A B.\r\n", (d, l) => modelInsertBlocks(d, l[0], 1, modelTextBlocks(d, md, "x\r\n\r\nz")), "Ax\r\n\r\nz B.\r\n"],
+    ];
+    for (const [label, src, act, want] of cases) {
+      let got;
+      try {
+        got = after(src, act);
+      } catch (error) {
+        got = `threw: ${error.message}`;
+      }
+      const lfWant = src.includes("\r") ? crlfOnly(got) : !got.includes("\r");
+      check(`${label} writes only its file's line endings (${JSON.stringify(got)})`, got === want && lfWant);
+    }
+
+    // The ending is the document's, sniffed once: the commonest wins, a tie
+    // and a file with none are LF, and the model itself holds only LF.
+    const eolOf = (src) => parse(src).eol;
+    check("a CRLF file's line ending is CRLF", eolOf("a\r\n\r\nb\r\n") === "\r\n");
+    check("an LF file's is LF, and so is a file with no line ending at all", eolOf("a\n\nb\n") === "\n" && eolOf("a") === "\n");
+    check("a mixed file takes its commonest, and a tie is LF", eolOf("a\r\n\r\nb\n") === "\r\n" && eolOf("a\r\nb\n") === "\n");
+    const held = parse("# T\r\n\r\n- a\r\n- b\r\n");
+    check("a CRLF file is held as LF inside the model", modelFlatten(held).every((b) => !/\r/.test((b.source ?? "") + b.separator + (b.leading ?? ""))) && !/\r/.test(held.prefix));
+    // A mixed file is written wholly in its commonest ending, edited or not —
+    // the decision's cost, pinned so it is not mistaken for a regression.
+    check("a mixed file comes back in its commonest line ending", modelSerialise(parse("a\r\n\r\nb\n")) === "a\r\n\r\nb\r\n");
+    check("an old Mac file's lone CR is kept, and edited in it", modelSerialise(parse("a\r\rb\r")) === "a\r\rb\r" &&
+      after("a b\r", (d, l) => modelInsertParagraph(d, l[0], 1, md)) === "a\r\rb\r");
+    // An undo state is a fork, and a fork that lost the ending would turn the
+    // file LF on the first undo.
+    check("an undo state keeps the document's line ending", modelForkDocument(parse("a\r\n")).eol === "\r\n");
+
+    // The oracle's sweep, in a CRLF file. `tests/fixtures/crlf.md` round-trips
+    // byte for byte, and every text-bearing block in it, edited alone — an
+    // inline edit, then Enter in the middle of it — writes the file the same
+    // edit writes in that file's LF twin, with every line ending CRLF. The twin
+    // is the measure rather than a hand-written answer, so this checks the line
+    // endings and nothing else.
+    const fixture = repoFile("tests/fixtures/crlf.md");
+    check("the CRLF fixture is CRLF throughout, so this section is not vacuous", fixture.includes("\r\n") && crlfOnly(fixture));
+    check("the CRLF fixture round-trips byte-identical", modelSerialise(parse(fixture)) === fixture);
+    const twin = lf(fixture);
+    const editable = textLeaves(parse(twin)).filter((b) => b.inlines);
+    let swept = 0;
+    const wrong = [];
+    for (let i = 0; i < editable.length; i++) {
+      for (const [name, act] of [
+        ["edit", (d, b) => modelInlineSplice(b, 0, 0, "X")],
+        ["Enter", (d, b) => modelInsertParagraph(d, b, Math.floor(modelInlineText(b.inlines).length / 2), md)],
+      ]) {
+        const run = (src) => {
+          try {
+            return after(src, (d) => act(d, textLeaves(d).filter((b) => b.inlines)[i]));
+          } catch (error) {
+            return `threw: ${error.message}`;
+          }
+        };
+        const want = run(twin);
+        const got = run(fixture);
+        swept += 1;
+        if (!(crlfOnly(got) && lf(got) === want)) wrong.push(`${name} ${i}: ${JSON.stringify(got.slice(0, 60))}`);
+      }
+    }
+    check(`every text-bearing block in the CRLF fixture, edited alone and split by Enter, writes only CRLF (${swept} edits)` +
+      (wrong.length ? ` — ${wrong.length} did not: ${wrong.slice(0, 3).join(", ")}` : ""),
+      editable.length > 15 && wrong.length === 0);
   }
 
   {
@@ -3338,6 +3426,20 @@ export default function run(check) {
       const got = emit(d);
       check(`${label} writes ${JSON.stringify(want)} and reads back as it shows (${JSON.stringify(got)})`,
         got === want && shape(got) === reads);
+    }
+    // And in a CRLF file, which since task 1.13 the model holds as LF: every
+    // one of those edits writes CRLF throughout and reads back as it shows.
+    // Before the two tasks met, five of them did not — typing into the gap,
+    // Enter at the start of the block after it and Backspace there mixed
+    // endings, and Enter at the end of the block before it and Delete there
+    // threw — while Enter in the gap and Backspace in it already held.
+    for (const [label, act, want, reads] of edits) {
+      const d = parse("one\r\n\r\n\r\ntwo\r\n");
+      let got;
+      try { act(d); got = emit(d); } catch (error) { got = error.message; }
+      const crlf = want.replace(/\n/g, "\r\n");
+      check(`${label}, in a CRLF file, writes ${JSON.stringify(crlf)} and reads back as it shows (${JSON.stringify(got)})`,
+        got === crlf && shape(got) === reads);
     }
     const kept = parse("one\n\n\n  \ntwo\n");
     modelInlineSplice(kept.blocks[1], 0, 0, "x");

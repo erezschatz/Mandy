@@ -851,3 +851,40 @@ it would draw what the file cannot keep; until stage 3 the same selection
 formatted, because the file's gap was not a block to be in the way.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D26 · 2026-11-19 · A file's line ending is the document's, sniffed once
+
+**Decision** — `modelParse` records the commonest line ending in the file as
+the document's and holds the text as LF; `modelSerialise` writes every line
+ending as the document's. A uniformly CRLF file comes back byte for byte and
+an edit in it writes only CRLF. A file whose line endings are mixed is written
+wholly in its commonest one on its first save, edited or not.
+**Rejected** — Keeping each block's bytes as the file had them and teaching
+every place that composes bytes to use the document's ending, and every affix
+check to ignore a trailing `\r`: about eighty sites, each a place to forget,
+and the model's bytes and the parser's would still disagree. Recording each
+line's own ending so a mixed file keeps its mix: a line's ending would have to
+follow it through every split, merge and paste, for a file that is almost
+always an accident.
+**Why** — A line ending is whitespace nobody can see, the category D3 already
+narrows D1 for; a mixed file is the damage D3 describes, not a spelling an
+author chose. A uniform file is the case worth keeping exactly, because
+rewriting every line of it would be the whole-file diff D1 exists to prevent,
+and that is what this keeps.
+
+Source: [tasks/1.13-crlf-files.md](../tasks/1.13-crlf-files.md)
+
+## D27 · 2026-11-19 · The sniff normalises line endings itself
+
+**Decision** — `sniffMarkdownStyle` turns `\r\n` and a lone `\r` into `\n`
+before it reads, so whatever hands it a file gets the same answer for any
+line ending.
+**Rejected** — Normalising in `adoptMarkdownStyle` in `app.js`, the one caller
+that hands it a file: it would fix today's caller and leave the function
+wrong for the next one. Having `modelParse` hand its LF text to the sniff:
+it ties the style module to the model's door for one `replace`.
+**Why** — The sniff's answer is a fact about the file's conventions, and a
+line ending is not one of them (D26); a pure function that is right for every
+input is the cheapest place to keep that true.
+
+Source: [tasks/1.14-crlf-wrap-width.md](../tasks/1.14-crlf-wrap-width.md)

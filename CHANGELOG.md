@@ -10938,6 +10938,74 @@ script's reworked `--pr` mode, which this strict-only copy has never had.
 `deno task hooks:test` passes. Also fills `d339929` into the previous entry's
 header.
 
+## 2026-11-19 — `a5f5a0d` — Task 1.13: a CRLF file is edited in CRLF
+
+Editing a file written with Windows line endings wrote bare `\n` lines into it,
+and editing its last paragraph — or almost any paragraph, an Enter, a merge, a
+paste — threw in the emitter, so the save refused the document. The model kept
+a CRLF file's bytes as they were while every place that composes new bytes
+wrote `\n`, and the emitter's affix checks compared a source line ending in
+`\r` against markdown-it's content, which the parser normalises to LF. An old
+Mac file, with lone `\r` endings, did not even parse: `modelParse` threw on it.
+
+The fix is at the door rather than at the eighty places that compose bytes.
+**`modelParse` records the file's commonest line ending as the document's
+`eol` and holds the text as LF**, which is what markdown-it does to it anyway;
+**`modelSerialise` writes every line ending as the document's**, so it is the
+one place a file's ending is written. A uniformly CRLF file comes back byte for
+byte and an edit in it writes only CRLF; an undo state and a parked tab are
+forks and carry `eol` with them; a pasted fragment arrives LF and is written in
+the target's ending. **A file with mixed line endings is written wholly in its
+commonest one on its first save**, edited or not — D3's narrowing of D1
+applied to the whitespace at the end of a line, recorded as a decision in
+tasks/1.13-crlf-files.md with the per-line alternative it rejected.
+`modelJoinBlocks` loses the CRLF branch task 1.12 gave its gaps, which the
+conversion now does for it.
+
+The `model` suite gains eleven CRLF edit cases — Enter in the middle, at the
+end of the only and of the last paragraph and in a bullet, Backspace's merge,
+an inline edit, a hard break, a fence edited as source, a paste of blocks and
+of plain text, and a CRLF fragment pasted into an LF file — each asserting the
+bytes written and that no other line ending is among them; seven checks on the
+sniff, the LF model, a mixed file, a lone-`\r` file and an undo fork; and
+`tests/fixtures/crlf.md`, held in CRLF (`.gitattributes` marks it `-text` so
+no checkout converts it), which round-trips byte for byte and is swept with
+every text-bearing block edited and split by Enter, measured against the same
+edit in its LF twin. Task 1.12's CRLF check now asserts the whole file. Every
+new check fails against the old code but three that held already — the CRLF
+fragment into an LF file, the fixture's round trip and its is-CRLF guard — and
+the sweep fails 35 of its 36 edits there. `front/sw.js`'s `VERSION` goes to
+`v1.98`. `npm test` passes; the Playwright run was not repeated, since no spec
+opens a CRLF file and an LF file goes through the same path as before.
+**Measured and not done**: `sniffMarkdownStyle` reads the raw file, so a CRLF
+file's wrap width reads one column wider than its LF twin's (LF 78, CRLF 79 on
+`break-test.md`), and an edited paragraph in one is re-wrapped a column wide;
+that is task 1.14, opened here.
+Also fills `d138818` into the previous entry's header.
+
+## 2026-11-19 — `d0487ba` — Task 1.14: a CRLF file's conventions are sniffed as an LF file's
+
+`sniffMarkdownStyle` read the file as it arrived, so in a CRLF file every line
+it measured ended in `\r`. The wrap width came out a column wide — 79 for a
+CRLF copy of `break-test.md` whose LF original sniffs 78 — so an edited
+paragraph in a CRLF file, editable since task 1.13, was re-wrapped wider than
+its neighbours. And neither hard-break pattern, both anchored at `$`, ever
+matched, so a CRLF file written with backslash breaks was sniffed as two-space
+and a break typed into it was spelled the other way. An old Mac file, with lone
+`\r` endings, was one line to the sniff and lost its bullet, list-pad and table
+conventions as well.
+
+The sniff now turns `\r\n` and a lone `\r` into `\n` before it reads, once for
+the whole function: the table convention read the raw argument a second time,
+which only the lone-`\r` case showed. A decision in
+tasks/1.14-crlf-wrap-width.md records why the normalisation is in the sniff
+rather than in its caller in `app.js`. `save-fidelity` gains six checks — a CRLF
+and a lone-`\r` copy of `break-test.md` and of `torture.md` each sniffing
+exactly as the original, every field; `crlf.md` sniffing as its LF twin; and a
+CRLF file's backslash breaks — and all six fail against the old sniff.
+`front/sw.js`'s `VERSION` goes to `v1.99`. `npm test` passes. Also fills
+`a5f5a0d` into the previous entry's header.
+
 ## 2026-11-19 — `9f223f5` — Task 1.12's stage 2: a copy keeps the gap
 
 Ctrl/Cmd+C and Edit → Copy now carry a gap typed with Enter. An empty paragraph
@@ -10967,9 +11035,10 @@ document's own; both are fixed. **A paste of that copy
 back into Mandy still loses the gap**: the paste reads the HTML, and the
 sanitiser drops a paragraph holding only a `<br>` as the ghost line Word and
 Docs emit, so that is recorded as open in the task. Also fills `d138818` into
-the previous entry's header.
+the Unities entry's header, on `main`, where this landed before task 1.13's
+branch was merged.
 
-## 2026-11-19 — Task 1.12's stage 3: a reopened file shows its gaps
+## 2026-11-19 — `27ea5e3` — Task 1.12's stage 3: a reopened file shows its gaps
 
 A gap typed with Enter now survives a reopen. `modelParse` reads each extra
 blank line between two top-level blocks as an empty paragraph
@@ -11019,3 +11088,32 @@ block it meant, since the second blank line is now a block. The new checks
 cover both decisions, the reopened song, untouched round trips, what
 is and is not read, seven edits around a gap, a fork, the quote unwrap, and the
 quote exit. Also fills `9f223f5` into the previous entry's header.
+
+## 2026-11-19 — Tasks 1.13 and 1.14 merge into `main`, beside task 1.12
+
+The CRLF branch, `claude/brave-hugle-8bca3a`, merges into `main`: task 1.13,
+which holds a CRLF file as LF and writes its ending back, and task 1.14, which
+sniffs a CRLF file's conventions as its LF twin's. It was cut from `main`
+before task 1.12's stages 2 and 3, so the two met in `modelParse`, where 1.12
+reads gaps and 1.13 sniffs the line ending; both are kept, and the gap comment
+no longer claims a CRLF file's `\r` sits in a block's source. The branch
+numbered its two decisions D22 and D23, which `main` had already given to two
+of 1.12's (it ran on to D25). Recompiled together, `main`'s keep D20 to D25 and
+the branch's become D26 and D27, and the
+references to the branch's D22 in `tasks/1.14-crlf-wrap-width.md` and
+`front/markdown-style.js` now say D26. The CHANGELOG puts 1.13 and 1.14 after
+the Unities entry, where 1.13 branched, and before 1.12's stage 2. Stage 2's
+note on which header it filled is reworded, since 1.13's entry filled the same
+one.
+
+The meeting needed no change to either side's code. With the model holding a
+CRLF file as LF, every edit around a gap writes CRLF throughout and reads back
+as it shows. On `main` before the merge, five of the seven did not. Typing into
+the gap, Enter at the start of the block after it, and Backspace there mixed
+endings. Enter at the end of the block before it, and Delete there, threw.
+Enter in the gap and Backspace in it already held. Seven checks pin that, one
+per edit. `front/sw.js`'s `VERSION` goes to `v1.100`,
+since both sides had bumped it to `v1.99`. `npm test` passes, 2174 checks:
+`main`'s 2140, the branch's 27 and the seven new ones. Playwright is 365 passed
+with the one recorded Firefox failure. Also fills `d0487ba` and `27ea5e3` into
+the two headers that were waiting for them.

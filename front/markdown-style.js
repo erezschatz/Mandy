@@ -110,6 +110,10 @@ function commonest(counts, fallback) {
 
 function sniffMarkdownStyle(markdown) {
   const style = Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
+  // A line ending is not a convention (TODO 1.14, D26): read a CRLF or an old
+  // Mac file as the LF text the model holds, or every line measures a column
+  // long and no hard break, whose patterns end in `$`, is ever seen.
+  markdown = (markdown || "").replace(/\r\n?/g, "\n");
   const lines = markdownStyleLines(markdown);
   const text = lines.join("\n");
 

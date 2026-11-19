@@ -1469,6 +1469,12 @@ function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
  * delimiter row, and a blockquote's bare `>`.
  */
 function modelParse(markdown, md, env = null) {
+  // Line endings are decided here, once (TODO 1.13): the commonest one in the
+  // file is the document's, and the text is held as LF from here on — which is
+  // what markdown-it does to it anyway, so the model's bytes and the parser's
+  // `content` agree. `modelSerialise` writes the document's ending back.
+  const eol = modelSniffEol(markdown);
+  markdown = markdown.replace(/\r\n?/g, "\n");
   const offsets = modelLineOffsets(markdown);
   const lines = markdown.split("\n");
 
@@ -1496,7 +1502,7 @@ function modelParse(markdown, md, env = null) {
   );
 
   const blocks = modelReadGaps(tiled.blocks, md, () => nextId++);
-  return { prefix: tiled.leading, blocks, nextId };
+  return { prefix: tiled.leading, blocks, nextId, eol };
 }
 
 /**
@@ -1533,8 +1539,9 @@ function modelParse(markdown, md, env = null) {
  * reader sees, and a quote's blank lines carry its `>`.
  *
  * Tokens from the parser, as for every block the editor makes —
- * `modelEmptyParagraph`. The line end is a bare `\n`, as an Enter's is: in a
- * CRLF file a block's `\r` is in its source.
+ * `modelEmptyParagraph`. The line end is a bare `\n`, as everything the model
+ * holds is: `modelParse` holds a CRLF file as LF and `modelSerialise` writes
+ * its ending back (TODO 1.13).
  */
 function modelReadGaps(blocks, md, mint) {
   const out = [];
@@ -1552,6 +1559,26 @@ function modelReadGaps(blocks, md, mint) {
     }
   });
   return out;
+}
+
+/**
+ * The line ending a file is written in: the commonest of `\r\n`, `\n` and a
+ * lone `\r`, and `\n` on a tie or in a file with none (TODO 1.13).
+ *
+ * One per document rather than one per line. A uniformly CRLF file is the case
+ * worth keeping exactly, since writing it back LF would rewrite every line of
+ * it; a file whose endings are mixed is written wholly in the commonest one,
+ * which is D3's narrowing of D1 applied to the one whitespace a line has at its
+ * end. Recording each line's own ending would have to follow it through every
+ * split, merge and paste, for a file that is almost always an accident.
+ */
+function modelSniffEol(markdown) {
+  const count = { "\r\n": 0, "\n": 0, "\r": 0 };
+  for (const ending of markdown.match(/\r\n|\r|\n/g) || []) count[ending]++;
+  let eol = "\n";
+  if (count["\r\n"] > count[eol]) eol = "\r\n";
+  if (count["\r"] > count[eol]) eol = "\r";
+  return eol;
 }
 
 // The next free id on a document, for a block the editor creates rather than
@@ -2130,10 +2157,15 @@ function modelEmitBlock(block, emit) {
  *
  * The prefix, then every block and the separator that followed it. Everything
  * interesting is one level down in `modelEmitBlock`; what is here is that a
- * document is its blocks in order, and nothing else.
+ * document is its blocks in order, and nothing else, in the file's own line
+ * ending.
  */
 function modelSerialise(doc, emit) {
-  return modelJoinBlocks(doc.blocks, emit, doc.prefix, true);
+  const text = modelJoinBlocks(doc.blocks, emit, doc.prefix, true);
+  // The one place a file's line ending is written (TODO 1.13). Everything the
+  // model holds or composes is LF, so an edit in a CRLF file writes CRLF
+  // without any of the places that compose bytes having to know.
+  return doc.eol && doc.eol !== "\n" ? text.replace(/\r\n?|\n/g, doc.eol) : text;
 }
 
 /**
@@ -2185,11 +2217,12 @@ function modelDocumentMarkdown(doc, md, width = 0) {
  * line already, so the first line ending is the one the block before it has
  * just been given; a parse gives it a line ending and then the gap's own line,
  * whitespace and all, which is the same shape on purpose (`modelReadGaps`); and
- * a separator holding a single line ending is that line whole. So `A`, one empty paragraph and
- * `B` are `A\n\n\nB` however the empty one came to be there, and a separator
- * that already held two blank lines comes out the same whichever side of it the
- * Enter was pressed. Line endings are the file's: a gap in a CRLF file is
- * written with `\r\n`.
+ * a separator holding a single line ending is that line whole. So `A`, one
+ * empty paragraph and `B` are `A\n\n\nB` however the empty one came to be
+ * there, and a separator that already held two blank lines comes out the same
+ * whichever side of it the Enter was pressed. Every byte here is LF, a CRLF file's included, since
+ * `modelParse` holds the text as LF and `modelSerialise` writes the file's own
+ * ending (TODO 1.13).
  *
  * The only block a parse produces that emits empty is the one `modelReadGaps`
  * makes of an extra blank line, and that is written back as the same blank
@@ -2209,16 +2242,14 @@ function modelJoinBlocks(blocks, emit, leading, gaps = false) {
         const own = block.separator;
         const lines = own.split("\n").length - 1;
         const line = lines > 1 ? own.slice(own.indexOf("\n") + 1) : own;
-        gap += line || (before.includes("\r\n") ? "\r\n" : "\n");
+        gap += line || "\n";
       }
       if (started) separator = block.separator;
       continue;
     }
     if (gap) {
-      const crlf = before.includes("\r\n");
-      if (crlf) gap = gap.replace(/\r?\n/g, "\r\n");
-      const blank = /\n[ \t\r]*\n/.test(before);
-      separator = (blank ? before : before + (crlf ? "\r\n" : "\n")) + gap;
+      const blank = /\n[ \t]*\n/.test(before);
+      separator = (blank ? before : before + "\n") + gap;
     }
     out += separator + bytes;
     separator = block.separator;
