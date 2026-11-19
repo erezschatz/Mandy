@@ -777,3 +777,30 @@ nobody could verify.
 works here.
 
 Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D22 · 2026-11-19 · A copy keeps the gap as text the reader sees, not as markdown
+
+**Decision** — Ctrl/Cmd+C and Edit → Copy go on writing the plain text a
+reader sees, and an empty paragraph between two others at the top level is one
+more blank line in it — so a run of plain paragraphs copies as
+the file's bytes less the final newline, for an LF file. In the HTML such a paragraph keeps a `<br>`, the spelling Word
+and Google Docs give an empty paragraph, so a receiving application draws it.
+The same reach as the file's rule, and asked of the model as the file asks
+it — a block is written when it emits bytes — so not at the ends of the copy,
+not inside a container. The plain text is built by marking each such paragraph
+with a private-use character the copy does not already hold and replacing the
+marker and the two newlines after it with one newline once `innerText` has been
+measured.
+**Rejected** — Making the plain text the model's markdown for the selection:
+it would put `**` and `#` into every copy of formatted text pasted into a plain
+field, which is what Export → Copy markdown is for, and a selection starting
+mid-block has no markdown of its own to cut from. And writing the plain text
+from a `<br>` in the empty paragraph: measured 2026-11-19, `innerText` gives
+`<p>a</p><p><br></p><p>b</p>` five newlines in Blink and Gecko and four in
+WebKit, against two for the same paragraphs with no gap, so no engine gives
+the one extra line and two of them disagree.
+**Why** — A copy is for pasting somewhere else, and plain text that is the
+reader's text is what every editor people arrive from writes. The marker makes
+the answer the same in all three engines.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)

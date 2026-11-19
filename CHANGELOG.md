@@ -10917,7 +10917,7 @@ throws. **After a reopen the gap is still not on screen** — that is stage 3 �
 and Ctrl/Cmd+C still loses it, which is stage 2. Also fills `b9c29fd` into the
 previous entry's header.
 
-## 2026-11-19 — The Unities brought up to 0.5.5: the reader gets a brief
+## 2026-11-19 — `d138818` — The Unities brought up to 0.5.5: the reader gets a brief
 
 docs/UNITIES.md is replaced with the procedure's 0.5.5 master, dated today,
 over the 0.4.0 copy of 2026-11-11. The one thing it adds that applies here is
@@ -10937,3 +10937,34 @@ agent here, which is a new decision in tasks/adopt-unities.md. Neither is the
 script's reworked `--pr` mode, which this strict-only copy has never had.
 `deno task hooks:test` passes. Also fills `d339929` into the previous entry's
 header.
+
+## 2026-11-19 — Task 1.12's stage 2: a copy keeps the gap
+
+Ctrl/Cmd+C and Edit → Copy now carry a gap typed with Enter. An empty paragraph
+between two others at the top level is one more blank line in the plain text,
+so a run of plain paragraphs copies as the file reads, and an
+empty paragraph in the HTML keeps a `<br>`, which is how Word and Google Docs
+spell one, so a receiving application draws it. The reach is the file's rule,
+asked of the model rather than read off the screen: a block counts as written
+when it emits bytes, so a rule beside an empty paragraph makes it a gap and a
+paragraph holding only spaces is one, as in the file; nothing at either end of
+the copy and nothing inside a container. For an LF file the plain text of plain
+paragraphs is the file's bytes less the final newline. The plain
+text stays the text a reader sees rather than becoming markdown, since that is
+what Export → Copy markdown is for; the task file records the decision.
+
+The plain text could not come from the `<br>`: measured, `innerText` gives an
+empty paragraph holding one five newlines in Blink and Gecko and four in
+WebKit, and an empty one none. So each gap is marked with a private-use
+character the copy does not already hold while `innerText` is measured, and the
+marker and the two newlines after it become one newline, which gives the same
+text in all three. `copy-gap.spec.mjs` reads what a copy event wrote in three
+engines, ten cases: the song, two gaps, both ends, a rule on either side, a
+paragraph of spaces, a quote, a selection cut short at both ends, and a
+private-use character in the text. The reader found the first version took the
+DOM's word for what is empty and could swallow a private-use character of the
+document's own; both are fixed. **A paste of that copy
+back into Mandy still loses the gap**: the paste reads the HTML, and the
+sanitiser drops a paragraph holding only a `<br>` as the ghost line Word and
+Docs emit, so that is recorded as open in the task. Also fills `d138818` into
+the previous entry's header.

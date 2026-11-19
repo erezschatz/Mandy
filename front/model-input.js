@@ -2048,6 +2048,39 @@ function modelInputClipboard(event, cut) {
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     if (node.textContent.includes("\u00A0")) node.textContent = node.textContent.replace(/\u00A0/g, " ");
   }
+  // **A gap goes with it** (TODO 1.12, D20 and its copy decision). An empty
+  // paragraph between two others at the top level is a blank line in the file,
+  // so it is one in the copy too: a `<br>` in the HTML, which is how Word and
+  // Docs spell an empty paragraph, and in the plain text a marker swapped for
+  // one newline after measuring — `innerText` gives a `<br>` four newlines in
+  // WebKit and five elsewhere, and an empty `<p>` none. Only when the copy
+  // reaches across top-level blocks, and never at its ends, which is the
+  // file's rule — and **the model says what is empty**, as it does for the
+  // file: a block is written when it emits bytes, so a rule counts and a
+  // paragraph of spaces is not a gap. The first and last blocks may be cut
+  // short, so they count only if what was cut still holds something.
+  const gaps = [];
+  if (range.commonAncestorContainer === editor) {
+    const blocks = [...holder.children];
+    const emit = (block) => modelEmitLeaf(block, md, doc);
+    const modelOf = (el) => {
+      const id = el.getAttribute(MODEL_BLOCK_ATTR);
+      return id === null ? null : doc.blocks.find((block) => String(block.id) === id) ?? null;
+    };
+    const holds = (el) => el.textContent !== "" || el.matches("hr, img, br") || !!el.querySelector("hr, img, br, [data-math]");
+    const written = blocks.map((el, i) => {
+      const block = modelOf(el);
+      const emits = block ? modelEmitBlock(block, emit) !== "" : holds(el);
+      return emits && (i > 0 && i < blocks.length - 1 ? true : holds(el));
+    });
+    blocks.forEach((el, i) => {
+      const block = modelOf(el);
+      if (!block || block.kind !== "paragraph" || written[i]) return;
+      if (!written.slice(0, i).includes(true) || !written.slice(i + 1).includes(true)) return;
+      el.replaceChildren(document.createElement("br"));
+      gaps.push(el);
+    });
+  }
   const html = holder.innerHTML;
   for (const equation of holder.querySelectorAll("[data-math]")) {
     const typeset = equation.querySelector("mjx-container[data-tex]");
@@ -2057,9 +2090,15 @@ function modelInputClipboard(event, cut) {
         : `$${typeset.getAttribute("data-tex")}$`;
     equation.replaceWith(document.createTextNode(source));
   }
+  // A marker the copy does not already hold, equations' TeX included, so the
+  // swap below can only ever find the ones put there.
+  let marker = 0xe000;
+  while (holder.textContent.includes(String.fromCharCode(marker))) marker++;
+  const gapMark = String.fromCharCode(marker);
+  for (const gap of gaps) gap.replaceChildren(document.createTextNode(gapMark));
   holder.style.cssText = "position:fixed;left:-99999px;top:0;white-space:pre-wrap";
   document.body.appendChild(holder);
-  const text = holder.innerText;
+  const text = gaps.length ? holder.innerText.split(gapMark + "\n\n").join("\n") : holder.innerText;
   holder.remove();
 
   event.preventDefault();
