@@ -76,7 +76,7 @@ is flagged before it is added (CLAUDE.md, Commands).
 | Dependency | Where | What it replaces | Why it is rote |
 | --- | --- | --- | --- |
 | markdown-it 13.0.1 | CDN in the app; `npm:` in the root `deno.json` for the model suite | a markdown parser | CommonMark is a specification with a reference implementation; the one inline rule copied from it is `referenceAwareLink` |
-| Turndown 7.1.2 | CDN | an HTML-to-markdown converter | used only for HTML from outside — a paste, a drop, and the old core's save path until stage 4 retires it |
+| Turndown 7.1.2 | CDN | an HTML-to-markdown converter | used only for HTML from outside — a paste, a drop, the table of contents, and the one-time conversion of an old HTML autosave in `legacy-storage.js` |
 | MathJax 3 | CDN, loaded on first use | a TeX typesetter | typesetting TeX is its own field |
 | html2pdf.js 0.10.1, docx 7.1.0, FileSaver.js 2.0.5 | CDN, loaded on first use | PDF, Word and file-download writers | file formats with nothing project-specific in them |
 | Hono 4 | `server/deno.json` | an HTTP router | a handful of routes and a static handler |

@@ -5488,7 +5488,8 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     running editor writes to a file. Slice 4 needs slice 3's formatter, and
     slice 5 needs slice 4's cells. So 1, 2 and 3 can be built in any order,
     and 4 and 5 come after them in that order.
-*   **4. Reintegration — planned 2026-11-07; slice 1 done and tested
+*   **4. Reintegration — done and tested 2026-11-19, closed by the user's
+    real-document session in Firefox; planned 2026-11-07; slice 1 done and tested
     2026-11-07, by machine and by hand in Firefox; slice 2 done and
     tested by machine in three engines 2026-11-07, its hand run closed by
     the user on 2026-11-14 in favour of a thorough export pass after stage 4;
@@ -5506,8 +5507,9 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     by machine in WebKit and by hand in Chrome and Firefox;
     slice 7 done 2026-11-14 — CLAUDE.md describes the model as what runs, D4 is
     retired by D19, and TODO 2.3 and ROADMAP's open-edit-save entry close.
-    The closing pass, a real-document session in Firefox, is what is left.
-    → MERGE TO `main` WHEN THIS CLOSES** — D8, and **the merge a revert does not fully undo.**
+    The closing pass, a real-document session in Firefox, was reported by the
+    user on 2026-11-19 with nothing to raise, which closes the stage.
+    → MERGE TO `main` NEXT, NOW THAT THIS HAS CLOSED** — D8, and **the merge a revert does not fully undo.**
     Autosave changes from HTML to the model's serialised form and the first
     load after landing converts a pre-rewrite `content` key once, through
     Turndown, so a `git revert` does not put the storage back. **The stakes
@@ -6096,6 +6098,10 @@ table's. Each line says where it stands — *done and tested*, *done, untested*,
     **The closing pass** is a real-document session: a day's work in the
     user's own documents and tabs on this branch, in Firefox, after slice 4
     has converted that browser's storage. Then the merge, as D8 has it.
+    **Reported by the user on 2026-11-19 with nothing to raise**, so stage 4
+    is closed and the merge is next. The thorough export pass slice 2's hand
+    run was folded into (the PDF and Word files, and an Editable export
+    opened from disk) is now due as well.
 
     **Order.** Slices 1, 2 and 3 are behind the flag, independent of each
     other, and can land in any order; each leaves `?core=legacy` working.

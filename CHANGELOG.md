@@ -10791,7 +10791,7 @@ pages as present now say they retired, and task 6.8 notes that its
 `MANDY_DEV` gate is moot. docs/PLAN.md lists 6.6 as done. Also fills `bbaa2ce` into the previous
 entry's header.
 
-## 2026-11-14 — Stage 4's slice 7: the documents describe the model
+## 2026-11-14 — `22f3671` — Stage 4's slice 7: the documents describe the model
 
 **Slice 6's hand run is done**: `front/input-check.html` in Chrome and Firefox,
 on what no engine-driven run reaches — a real IME, the engine's own undo
@@ -10821,3 +10821,17 @@ emphasis is `*`, measured once by a scratch script rather than added as a
 check. **ROADMAP.md's "No automated test opens, edits and saves a
 document" is removed**, since that test now exists. No code changed. Also
 fills `5a96325` into the previous entry's header.
+
+## 2026-11-19 — Stage 4 closes: the closing pass is clean
+
+**The closing pass is done.** Stage 4's last item was a real-document session:
+the user's own documents and tabs on this branch, in Firefox, after slice 4
+had converted that browser's storage. The user reported it on 2026-11-19 with
+nothing to raise. So **stage 4 is closed**, and D8's second merge to `main` is
+next — the one a revert does not fully undo, because the first load after it
+converts a browser's old HTML autosave to markdown. docs/REWRITE.md's stage 4
+line and its closing-pass paragraph say so, and the latter notes that the
+thorough export pass slice 2's hand run was folded into is now due.
+docs/SPEC.md's Turndown row, which still said it served the old core's save
+path, now names what it does since slice 5. No code changed. Also fills `22f3671` into the previous entry's
+header.
