@@ -28,6 +28,8 @@ up yet rather than tasks.
 - [1.7-format-shortcuts](../tasks/1.7-format-shortcuts.md) — 1.7 — Format keyboard shortcuts
 - [1.8-insert-line-break](../tasks/1.8-insert-line-break.md) — 1.8 — Nothing in Mandy inserts a line break
 - [1.12-blank-lines-kept](../tasks/1.12-blank-lines-kept.md) — 1.12 — A blank line typed between paragraphs is lost on save · in progress
+- [1.13-crlf-files](../tasks/1.13-crlf-files.md) — 1.13 — Editing a CRLF file mixes its line endings, and can throw · done
+- [1.14-crlf-wrap-width](../tasks/1.14-crlf-wrap-width.md) — 1.14 — A CRLF file's wrap width is sniffed a column wide
 - [2.1-table-reemission](../tasks/2.1-table-reemission.md) — 2.1 — An edited table is re-emitted in house style · done
 - [2.3-minority-spellings](../tasks/2.3-minority-spellings.md) — 2.3 — Minority break and emphasis spellings · done
 - [3.1-editing-core-rewrite](../tasks/3.1-editing-core-rewrite.md) — 3.1 — Replace the editing core · in progress

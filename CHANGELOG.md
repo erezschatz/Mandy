@@ -10917,7 +10917,7 @@ throws. **After a reopen the gap is still not on screen** — that is stage 3 �
 and Ctrl/Cmd+C still loses it, which is stage 2. Also fills `b9c29fd` into the
 previous entry's header.
 
-## 2026-11-19 — The Unities brought up to 0.5.5: the reader gets a brief
+## 2026-11-19 — `d138818` — The Unities brought up to 0.5.5: the reader gets a brief
 
 docs/UNITIES.md is replaced with the procedure's 0.5.5 master, dated today,
 over the 0.4.0 copy of 2026-11-11. The one thing it adds that applies here is
@@ -10937,3 +10937,48 @@ agent here, which is a new decision in tasks/adopt-unities.md. Neither is the
 script's reworked `--pr` mode, which this strict-only copy has never had.
 `deno task hooks:test` passes. Also fills `d339929` into the previous entry's
 header.
+
+## 2026-11-19 — Task 1.13: a CRLF file is edited in CRLF
+
+Editing a file written with Windows line endings wrote bare `\n` lines into it,
+and editing its last paragraph — or almost any paragraph, an Enter, a merge, a
+paste — threw in the emitter, so the save refused the document. The model kept
+a CRLF file's bytes as they were while every place that composes new bytes
+wrote `\n`, and the emitter's affix checks compared a source line ending in
+`\r` against markdown-it's content, which the parser normalises to LF. An old
+Mac file, with lone `\r` endings, did not even parse: `modelParse` threw on it.
+
+The fix is at the door rather than at the eighty places that compose bytes.
+**`modelParse` records the file's commonest line ending as the document's
+`eol` and holds the text as LF**, which is what markdown-it does to it anyway;
+**`modelSerialise` writes every line ending as the document's**, so it is the
+one place a file's ending is written. A uniformly CRLF file comes back byte for
+byte and an edit in it writes only CRLF; an undo state and a parked tab are
+forks and carry `eol` with them; a pasted fragment arrives LF and is written in
+the target's ending. **A file with mixed line endings is written wholly in its
+commonest one on its first save**, edited or not — D3's narrowing of D1
+applied to the whitespace at the end of a line, recorded as a decision in
+tasks/1.13-crlf-files.md with the per-line alternative it rejected.
+`modelJoinBlocks` loses the CRLF branch task 1.12 gave its gaps, which the
+conversion now does for it.
+
+The `model` suite gains eleven CRLF edit cases — Enter in the middle, at the
+end of the only and of the last paragraph and in a bullet, Backspace's merge,
+an inline edit, a hard break, a fence edited as source, a paste of blocks and
+of plain text, and a CRLF fragment pasted into an LF file — each asserting the
+bytes written and that no other line ending is among them; seven checks on the
+sniff, the LF model, a mixed file, a lone-`\r` file and an undo fork; and
+`tests/fixtures/crlf.md`, held in CRLF (`.gitattributes` marks it `-text` so
+no checkout converts it), which round-trips byte for byte and is swept with
+every text-bearing block edited and split by Enter, measured against the same
+edit in its LF twin. Task 1.12's CRLF check now asserts the whole file. Every
+new check fails against the old code but three that held already — the CRLF
+fragment into an LF file, the fixture's round trip and its is-CRLF guard — and
+the sweep fails 35 of its 36 edits there. `front/sw.js`'s `VERSION` goes to
+`v1.98`. `npm test` passes; the Playwright run was not repeated, since no spec
+opens a CRLF file and an LF file goes through the same path as before.
+**Measured and not done**: `sniffMarkdownStyle` reads the raw file, so a CRLF
+file's wrap width reads one column wider than its LF twin's (LF 78, CRLF 79 on
+`break-test.md`), and an edited paragraph in one is re-wrapped a column wide;
+that is task 1.14, opened here.
+Also fills `d138818` into the previous entry's header.
