@@ -25,7 +25,7 @@
 
 import markdownit from "markdown-it";
 import { readFileSync } from "node:fs";
-import { loadSource } from "./dom.mjs";
+import { loadSource, makeEl, makeText } from "./dom.mjs";
 
 const repoFile = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -77,6 +77,29 @@ export default function run(check) {
     modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix,
     modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText,
     modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle,
+    modelRenderBlock, modelRenderDocument, modelNeedsFiller,
+    modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt,
+    modelIsAtomNode, configureMarkdownParser, modelPlaceStops, modelInlineSourceRange,
+    modelInlineSplice, modelNormaliseTyped, modelInlineTokens,
+    modelInsertParagraph, modelMergeBlocks, modelInsertBreak, modelSplitLeaf,
+    modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice,
+    modelSourceText, modelEnsureBlock, modelFlatten, modelIsEmptyBlock,
+    modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource,
+    modelInlineLeaves, modelTrimRendering,
+    modelInsertBlocks, modelTextBlocks, modelAdoptBlocks,
+    modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection, modelBlockById,
+    modelMathCandidates, modelMathConvert, modelMathReveal, modelHoldSpaces, modelVerifyRender,
+    modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState,
+    modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState,
+    modelSetHeading, modelMakeFence, modelUnfence, modelPlainText,
+    modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered,
+    modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape,
+    modelToggleQuote, modelQuoteKey, modelBlockState,
+    modelSetImage, modelImageAt, modelImageFields,
+    sniffTableConvention, formatMarkdownTable, modelCellBlocks,
+    modelInsertTable, modelTableInsertRow, modelTableDeleteRow, modelTableInsertColumn, modelTableDeleteColumn,
+    modelTableAlign, modelTableAlignment, modelTableDelete, modelTableRows, modelTableCellBeside, modelTableCellBelow,
+    modelDocumentMarkdown,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -84,11 +107,35 @@ export default function run(check) {
     // real load-order dependency the three registries will have to honour when
     // model.js joins them at stage 4 — it has to follow markdown-style.js the
     // way undo.js has to follow app.js.
-    ["markdown-style.js", "model.js"],
+    ["markdown-parser.js", "markdown-style.js", "model.js"],
     {},
     "; return { modelParse, modelSerialise, modelTouch, modelSpansAtLevel, modelItemPrefix," +
       " modelInlineText, modelInlineOffset, modelInlineAt, modelInlineSource, modelEscapeText," +
-      " modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle };",
+      " modelEmitLeaf, modelReferenceLabels, sniffMarkdownStyle," +
+      " modelRenderBlock, modelRenderDocument, modelNeedsFiller," +
+      " modelDomText, modelDomOffset, modelDomLocate, modelBlockText, modelDomBlockAt," +
+      " modelIsAtomNode, configureMarkdownParser, modelPlaceStops, modelInlineSourceRange," +
+      " modelInlineSplice, modelNormaliseTyped, modelInlineTokens," +
+      " modelInsertParagraph, modelMergeBlocks, modelInsertBreak, modelSplitLeaf," +
+      " modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice," +
+      " modelSourceText, modelEnsureBlock, modelFlatten, modelIsEmptyBlock," +
+      " modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource," +
+      " modelInlineLeaves, modelTrimRendering," +
+      " modelInsertBlocks, modelTextBlocks, modelAdoptBlocks," +
+      " modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection," +
+      " modelBlockById, modelMathCandidates, modelMathConvert, modelMathReveal," +
+      " modelHoldSpaces, modelVerifyRender," +
+      " modelSetMark, modelToggleMark, modelMarkCovers, modelMarkPreference, modelReferenceEnv, modelMarkState," +
+      " modelToggleCode, modelSetLink, modelLinkAt, modelCodeSpanFence, modelInlineSignature, modelCodeState," +
+      " modelSetHeading, modelMakeFence, modelUnfence, modelPlainText," +
+      " modelWrapList, modelUnwrapItems, modelSwitchList, modelSettleLists, modelListOrdered," +
+      " modelJoinAdjacentList, modelInsertRule, modelInsertAfter, modelClearDocument, modelSettleShape," +
+      " modelToggleQuote, modelQuoteKey, modelBlockState," +
+      " modelSetImage, modelImageAt, modelImageFields," +
+      " sniffTableConvention, formatMarkdownTable, modelCellBlocks," +
+      " modelInsertTable, modelTableInsertRow, modelTableDeleteRow, modelTableInsertColumn, modelTableDeleteColumn," +
+      " modelTableAlign, modelTableAlignment, modelTableDelete, modelTableRows, modelTableCellBeside, modelTableCellBelow," +
+      " modelDocumentMarkdown };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -98,14 +145,13 @@ export default function run(check) {
   // `data-ref-label` stamp, and those are the two things slice 2's re-emission
   // and link steps are about — it would report full marks on constructs the app
   // never hands it.
-  const { configureMarkdownParser } = loadSource(
-    "markdown-parser.js",
-    {},
-    "; return { configureMarkdownParser };",
-  );
-
   const md = configureMarkdownParser(markdownit());
   const parse = (src) => modelParse(src, md);
+  // A row's children are its cells since stage 3's slice 4, and a cell has no
+  // source of its own: the row is the floor for bytes and the cell the floor
+  // for text. So a walk over the tiling — anything that reads a leaf's bytes —
+  // stops at the row, and that is the exemption the plan names, by name.
+  const tiles = (b) => (b.kind === "row" ? null : b.children);
 
   // Every block an edit can re-serialise, in order. A container re-emits as its
   // children (slice 1b's step 3), so what reaches slice 3's emitter is always a
@@ -113,7 +159,7 @@ export default function run(check) {
   // the metric at the bottom of this file count in.
   const leavesOf = (doc) => {
     const out = [];
-    const walk = (b) => (b.children ? b.children.forEach(walk) : out.push(b));
+    const walk = (b) => (tiles(b) ? tiles(b).forEach(walk) : out.push(b));
     doc.blocks.forEach(walk);
     return out;
   };
@@ -304,7 +350,7 @@ export default function run(check) {
   // parent's own source — and it is asserted first, on real files, because
   // every other claim in this section is only interesting if it holds.
   const mistiled = (block, path) => {
-    if (!block.children) return [];
+    if (!tiles(block)) return [];
     const rebuilt = block.leading + block.children.map((c) => c.source + c.separator).join("");
     const here = rebuilt === block.source ? [] : [`${path} (${block.kind})`];
     return here.concat(block.children.flatMap((c, i) => mistiled(c, `${path}/${i}`)));
@@ -321,8 +367,8 @@ export default function run(check) {
   // children anywhere tiles vacuously, which is exactly the state slice 1 was
   // in and exactly what step 2 had to change.
   const todoDoc = parse(repoFile(CORPUS.todo));
-  const depthOf = (b) => (b.children ? 1 + Math.max(...b.children.map(depthOf)) : 1);
-  const containers = (b) => (b.children ? 1 : 0) + (b.children || []).reduce((n, c) => n + containers(c), 0);
+  const depthOf = (b) => (tiles(b) ? 1 + Math.max(...b.children.map(depthOf)) : 1);
+  const containers = (b) => (tiles(b) ? 1 : 0) + (tiles(b) || []).reduce((n, c) => n + containers(c), 0);
   check(
     "corpus/todo.md tiles into containers rather than staying flat",
     todoDoc.blocks.reduce((n, b) => n + containers(b), 0) > 40,
@@ -345,9 +391,16 @@ export default function run(check) {
     shape(tree.blocks[2]) === ["quote", " paragraph", " gap", " paragraph"].join("\n"),
   );
   check(
-    "a table tiles into head, body and rows, and stops at the row",
-    shape(tree.blocks[3]) === ["table", " table-head", "  row", " gap", " table-body", "  row"].join("\n"),
+    "a table tiles into head, body and rows, and a row holds its cells",
+    shape(tree.blocks[3]) === ["table", " table-head", "  row", "   cell", "   cell", " gap", " table-body", "  row", "   cell", "   cell"].join("\n"),
   );
+  // The floor for bytes is still the row: a cell has no span of its own,
+  // because `td_open` carries no `map`.
+  {
+    const row = tree.blocks[3].children[0].children[0];
+    check("a cell has no source, and its row keeps its own",
+      row.children.every((cell) => cell.source === null && cell.inlines) && row.source === "| a | b |");
+  }
 
   // The two lines the tiler section found unclaimed are blocks in their own
   // position now, by the same mechanism a reference definition is: a table's
@@ -567,7 +620,7 @@ export default function run(check) {
   let deepest = null;
   let deepestAt = 0;
   const findDeepest = (block, depth) => {
-    if (block.children) return block.children.forEach((c) => findDeepest(c, depth + 1));
+    if (tiles(block)) return block.children.forEach((c) => findDeepest(c, depth + 1));
     if (depth > deepestAt) {
       deepestAt = depth;
       deepest = block;
@@ -715,7 +768,7 @@ export default function run(check) {
   {
     const quotedLeaves = [];
     const walk = (block, inQuote) => {
-      if (block.children) return block.children.forEach((c) => walk(c, inQuote || block.kind === "quote"));
+      if (tiles(block)) return block.children.forEach((c) => walk(c, inQuote || block.kind === "quote"));
       if (inQuote) quotedLeaves.push(block);
     };
     for (const path of ORACLE_FILES) parse(repoFile(path)).blocks.forEach((b) => walk(b, false));
@@ -2233,6 +2286,821 @@ export default function run(check) {
     );
   }
 
+
+  // ---- Stage 2, slice 1: the renderer ------------------------------------
+  //
+  // The half of rendering a suite can see. markdown-it's renderer produces a
+  // string, so the property is string equality and needs no DOM at all: every
+  // block rendered and concatenated is the whole file rendered. Anything that
+  // reaches the DOM — the block-to-element map, the filler, the verify — is
+  // unreachable from here, because tests/dom.mjs has no HTML parser and a stub
+  // could only agree with whatever it was told. That half is watched in a real
+  // browser: the render verify, on under every tests/browser/ spec. (Until
+  // stage 2 closed it was an untracked scratch harness.)
+
+  {
+    const diverged = [];
+    for (const path of ORACLE_FILES) {
+      const src = repoFile(path);
+      const want = md.render(src);
+      const got = modelRenderDocument(parse(src), md);
+      if (got === want) continue;
+      const at = [...want].findIndex((c, i) => c !== got[i]);
+      diverged.push(`${path} at ${at}: ${JSON.stringify(want.slice(at, at + 40))} vs ${JSON.stringify(got.slice(at, at + 40))}`);
+    }
+    check(
+      `every block rendered and concatenated is md.render of the file (${ORACLE_FILES.length} files)` +
+        (diverged.length ? ` — ${diverged.join("; ")}` : ""),
+      diverged.length === 0,
+    );
+  }
+
+  // The case that makes the check above worth running, and the one it failed
+  // before `hiddenBefore` existed: markdown-it opens a block-level tag on a new
+  // line when the token before it is hidden, which is what a tight list item
+  // holding a nested list is. A block rendered from its own token slice cannot
+  // see that, so this is pinned on its own rather than left to be one
+  // character inside a 200KB comparison.
+  {
+    const src = "- Walk the transect.\n  1. Record at ten metres.\n";
+    const doc = parse(src);
+    const nested = doc.blocks[0].children[0].children[1];
+    check(
+      `a nested list inside a tight item carries markdown-it's leading newline (${JSON.stringify(modelRenderBlock(nested, md).slice(0, 5))})`,
+      nested.kind === "list" && modelRenderBlock(nested, md).startsWith("\n<ol>"),
+    );
+    check(
+      "and the same list at the top level does not",
+      modelRenderBlock(parse("1. Record at ten metres.\n").blocks[0], md).startsWith("<ol>"),
+    );
+  }
+
+  // A gap renders to nothing and keeps its place in the model, which is why the
+  // block-to-element correspondence cannot be a positional index into
+  // #editor.children. A reference definition is the ordinary case.
+  {
+    const doc = parse("A [link][a].\n\n[a]: https://example.com\n");
+    const gaps = doc.blocks.filter((b) => b.kind === "gap");
+    check(
+      `a reference definition is a block that renders to nothing (${gaps.length} gap, ${JSON.stringify(gaps.map((g) => modelRenderBlock(g, md)))})`,
+      gaps.length === 1 && gaps.every((g) => modelRenderBlock(g, md) === ""),
+    );
+  }
+
+  // An edited container is never re-rendered through the emitter and neither is
+  // an untouched sibling: a container is its open and close with its children
+  // between, so re-rendering one child is exactly that child's string.
+  {
+    const doc = parse("- one\n- two\n- three\n");
+    const items = doc.blocks[0].children;
+    const whole = modelRenderBlock(doc.blocks[0], md);
+    check(
+      `a container renders as its own tags around its children (${items.length} items)`,
+      items.length === 3 &&
+        whole === "<ul>\n" + items.map((i) => modelRenderBlock(i, md)).join("") + "</ul>\n",
+    );
+  }
+
+  // Ids are minted, never reused and never a path. The counter is on the
+  // document so a block the editor creates can take the next one.
+  {
+    const doc = parse(repoFile(CORPUS.todo));
+    const ids = [];
+    const walk = (b) => { ids.push(b.id); if (b.children) b.children.forEach(walk); };
+    doc.blocks.forEach(walk);
+    check(
+      `every block in ${CORPUS.todo} has its own id (${ids.length} blocks, next is ${doc.nextId})`,
+      ids.length > 100 && new Set(ids).size === ids.length && doc.nextId > Math.max(...ids),
+    );
+  }
+
+  // The filler is decided from the model, not sniffed back off the HTML, and
+  // it is emitted by the DOM builder rather than by the renderer — which is
+  // what keeps the equality check above exact. An empty heading is the proof
+  // that an empty block is parseable and not only editable: a renderer that
+  // filled one in would diverge from md.render on any file holding a bare `#`.
+  {
+    const heading = parse("#\n").blocks[0];
+    check(
+      `an empty heading renders as markdown-it renders it (${JSON.stringify(modelRenderBlock(heading, md))})`,
+      modelRenderBlock(heading, md) === "<h1></h1>\n",
+    );
+    check("and the model says it wants a filler", modelNeedsFiller(heading) === true);
+
+    const paragraph = parse("A paragraph.\n").blocks[0];
+    check("an ordinary paragraph does not", modelNeedsFiller(paragraph) === false);
+
+    const broken = parse("foo  \nbar\n").blocks[0];
+    check("nor does one with a break in the middle of it", modelNeedsFiller(broken) === false);
+
+    const fence = parse("```\n\n```\n").blocks[0];
+    check(
+      `nor does a block with no inline tree at all (${fence.kind})`,
+      fence.kind === "fence" && modelNeedsFiller(fence) === false,
+    );
+  }
+
+
+  // ---- Stage 2, slice 2: the selection mapping ---------------------------
+  //
+  // These drive a node tree built by hand rather than parsed, which is a
+  // different thing from the DOM building in slice 1 and is why they belong
+  // here: what is under test is a walk over nodes, and a tree assembled with
+  // makeEl/makeText answers nodeType, textContent, childNodes and hasAttribute
+  // the way a real one does. There is no HTML parser in the loop to disagree
+  // with -- that is the thing tests/dom.mjs cannot supply, and the reason the
+  // slice's other half is measured in a real browser instead, under the
+  // tests/browser/ specs.
+  //
+  // The trees below are exactly what markdown-it renders, which was measured in
+  // a browser on 2026-09-20 rather than assumed: `<p>foo<br>\nbar</p>` really
+  // does carry the newline in the text node *after* the <br>, which is what
+  // makes a <br> zero characters here.
+
+  {
+    const el = (tag, kids, attrs = {}) => {
+      const node = makeEl(tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      for (const kid of kids) node.appendChild(kid);
+      return node;
+    };
+    const t = (text) => makeText(text);
+
+    // <p>foo<br>\nbar</p> -- one hard break, the newline after the <br>.
+    const br = el("br", []);
+    const hardBreak = el("p", [t("foo"), br, t("\nbar")]);
+    check(
+      `a <br> counts nothing and the newline after it counts one (${JSON.stringify(modelDomText(hardBreak))})`,
+      modelDomText(hardBreak) === "foo\nbar",
+    );
+    check(
+      "and the model agrees with it, which is the whole correspondence",
+      modelDomText(hardBreak) === modelInlineText(parse("foo  \nbar\n").blocks[0].inlines),
+    );
+
+    // The filler slice 1 renders, and the case the plan worried about: one
+    // break and one filler in the same tag. Neither counts, so there is
+    // nothing to tell apart and isFillerBreak was never needed.
+    const filler = el("br", [], { "data-filler": "" });
+    const trailing = el("p", [t("foo"), el("br", []), t("\n"), filler]);
+    check(
+      `a trailing break and a filler do not add up to two (${JSON.stringify(modelDomText(trailing))})`,
+      modelDomText(trailing) === "foo\n",
+    );
+    const empty = el("p", [el("br", [], { "data-filler": "" })]);
+    check("an empty block is zero characters", modelDomText(empty) === "");
+    check(
+      "and its only position is the element itself, since it holds no text node",
+      (() => { const at = modelDomLocate(empty, 0); return at.node === empty && at.offset === 0; })(),
+    );
+
+    // Atoms. An image contributes nothing to textContent and one character
+    // here; an equation is a span the parser marks, and it is one character
+    // whether or not MathJax has replaced its contents.
+    const img = el("img", []);
+    const mathRaw = el("span", [t("$x = a*b*c$")], { "data-math": "" });
+    const mathDone = el("span", [el("mjx-container", [t("x=a∗b∗c")])], { "data-math": "" });
+    check("an <img> is one character", modelDomText(el("p", [t("a "), img, t(" b")])) === "a ￼ b");
+    check(
+      "un-typeset maths is one character, not eleven",
+      modelDomText(el("p", [t("a "), mathRaw, t(" b")])) === "a ￼ b",
+    );
+    check(
+      "and typeset maths is the same one character",
+      modelDomText(el("p", [t("a "), mathDone, t(" b")])) === "a ￼ b",
+    );
+    check(
+      "which is the point: the two states of the same equation agree",
+      modelDomText(el("p", [mathRaw])) === modelDomText(el("p", [mathDone])),
+    );
+    check("a <br> is not an atom", modelIsAtomNode(br) === false);
+
+    // Both directions, over a tree holding an atom.
+    const para = el("p", [t("a "), mathRaw, t(" b")]);
+    const roundTrip = [];
+    for (let i = 0; i <= 5; i++) {
+      const at = modelDomLocate(para, i);
+      roundTrip.push(modelDomOffset(para, at.node, at.offset));
+    }
+    check(
+      `every offset maps to a position that maps back (${JSON.stringify(roundTrip)})`,
+      JSON.stringify(roundTrip) === JSON.stringify([0, 1, 2, 3, 4, 5]),
+    );
+    // The boundary rule wins over the atom rule, and that is right: offset 2
+    // is the end of "a " as much as it is the front of the atom, and the two
+    // are the same place in the DOM. So the parent-relative form only comes up
+    // where there is no text node ending there -- an atom opening the block.
+    check(
+      "a boundary in front of an atom is still the text node that ends there",
+      (() => { const at = modelDomLocate(para, 2); return at.node === para.childNodes[0] && at.offset === 2; })(),
+    );
+    // A fresh span: appendChild re-parents, and `para` is still under test.
+    const leading = el("p", [el("span", [t("$y$")], { "data-math": "" }), t(" b")]);
+    check(
+      "an atom opening the block is addressed from the parent, at its own index",
+      (() => { const at = modelDomLocate(leading, 0); return at.node === leading && at.offset === 0; })(),
+    );
+    check(
+      "and the position after an atom is the next index",
+      (() => { const at = modelDomLocate(para, 3); return at.node === para && at.offset === 2; })(),
+    );
+    check(
+      "a position inside an atom answers with the atom's own start",
+      modelDomOffset(para, mathRaw.childNodes[0], 4) === 2,
+    );
+    check(
+      "a node from another tree is null rather than 0, the way undoTextOffset has it",
+      modelDomOffset(para, t("elsewhere"), 0) === null,
+    );
+
+    // undo.js's boundary rule, kept on purpose so this ports the caret
+    // behaviour rather than re-deciding it: a boundary belongs to the node that
+    // *ends* there, and past the end clamps.
+    const two = el("p", [t("ab"), el("strong", [t("cd")])]);
+    check(
+      "a boundary belongs to the node that ends there",
+      (() => { const at = modelDomLocate(two, 2); return at.node === two.childNodes[0] && at.offset === 2; })(),
+    );
+    check(
+      "and past the end clamps to the last position",
+      (() => { const at = modelDomLocate(two, 99); return at.offset === 2; })(),
+    );
+    check(
+      "which is the same answer modelInlineAt gives, one space over",
+      modelInlineAt(parse("ab**cd**\n").blocks[0].inlines, 2).offset === 2,
+    );
+  }
+
+  // A container's text is its children's, concatenated -- the tiling invariant
+  // one more level down, in text rather than in bytes. It is what lets a block
+  // with no element of its own be addressed through the one that owns it.
+  {
+    const doc = parse("- Walk the transect.\n  1. Record at ten metres.\n");
+    const item = doc.blocks[0].children[0];
+    const paragraph = item.children[0];
+    check(
+      `a tight item's text is its paragraph's plus its sublist's (${JSON.stringify(modelBlockText(item))})`,
+      modelBlockText(item) === "Walk the transect.Record at ten metres.",
+    );
+    check(
+      "and its paragraph's own text is just its own",
+      modelBlockText(paragraph) === "Walk the transect.",
+    );
+    check(
+      "a container with no inline tree still has text, through its children",
+      modelBlockText(doc.blocks[0]) === modelBlockText(item),
+    );
+    const fence = parse("```\nbody\n```\n").blocks[0];
+    check(
+      `a leaf whose content is source has no text in this space (${fence.kind})`,
+      fence.kind === "fence" && modelBlockText(fence) === "",
+    );
+  }
+
+  // The invariant the whole mapping rests on, across the oracle: a container's
+  // text is exactly its children's, at every depth. A failure here is an offset
+  // that lands in the wrong block.
+  {
+    let containers = 0;
+    const bad = [];
+    const walkBlock = (block) => {
+      if (block.children) {
+        containers += 1;
+        const own = modelBlockText(block);
+        const kids = block.children.map(modelBlockText).join("");
+        if (own !== kids) bad.push(`${block.kind}#${block.id}`);
+        block.children.forEach(walkBlock);
+      }
+    };
+    for (const path of ORACLE_FILES) parse(repoFile(path)).blocks.forEach(walkBlock);
+    check(
+      `every container's text tiles its children's, at every depth (${containers} containers)` +
+        (bad.length ? ` — ${bad.length} did not: ${bad.slice(0, 3).join(", ")}` : ""),
+      containers > 300 && bad.length === 0,
+    );
+  }
+
+  // And the wrapper the mapping needs is what the parser actually writes.
+  {
+    const html = md.render("a $x = a*b*c$ b\n");
+    check(
+      `the parser wraps an equation so the walk has one node to count (${JSON.stringify(html.trim())})`,
+      html.trim() === '<p>a <span data-math>$x = a*b*c$</span> b</p>',
+    );
+    check(
+      "and a price is still prose, outside any wrapper",
+      md.render("costs $5 and $10\n").indexOf("data-math") === -1,
+    );
+  }
+
+
+  // ---- Stage 2, slice 3: editing the inline tree -------------------------
+  //
+  // Stage 1 only ever read this tree, so everything below is new ground. The
+  // contract a mutation keeps is modelInlineSource's: a leaf emits
+  // `raw ?? <rebuilt from content>`, so an edit sets content and clears raw and
+  // nothing else has to be kept in step. These checks are the emitter's output
+  // rather than the tree's shape wherever they can be, because the tree is a
+  // means and the bytes are the product.
+
+  {
+    // The whole point, in one line: edit a paragraph, get that paragraph back.
+    const doc = parse("a **bold** c\n");
+    const block = doc.blocks[0];
+    const offset = modelInlineSplice(block, 6, 6, "X");
+    check(
+      `typing at the end of a mark goes inside it (${JSON.stringify(modelEmitLeaf(block, md, doc))})`,
+      modelEmitLeaf(block, md, doc) === "a **boldX** c" && offset === 7,
+    );
+  }
+  {
+    const doc = parse("a **bold** c\n");
+    const block = doc.blocks[0];
+    modelInlineSplice(block, 2, 2, "X");
+    check(
+      `and typing at its start stays outside (${JSON.stringify(modelEmitLeaf(block, md, doc))})`,
+      modelEmitLeaf(block, md, doc) === "a X**bold** c",
+    );
+  }
+  {
+    // The rule is stage 1's boundary rule reused rather than restated: a
+    // position belongs to the node that *ends* there. Said out loud, because
+    // the plan called this the question the read side never asked and it turns
+    // out the read side had already answered it.
+    const doc = parse("a **bold** c\n");
+    const inside = modelInlineAt(doc.blocks[0].inlines, 6);
+    const outside = modelInlineAt(doc.blocks[0].inlines, 2);
+    check(
+      "which is modelInlineAt's boundary rule and not a second decision",
+      inside.path.length === 1 && inside.path[0].kind === "strong" && outside.path.length === 0,
+    );
+  }
+
+  {
+    // Deleting inside one leaf, across two, and a whole mark away.
+    const one = parse("hello world\n").blocks[0];
+    modelInlineSplice(one, 5, 11, "");
+    check(`a range inside one leaf (${JSON.stringify(modelEmitLeaf(one, md, null))})`,
+      modelEmitLeaf(one, md, null) === "hello");
+
+    const across = parse("a **bold** c\n").blocks[0];
+    modelInlineSplice(across, 1, 7, "");
+    check(`a range across two leaves and a mark (${JSON.stringify(modelEmitLeaf(across, md, null))})`,
+      modelEmitLeaf(across, md, null) === "ac");
+
+    const whole = parse("a **bold** c\n").blocks[0];
+    modelInlineSplice(whole, 2, 6, "");
+    check(
+      `emptying a mark removes it rather than leaving \`****\` (${JSON.stringify(modelEmitLeaf(whole, md, null))})`,
+      modelEmitLeaf(whole, md, null) === "a  c",
+    );
+
+    const nested = parse("a ***x*** b\n").blocks[0];
+    modelInlineSplice(nested, 2, 3, "");
+    check(
+      `and emptying nested marks removes both (${JSON.stringify(modelEmitLeaf(nested, md, null))})`,
+      modelEmitLeaf(nested, md, null) === "a  b",
+    );
+  }
+
+  {
+    // An atom is one character, so a range either covers it whole or not at
+    // all. That is the offset space paying for itself: there is no partial
+    // overlap to have to define.
+    const img = parse("a ![alt](i.png) b\n").blocks[0];
+    check("an image is one character to the splice", modelInlineText(img.inlines) === "a ￼ b");
+    modelInlineSplice(img, 2, 3, "");
+    check(`deleting over an image removes it whole (${JSON.stringify(modelEmitLeaf(img, md, null))})`,
+      modelEmitLeaf(img, md, null) === "a  b");
+
+    const eq = parse("a $x = b*c$ d\n").blocks[0];
+    modelInlineSplice(eq, 2, 3, "");
+    check(`and over an equation, the same (${JSON.stringify(modelEmitLeaf(eq, md, null))})`,
+      modelEmitLeaf(eq, md, null) === "a  d");
+
+    const beside = parse("a ![alt](i.png) b\n").blocks[0];
+    modelInlineSplice(beside, 3, 3, "X");
+    check(
+      `typing beside an atom lands beside it, not inside (${JSON.stringify(modelEmitLeaf(beside, md, null))})`,
+      modelEmitLeaf(beside, md, null) === "a ![alt](i.png)X b",
+    );
+  }
+
+  {
+    // A code span's content counts and its backticks do not, so typing inside
+    // one stays inside it -- and the emitter writes content raw, not escaped.
+    const code = parse("a `x*y` b\n").blocks[0];
+    modelInlineSplice(code, 4, 4, "*");
+    check(`typing inside a code span stays inside it (${JSON.stringify(modelEmitLeaf(code, md, null))})`,
+      modelEmitLeaf(code, md, null) === "a `x**y` b");
+  }
+
+  {
+    // An empty block is the tree the fold leaves behind, and typing into it has
+    // to make the leaf the parser never produced.
+    const empty = parse("#\n").blocks[0];
+    check("an empty heading's tree is empty rather than absent",
+      Array.isArray(empty.inlines) && empty.inlines.length === 0);
+    const offset = modelInlineSplice(empty, 0, 0, "Title");
+    check(`typing into it produces a leaf (${JSON.stringify(modelEmitLeaf(empty, md, null))})`,
+      modelEmitLeaf(empty, md, null) === "# Title" && offset === 5);
+
+    // The find behind that space, and the property that actually matters.
+    // markdown-it records an empty ATX heading's opener as `#` with nothing
+    // after it, because nothing followed it -- so re-emitting with content gave
+    // `#Title`, which CommonMark reads as a **paragraph**. Silent: the document
+    // looks right on screen and the file has stopped holding a heading. So what
+    // is asserted is not the bytes but that they still parse as what they were.
+    const reparsed = md.parse(modelEmitLeaf(empty, md, null), {})[0];
+    check(
+      `and what it writes still parses as the heading it was (${reparsed.type} ${reparsed.tag})`,
+      reparsed.type === "heading_open" && reparsed.tag === "h1",
+    );
+
+    // Both directions of the same rule: the separator is supplied when content
+    // needs one and taken back when the content goes away.
+    const emptied = parse("## Title\n").blocks[0];
+    modelInlineSplice(emptied, 0, 5, "");
+    const back = modelEmitLeaf(emptied, md, null);
+    check(
+      `emptying a heading does not leave the separator behind (${JSON.stringify(back)})`,
+      back === "##" && md.parse(back, {})[0].tag === "h2",
+    );
+
+    // A setext heading's marker is underneath, so it never wants one.
+    const setext = parse("Title\n=====\n").blocks[0];
+    modelInlineSplice(setext, 5, 5, "!");
+    check(
+      `a setext heading is untouched by the rule (${JSON.stringify(modelEmitLeaf(setext, md, null))})`,
+      modelEmitLeaf(setext, md, null) === "Title!\n=====",
+    );
+  }
+
+  {
+    // raw is cleared, so the emitter escapes what the model now holds rather
+    // than handing back bytes that no longer describe it. The pair is the
+    // point: an untouched neighbour keeps its own bytes.
+    const doc = parse("plain text\n");
+    const block = doc.blocks[0];
+    modelInlineSplice(block, 5, 5, " *not emphasis*");
+    const out = modelEmitLeaf(block, md, doc);
+    check(
+      `an edit re-escapes what it wrote (${JSON.stringify(out)})`,
+      out.includes("\\*") && modelSerialise(doc, () => out).includes(out),
+    );
+  }
+
+  {
+    // U+00A0 at the boundary, once. TODO 1.4 closed by construction.
+    check("a typed NBSP is normalised", modelNormaliseTyped("a b") === "a b");
+    const block = parse("ab\n").blocks[0];
+    modelInlineSplice(block, 1, 1, " ");
+    check(`and never reaches the tree (${JSON.stringify(modelInlineText(block.inlines))})`,
+      modelInlineText(block.inlines) === "a b");
+  }
+
+  {
+    // A block whose content is source has no inline tree, and the splice says
+    // so with a null rather than a 0 -- a caller has to refuse, not carry on.
+    const fence = parse("```\nbody\n```\n").blocks[0];
+    check(`a fence refuses rather than returning an offset (${fence.kind})`,
+      modelInlineSplice(fence, 0, 0, "x") === null);
+    const table = parse("| a |\n| --- |\n| 1 |\n").blocks[0];
+    const row = table.children[0].children[0];
+    check(`and so does a table row (${row.kind})`, modelInlineSplice(row, 0, 0, "x") === null);
+  }
+
+  {
+    // And the thing every edit owes D1: the block is touched, its ancestors
+    // with it, and no sibling is re-serialised.
+    const doc = parse("- one\n- two\n- three\n");
+    const list = doc.blocks[0];
+    const second = list.children[1].children[0];
+    modelInlineSplice(second, 3, 3, "!");
+    const emitted = [];
+    const out = modelSerialise(doc, (b) => { emitted.push(b.kind); return modelEmitLeaf(b, md, doc); });
+    check(
+      `editing one item rewrites exactly it (${JSON.stringify(out)}, ${emitted.length} emitter call)`,
+      out === "- one\n- two!\n- three\n" && emitted.length === 1,
+    );
+    check("and the chain above it is cleared", list.source === null && list.children[1].source === null);
+    check("while its siblings keep their own bytes",
+      list.children[0].source === "- one" && list.children[2].source === "- three");
+  }
+
+
+  // The unfold, which is what makes an edited block render at all. Found by the
+  // check page's divergence line on the first character ever typed into the
+  // model core: modelRenderBlock goes through markdown-it's renderer over the
+  // block's *tokens*, an edit changes the *tree*, and nothing put the two back
+  // in step -- so the model held the new text and the DOM went on showing the
+  // old one. The property is that unfolding an untouched tree gives the parser
+  // its own tokens back, which is the fold run backwards.
+  {
+    let checked = 0;
+    const wrong = [];
+    for (const path of ORACLE_FILES) {
+      for (const block of leavesOf(parse(repoFile(path)))) {
+        if (!block.inlines || !block.inline) continue;
+        const want = block.inline.children.filter((t) => !(t.type === "text" && t.content === ""));
+        const got = modelInlineTokens(block.inlines);
+        checked += 1;
+        if (got.length !== want.length) { wrong.push(`${path} ${block.kind}#${block.id} ${got.length}≠${want.length}`); continue; }
+        for (let i = 0; i < want.length; i++) {
+          if (got[i].type !== want[i].type || got[i].content !== want[i].content) {
+            wrong.push(`${path} ${block.kind}#${block.id} @${i} ${got[i].type}≠${want[i].type}`);
+            break;
+          }
+        }
+      }
+    }
+    check(
+      `unfolding an untouched tree gives back the parser's own tokens (${checked} blocks)` +
+        (wrong.length ? ` — ${wrong.length} did not: ${wrong.slice(0, 3).join(", ")}` : ""),
+      checked > 400 && wrong.length === 0,
+    );
+
+    // And after an edit the token list carries the edit, which is the half the
+    // renderer reads.
+    const doc = parse("a **bold** c\n");
+    const block = doc.blocks[0];
+    modelInlineSplice(block, 6, 6, "X");
+    const contents = block.inline.children.map((t) => t.content).filter((c) => c);
+    check(
+      `an edited block's tokens carry the edit (${JSON.stringify(contents)})`,
+      contents.includes("boldX") && block.inline.children.some((t) => t.type === "strong_open") &&
+        block.inline.children.some((t) => t.type === "strong_close"),
+    );
+  }
+
+  // A range endpoint a browser normalised into the middle of an atom. Measured
+  // on the check page: selecting an equation and typing over it handed the
+  // handler a range whose end was inside the span, which clamped to the atom's
+  // front edge and collapsed the range -- so the equation was not replaced, and
+  // the typing landed beside it instead.
+  {
+    const el = (tag, kids, attrs = {}) => {
+      const node = makeEl(tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      for (const kid of kids) node.appendChild(kid);
+      return node;
+    };
+    const inner = makeText("$x = a*b*c$");
+    const math = el("span", [inner], { "data-math": "" });
+    const para = el("p", [makeText("a "), math, makeText(" b")]);
+    check(
+      `an endpoint inside an atom clamps to its start when asked for a start (${modelDomOffset(para, inner, 5, -1)})`,
+      modelDomOffset(para, inner, 5, -1) === 2,
+    );
+    check(
+      `and to its end when asked for an end (${modelDomOffset(para, inner, 5, 1)})`,
+      modelDomOffset(para, inner, 5, 1) === 3,
+    );
+    check(
+      "so a range over an atom stays a range rather than collapsing",
+      modelDomOffset(para, inner, 0, -1) !== modelDomOffset(para, inner, 11, 1),
+    );
+    check(
+      "and the default is the start, which is what a caret wants",
+      modelDomOffset(para, inner, 5) === 2,
+    );
+
+    // The atom element itself as the range's container. Firefox describes a
+    // Backspace after an equation as (span, 0) to (span, 1); both ends used to
+    // count as the front edge, so the deletion was zero-wide and the caret
+    // jumped before the equation instead of deleting it.
+    check(
+      `the atom's own offset 0 is its front edge (${modelDomOffset(para, math, 0, -1)})`,
+      modelDomOffset(para, math, 0, -1) === 2,
+    );
+    check(
+      `and its last offset its back edge, whichever side is asked (${modelDomOffset(para, math, 1, -1)})`,
+      modelDomOffset(para, math, 1, -1) === 3 && modelDomOffset(para, math, 1, 1) === 3,
+    );
+    check(
+      "so Firefox's range over an equation is one character wide, not zero",
+      modelDomOffset(para, math, 1, 1) - modelDomOffset(para, math, 0, -1) === 1,
+    );
+  }
+
+  // A space that would collapse is drawn as U+00A0 (found 2026-10-04). Under
+  // `white-space: normal` a plain space at a line's edge or after another has
+  // no caret position, and Blink and WebKit moved a caret put after one back
+  // in front of it, so ` a b ` typed at a paragraph's end came out `ab   `.
+  {
+    const doc = { createElement: (tag) => makeEl(tag), createTextNode: makeText };
+    const el = (tag, kids, attrs = {}) => {
+      const node = makeEl(tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      for (const kid of kids) node.appendChild(kid);
+      return node;
+    };
+    const drawn = (p) => JSON.stringify(modelDomText(p)).replace(/ /g, "_");
+    const held = (...kids) => { const p = el("p", kids); modelHoldSpaces([p]); return p; };
+
+    check(`a space ending a line is held (${drawn(held(makeText("a b ")))})`,
+      drawn(held(makeText("a b "))) === '"a b_"');
+    check(`one starting a line is held (${drawn(held(makeText(" a")))})`,
+      drawn(held(makeText(" a"))) === '"_a"');
+    check(`a run of spaces alternates, so a line can still wrap at it (${drawn(held(makeText("a   b")))})`,
+      drawn(held(makeText("a   b"))) === '"a _ b"');
+    check(`a space before a hard break is held (${drawn(held(makeText("a "), el("br", []), makeText("\nb")))})`,
+      drawn(held(makeText("a "), el("br", []), makeText("\nb"))) === '"a_\\nb"');
+    check(`the rule runs across marks (${drawn(held(makeText("a "), el("strong", [makeText(" b")])))})`,
+      drawn(held(makeText("a "), el("strong", [makeText(" b")]))) === '"a _b"');
+    const eq = () => el("span", [makeText("$x$")], { "data-math": "" });
+    check(`a space after an equation ending the line is held (${drawn(held(makeText("Then "), eq(), makeText(" ")))})`,
+      drawn(held(makeText("Then "), eq(), makeText(" "))) === '"Then ￼_"');
+    const plain = makeText("an ordinary line of text");
+    held(plain);
+    check("and an ordinary line is untouched", plain.textContent === "an ordinary line of text");
+
+    // A held space is visible, so an equation with one after it does not end
+    // the line and gets no <br> stop between the two.
+    const p = el("p", [makeText("Then "), eq(), makeText(" ")]);
+    modelHoldSpaces([p]);
+    modelPlaceStops([p], doc);
+    check("an equation followed by a held space is not a line's end",
+      !p.childNodes.some((n) => n.nodeType === 1 && n.tagName === "BR"));
+
+    // And the render verify reads a held space as the space the model holds.
+    const parsed = parse("Typed at the end \n");
+    const block = parsed.blocks[0];
+    modelInlineSplice(block, modelInlineText(block.inlines).length, modelInlineText(block.inlines).length, " ");
+    const root = el("div", [el("p", [makeText(modelBlockText(block))], { "data-block": String(block.id) })]);
+    root.querySelector = (sel) => root.childNodes.find((n) => sel.includes(`"${n.getAttribute("data-block")}"`)) || null;
+    modelHoldSpaces(root.childNodes);
+    check("the render verify reads a held space as a space",
+      modelVerifyRender(root, parsed).problems.length === 0 && modelVerifyRender(root, parsed).compared === 1);
+  }
+
+  // Caret stops beside an equation at a line's edge (slice 7's step 2). Firefox
+  // leaves no caret position beside an uneditable inline there, measured on
+  // tests/caret-guard-check.html: a <br> behind gives the end back, and a
+  // zero-width character in front gives the keyboard the start. Built by the
+  // DOM builder and counted as nothing by every walk.
+  {
+    const doc = { createElement: (tag) => makeEl(tag), createTextNode: makeText };
+    const el = (tag, kids, attrs = {}) => {
+      const node = makeEl(tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      for (const kid of kids) node.appendChild(kid);
+      return node;
+    };
+    const eq = () => el("span", [makeText("$x$")], { "data-math": "" });
+    const shape = (p) => p.childNodes.map((n) =>
+      n.nodeType === 3 ? JSON.stringify(n.textContent)
+        : n.hasAttribute("data-filler") ? (n.tagName === "BR" ? "<br stop>" : "<stop>")
+        : n.hasAttribute("data-math") ? "[eq]" : "<" + n.tagName.toLowerCase() + ">").join(" ");
+
+    let p = el("p", [eq(), makeText(" mid "), eq()]);
+    modelPlaceStops([p], doc);
+    check(`an equation starting a line gets a stop in front, one ending it a <br> behind (${shape(p)})`,
+      shape(p) === '<stop> [eq] " mid " [eq] <br stop>');
+
+    p = el("p", [makeText("a "), eq(), makeText(" b")]);
+    modelPlaceStops([p], doc);
+    check(`an equation mid-line gets nothing (${shape(p)})`, shape(p) === '"a " [eq] " b"');
+    check("but every equation's wrapper is uneditable, so a click beside one cannot land inside it",
+      p.childNodes[1].getAttribute("contenteditable") === "false");
+
+    // markdown-it renders a hard break as <br>\n, so an equation after one
+    // starts a line, and one right before one already has its <br>.
+    p = el("p", [makeText("a "), eq(), el("br", []), makeText("\n"), eq(), makeText(" b")]);
+    modelPlaceStops([p], doc);
+    check(`a hard break is a line's edge on both sides (${shape(p)})`,
+      shape(p) === '"a " [eq] <br> "\\n" <stop> [eq] " b"');
+
+    // Inside a mark, the stop goes beside the equation, inside the mark.
+    const em = el("em", [eq()]);
+    p = el("p", [em, makeText(" tail")]);
+    modelPlaceStops([p], doc);
+    check("an equation opening a line inside a mark gets its stop inside the mark",
+      em.childNodes[0].hasAttribute("data-filler") && em.childNodes[1].hasAttribute("data-math"));
+
+    // And the walks count a stop as nothing.
+    p = el("p", [eq(), makeText(" ab "), eq()]);
+    modelPlaceStops([p], doc);
+    const stop = p.childNodes[0];
+    check(`a stop adds nothing to the text the model compares against (${JSON.stringify(modelDomText(p))})`,
+      modelDomText(p) === "\uFFFC ab \uFFFC");
+    check("a position inside a stop is the position where it stands",
+      modelDomOffset(p, stop.firstChild, 1) === 0 && modelDomOffset(p, stop, 1) === 0);
+    check("and positions after it are not pushed along by it",
+      modelDomOffset(p, p.childNodes[2], 2) === 3);
+    const at0 = modelDomLocate(p, 0);
+    check("a caret at a line's first offset goes inside the stop, after its character, where Firefox draws one",
+      at0.node === stop.firstChild && at0.offset === 1);
+    const at1 = modelDomLocate(p, 1);
+    check("and offset 1 is still just after the equation",
+      at1.node === p && at1.offset === 2);
+  }
+
+  // What a drag inside the document carries (slice 7's step 2): the markdown for
+  // a range of one block, cut from the model rather than read off the clipboard,
+  // after Firefox and Chrome both dropped an equation from a dragged selection.
+  {
+    const leaves = [];
+    for (const path of ORACLE_FILES) {
+      (function walk(b) { if (b.inlines) leaves.push(b); (b.children || []).forEach(walk); })({ children: parse(repoFile(path)).blocks });
+    }
+    const whole = leaves.filter((b) =>
+      modelInlineSourceRange(b, 0, modelInlineText(b.inlines).length, md) === modelInlineSource(b.inlines, md));
+    check(`the whole range of every inline-bearing leaf in the oracle is its own source (${whole.length}/${leaves.length})`,
+      leaves.length > 0 && whole.length === leaves.length);
+
+    const block = parse("Before $e^{i\\pi} + 1 = 0$ to **bold** after.\n").blocks[0];
+    const sourceBefore = modelInlineSource(block.inlines, md);
+    const moved = modelInlineSourceRange(block, 3, 11, md);
+    check(`a range across an equation carries the equation (${JSON.stringify(moved)})`,
+      moved === "ore $e^{i\\pi} + 1 = 0$ to");
+    const marked = modelInlineSourceRange(block, 14, 16, md);
+    check(`a range ending inside a mark carries the mark round what it took (${JSON.stringify(marked)})`,
+      marked === "**ld**");
+    check("and the block it was cut from is untouched",
+      modelInlineSource(block.inlines, md) === sourceBefore && block.source !== null);
+    check("a block with no inline tree carries nothing", modelInlineSourceRange({ inlines: null }, 0, 1, md) === null);
+  }
+
+  // Equations by typing (slice 7's step 10, on probation). Typed text is
+  // literal, so these start from text spliced in the way a keystroke puts it
+  // there, never from a parse — a parse would have made the equation already.
+  {
+    const typed = (text) => {
+      const doc = parse("x\n");
+      const block = doc.blocks[0];
+      modelInlineSplice(block, 0, 1, text);
+      return { doc, block };
+    };
+    const spans = (text) => modelMathCandidates(typed(text).block).map((c) => c.source);
+
+    const { doc, block } = typed("Area $x^2$ here");
+    check(`typed maths is literal until converted (${JSON.stringify(modelEmitLeaf(block, md, doc))})`,
+      modelEmitLeaf(block, md, doc) === "Area \\$x^2$ here");
+    const found = modelMathCandidates(block);
+    check(`a typed span is found where the parser would find it (${JSON.stringify(found)})`,
+      found.length === 1 && found[0].start === 5 && found[0].end === 10 && found[0].source === "$x^2$");
+    const after = modelMathConvert(block, 5, 10, md);
+    check(`converting it writes the equation (${JSON.stringify(modelEmitLeaf(block, md, doc))})`,
+      modelEmitLeaf(block, md, doc) === "Area $x^2$ here" && after === 6);
+    check("and it is one atom in the offset space",
+      modelInlineText(block.inlines) === "Area ￼ here");
+    const atom = block.inlines.find((node) => node.kind === "math");
+    check("its token is the parser's, not one built by hand",
+      !!atom && atom.token && atom.token.type === "math" && atom.token.content === "x^2" && atom.markup === "$");
+    check(`and it renders as an equation (${JSON.stringify(modelRenderBlock(block, md))})`,
+      modelRenderBlock(block, md).includes("<span data-math>$x^2$</span>"));
+    const reread = parse(modelEmitLeaf(block, md, doc) + "\n").blocks[0].inlines;
+    check("the bytes it writes reopen as the same equation",
+      reread.some((node) => node.kind === "math" && node.content === "x^2"));
+
+    check(`prices stay prose (${JSON.stringify(spans("it cost $5 and then $10"))})`,
+      spans("it cost $5 and then $10").length === 0);
+    check("an opening $ before a space is not one", spans("a $ b$ c").length === 0);
+    check("an escaped dollar does not open one", spans("a \\$x$ c").length === 0);
+    check("an empty $$ is not one", spans("a $$ b").length === 0);
+    check("a closing $ followed by a digit is not one", spans("$5 and $1").length === 0);
+    check("which is why the end of the text cannot decide: `$5 and $` is one until a digit arrives",
+      spans("$5 and $").length === 1);
+    check(`display maths is the same rule (${JSON.stringify(spans("$$a+b$$"))})`,
+      spans("$$a+b$$").length === 1 && spans("$$a+b$$")[0] === "$$a+b$$");
+    {
+      const { doc: d, block: b } = typed("$$a+b$$");
+      modelMathConvert(b, 0, 7, md);
+      check("and converts to a display equation",
+        modelEmitLeaf(b, md, d) === "$$a+b$$" && b.inlines[0].kind === "math" && b.inlines[0].markup === "$$");
+    }
+    check(`two spans in one run are both found (${JSON.stringify(spans("$a$ and $b$."))})`,
+      spans("$a$ and $b$.").join("|") === "$a$|$b$");
+    {
+      const doc2 = parse("a **b** c\n");
+      const b = doc2.blocks[0];
+      modelInlineSplice(b, 3, 3, "$");
+      modelInlineSplice(b, 6, 6, "$");
+      check(`a span straddling a mark is not one (${JSON.stringify(modelEmitLeaf(b, md, doc2))})`,
+        modelMathCandidates(b).length === 0);
+    }
+    {
+      const { block: b } = typed("plain $x$ text");
+      check("converting text that is not one equation refuses", modelMathConvert(b, 0, 9, md) === null);
+      check("and leaves the block as it was", modelInlineText(b.inlines) === "plain $x$ text");
+    }
+
+    const shown = parse("A $x^2$ b\n");
+    const sb = shown.blocks[0];
+    check("revealing where there is no equation refuses", modelMathReveal(sb, 0, true) === null);
+    const caret = modelMathReveal(sb, 2, true);
+    check(`Backspace into an equation shows its source, caret before the closing $ (${caret})`,
+      modelInlineText(sb.inlines) === "A $x^2$ b" && caret === 6);
+    check("and that source is the same span again",
+      modelMathCandidates(sb).map((c) => c.source).join("|") === "$x^2$");
+    modelMathConvert(sb, 2, 7, md);
+    check(`so leaving it re-forms the equation byte for byte (${JSON.stringify(modelEmitLeaf(sb, md, shown))})`,
+      modelEmitLeaf(sb, md, shown) === "A $x^2$ b");
+    const forward = modelMathReveal(parse("A $$y$$ b\n").blocks[0], 2, false);
+    check(`Delete from the other side puts the caret after the opening delimiter (${forward})`, forward === 4);
+  }
+
   // ------------------------------------------------------------- the metric
 
   // Slice 1b's step 6: the number the slice exists to move, asserted rather
@@ -2294,7 +3162,14 @@ export default function run(check) {
     for (let i = 0; i < total; i++) {
       const doc = parse(text);
       const leaf = leavesOf(doc)[i];
-      const own = leaf.source;
+      // Since stage 3's slice 4 an edit inside a table hands the emitter the
+      // whole table, because a cell has no bytes of its own; whether the
+      // emitter then writes back only the row is the table sweep's question,
+      // at the end of this file, with the real emitter.
+      let unit = leaf;
+      while (unit.parent && unit.kind !== "table") unit = unit.parent;
+      if (unit.kind !== "table") unit = leaf;
+      const own = unit.source;
       modelTouch(leaf);
       const out = modelSerialise(doc, () => SENTINEL);
       let at = 0;
@@ -2310,4 +3185,2158 @@ export default function run(check) {
       (notExact.length ? ` — ${notExact.length} did not: ${notExact.slice(0, 3).join(", ")}` : ""),
     leavesChecked > 600 && notExact.length === 0,
   );
+
+  // ── Slice 4: structure ─────────────────────────────────────────────────────
+  //
+  // The edits that change how many blocks there are. **The property is D1 one
+  // step further out**: stage 1 proved an edited block rewrites exactly itself,
+  // and a split has to rewrite exactly the two blocks it made while handing
+  // back every other line of the file.
+  //
+  // These drive the model rather than the input layer, which is the same split
+  // slices 1 and 2 drew: what a keystroke *means* is model-input.js's and is
+  // checked there against a stub, and what the model *does* is here, against
+  // the real tree and the real oracle.
+
+  const emit = (doc) => modelSerialise(doc, (block) => modelEmitLeaf(block, md, doc, 0));
+  const itemsOf = (doc) => modelFlatten(doc).filter((block) => block.kind === "item");
+  const textLeaves = (doc) => modelFlatten(doc).filter((block) => !block.children && block.kind !== "gap");
+  const after = (src, act) => {
+    const doc = parse(src);
+    act(doc, textLeaves(doc), itemsOf(doc));
+    return emit(doc);
+  };
+
+  {
+    // Enter, case by case, and every one of these is a decision written down in
+    // docs/REWRITE.md's slice 4 rather than whatever fell out.
+    const cases = [
+      ["a top-level paragraph splits into two", "one two\n", 3, (d, l) => modelInsertParagraph(d, l[0], 3, md), "one\n\ntwo\n"],
+      ["a bullet splits into a bullet, not two paragraphs in one", "- one two\n- three\n", 3, (d, l) => modelInsertParagraph(d, l[0], 3, md), "- one\n- two\n- three\n"],
+      ["a loose list stays loose", "- one two\n\n- three\n", 3, (d, l) => modelInsertParagraph(d, l[0], 3, md), "- one\n\n- two\n\n- three\n"],
+      ["a quote is not an item, so it splits the paragraph inside it", "> one two\n", 3, (d, l) => modelInsertParagraph(d, l[0], 3, md), "> one\n>\n> two\n"],
+      ["the end of a heading opens a paragraph", "# Title\n\nbody\n", 5, (d, l) => modelInsertParagraph(d, l[0], 5, md), "# Title\n\nbody\n"],
+      ["the middle of a heading gives two headings of the same level", "## Title here\n", 5, (d, l) => modelInsertParagraph(d, l[0], 5, md), "## Title\n\n## here\n"],
+      ["a mark the split landed inside is reopened on the far side", "a **one two** b\n", 6, (d, l) => modelInsertParagraph(d, l[0], 6, md), "a **one**\n\n**two** b\n"],
+      ["a nested bullet splits its own list", "- top\n  - one two\n  - next\n", 3, (d, l) => modelInsertParagraph(d, l[1], 3, md), "- top\n  - one\n  - two\n  - next\n"],
+      ["an indented paragraph keeps its indent on both halves", "   one two\n", 3, (d, l) => modelInsertParagraph(d, l[0], 3, md), "   one\n\n   two\n"],
+      ["an ordered item takes the next number, and no sibling is renumbered", "1. one two\n2. three\n", 3, (d, l) => modelInsertParagraph(d, l[0], 3, md), "1. one\n2. two\n2. three\n"],
+      ["a list written all-`1.` stays written all-`1.`", "1. one\n1. two three\n", 3, (d, l) => modelInsertParagraph(d, l[1], 3, md), "1. one\n1. two\n1. three\n"],
+    ];
+    for (const [label, src, offset, act, want] of cases) {
+      const got = after(src, act);
+      check(`${label} (${JSON.stringify(got)})`, got === want);
+    }
+  }
+
+  {
+    // **An Enter nobody has typed into yet costs nothing at all**, which is the
+    // empty-block fold in `modelJoinBlocks`: markdown has no empty paragraph,
+    // so the block exists for the caret and the file has nothing to say about
+    // it. Both ends, because a block at the very start has no separator in
+    // front of it to hand on.
+    const end = after("one\n\ntwo\n", (d, l) => modelInsertParagraph(d, l[0], 3, md));
+    const start = after("one\n\ntwo\n", (d, l) => modelInsertParagraph(d, l[0], 0, md));
+    check(`Enter at the end of a block leaves the file byte-identical (${JSON.stringify(end)})`, end === "one\n\ntwo\n");
+    check(`and so does Enter at the start of one (${JSON.stringify(start)})`, start === "one\n\ntwo\n");
+  }
+
+  {
+    // A new break asks the document, an existing one does not -- the two halves
+    // of TODO 2.3's residue, answered from opposite directions.
+    const spaces = after("one two\n", (d, l) => modelInsertBreak(l[0], 3, "  "));
+    const slash = after("one two\n", (d, l) => modelInsertBreak(l[0], 3, "\\"));
+    check(`a new hard break takes the two-space spelling when the document does (${JSON.stringify(spaces)})`, spaces === "one  \ntwo\n");
+    check(`and the backslash when it does (${JSON.stringify(slash)})`, slash === "one\\\ntwo\n");
+  }
+
+  {
+    // Merges, and what the unwinding is for: a list holding no items renders to
+    // an empty `<ul>` the caret can sit inside, which is a document that looks
+    // broken rather than one that is.
+    const cases = [
+      ["two paragraphs join", "one\n\ntwo\n", "onetwo\n"],
+      ["two bullets join into one", "- one\n- two\n", "- onetwo\n"],
+      ["a list emptied by the merge goes with it", "para\n\n- one\n", "paraone\n"],
+      ["and so does one merged across a container boundary", "- one\n\npara\n", "- onepara\n"],
+    ];
+    for (const [label, src, want] of cases) {
+      const got = after(src, (d, l) => modelMergeBlocks(d, l[0], l[1]));
+      check(`${label} (${JSON.stringify(got)})`, got === want);
+    }
+    const doc = parse("one\n\n```\nx\n```\n");
+    const leaves = textLeaves(doc);
+    check("a merge into a block with no inline tree refuses", modelMergeBlocks(doc, leaves[0], leaves[1]) === null);
+    check("and leaves the document alone", emit(doc) === "one\n\n```\nx\n```\n");
+  }
+
+  {
+    // Tab and Shift+Tab as model rules, which is what retired the
+    // list-indent-check page. The tab case is 1b's step 5
+    // one layer along: the same column in different bytes is a file the author
+    // did not write.
+    const cases = [
+      ["Tab nests an item under the one before it", "- one\n- two\n- three\n", (d, l, i) => modelIndentItem(d, i[1]), "- one\n  - two\n- three\n"],
+      ["two Tabs in a row give one nested list, not two", "- one\n- two\n- three\n", (d, l, i) => { modelIndentItem(d, i[1]); modelIndentItem(d, itemsOf(d)[2]); }, "- one\n  - two\n  - three\n"],
+      ["a first item cannot nest under nothing", "- one\n- two\n", (d, l, i) => modelIndentItem(d, i[0]), "- one\n- two\n"],
+      ["Shift+Tab moves an item out one level", "- one\n  - two\n", (d, l, i) => modelOutdentItem(d, i[1]), "- one\n- two\n"],
+      ["its followers come with it, nested under it and in order", "- one\n  - two\n  - three\n  - four\n", (d, l, i) => modelOutdentItem(d, i[1]), "- one\n- two\n  - three\n  - four\n"],
+      ["a top-level item has nowhere to outdent to", "- one\n- two\n", (d, l, i) => modelOutdentItem(d, i[1]), "- one\n- two\n"],
+      ["a tab-indented list outdents in its own bytes", "- one\n\t- two\n", (d, l, i) => modelOutdentItem(d, i[1]), "- one\n- two\n"],
+      ["a new nested ordered list starts again at one", "1. one\n2. two\n3. three\n", (d, l, i) => modelIndentItem(d, i[1]), "1. one\n   1. two\n3. three\n"],
+    ];
+    for (const [label, src, act, want] of cases) {
+      const got = after(src, act);
+      check(`${label} (${JSON.stringify(got)})`, got === want);
+    }
+  }
+
+  {
+    // The empty-item rules, which are app.js's keydown handler with the engine
+    // taken out. That handler is the specification because it is what users
+    // have; what changes is that there is no DOM surgery left to watch.
+    const cases = [
+      ["a nested empty item outdents rather than leaving the list", "- one\n  - two\n  -\n", 2, false, "- one\n  - two\n-\n"],
+      ["a top-level empty item leaves the list, splitting it at the caret", "- one\n-\n- three\n", 1, false, "- one\n\n- three\n"],
+      ["Backspace with a bullet above just removes the item", "- one\n-\n", 1, true, "- one\n"],
+      ["Backspace on a first item puts the paragraph before the list", "-\n- two\n", 0, true, "- two\n"],
+    ];
+    for (const [label, src, index, backspace, want] of cases) {
+      const got = after(src, (d, l, i) => modelEmptyItemKey(d, i[index], md, backspace));
+      check(`${label} (${JSON.stringify(got)})`, got === want);
+    }
+  }
+
+  {
+    // Slice 4's second text space: a fence and an indented code block are edited
+    // as source, and the per-line prefix the file put in front of the body is
+    // put back — read off the block's own bytes, since there is nothing
+    // recorded for a block with no inline token.
+    const cases = [
+      ["a fence body is edited in place", "```js\nconst x = 1;\n```\n", (l) => modelSourceSplice(l[0], 6, 7, "y", md), "```js\nconst y = 1;\n```\n"],
+      ["a fence inside a quote keeps its chain", "> ```js\n> a\n> ```\n", (l) => modelSourceSplice(l[0], 1, 1, "bc", md), "> ```js\n> abc\n> ```\n"],
+      ["a fence inside a bullet keeps its indent", "- text\n\n  ```js\n  a\n  ```\n", (l) => modelSourceSplice(l.find(modelBearsSource), 1, 1, "bc", md), "- text\n\n  ```js\n  abc\n  ```\n"],
+      ["an indented code block is the same rule with no fence lines", "    a = 1\n    b = 2\n", (l) => modelSourceSplice(l[0], 0, 1, "z", md), "    z = 1\n    b = 2\n"],
+      ["a line the edit added takes the last prefix recorded", "```\na\n```\n", (l) => modelSourceSplice(l[0], 1, 1, "\nb", md), "```\na\nb\n```\n"],
+    ];
+    for (const [label, src, act, want] of cases) {
+      const got = after(src, (d, l) => act(l));
+      check(`${label} (${JSON.stringify(got)})`, got === want);
+    }
+    const doc = parse("one\n");
+    check("a paragraph is not edited as source", modelSourceSplice(textLeaves(doc)[0], 0, 0, "x", md) === null);
+  }
+
+  {
+    // The `contenteditable="false"` trap, closed by construction and for free:
+    // an empty block emits nothing and takes the separator before it with it,
+    // so the guard costs no bytes at all.
+    const table = parse("| a | b |\n| - | - |\n");
+    check("a table as the last block gets a paragraph after it", !!modelEnsureBlock(table, md));
+    check("and the file is byte for byte what it was", emit(table) === "| a | b |\n| - | - |\n");
+    const prose = parse("hello\n");
+    check("a document already ending in something editable gets nothing", modelEnsureBlock(prose, md) === null);
+    const empty = parse("");
+    modelEnsureBlock(empty, md);
+    check("and an empty document gets one empty paragraph to type into", empty.blocks.length === 1);
+  }
+
+  {
+    // **A leaf the model created must survive the trip to the renderer**, and
+    // this is the check that was missing. `modelInsertBreak` builds a hardbreak
+    // node with `token: null` — correctly, since there is no parse behind it —
+    // and `modelInlineTokens` dropped it, so Shift+Enter put a newline in the
+    // model and no `<br>` on screen. The *markdown* was right the whole time,
+    // because the emitter composes from the tree and the node carries its own
+    // `raw`, which is exactly why every check in this suite passed. Found in
+    // Gecko on 2026-09-21 by a human at front/input-check.html.
+    const doc = parse("one two three\n");
+    const block = textLeaves(doc)[0];
+    modelInsertBreak(block, 7, "  ");
+    const html = modelRenderBlock(block, md);
+    check(`a hard break the model inserted renders a <br> (${JSON.stringify(html)})`, html.includes("<br>"));
+    check("and the block's rendering still carries the text either side of it",
+      html.includes("one two") && html.includes("three"));
+    check(`and the markdown spells it the way it was asked to (${JSON.stringify(emit(doc))})`,
+      emit(doc) === "one two  \nthree\n");
+  }
+
+  {
+    // The general form of the same bug, which is what makes it a check rather
+    // than a regression test: **no leaf is silently dropped on the way to the
+    // renderer**. A node the model builds has no `token`, so the sweep strips
+    // every token off first — that is precisely the state `modelInsertBreak`,
+    // `modelTextNode` and slice 7's format commands leave a node in.
+    let leaves = 0;
+    const lost = new Set();
+    const loud = new Set();
+    for (const path of ORACLE_FILES) {
+      for (const leaf of leavesOf(parse(repoFile(path)))) {
+        if (!leaf.inlines) continue;
+        for (const node of modelInlineLeaves(leaf.inlines)) {
+          node.token = null;
+          leaves += 1;
+          try {
+            if (!modelInlineTokens([node]).length) lost.add(node.kind);
+          } catch {
+            loud.add(node.kind);
+          }
+        }
+      }
+    }
+    check(
+      `no leaf ever vanishes on the way to the renderer (${leaves} leaves, ` +
+        `${loud.size ? [...loud].sort().join(" and ") + " refuse loudly" : "none refuse"})` +
+        (lost.size ? ` — dropped silently: ${[...lost].join(", ")}` : ""),
+      leaves > 1000 && lost.size === 0,
+    );
+    // The complement, and the reason the sweep above is not simply "every kind
+    // renders": an atom's rendering *is* its token — an image's src, alt and
+    // title, an equation's delimiters and TeX — so there is no honest way to
+    // synthesise one, and a command that creates one has to take its token from
+    // the parser. That is a rule for slices 5 and 7, and a throw is how it gets
+    // stated rather than discovered.
+    check(
+      `and the only kinds that refuse are the atoms (${[...loud].sort().join(", ") || "none"})`,
+      [...loud].every((kind) => kind === "image" || kind === "math"),
+    );
+  }
+
+  {
+    // **The rendering trim keeps back exactly the block's own edge
+    // whitespace.** `trim()` is right only while a block's rendering begins and
+    // ends with a tag, and markdown-it hides a tight list item's paragraph, so
+    // that block renders as bare text whose edges are its content. Delete the
+    // last word of a bullet and the model keeps the space before it — the
+    // engine's target range covered the word, not the space — and the trim ate
+    // it, in all three engines, found by hand on 2026-09-21.
+    //
+    // Driven directly, because tests/dom.mjs has no HTML parser and the
+    // decision is a pure function over two strings — the same split
+    // `isGhostElement` has from its traversal in markdown-style.js.
+    const cases = [
+      ["a paragraph's own tags lose markdown-it's newline", "<p>x</p>\n", "x", "<p>x</p>"],
+      ["a container's opening tag loses the one before it", "\n<ol>", null, "<ol>"],
+      ["a hidden item's trailing space is content and stays", "a third, to nest under the one ", "a third, to nest under the one ", "a third, to nest under the one "],
+      ["and so is the newline a hard break renders after its <br>", "a<br>\n", "a\n", "a<br>\n"],
+      ["a trailing space after a mark stays too", "<em>a</em> ", "a ", "<em>a</em> "],
+      ["a leaf with no inline tree is trimmed whole", "<pre><code>x\n</code></pre>\n", null, "<pre><code>x\n</code></pre>"],
+    ];
+    for (const [label, html, keep, want] of cases) {
+      const got = modelTrimRendering(html, keep);
+      check(`${label} (${JSON.stringify(got)})`, got === want);
+    }
+  }
+
+  {
+    // The other half of the same keystroke: the model keeps the space and the
+    // **file** does not, because markdown strips it on the next parse and
+    // writing it out is bytes in a diff that mean nothing.
+    const doc = parse("- one\n- a third, to nest under the one above\n");
+    const para = textLeaves(doc)[1];
+    const length = modelInlineText(para.inlines).length;
+    modelInlineSplice(para, length - 5, length, "");
+    check(`the model keeps the space the deletion did not cover (${JSON.stringify(modelInlineText(para.inlines))})`,
+      modelInlineText(para.inlines) === "a third, to nest under the one ");
+    check(`and the file does not (${JSON.stringify(emit(doc))})`,
+      emit(doc) === "- one\n- a third, to nest under the one\n");
+  }
+
+  {
+    // 1b records an empty item as a childless leaf holding its own marker,
+    // which is right for the file and has no block for a caret to be in.
+    const doc = parse("- one\n-\n");
+    const item = itemsOf(doc)[1];
+    check("an empty item is a leaf rather than a container", !item.children && !item.inlines);
+    const paragraph = modelFillItem(doc, item, md);
+    check("the first keystroke in one turns it into the container it is about to be", !!paragraph && item.children.length === 1);
+    check("and until something is typed the bytes are the same", emit(doc) === "- one\n-\n");
+    modelInlineSplice(paragraph, 0, 0, "two");
+    check(`then it is an ordinary item (${JSON.stringify(emit(doc))})`, emit(doc) === "- one\n- two\n");
+  }
+
+  // ── Slice 5: paste ────────────────────────────────────────────────────────
+  //
+  // A paste parses to a **second document**, and the whole of step 1 is that
+  // nothing in it is safe to put into the first as it stands. What can go wrong
+  // is a byte question — a pasted block re-emitted without the quote chain it
+  // landed in — which is why this half is here and the routing is the
+  // `model-input` suite's.
+
+  {
+    const pasteInto = (src, index, offset, markdown) => {
+      const doc = parse(src);
+      const at = modelInsertBlocks(doc, textLeaves(doc)[index], offset, parse(markdown).blocks);
+      return { markdown: emit(doc), at, doc };
+    };
+    const cases = [
+      ["a few words merge into the paragraph", "one two\n", 3, "X", "oneX two\n"],
+      ["two paragraphs split it, and both ends rejoin", "one two\n", 3, "A\n\nB", "oneA\n\nB two\n"],
+      ["whole blocks land between the two ends", "one two\n", 3, "A\n\nB\n\nC", "oneA\n\nB\n\nC two\n"],
+      ["pasting into a quote carries the chain onto every line", "> one two\n", 3, "A\n\nB", "> oneA\n>\n> B two\n"],
+      ["pasting into a bullet stays inside the item", "- one two\n- next\n", 3, "A\n\nB", "- oneA\n\n  B two\n- next\n"],
+      ["a pasted list is reindented to the column it lands at", "- one two\n", 3, "- x\n- y", "- one\n\n  - x\n  - y\n\n  two\n"],
+      ["a pasted container joins neither end", "one two\n", 3, "- x\n- y", "one\n\n- x\n- y\n\ntwo\n"],
+      ["a pasted fence keeps its own bytes", "one two\n", 3, "```js\nz\n```", "one\n\n```js\nz\n```\n\ntwo\n"],
+      ["at the end of a block", "one two\n", 7, "A\n\nB", "one twoA\n\nB\n"],
+      ["at the start of one", "one two\n", 0, "A\n\nB", "A\n\nBone two\n"],
+    ];
+    for (const [label, src, offset, markdown, want] of cases) {
+      const got = pasteInto(src, 0, offset, markdown).markdown;
+      check(`${label} (${JSON.stringify(got)})`, got === want);
+    }
+    // The caret lands where the tail rejoins, which is the end of what was
+    // pasted rather than the start of what follows it.
+    const one = pasteInto("one two\n", 0, 3, "X");
+    const many = pasteInto("one two\n", 0, 3, "A\n\nB");
+    check(`a one-block paste leaves the caret past it (${one.at.offset})`, one.at.offset === 4);
+    check(`and a multi-block one at the join in the last (${many.at.offset})`, many.at.offset === 1);
+  }
+
+  {
+    // **Ids are re-minted, and that is not housekeeping.** `modelParse` mints
+    // from 1, so every pasted block wears an id the target is already using,
+    // and `modelElementFor` is a `querySelector` — it would answer with
+    // whichever element it met first.
+    const doc = parse("one\n\ntwo\n\nthree\n");
+    const pasted = parse("A\n\nB").blocks;
+    const before = pasted.map((b) => b.id);
+    modelAdoptBlocks(doc, pasted, doc.blocks[0]);
+    const all = modelFlatten(doc).map((b) => b.id).concat(pasted.map((b) => b.id));
+    check(`pasted ids are minted afresh (${before.join(",")} → ${pasted.map((b) => b.id).join(",")})`,
+      pasted.every((b, i) => b.id !== before[i]));
+    check("and collide with nothing in the document", new Set(all).size === all.length);
+    check("and every adopted block has lost the bytes it was written with",
+      pasted.every((b) => b.source === null || b.inlines === null));
+  }
+
+  {
+    // Plain text is never parsed, which is stronger in the model than it is
+    // today: the text node's `raw` is null, so the emitter escapes it and it
+    // stays literal in the file rather than becoming emphasis on the next save.
+    const doc = parse("one two\n");
+    modelInsertBlocks(doc, textLeaves(doc)[0], 3, modelTextBlocks(doc, md, "*lit*"));
+    const got = emit(doc);
+    check(`plain text is escaped rather than parsed (${JSON.stringify(got)})`, got === "one\\*lit* two\n");
+    check("and re-parses to the characters that were pasted",
+      modelInlineText(parse(got).blocks[0].inlines) === "one*lit* two");
+
+    const lines = parse("one two\n");
+    modelInsertBlocks(lines, textLeaves(lines)[0], 3, modelTextBlocks(lines, md, "a\nb"));
+    check(`a single newline stays a break inside one block (${JSON.stringify(emit(lines))})`,
+      emit(lines) === "onea\nb two\n");
+
+    const paras = parse("one two\n");
+    modelInsertBlocks(paras, textLeaves(paras)[0], 3, modelTextBlocks(paras, md, "a\n\nb"));
+    check(`and a blank line starts a paragraph (${JSON.stringify(emit(paras))})`,
+      emit(paras) === "onea\n\nb two\n");
+  }
+
+  {
+    // **A paste must not trim at the cut the way Enter does.** The two halves
+    // are rejoined around what is pasted, so the whitespace there ends up in
+    // the middle of a line, where it is ordinary text — and eating it runs two
+    // words together. The trim comes back only when the tail is left standing
+    // alone, which is the case Enter's rule was written for.
+    const joined = parse("one two\n");
+    modelInsertBlocks(joined, textLeaves(joined)[0], 3, parse("A\n\nB").blocks);
+    check(`the space at the cut survives a rejoin (${JSON.stringify(emit(joined))})`,
+      emit(joined) === "oneA\n\nB two\n");
+    const alone = parse("one two\n");
+    modelInsertBlocks(alone, textLeaves(alone)[0], 3, parse("- x").blocks);
+    check(`and goes when the tail is left on its own (${JSON.stringify(emit(alone))})`,
+      emit(alone) === "one\n\n- x\n\ntwo\n");
+  }
+
+  {
+    // **D1 one step further out, over the oracle.** Every inline-bearing leaf in
+    // every oracle file, split in the middle, and the file that comes back has
+    // to be the file that went in everywhere outside the block that was split.
+    // It re-parses per leaf, because `modelTouch` clears ancestors and a second
+    // measurement on the same document would be measuring a document with an
+    // edit already in it.
+    let split = 0;
+    let inert = 0;
+    const spread = [];
+    for (const path of ORACLE_FILES) {
+      const text = repoFile(path);
+      const total = leavesOf(parse(text)).filter((b) => b.inlines).length;
+      for (let i = 0; i < total; i += 1) {
+        // **Where the block is, measured rather than searched for.** `indexOf`
+        // is the wrong instrument here and quietly weakens the check: both
+        // `claude.md` and `corpus/todo.md` carry a paragraph whose bytes occur
+        // twice, so a search finds the wrong copy and the containment test is
+        // then about a block nobody edited. The sentinel sweep above already
+        // has an exact answer — touch the block, serialise, and the common
+        // prefix ends where its bytes begin.
+        const probe = parse(text);
+        modelTouch(leavesOf(probe).filter((b) => b.inlines)[i]);
+        const marked = modelSerialise(probe, () => SENTINEL);
+        let at = 0;
+        while (at < text.length && text[at] === marked[at]) at += 1;
+
+        const doc = parse(text);
+        const leaf = leavesOf(doc).filter((b) => b.inlines)[i];
+        const own = leaf.source;
+        const length = modelInlineText(leaf.inlines).length;
+        if (!length) continue;
+        modelSplitLeaf(doc, leaf, Math.floor(length / 2));
+        const out = emit(doc);
+        split += 1;
+        // A block whose whole text is one atom — a bare image, a display
+        // equation — cannot be split anywhere but its own front edge, so the
+        // head is empty, the empty-block fold drops it, and the file is
+        // unchanged. That is the right answer rather than a missing one.
+        if (out === text) {
+          inert += 1;
+          continue;
+        }
+        let head = 0;
+        while (head < text.length && text[head] === out[head]) head += 1;
+        let tail = 0;
+        while (tail < text.length - head && tail < out.length - head &&
+               text[text.length - 1 - tail] === out[out.length - 1 - tail]) tail += 1;
+        // The bytes that moved must lie inside the block that was split: the
+        // region the two files disagree over cannot start before it or end
+        // after it, or a sibling was rewritten.
+        if (!(head >= at && text.length - tail <= at + own.length)) {
+          spread.push(`${path}: ${JSON.stringify(own.slice(0, 30))}`);
+        }
+      }
+    }
+    check(
+      `every inline-bearing block in the oracle, split in half, rewrites only itself (${split} of them, ${inert} of which are one atom and cannot move)` +
+        (spread.length ? ` — ${spread.length} did not: ${spread.slice(0, 3).join(", ")}` : ""),
+      split > 600 && spread.length === 0,
+    );
+  }
+
+  {
+    // And the same sweep for a structural edit that *removes* a block: every
+    // item in the oracle outdented, then serialised, and the result has to
+    // parse back to a document whose own round trip is stable. A byte
+    // comparison is the wrong instrument here — an outdent is meant to change
+    // the bytes — so what is asserted is that what it wrote is markdown the
+    // parser reads back the same way twice.
+    let moved = 0;
+    const unstable = [];
+    for (const path of ORACLE_FILES) {
+      const text = repoFile(path);
+      const total = modelFlatten(parse(text)).filter((b) => b.kind === "item").length;
+      for (let i = 0; i < total; i += 1) {
+        const doc = parse(text);
+        const item = modelFlatten(doc).filter((b) => b.kind === "item")[i];
+        if (!modelOutdentItem(doc, item)) continue;
+        moved += 1;
+        const out = emit(doc);
+        if (emit(parse(out)) !== out) unstable.push(`${path}: ${JSON.stringify((item.marker || "").slice(0, 12))}`);
+      }
+    }
+    check(
+      `every nested item in the oracle, outdented, writes markdown that re-parses to itself (${moved} of them)` +
+        (unstable.length ? ` — ${unstable.length} did not: ${unstable.slice(0, 3).join(", ")}` : ""),
+      moved > 50 && unstable.length === 0,
+    );
+  }
+
+  {
+    // --- slice 6's steps 1 and 7: what a state is ---------------------------
+    //
+    // A state forks the document: it **copies the outline** -- which blocks
+    // exist, nested in what, and every affix each one records -- and **shares
+    // the contents**, the inline tree and the parser's tokens. An edit copies
+    // the one block it is about to write to, and not before.
+    //
+    // Step 1 built this as a whole-document copy and step 7 replaced it, after
+    // step 6 measured a state at fifteen times the markdown's bytes. Step 1's
+    // argument against sharing was correct about sharing with nothing
+    // protecting it; the barrier is what it did not have.
+    //
+    // Every way this is wrong is silent, and one way is silent *and* delayed:
+    // a write that escapes the barrier does not corrupt the document on screen,
+    // it corrupts a state nobody is looking at, and it surfaces the next time
+    // somebody presses Ctrl+Z. So the sweep at the end of this section is the
+    // check that matters, and the ones before it only say why.
+
+    let shared = 0, copied = 0, strayParent = 0, aliasOk = 0, aliasBad = 0, metas = 0;
+
+    const tokensOf = (doc) => {
+      const out = new Set();
+      const token = (t) => { if (!t || out.has(t)) return; out.add(t); for (const c of t.children || []) token(c); };
+      const inlines = (ns) => { for (const n of ns || []) { token(n.token); token(n.closeToken); inlines(n.children); } };
+      for (const b of modelFlatten(doc)) {
+        for (const t of b.tokens) token(t);
+        token(b.inline); token(b.hiddenBefore);
+        inlines(b.inlines);
+      }
+      return out;
+    };
+
+    for (const path of ORACLE_FILES) {
+      const src = repoFile(path);
+      const doc = parse(src);
+      const fork = modelForkDocument(doc);
+
+      check(`${path}: a fork round-trips byte-identical`, modelSerialise(fork) === src);
+      check(`${path}: and renders identically`,
+        modelRenderDocument(fork, md) === modelRenderDocument(doc, md));
+
+      // The contents are shared. This is the reverse of what step 1 asserted,
+      // and the number is the point: a fork allocates none of this.
+      const mine = tokensOf(doc), theirs = tokensOf(fork);
+      for (const t of theirs) { if (mine.has(t)) shared += 1; else copied += 1; }
+
+      // The outline is not. Every block is its own object, with its own parent.
+      const flat = modelFlatten(doc), flatFork = modelFlatten(fork);
+      for (let i = 0; i < flat.length; i += 1) {
+        if (flat[i] !== flatFork[i] && flat[i].id === flatFork[i].id) aliasOk += 1; else aliasBad += 1;
+      }
+      for (const b of flatFork) if (b.parent && !flatFork.includes(b.parent)) strayParent += 1;
+
+      for (const t of mine) if (t.meta !== null && t.meta !== undefined) metas += 1;
+    }
+
+    check(`a fork shares the document's contents rather than copying them (${shared} shared, ${copied} copied)`,
+      copied === 0 && shared > 10000);
+    check(`while every block in it is its own object with the same id (${aliasOk} of them)`,
+      aliasBad === 0 && aliasOk > 800);
+    check("and every parent link points inside the fork", strayParent === 0);
+    check(`no token in the oracle carries a meta (${metas} do)`, metas === 0);
+
+    // --- the barrier -------------------------------------------------------
+
+    {
+      const doc = parse(repoFile(CORPUS.todo));
+      const fork = modelForkDocument(doc);
+      const leaf = modelFlatten(doc).find((b) => b.inlines && b.inlines.length);
+      const twin = modelFlatten(fork)[modelFlatten(doc).indexOf(leaf)];
+
+      check("forking marks both documents as sharing", leaf.shared && twin.shared);
+      check("and they are the same contents", leaf.inlines === twin.inlines);
+
+      modelUnshare(leaf);
+      check("unsharing gives the block its own", leaf.inlines !== twin.inlines);
+      check("and clears the mark", !leaf.shared);
+      check("while the other document keeps what it had", twin.shared);
+      // The alias inside a block, which the whole-document clone also had to
+      // keep: `inline` *is* one of `tokens`, and two copies of it can disagree.
+      check("with the block's own aliases intact",
+        !leaf.inline || leaf.tokens.indexOf(leaf.inline) >= 0);
+      // Prototypes, or markdown-it's renderer throws on the first image.
+      check("and the tokens still renderable", typeof leaf.tokens[0].attrIndex === "function");
+      check("unsharing twice is a no-op", modelUnshare(leaf) === leaf && !leaf.shared);
+    }
+
+    // --- the property, which is the one that matters ------------------------
+    //
+    // Take a state, edit the document, and the state must still be what it was.
+    //
+    // **Measured by rendering it, not by serialising it**, and the first
+    // version of this check got that wrong in a way worth recording: an
+    // untouched block emits its `source` bytes and never consults its contents
+    // at all, so `modelSerialise` hands back the original file whatever has
+    // happened to the shared tree behind it. The check passed with the barrier
+    // removed entirely. Rendering goes through the tokens, which is the thing
+    // actually being shared, so that is what has to be compared.
+    //
+    // A write that escapes the barrier changes a state nobody is looking at and
+    // surfaces the next time somebody presses Ctrl+Z; nothing else in this repo
+    // would notice. Run over the whole oracle, and over every kind of edit
+    // slices 3 to 5 built rather than over typing alone.
+
+    {
+      const edits = [
+        ["typing", (d, b) => modelInlineSplice(b, 0, 0, "EDITED ")],
+        ["deleting", (d, b) => modelInlineSplice(b, 0, 1, "")],
+        ["a split", (d, b) => modelSplitLeaf(d, b, 1)],
+        ["a hard break", (d, b) => modelInsertBreak(b, 1, "  ")],
+        ["a paste", (d, b) => modelInsertBlocks(d, b, 1, modelTextBlocks(d, md, "pasted"))],
+        // A merge needs a second block, so it takes the next inline-bearing
+        // leaf rather than the argument. Without it modelMergeBlocks is a path
+        // the sweep never walks, and a barrier nothing exercises is a barrier
+        // nothing checks -- which is how three of these looked load-bearing
+        // until each was removed on its own.
+        ["a merge", (d, b) => {
+          const leaves = modelFlatten(d).filter((x) => x.inlines && x.inlines.length);
+          const next = leaves[leaves.indexOf(b) + 1];
+          return next ? modelMergeBlocks(d, b, next) : null;
+        }],
+      ];
+
+      const broken = [];
+      const idle = [];
+      let tried = 0;
+      for (const path of ORACLE_FILES) {
+        const src = repoFile(path);
+        for (const [name, edit] of edits) {
+          const doc = parse(src);
+          const state = modelForkDocument(doc);
+          const before = modelRenderDocument(state, md);
+          const leaf = modelFlatten(doc).find((b) => b.inlines && b.inlines.length > 1);
+          if (!leaf) continue;
+          tried += 1;
+          edit(doc, leaf);
+          // An edit that did nothing proves nothing, and a run of those is a
+          // green sweep that never touched the thing it is about. This check
+          // exists because the hard-break case was exactly that until it was
+          // asked -- the same reason the oracle checks its own emptiness.
+          if (modelRenderDocument(doc, md) === before) idle.push(`${path}/${name}`);
+          if (modelRenderDocument(state, md) !== before) broken.push(`${path}/${name}`);
+        }
+      }
+      check(`every edit in the sweep actually changed its document (${tried} runs)` +
+        (idle.length ? ` — ${idle.length} did not: ${idle.slice(0, 4).join(", ")}` : ""),
+        tried >= 25 && idle.length === 0);
+      check(`and a state survives every one of them` +
+        (broken.length ? ` — ${broken.length} did not: ${broken.slice(0, 4).join(", ")}` : ""),
+        broken.length === 0);
+
+      // The same again one level down: a *source-bearing* leaf, where the edit
+      // writes into a token rather than into the inline tree. That is the write
+      // step 1 found, and the one a barrier in the wrong place misses.
+      const doc = parse(repoFile("tests/fixtures/torture.md"));
+      const state = modelForkDocument(doc);
+      const before = modelRenderDocument(state, md);
+      const fence = modelFlatten(doc).find((b) => b.kind === "fence");
+      check("the oracle has a fence to try that on", !!fence && modelBearsSource(fence));
+      const body = modelSourceText(modelFlatten(state)[modelFlatten(doc).indexOf(fence)]);
+      modelSourceSplice(fence, 0, 0, "EDITED\n", md);
+      check("and a state survives a fence being edited as source",
+        modelRenderDocument(state, md) === before &&
+        modelSourceText(modelFlatten(state)[modelFlatten(doc).indexOf(fence)]) === body &&
+        modelSourceText(fence) !== body);
+
+      // And the sweep every block, one at a time, since the barrier is per
+      // block and a check on one block proves one block.
+      let swept = 0;
+      const missed = [];
+      for (const path of ORACLE_FILES) {
+        const src = repoFile(path);
+        const count = modelFlatten(parse(src)).filter((b) => b.inlines && b.inlines.length).length;
+        for (let i = 0; i < count; i += 1) {
+          const d = parse(src);
+          const st = modelForkDocument(d);
+          const was = modelRenderDocument(st, md);
+          modelInlineSplice(modelFlatten(d).filter((b) => b.inlines && b.inlines.length)[i], 0, 0, "X");
+          swept += 1;
+          if (modelRenderDocument(st, md) !== was) missed.push(`${path}#${i}`);
+        }
+      }
+      check(`and every inline-bearing block in the oracle, edited on its own, leaves the state alone (${swept} of them)` +
+        (missed.length ? ` — ${missed.length} did not: ${missed.slice(0, 4).join(", ")}` : ""),
+        swept > 800 && missed.length === 0);
+    }
+
+    // --- and the two directions of independence ----------------------------
+
+    // The emitter, because an edited block has no source to hand back: the same
+    // call the sweeps above make, and the reason those can use the bare
+    // modelSerialise is that an unedited clone still has every byte.
+    const write = (d) => modelSerialise(d, (block) => modelEmitLeaf(block, md, d, 0));
+
+    const src = repoFile(CORPUS.todo);
+    let doc = parse(src);
+    let copy = modelForkDocument(doc);
+    let leaf = modelFlatten(doc).find((b) => b.inlines && b.inlines.length);
+    modelInlineSplice(leaf, 0, 0, "EDITED ");
+    check("editing the document leaves its clone alone", write(copy) === src);
+    check("and the edit is in the document", write(doc) !== src);
+
+    doc = parse(src);
+    copy = modelForkDocument(doc);
+    leaf = modelFlatten(copy).find((b) => b.inlines && b.inlines.length);
+    modelInlineSplice(leaf, 0, 0, "EDITED ");
+    check("editing the clone leaves the document alone", write(doc) === src);
+    check("and the edit is in the clone", write(copy) !== src);
+
+    // The fence is the case the decision to clone every token was made on:
+    // modelSourceSplice writes `token.content` in place, so a shared token
+    // would leave the clone's own fence rendering the edit it never had, with
+    // modelVerifyRender unable to see it -- it skips blocks with no inline
+    // tree, which is exactly this one.
+    doc = parse(repoFile("tests/fixtures/torture.md"));
+    copy = modelForkDocument(doc);
+    const fence = modelFlatten(doc).find((b) => b.kind === "fence");
+    const twin = modelFlatten(copy)[modelFlatten(doc).indexOf(fence)];
+    const beforeText = modelSourceText(twin);
+    const beforeHtml = modelRenderBlock(twin, md);
+    check("the oracle has a fence to try this on", !!fence && modelBearsSource(fence));
+    modelSourceSplice(fence, 0, 0, "EDITED\n", md);
+    check("editing a fence as source leaves the clone's own text alone",
+      modelSourceText(twin) === beforeText);
+    check("and the clone still renders the code it had",
+      modelRenderBlock(twin, md) === beforeHtml);
+    check("while the document has the edit", modelSourceText(fence) !== beforeText);
+
+    // --- slice 6's step 3: the caret travels as an id --------------------
+    //
+    // A state cannot hold a block reference: it would point into the document
+    // the state is a copy of, which the restore is about to replace. So the
+    // caret is recorded as an id and resolved against the document being
+    // installed -- and that last clause is the property, because resolving
+    // against the state itself would put the caret in a tree nobody renders.
+
+    doc = parse(src);
+    const blocks = modelFlatten(doc).filter((b) => b.inlines && b.inlines.length);
+    const one = blocks[0], other = blocks[1];
+
+    check("a recorded selection holds an id rather than a block",
+      modelRecordSelection({ block: one, offset: 4 }).block === one.id);
+    check("and carries the other end when there is one",
+      modelRecordSelection({ block: one, offset: 0, to: { block: other, offset: 2 } }).to.block === other.id);
+    check("no selection records as none", modelRecordSelection(null) === null);
+    check("and so does one with no block", modelRecordSelection({ offset: 3 }) === null);
+
+    copy = modelForkDocument(doc);
+    const record = modelRecordSelection({ block: one, offset: 4, to: { block: other, offset: 2 } });
+    const back = modelResolveSelection(copy, record);
+    check("resolving finds the block with that id", back.block.id === one.id);
+    // The one that matters: the same id, and a different object, because it is
+    // the clone's block rather than the one the record was taken from.
+    check("in the document it was resolved against, not the one it came from",
+      back.block !== one && modelFlatten(copy).includes(back.block));
+    check("and the same for the other end",
+      back.to.block.id === other.id && back.to.block !== other);
+    check("with the offsets untouched", back.offset === 4 && back.to.offset === 2);
+
+    check("a record naming a block this document has not got resolves to nothing",
+      modelResolveSelection(copy, { block: 999999, offset: 0 }) === null);
+    check("and no record resolves to none", modelResolveSelection(copy, null) === null);
+    // An end that has gone takes the range down to a caret rather than the
+    // whole selection down to nothing: the position that survived is still a
+    // place the document has.
+    check("an end that has gone leaves the caret that has not",
+      modelResolveSelection(copy, { block: one.id, offset: 1, to: { block: 999999, offset: 0 } }).to === undefined);
+
+    // The lookup reaches a nested block, which is most of this repo's prose.
+    const nested = modelFlatten(doc).find((b) => b.parent && b.parent.parent);
+    check("the lookup reaches a block that is not top level",
+      !!nested && modelBlockById(doc, nested.id) === nested);
+    check("and finds the clone's copy of it in the clone",
+      modelBlockById(copy, nested.id) !== nested && modelBlockById(copy, nested.id).id === nested.id);
+
+    // The counter comes across, so a restored state mints the ids it would have
+    // minted the first time rather than colliding with what is on screen.
+    doc = parse(src);
+    check("the id counter comes across with the clone",
+      modelForkDocument(doc).nextId === doc.nextId);
+    check("and so does the prefix", modelForkDocument(doc).prefix === doc.prefix);
+
+  }
+
+  // ── Marks: slice 7's step 3 ───────────────────────────────────────────────
+  //
+  // Bold, italic and strikethrough as commands over a block's inline tree. The
+  // instrument is a re-parse fixpoint, because comparing bytes would be
+  // vacuous: apply a mark, emit the block, parse what came out, and the tree
+  // the parser builds has to carry the mark on exactly the characters it was
+  // given and change nothing else. Whitespace is left out of the comparison,
+  // since a mark never covers it at its edge and that is a rule, not a loss.
+  {
+    const KINDS = ["strong", "em", "strike"];
+    // Which characters of a block's text carry each kind, as a string per
+    // kind: "1" marked, "0" not, " " for whitespace nobody compares.
+    const marksOf = (nodes) => {
+      const out = { strong: "", em: "", strike: "", whole: "" };
+      (function walk(list, path) {
+        for (const node of list || []) {
+          if (node.children) { walk(node.children, path.concat(node.kind)); continue; }
+          const text = modelInlineText([node]);
+          // By UTF-16 unit, the way every offset here counts.
+          for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            for (const kind of KINDS) out[kind] += /\s/.test(ch) ? " " : path.includes(kind) ? "1" : "0";
+            out.whole += node.kind === "text" ? "0" : "1";
+          }
+        }
+      })(nodes, []);
+      return out;
+    };
+    // The top-level block the leaf lives in, emitted and parsed again, with the
+    // document's reference definitions after it so `[text][label]` still
+    // resolves. Not the leaf alone: a list item's second paragraph carries its
+    // continuation indent, and four spaces at the top of a file are code.
+    const reparse = (doc, block) => {
+      let top = block;
+      while (top.parent) top = top.parent;
+      const index = leavesOf({ blocks: [top] }).indexOf(block);
+      const defs = modelFlatten(doc).filter((b) => !b.children && !b.inlines && b.source && /^\s*\[/.test(b.source))
+        .map((b) => b.source.trim());
+      const src = modelSerialise({ prefix: "", blocks: [top] }, (b) => modelEmitLeaf(b, md, doc));
+      const again = parse(src + (defs.length ? "\n\n" + defs.join("\n") : "") + "\n");
+      return leavesOf(again)[index] || null;
+    };
+    const rangesFor = (block) => {
+      const length = modelInlineText(block.inlines).length;
+      if (length < 2) return [];
+      const third = Math.max(1, Math.floor(length / 3));
+      const ranges = [[0, length], [0, third], [length - third, length], [third, Math.max(third + 1, length - third)]];
+      const spans = [];
+      (function walk(list, offset, inMark) {
+        for (const node of list || []) {
+          if (node.children) {
+            if (node.kind === "link" || node.kind === "strong" || node.kind === "em" || node.kind === "strike") spans.push(offset);
+            offset = walk(node.children, offset, true);
+            continue;
+          }
+          offset += modelInlineText([node]).length;
+        }
+        return offset;
+      })(block.inlines, 0, false);
+      for (const edge of spans.slice(0, 2)) ranges.push([Math.max(0, edge - 2), Math.min(length, edge + 2)]);
+      // A selection never ends inside a surrogate pair, so neither does a range.
+      const text = modelInlineText(block.inlines);
+      const low = (at) => /[\uDC00-\uDFFF]/.test(text[at] || "");
+      return ranges.map(([a, b]) => [low(a) ? a + 1 : a, low(b) ? b + 1 : b]).filter(([a, b]) => b > a);
+    };
+
+    // Two questions per range. **Does the file say what the model holds?** —
+    // the re-parsed tree carries exactly the marks the edited tree does, and the
+    // same text. That is the fixpoint, and it is what stops a mark being written
+    // that comes back as literal asterisks. **Did the edit do what was asked,
+    // within the rules?** — outside the range nothing moved, and inside it every
+    // character carries the mark as asked unless it is punctuation the flanking
+    // rule moved to the mark's edge.
+    const punct = /[\p{P}\p{S}\uFFFC`$]/u;
+    let trials = 0;
+    let refusals = 0;
+    const unfaithful = [];
+    const refusedSample = [];
+    const unasked = [];
+    for (const file of ORACLE_FILES) {
+      const doc = parse(repoFile(file));
+      const env = modelReferenceEnv(doc, md);
+      for (const leaf of leavesOf(doc).filter((b) => b.inlines)) {
+        for (const kind of KINDS) {
+          for (const [from, to] of rangesFor(leaf)) {
+            for (const on of [true, false]) {
+              const copy = modelForkDocument(doc);
+              const block = modelBlockById(copy, leaf.id);
+              const before = marksOf(block.inlines);
+              const text = modelInlineText(block.inlines);
+              if (!modelSetMark(block, from, to, kind, on, md, undefined, env)) {
+                refusals++;
+                if (refusedSample.length < 6) refusedSample.push(`${kind} ${on ? "on" : "off"} ` +
+                  JSON.stringify(text.slice(Math.max(0, from - 8), to + 8)) + ` [${from},${to})`);
+                continue;
+              }
+              trials++;
+              const held = marksOf(block.inlines);
+              const again = reparse(copy, block);
+              const said = again ? marksOf(again.inlines) : null;
+              const where = `${file} #${leaf.id} ${kind} ${on ? "on" : "off"} [${from},${to}): ` +
+                JSON.stringify(modelEmitLeaf(block, md, copy)).slice(0, 140);
+              // This includes a line left starting with a block marker —
+              // `0. Spike` once the bold that shielded it is gone — which was
+              // counted apart until modelEscapeLineStarts closed it.
+              if (!again || modelInlineText(again.inlines) !== text || KINDS.some((k) => said[k] !== held[k])) {
+                unfaithful.push(where);
+              }
+              // A code span or an equation is marked whole, and punctuation
+              // moves to whichever side of a delimiter the parser can read.
+              const asked = [...held[kind]].every((c, i) => {
+                if (c === " " || before.whole[i] === "1" || punct.test(text[i])) return true;
+                if (i < from || i >= to) return c === before[kind][i];
+                return c === (on ? "1" : "0");
+              }) && KINDS.filter((k) => k !== kind).every((k) => held[k] === before[k]);
+              if (!asked) unasked.push(where);
+            }
+          }
+        }
+      }
+    }
+    check(`a mark given or taken over ${trials} ranges across the oracle is read back by the parser exactly as the model holds it` +
+      (unfaithful.length ? `, but ${unfaithful.length} were not: ${unfaithful.slice(0, 4).join(" | ")}` : ""),
+      unfaithful.length === 0);
+    check(`and each of those ${trials} did what was asked, moving only whitespace and edge punctuation` +
+      (unasked.length ? `, but ${unasked.length} did not: ${unasked.slice(0, 4).join(" | ")}` : ""),
+      unasked.length === 0);
+    check(`and the sweep measured something: ${trials} ranges changed, ${refusals} refused, such as ${refusedSample.join(" | ")}`,
+      trials > 1000);
+
+    // One case per rule, each a whole document so the emitted bytes are read.
+    const marked = (src, from, to, kind, on, spell) => {
+      const doc = parse(src);
+      const block = modelFlatten(doc).find((b) => !b.children && b.inlines);
+      modelSetMark(block, from, to, kind, on, md, spell ?? modelMarkPreference(doc, kind));
+      return modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    };
+    check("adjacent marks of one kind merge: bolding b in **a**b**c** gives one mark",
+      marked("**a**b**c**\n", 1, 2, "strong", true) === "**abc**\n");
+    check("removing a mark from its middle splits it in two",
+      marked("**abc** d\n", 1, 2, "strong", false) === "**a**b**c** d\n");
+    check("and each half keeps the original spelling",
+      marked("__a b c__\n", 2, 3, "strong", false) === "__a__ b __c__\n");
+    check("a new mark is spelt the way the document already spells that mark",
+      marked("_one_ and two\n", 8, 11, "em", true) === "_one_ and _two_\n");
+    check("a document with none of the mark yet takes the fallback it is given",
+      marked("plain words\n", 0, 5, "em", true, "_") === "_plain_ words\n");
+    check("`_` mid-word is spelt `*`, or it comes back as literal underscores",
+      marked("_x_ foobar\n", 5, 8, "em", true) === "_x_ foo*bar*\n");
+    check("whitespace at a mark's edge moves outside it",
+      marked("a foo b\n", 1, 6, "strong", true) === "a **foo** b\n");
+    check("a mark over a whole link goes outside it",
+      marked("see [the docs](u) now\n", 4, 12, "strong", true) === "see **[the docs](u)** now\n");
+    check("and a mark that sat inside a link stays inside when something else changes",
+      marked("[**b**](u) c\n", 2, 3, "em", true) === "[**b**](u) *c*\n");
+    check("a mark across a link's edge marks each side where it is",
+      marked("a [b c](u)\n", 0, 3, "strong", true) === "**a** [**b** c](u)\n");
+    check("strikethrough is `~~`",
+      marked("gone now\n", 0, 4, "strike", true) === "~~gone~~ now\n");
+    check("a code span is marked whole, never split",
+      marked("run `npm test` now\n", 4, 7, "strong", true) === "run **`npm test`** now\n");
+
+    // The toggle: off only when everything selected already has it.
+    {
+      const doc = parse("one two\n");
+      const block = doc.blocks[0];
+      const sel = { block, offset: 0, to: { block, offset: 3 } };
+      modelToggleMark(doc, sel, "strong", md);
+      const once = modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+      modelToggleMark(doc, sel, "strong", md);
+      const twice = modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+      check("toggling bold on a plain word bolds it", once === "**one** two\n");
+      check("and toggling it again takes it off", twice === "one two\n");
+    }
+    {
+      const doc = parse("**one** two\n");
+      const block = doc.blocks[0];
+      check("a range only partly bold is not covered", modelMarkCovers(block, 0, 7, "strong") === false);
+      modelToggleMark(doc, { block, offset: 0, to: { block, offset: 7 } }, "strong", md);
+      check("so the toggle adds, and the two become one mark",
+        modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc)) === "**one two**\n");
+    }
+    {
+      const doc = parse("first para\n\nsecond para\n");
+      const [a, b] = doc.blocks;
+      const changed = modelToggleMark(doc, { block: a, offset: 6, to: { block: b, offset: 6 } }, "em", md);
+      check("a selection across two blocks marks the part of each it covers",
+        changed.length === 2 && modelSerialise(doc, (x) => modelEmitLeaf(x, md, doc)) === "first *para*\n\n*second* para\n");
+    }
+    {
+      // What the Format menu's checkmark shows.
+      const doc = parse("plain **bold** end\n");
+      const block = doc.blocks[0];
+      check("a caret inside bold text reads bold", modelMarkState(doc, { block, offset: 8 }, "strong") === "all");
+      check("a caret at the end of bold text reads bold, by the boundary rule",
+        modelMarkState(doc, { block, offset: 10 }, "strong") === "all");
+      check("a caret just before it does not", modelMarkState(doc, { block, offset: 6 }, "strong") === "none");
+      check("a selection wholly inside it reads all",
+        modelMarkState(doc, { block, offset: 7, to: { block, offset: 9 } }, "strong") === "all");
+      check("a selection half in it reads mixed",
+        modelMarkState(doc, { block, offset: 3, to: { block, offset: 9 } }, "strong") === "mixed");
+      check("and one outside it reads none",
+        modelMarkState(doc, { block, offset: 0, to: { block, offset: 4 } }, "strong") === "none");
+    }
+    check("a selection holding only whitespace has nothing to mark",
+      modelMarkCovers(parse("a  b\n").blocks[0], 1, 3, "strong") === null);
+
+    // ── Inline code and links: slice 7's step 4 ─────────────────────────────
+    //
+    // The same instrument as the marks: wrap a spread of ranges in every
+    // inline-bearing block of the oracle in a link, and separately in a code
+    // span, and the parser has to read each back with the same text, marks and
+    // links the model holds.
+    {
+      let linked = 0;
+      let coded = 0;
+      let refusedLink = 0;
+      let refusedCode = 0;
+      const misread = [];
+      for (const file of ORACLE_FILES) {
+        const doc = parse(repoFile(file));
+        const env = modelReferenceEnv(doc, md);
+        for (const leaf of leavesOf(doc).filter((b) => b.inlines)) {
+          for (const [from, to] of rangesFor(leaf)) {
+            for (const what of ["link", "code"]) {
+              const copy = modelForkDocument(doc);
+              const block = modelBlockById(copy, leaf.id);
+              const result = what === "link"
+                ? modelSetLink(block, from, to, "https://x.example/", md, env)
+                : modelToggleCode(block, from, to, md, env);
+              if (!result) { if (what === "link") refusedLink++; else refusedCode++; continue; }
+              if (what === "link") linked++; else coded++;
+              const again = reparse(copy, block);
+              if (!again || modelInlineSignature(again.inlines) !== modelInlineSignature(block.inlines)) {
+                misread.push(`${file} #${leaf.id} ${what} [${from},${to}): ` +
+                  JSON.stringify(modelEmitLeaf(block, md, copy)).slice(0, 140));
+              }
+            }
+          }
+        }
+      }
+      check(`a link made over ${linked} ranges and a code span over ${coded} across the oracle are read back ` +
+        `by the parser exactly as the model holds them` +
+        (misread.length ? `, but ${misread.length} were not: ${misread.slice(0, 4).join(" | ")}` : ""),
+        misread.length === 0);
+      check(`and the sweep measured something: ${refusedLink} links and ${refusedCode} code spans refused`,
+        linked > 1000 && coded > 500);
+    }
+
+    const edited = (src, f) => {
+      const doc = parse(src);
+      const block = modelFlatten(doc).find((b) => !b.children && b.inlines);
+      const result = f(block, doc);
+      return { result, out: modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc)) };
+    };
+    // The fence is computed, which closes the latent bug the plan named.
+    check("a code span's run is longer than any run inside it", modelCodeSpanFence("a`b").markup === "``");
+    check("and padded when its content starts or ends with a backtick", modelCodeSpanFence("`a").raw === " `a ");
+    check("and when it starts and ends with a space", modelCodeSpanFence(" a ").raw === "  a  ");
+    check("typing a backtick into a code span writes a span that still fences it",
+      edited("`a`\n", (b) => modelInlineSplice(b, 1, 1, "`")).out === "`` a` ``\n");
+    check("Code over a range makes a code span of its text",
+      edited("run npm test now\n", (b) => modelToggleCode(b, 4, 12, md)).out === "run `npm test` now\n");
+    check("and drops the marks inside it, which a code span cannot hold",
+      edited("a *b* c\n", (b) => modelToggleCode(b, 0, 5, md)).out === "`a b c`\n");
+    check("a caret inside a code span turns it back into text",
+      edited("run `npm test` now\n", (b) => modelToggleCode(b, 6, 6, md)).out === "run npm test now\n");
+    check("a code span is refused over an equation, which it cannot hold",
+      edited("a $x$ b\n", (b) => modelToggleCode(b, 0, 3, md)).result === null);
+    check("and over a range that is only whitespace",
+      edited("a  b\n", (b) => modelToggleCode(b, 1, 3, md)).result === null);
+    check("a link over a range wraps it, with tokens from the parser",
+      edited("see the docs now\n", (b) => modelSetLink(b, 4, 12, "https://x.example", md)).out ===
+        "see [the docs](https://x.example) now\n");
+    check("a link inside bold text stays inside the bold",
+      edited("**bold words here**\n", (b) => modelSetLink(b, 5, 10, "u", md)).out === "**bold [words](u) here**\n");
+    check("a mark the link only partly covers is split at its edge",
+      edited("**ab** cd\n", (b) => modelSetLink(b, 1, 5, "u", md)).out === "**a**[**b** cd](u)\n");
+    check("a link over a range holding a link replaces it, since links cannot nest",
+      edited("x [a](u) y z\n", (b) => modelSetLink(b, 0, 10, "v", md)).out === "[x a y z](v)\n");
+    check("a new address retargets the link the caret is in",
+      edited("see [docs](a) now\n", (b) => modelSetLink(b, 5, 5, "b", md)).out === "see [docs](b) now\n");
+    check("an empty one unwraps it",
+      edited("see [docs](a) now\n", (b) => modelSetLink(b, 5, 5, "", md)).out === "see docs now\n");
+    check("retargeting a reference link writes it inline and leaves the definition alone",
+      edited("see [docs][d] now\n\n[d]: a\n", (b, doc) => modelSetLink(b, 5, 5, "b", md, modelReferenceEnv(doc, md))).out ===
+        "see [docs](b) now\n\n[d]: a\n");
+    check("the same address leaves a link exactly as it was",
+      edited("see [docs][d] now\n\n[d]: a\n", (b, doc) => modelSetLink(b, 5, 5, "a", md, modelReferenceEnv(doc, md))).result === null);
+    check("at a bare caret the address is inserted as its own link text",
+      edited("go here\n", (b) => modelSetLink(b, 3, 3, "https://e.example", md)).out ===
+        "go [https://e.example](https://e.example)here\n");
+    check("a paragraph whose line ends in a space can still be edited and written back",
+      edited("Go \n", (b) => modelInlineSplice(b, 2, 2, "x")).out === "Gox\n");
+    {
+      // What the Format menu's check beside Code shows.
+      const doc = parse("run `npm test` now\n\n```\nfenced\n```\n");
+      const [para, fence] = doc.blocks;
+      check("a caret inside a code span reads as code", modelCodeState(doc, { block: para, offset: 6 }) === "all");
+      check("and one at its end too, by the boundary rule", modelCodeState(doc, { block: para, offset: 12 }) === "all");
+      check("a caret just before it does not", modelCodeState(doc, { block: para, offset: 4 }) === "none");
+      check("a selection half in it reads mixed",
+        modelCodeState(doc, { block: para, offset: 0, to: { block: para, offset: 8 } }) === "mixed");
+      check("a caret in a fenced code block reads as code", modelCodeState(doc, { block: fence, offset: 2 }) === "all");
+    }
+    // ── Block kinds and the code block: slice 7's step 5 ─────────────────────
+    {
+      let kinds = 0;
+      let fences = 0;
+      let refusedKind = 0;
+      const wrong = [];
+      for (const file of ORACLE_FILES) {
+        const doc = parse(repoFile(file));
+        for (const leaf of leavesOf(doc).filter((b) => b.inlines && (b.kind === "paragraph" || b.kind === "heading"))) {
+          const text = modelInlineText(leaf.inlines).replace(/\n/g, " ");
+          for (let level = 0; level <= 6; level++) {
+            const copy = modelForkDocument(doc);
+            const block = modelBlockById(copy, leaf.id);
+            if (!modelSetHeading(copy, block, level, md)) { refusedKind++; continue; }
+            kinds++;
+            const again = reparse(copy, block);
+            const kind = level ? "heading" : "paragraph";
+            const back = again ? modelInlineText(again.inlines) : null;
+            if (!again || again.kind !== kind || (level && again.level !== level) ||
+                (level ? back !== text : back.replace(/\n/g, " ") !== text)) {
+              wrong.push(`${file} #${leaf.id} -> ${level ? "h" + level : "p"}: ` + JSON.stringify(modelEmitLeaf(block, md, copy)).slice(0, 120));
+            }
+          }
+          if (leaf.kind !== "paragraph") continue;
+          const copy = modelForkDocument(doc);
+          const block = modelBlockById(copy, leaf.id);
+          const plain = modelPlainText(block.inlines);
+          const fence = modelMakeFence(copy, [block], md);
+          if (!fence) { wrong.push(`${file} #${leaf.id} -> fence refused`); continue; }
+          fences++;
+          let top = fence;
+          while (top.parent) top = top.parent;
+          const src = modelSerialise({ prefix: "", blocks: [top] }, (b) => modelEmitLeaf(b, md, copy));
+          // The fence at the leaf's own position: the block may hold others.
+          const index = leavesOf({ blocks: [top] }).indexOf(fence);
+          const parsedFence = leavesOf(parse(src))[index];
+          const fenceToken = parsedFence && parsedFence.kind === "fence" && parsedFence.tokens.find((t) => t.type === "fence");
+          const fenceText = fenceToken ? fenceToken.content : null;
+          if (fenceText !== plain + "\n") wrong.push(`${file} #${leaf.id} -> fence reads back as ` + JSON.stringify(src).slice(0, 120));
+        }
+      }
+      check(`every paragraph and heading in the oracle made each of the seven kinds, ${kinds} times, and every ` +
+        `paragraph made a code block, ${fences} times, is read back by the parser as that kind with its text` +
+        (wrong.length ? `, but ${wrong.length} were not: ${wrong.slice(0, 4).join(" | ")}` : ""), wrong.length === 0);
+      check(`and the sweep measured something: ${refusedKind} kind changes refused or already that kind`,
+        kinds > 1000 && fences > 300);
+    }
+
+    // ── Lists: slice 7's step 6 ──────────────────────────────────────────────
+    {
+      // The top-level block an edit touched and the one either side of it,
+      // rendered by the model and by the parser from what the model emits.
+      const agrees = (doc, block) => {
+        let top = block;
+        while (top.parent) top = top.parent;
+        const index = doc.blocks.indexOf(top);
+        const chunk = doc.blocks.slice(Math.max(0, index - 1), index + 2);
+        const src = modelSerialise({ prefix: "", blocks: chunk }, (b) => modelEmitLeaf(b, md, doc));
+        // The document's reference definitions go along, as in the marks
+        // sweep, or a neighbour's `[text][label]` renders as literal text.
+        const env = modelReferenceEnv(doc, md);
+        return modelRenderDocument({ blocks: chunk }, md, {}) === md.renderer.render(md.parse(src, env), md.options, env);
+      };
+      let done = 0;
+      let refused = 0;
+      const wrong = [];
+      for (const file of ORACLE_FILES) {
+        const doc = parse(repoFile(file));
+        const trials = [];
+        // Paragraphs outside a list item: what the input layer wraps. One in an
+        // item takes the unwrap-or-switch path instead.
+        for (const leaf of leavesOf(doc).filter((b) => b.kind === "paragraph" && b.inlines && !modelItemAncestor(b))) {
+          for (const ordered of [false, true]) {
+            trials.push([`wrap #${leaf.id} ${ordered ? "ol" : "ul"}`, (d) => modelWrapList(d, [modelBlockById(d, leaf.id)], ordered, md)]);
+          }
+        }
+        for (const list of modelFlatten(doc).filter((b) => b.kind === "list")) {
+          trials.push([`switch #${list.id}`, (d) => {
+            const target = modelBlockById(d, list.id);
+            return modelSwitchList(d, target, !modelListOrdered(target), md) ? target : null;
+          }]);
+          for (const item of list.children.filter((child) => child.kind === "item")) {
+            trials.push([`unwrap #${item.id}`, (d) => {
+              const moved = modelUnwrapItems(d, modelBlockById(d, list.id), [modelBlockById(d, item.id)], md);
+              return moved && moved[0];
+            }]);
+          }
+        }
+        for (const [label, run] of trials) {
+          const copy = modelForkDocument(doc);
+          let touched = null;
+          try { touched = run(copy); } catch (error) { wrong.push(`${file} ${label} threw ${error.message}`); continue; }
+          if (!touched || !modelSettleLists(copy, touched, md)) { refused++; continue; }
+          done++;
+          if (!agrees(copy, touched)) wrong.push(`${file} ${label}`);
+        }
+      }
+      check(`every paragraph outside a list item in the oracle wrapped into each kind of list, every list switched and every item ` +
+        `unwrapped, ${done} times, renders as the parser reads it back` +
+        (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 5).join(" | ")}` : ""), wrong.length === 0);
+      check(`and the sweep measured something: ${refused} refused by the parser's own reading`, done > 800);
+    }
+
+    // ── Insert and Clear: slice 7's step 7 ───────────────────────────────────
+    {
+      // The model's rendering of the touched blocks, with the empty paragraphs
+      // it keeps for a caret left out, against the parser's reading of what it
+      // writes — the document's reference definitions included.
+      const agrees = (doc, block) => {
+        let top = block;
+        while (top.parent) top = top.parent;
+        const index = doc.blocks.indexOf(top);
+        const chunk = doc.blocks.slice(Math.max(0, index - 1), index + 2);
+        const src = modelSerialise({ prefix: "", blocks: chunk }, (b) => modelEmitLeaf(b, md, doc));
+        const env = modelReferenceEnv(doc, md);
+        const mine = modelRenderDocument({ blocks: chunk }, md, {}).replace(/<p><\/p>\n?/g, "");
+        return mine === md.renderer.render(md.parse(src, env), md.options, env);
+      };
+      let rules = 0;
+      let tocs = 0;
+      let refused = 0;
+      const wrong = [];
+      const toc = "- [One](#one)\n  - [Two](#two)\n";
+      for (const file of ORACLE_FILES) {
+        const doc = parse(repoFile(file));
+        for (const leaf of leavesOf(doc).filter((b) => b.kind === "paragraph" && b.inlines)) {
+          const length = modelInlineText(leaf.inlines).length;
+          for (const offset of [0, Math.floor(length / 2), length]) {
+            const copy = modelForkDocument(doc);
+            const made = modelInsertRule(copy, modelBlockById(copy, leaf.id), offset, md);
+            if (!made || !modelSettleShape(copy, made.rule, md)) { refused++; continue; }
+            rules++;
+            if (!agrees(copy, made.rule)) wrong.push(`${file} rule in #${leaf.id} at ${offset}`);
+          }
+        }
+        for (const top of doc.blocks.filter((b) => b.kind !== "gap")) {
+          const copy = modelForkDocument(doc);
+          const first = modelInsertAfter(copy, modelBlockById(copy, top.id), parse(toc).blocks);
+          if (!first || !modelSettleShape(copy, first, md)) { refused++; continue; }
+          tocs++;
+          if (!agrees(copy, first)) wrong.push(`${file} toc after #${top.id}`);
+        }
+      }
+      check(`a rule at the start, middle and end of every paragraph in the oracle, ${rules} times, and a table ` +
+        `of contents after every top-level block, ${tocs} times, render as the parser reads them back` +
+        (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 5).join(" | ")}` : ""), wrong.length === 0);
+      check(`and the sweep measured something: ${refused} refused by the parser's own reading`, rules > 1500 && tocs > 100);
+    }
+
+    const blockEdit = (src, f) => {
+      const doc = parse(src);
+      const result = f(doc, modelFlatten(doc).filter((b) => !b.children));
+      return { result, out: modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc)) };
+    };
+    check("a paragraph becomes a heading, its line breaks spaces",
+      blockEdit("Some text\nmore\n", (d, l) => modelSetHeading(d, l[0], 2, md)).out === "## Some text more\n");
+    check("an ATX heading keeps its closing run at a new level",
+      blockEdit("# Title #\n", (d, l) => modelSetHeading(d, l[0], 3, md)).out === "### Title #\n");
+    check("a setext heading keeps its underline between levels 1 and 2",
+      blockEdit("Title\n=====\n", (d, l) => modelSetHeading(d, l[0], 2, md)).out === "Title\n-----\n");
+    check("and becomes ATX at a level setext has not got",
+      blockEdit("Title\n=====\n", (d, l) => modelSetHeading(d, l[0], 4, md)).out === "#### Title\n");
+    check("a heading becomes a paragraph",
+      blockEdit("## Head\n\nnext\n", (d, l) => modelSetHeading(d, l[0], 0, md)).out === "Head\n\nnext\n");
+    check("a heading inside a list item is refused",
+      blockEdit("- item\n", (d, l) => modelSetHeading(d, l[0], 1, md)).result === false);
+    check("and one inside a quote is fine",
+      blockEdit("> quoted\n", (d, l) => modelSetHeading(d, l[0], 1, md)).out === "> # quoted\n");
+    check("whole blocks become one code block of their text, an equation as its source",
+      blockEdit("a **b**\n\nc $x$\n\nafter\n", (d, l) => modelMakeFence(d, [l[0], l[1]], md)).out ===
+        "```\na b\nc $x$\n```\n\nafter\n");
+    check("a bullet's paragraph becomes a code block nested in the bullet, marker and all",
+      blockEdit("- one\n- two\n", (d, l) => modelMakeFence(d, [l[0]], md)).out === "- ```\n  one\n  ```\n- two\n");
+    check("the fence is longer than any run inside the code",
+      blockEdit("```inside\n\n", (d, l) => modelMakeFence(d, [l[0]], md)).out.startsWith("````\n") ||
+      blockEdit("has ``` inside\n", (d, l) => modelMakeFence(d, [l[0]], md)).out === "```\nhas ``` inside\n```\n");
+    check("the fence takes the document's own fence character",
+      blockEdit("~~~\nx\n~~~\n\nnew para\n", (d, l) => modelMakeFence(d, [l[1]], md)).out === "~~~\nx\n~~~\n\n~~~\nnew para\n~~~\n");
+    check("two bullets are not one code block", blockEdit("- one\n- two\n", (d, l) => modelMakeFence(d, [l[0], l[1]], md)).result === null);
+    const listEdit = (src, f) => {
+      const doc = parse(src);
+      const all = modelFlatten(doc);
+      const result = f(doc, all.filter((b) => !b.children && b.kind !== "gap"), all.filter((b) => b.kind === "list"));
+      const settled = result ? modelSettleLists(doc, Array.isArray(result) ? result[0] : result.kind ? result : doc.blocks[0], md) : false;
+      return { result, settled, out: modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc)) };
+    };
+    check("paragraphs become one tight list with an item each",
+      listEdit("one\n\ntwo\n\nthree\n", (d, l) => modelWrapList(d, l.slice(0, 2), false, md)).out === "- one\n- two\n\nthree\n");
+    check("a numbered list is numbered from 1",
+      listEdit("one\n\ntwo\n", (d, l) => modelWrapList(d, l, true, md)).out === "1. one\n2. two\n");
+    check("a new list takes the bullet the document already uses, and joins one beside it",
+      listEdit("* x\n\none\n", (d, l) => modelWrapList(d, [l[1]], false, md)).out === "* x\n* one\n");
+    check("and a document with no list of that kind takes the fallback it is given",
+      listEdit("one\n", (d, l) => modelWrapList(d, l, false, md, { bullet: "+ " })).out === "+ one\n");
+    check("a list inside a quote keeps the quote's chain",
+      listEdit("> one\n>\n> two\n", (d, l) => modelWrapList(d, l, false, md)).out === "> - one\n> - two\n");
+    check("a paragraph inside an item becomes a nested list at the item's column",
+      listEdit("- item\n\n  para\n", (d, l) => modelWrapList(d, [l[1]], false, md)).out === "- item\n\n  - para\n");
+    check("a heading cannot go into a list",
+      listEdit("# H\n", (d, l) => modelWrapList(d, l, false, md)).result === null);
+    check("unwrapping the middle item splits the list around it",
+      listEdit("- a\n- b\n- c\n", (d, l, lists) => modelUnwrapItems(d, lists[0], [lists[0].children[1]], md)).out ===
+        "- a\n\nb\n\n- c\n");
+    check("unwrapping an item takes its fence out with it, lines and all",
+      listEdit("- a\n\n  ```\n  code\n  ```\n", (d, l, lists) => modelUnwrapItems(d, lists[0], lists[0].children.slice(), md)).out ===
+        "a\n\n```\ncode\n```\n");
+    check("unwrapping a nested item leaves its paragraph in the outer item, not run into it",
+      listEdit("- a\n  - b\n  - c\n", (d, l, lists) => modelUnwrapItems(d, lists[1], [lists[1].children[0]], md)).out ===
+        "- a\n\n  b\n\n  - c\n");
+    check("switching a list switches every one of its items, and leaves a nested list alone",
+      listEdit("- a\n- b\n  - nested\n", (d, l, lists) => modelSwitchList(d, lists[0], true, md) && lists[0]).out ===
+        "1. a\n2. b\n   - nested\n");
+    check("a switched list beside a list of its new kind joins it, and the numbers it joined stay as written",
+      listEdit("- a\n- b\n\n1. x\n1. y\n", (d, l, lists) => {
+        modelSwitchList(d, lists[0], true, md);
+        return modelJoinAdjacentList(d, lists[0], md, true);
+      }).out === "1. a\n1. b\n\n1. x\n1. y\n");
+    check("and a wider marker moves what is under it",
+      listEdit("- a\n\n  more\n- b\n", (d, l, lists) => modelSwitchList(d, lists[0], true, md) && lists[0]).out ===
+        "1. a\n\n   more\n2. b\n");
+    check("a rule at the caret splits the paragraph, trimmed at the cut, with a blank line above",
+      blockEdit("Alpha beta\n", (d, l) => modelInsertRule(d, l[0], 6, md)).out === "Alpha\n\n---\n\nbeta\n");
+    check("a rule is spelt the way the document already spells one",
+      blockEdit("***\n\nAlpha\n", (d, l) => modelInsertRule(d, l[1], 5, md)).out === "***\n\nAlpha\n\n***\n");
+    check("and a rule as the last block keeps a paragraph after it for the caret",
+      (() => { const d = parse("Alpha\n"); modelInsertRule(d, d.blocks[0], 5, md);
+        return d.blocks[d.blocks.length - 1].kind === "paragraph"; })());
+    check("a rule at the start of a bullet is refused, since it would empty the bullet",
+      (() => { const d = parse("- one\n- two\n"); const leaf = modelFlatten(d).find((b) => b.kind === "paragraph");
+        const made = modelInsertRule(d, leaf, 0, md); return !made || !modelSettleShape(d, made.rule, md); })());
+    check("but one in the middle of a bullet is fine",
+      (() => { const d = parse("- one two\n- three\n"); const leaf = modelFlatten(d).find((b) => b.kind === "paragraph");
+        const made = modelInsertRule(d, leaf, 4, md); return !!made && modelSettleShape(d, made.rule, md); })());
+    check("a table of contents goes in after the caret's top-level block",
+      blockEdit("# A\n\ntext\n", (d, l) => modelInsertAfter(d, l[0], parse("- [A](#a)\n").blocks)).out ===
+        "# A\n\n- [A](#a)\n\ntext\n");
+    check("and at the start when the caret is not in the document",
+      blockEdit("# A\n", (d) => modelInsertAfter(d, null, parse("- [A](#a)\n").blocks)).out === "- [A](#a)\n\n# A\n");
+    check("clearing leaves one empty paragraph and writes nothing",
+      (() => { const d = parse("# A\n\n| a |\n|---|\n| 1 |\n"); modelClearDocument(d, md);
+        return d.blocks.length === 1 && d.blocks[0].kind === "paragraph" &&
+          modelSerialise(d, (b) => modelEmitLeaf(b, md, d)) === ""; })());
+    check("a code block turns back into literal text, a paragraph per run of lines",
+      blockEdit("```\nline **one**\n\nline two\n```\n\nafter\n", (d, l) => modelUnfence(d, l[0], md)).out ===
+        "line \\*\\*one**\n\nline two\n\nafter\n");
+    check("the link a caret sits in is found", !!modelLinkAt(parse("a [b](u) c\n").blocks[0], 3, 3));
+    check("and none is found outside one", modelLinkAt(parse("a [b](u) c\n").blocks[0], 1, 1) === null);
+
+    // ── A block marker at a line's start ──
+    //
+    // modelEscapeLineStarts: an edited leaf whose content would start a block
+    // gets one backslash at the line the parser blames. Each case is a whole
+    // document, so the affixes are in the bytes, and each case that expects an
+    // escape was confirmed to fail with it disabled; the ones that expect none
+    // are controls against escaping too much. `edits` are [from, to, text],
+    // applied last first so earlier offsets hold.
+    const typed = (src, ...edits) => {
+      const doc = parse(src);
+      const block = modelFlatten(doc).find((b) => !b.children && b.inlines);
+      for (const [from, to, text] of edits.reverse()) modelInlineSplice(block, from, to, text);
+      return modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    };
+    check("unbolding `**0. Spike**` at an item's start escapes the ordered marker's dot",
+      marked("- **0. Spike** done\n", 0, 8, "strong", false) === "- 0\\. Spike done\n");
+    check("typing `1. foo` into a paragraph escapes the dot, not the digit",
+      typed("x\n", [0, 1, "1. foo"]) === "1\\. foo\n");
+    check("and the `)` spelling of an ordered marker escapes the `)`",
+      typed("x\n", [0, 1, "1) foo"]) === "1\\) foo\n");
+    check("an ATX heading marker is escaped", typed("x\n", [0, 1, "# h"]) === "\\# h\n");
+    check("a blockquote marker is escaped", typed("x\n", [0, 1, "> q"]) === "\\> q\n");
+    check("a `-` bullet is escaped", typed("x\n", [0, 1, "- a"]) === "\\- a\n");
+    check("a `+` bullet is escaped", typed("x\n", [0, 1, "+ a"]) === "\\+ a\n");
+    check("a `*` bullet is escaped", typed("x\n", [0, 1, "* a"]) === "\\* a\n");
+    check("a bare bullet marker with nothing after it is escaped", typed("x\n", [0, 1, "-"]) === "\\-\n");
+    check("a `---` rule is escaped", typed("x\n", [0, 1, "---"]) === "\\---\n");
+    check("a `***` rule is escaped", typed("x\n", [0, 1, "***"]) === "\\***\n");
+    check("a `___` rule is escaped", typed("x\n", [0, 1, "___"]) === "\\___\n");
+    check("a `===` setext underline on a continuation line is escaped",
+      typed("foo\nbar\n", [4, 7, "==="]) === "foo\n\\===\n");
+    check("and so is a `---` one, which would make a heading rather than a rule",
+      typed("foo\nbar\n", [4, 7, "---"]) === "foo\n\\---\n");
+    check("a backtick fence is escaped at its first backtick", typed("x\n", [0, 1, "```js"]) === "\\```js\n");
+    check("a tilde fence is escaped", typed("x\n", [0, 1, "~~~"]) === "\\~~~\n");
+    check("four spaces of indent left at the start are dropped, or the paragraph is code",
+      typed("a    code\n", [0, 1, ""]) === "code\n");
+    check("a bullet on a continuation line is escaped, which would otherwise interrupt the paragraph",
+      typed("foo\nbar\n", [4, 7, "- x"]) === "foo\n\\- x\n");
+    check("an ordered marker on a continuation line is escaped when it could interrupt",
+      typed("foo\nbar\n", [4, 7, "1. x"]) === "foo\n1\\. x\n");
+    check("and left alone when it could not — only `1.` interrupts a paragraph",
+      typed("foo\nbar\n", [4, 7, "2. x"]) === "foo\n2. x\n");
+    check("a table's delimiter row is escaped, since that is the line that makes it a table",
+      typed("a\nb\nc\n", [2, 3, "x | y"], [4, 5, "--|--"]) === "a\nx | y\n\\--|--\n");
+    check("a reference definition is escaped at its bracket",
+      typed("x\n", [0, 1, "[a]: /u"]) === "\\[a]: /u\n");
+    check("an HTML block start is left alone, because the parser is configured without HTML",
+      typed("x\n", [0, 1, "<div>"]) === "<div>\n");
+    check("a marker inside a quote is escaped after the chain",
+      typed("> q\n", [0, 1, "# h"]) === "> \\# h\n");
+    check("a marker opening an item's content is escaped after the item's own marker",
+      typed("- a\n", [0, 1, "- b"]) === "- \\- b\n");
+    check("a setext heading's content lines are judged as a paragraph's",
+      typed("Title\n=====\n", [0, 5, "- x"]) === "\\- x\n=====\n");
+    check("an ATX heading's content is not at a line's start and is left alone",
+      typed("# T\n", [0, 1, "- x"]) === "# - x\n");
+    // An edit clears the text node's `raw`, so the author's backslash is gone
+    // from what modelInlineSource writes and this function is what puts it back.
+    check("a marker the author escaped stays escaped once its line is edited, and only once",
+      typed("\\- a\n", [3, 3, "b"]) === "\\- ab\n");
+    check("a marker that is not at a line's start is left alone",
+      typed("x\n", [0, 1, "a - b # c"]) === "a - b # c\n");
+
+    // The two neighbours: a closing sequence the content wrote by accident, and
+    // a blank line two hard breaks wrote.
+    check("an ATX heading's content ending in ` #` escapes the run, or it is a closing sequence",
+      typed("# T\n", [1, 1, " #"]) === "# T \\#\n");
+    check("and a `#` the parser does not read as one is left alone",
+      typed("# C\n", [1, 1, "#"]) === "# C#\n");
+    check("and so is one a recorded closing sequence already shields",
+      typed("# T #\n", [1, 1, " #"]) === "# T # #\n");
+    const broken = (src, ...breaks) => {
+      const doc = parse(src);
+      const block = doc.blocks[0];
+      for (const [at, spelling] of breaks) modelInsertBreak(block, at, spelling);
+      return modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    };
+    check("two two-space hard breaks in a row respell the second as a backslash, or the line between is blank",
+      broken("ab\n", [1, "  "], [2, "  "]) === "a  \n\\\nb\n");
+    check("and so does one opening the paragraph, which is not an indent to drop",
+      broken("ab\n", [0, "  "]) === "\\\nab\n");
+    check("and two backslash breaks are left as they are",
+      broken("ab\n", [1, "\\"], [2, "\\"]) === "a\\\n\\\nb\n");
+  }
+
+  // ---- Stage 3, slice 1: the blockquote ---------------------------------
+  //
+  // Making and unmaking a quote is done as text and parsed again, so what is
+  // checked is the bytes it writes, that the parser reads them as the shape
+  // meant, and that the leaves keep their ids — which is what keeps a caret.
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const live = (doc) => modelFlatten(doc).filter((b) => !b.children && b.kind !== "gap");
+    const quoted = (block) => { for (let p = block.parent; p; p = p.parent) if (p.kind === "quote") return true; return false; };
+    // The toggle over leaves picked by index, then the bytes, the shape check
+    // and whether every picked leaf is still in the document by its id.
+    const toggle = (src, picks) => {
+      const doc = parse(src);
+      const leaves = live(doc);
+      const chosen = picks.map((i) => leaves[i]);
+      const made = modelToggleQuote(doc, chosen, md);
+      return {
+        out: made ? emitOf(doc) : null,
+        settled: !!made && modelSettleShape(doc, made.block, md),
+        kept: chosen.every((leaf) => modelBlockById(doc, leaf.id)),
+        doc,
+      };
+    };
+    const writes = (label, src, picks, want) => {
+      const r = toggle(src, picks);
+      check(`${label} (${JSON.stringify(r.out)})`, r.out === want && r.settled && r.kept);
+    };
+
+    writes("a paragraph is quoted", "a\n\nb\n", [0], "> a\n\nb\n");
+    writes("two paragraphs are one quote, with a quoted blank line between", "a\n\nb\n", [0, 1], "> a\n>\n> b\n");
+    writes("a quote is never nested: a selection reaching into one takes it in", "> a\n\nb\n", [0, 1], "> a\n>\n> b\n");
+    writes("a quote beside the run joins it", "> a\n\nb\n\n> c\n", [1], "> a\n>\n> b\n>\n> c\n");
+    writes("a quoted block comes out of the middle of a quote and splits it", "> a\n>\n> b\n>\n> c\n", [1], "> a\n\nb\n\n> c\n");
+    writes("a quote two deep loses one level", "> > deep\n", [0], "> deep\n");
+    writes("a lazy line comes out with its quote", "> lazy\nline\n", [0], "lazy\nline\n");
+    writes("inside a list item the quote is the item's own: `- > x`", "- x\n- y\n", [0], "- > x\n- y\n");
+    writes("across two items it is item by item, never around the list", "- x\n- y\n", [0, 1], "- > x\n- > y\n");
+    writes("an item's later block is quoted at the item's indent", "- x\n\n  y\n", [1], "- x\n\n  > y\n");
+    writes("and a blank line inside an item keeps the indent that keeps it there", "- x\n\n  y\n", [0, 1], "- > x\n  >\n  > y\n");
+    writes("a quote in an item comes out of it", "- > x\n- y\n", [0], "- x\n- y\n");
+    writes("a tab after the marker stays a tab", "-\tone\n\ttwo\n", [0], "-\t> one\n\t> two\n");
+    writes("a fence is quoted line by line, its blank line included", "```\ncode\n\nmore\n```\n", [0],
+      "> ```\n> code\n>\n> more\n> ```\n");
+    writes("a setext heading keeps its underline", "Title\n=====\n", [0], "> Title\n> =====\n");
+    writes("a whole list is quoted with the paragraph before it", "p\n\n- a\n- b\n", [0, 2], "> p\n>\n> - a\n> - b\n");
+
+    {
+      const r = toggle("| a | b |\n| - | - |\n| 1 | 2 |\n", [1]);
+      check("a table row refuses: a quote cannot go inside a table", r.out === null);
+    }
+    {
+      const r = toggle("See [x][r] here.\n\n[r]: https://e.com\n", [0]);
+      const html = modelRenderDocument(r.doc, md, {});
+      check("a reference link still resolves inside the quote it was moved into, since the parse is given the document's definitions",
+        r.out === "> See [x][r] here.\n\n[r]: https://e.com\n" && html.includes('href="https://e.com"'));
+    }
+    {
+      const doc = parse("- one\n- two\n  three\n");
+      const leaf = live(doc)[1];
+      modelInlineSplice(leaf, 0, 0, "X ");
+      modelToggleQuote(doc, [leaf], md);
+      check("an edited block is quoted with its edit", emitOf(doc) === "- one\n- > X two\n  > three\n");
+    }
+    {
+      const doc = parse("# H\n\n- a\n  b\n\n> q\n\nend\n");
+      const before = live(doc).map((leaf) => leaf.id);
+      modelToggleQuote(doc, [live(doc)[1]], md);
+      const after = new Set(live(doc).map((leaf) => leaf.id));
+      check("every leaf in the block that was parsed again keeps its id, and so does every leaf outside it",
+        before.every((id) => after.has(id)));
+    }
+
+    // Enter and Backspace: the empty-item rules' twins.
+    {
+      const doc = parse("> a\n>\n> b\n\nafter\n");
+      const at = modelInsertParagraph(doc, live(doc)[0], 1, md);
+      check("Enter in a quote writes nothing until something is typed — an empty paragraph in a quote used to write `>`",
+        emitOf(doc) === "> a\n>\n> b\n\nafter\n");
+      const left = modelQuoteKey(doc, at.block, md, false);
+      check("Enter on an empty paragraph in a quote leaves the quote, splitting it, with the caret in the same block",
+        !!left && left.block === at.block && left.offset === 0 && emitOf(doc) === "> a\n\n> b\n\nafter\n");
+      modelInlineSplice(left.block, 0, 0, "typed");
+      check("and what is typed there lands between the two quotes",
+        emitOf(doc) === "> a\n\ntyped\n\n> b\n\nafter\n" && modelSettleShape(doc, left.block, md));
+    }
+    {
+      const doc = parse("> a\n> more\n>\n> b\n");
+      const leaf = live(doc)[0];
+      check("Enter on a quoted paragraph with something in it is an ordinary Enter", modelQuoteKey(doc, leaf, md, false) === null);
+      check("Backspace at the start of a quote's second block is an ordinary Backspace",
+        modelQuoteKey(doc, live(doc)[1], md, true) === null);
+      const out = modelQuoteKey(doc, leaf, md, true);
+      check("Backspace at the start of a quote's first block takes it out, and the caret stays in it",
+        !!out && out.block.id === leaf.id && out.offset === 0 && emitOf(doc) === "a\nmore\n\n> b\n");
+    }
+    {
+      const doc = parse("a\n");
+      const at = modelInsertParagraph(doc, live(doc)[0], 1, md);
+      const id = at.block.id;
+      const made = modelToggleQuote(doc, [at.block], md);
+      const moved = modelBlockById(doc, id);
+      const empty = emitOf(doc);
+      if (moved) modelInlineSplice(moved, 0, 0, "quoted");
+      check("an empty paragraph can be quoted and typed into — it goes through the parse holding a placeholder",
+        !!made && !!moved && empty === "a\n" && emitOf(doc) === "a\n\n> quoted\n" && modelSettleShape(doc, moved, md));
+    }
+
+    // What the Format menu checks: the block formats the selection is in.
+    {
+      const doc = parse("## Head\n\n> - quoted bullet\n\n1. one\n   - nested\n\nplain\n");
+      const [head, bullet, one, nested, plain] = live(doc);
+      const at = (block) => ({ block, offset: 0 });
+      const over = (a, b) => ({ block: a, offset: 0, to: { block: b, offset: 1 } });
+      check("the menu checks Heading 2 in a level-two heading, and no other level",
+        modelBlockState(doc, at(head), "h2") === "all" && modelBlockState(doc, at(head), "h1") === "none");
+      check("and Blockquote and Bullet list for a bullet inside a quote",
+        modelBlockState(doc, at(bullet), "quote") === "all" && modelBlockState(doc, at(bullet), "ul") === "all" &&
+          modelBlockState(doc, at(bullet), "ol") === "none");
+      check("a bullet nested in a numbered item is a bullet: the innermost list is the one checked",
+        modelBlockState(doc, at(nested), "ul") === "all" && modelBlockState(doc, at(nested), "ol") === "none" &&
+          modelBlockState(doc, at(one), "ol") === "all");
+      check("a plain paragraph is in none of them",
+        ["h1", "h2", "ul", "ol", "quote"].every((f) => modelBlockState(doc, at(plain), f) === "none"));
+      check("a selection reaching from a quote into plain text is mixed",
+        modelBlockState(doc, over(bullet, one), "quote") === "mixed");
+    }
+
+    // D1 one step further out, over the whole oracle: every leaf outside a
+    // quote is quoted and then unquoted, and the file that comes back is the
+    // file that went in. That covers the untouched quotes in torture.md too,
+    // which are in the bytes compared.
+    {
+      let done = 0;
+      let rows = 0;
+      const wrong = [];
+      for (const file of ORACLE_FILES) {
+        const src = repoFile(file);
+        const count = live(parse(src)).length;
+        for (let i = 0; i < count; i++) {
+          const doc = parse(src);
+          const leaf = live(doc)[i];
+          if (quoted(leaf)) continue;
+          const made = modelToggleQuote(doc, [leaf], md);
+          if (!made) {
+            if (leaf.kind === "cell") rows++;
+            else wrong.push(`${file} #${leaf.id} refused`);
+            continue;
+          }
+          if (!modelSettleShape(doc, made.block, md)) { wrong.push(`${file} #${leaf.id} shape`); continue; }
+          const back = modelToggleQuote(doc, [modelBlockById(doc, leaf.id)], md);
+          if (!back || emitOf(doc) !== src) { wrong.push(`${file} #${leaf.id} not back`); continue; }
+          done++;
+        }
+      }
+      check(`every leaf outside a quote in the oracle, ${done} of them, quoted and unquoted again gives back its file byte for byte` +
+        (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 5).join(" | ")}` : ""), wrong.length === 0 && done > 800);
+      // A cell since stage 3's slice 4, where it was the row before: either
+      // way a block format inside a table is refused.
+      check(`and the only refusals were table cells, ${rows} of them`, rows > 0);
+    }
+
+    // And the other way round, on the quotes torture.md holds: out and back in
+    // again reads the same, though a lazy line comes back with its marker and a
+    // nested quote, being already quoted, loses a second level instead.
+    {
+      const src = repoFile("tests/fixtures/torture.md");
+      const env = () => ({});
+      const reads = (text) => md.render(text, env());
+      let same = 0;
+      let meaning = 0;
+      const wrong = [];
+      const count = live(parse(src)).length;
+      for (let i = 0; i < count; i++) {
+        const doc = parse(src);
+        const leaf = live(doc)[i];
+        if (!quoted(leaf) || !leaf.inlines) continue;
+        const quote = leaf.parent;
+        if (quote.kind !== "quote" || quoted(quote)) continue;
+        if (!modelToggleQuote(doc, [leaf], md)) { wrong.push(`#${leaf.id} out`); continue; }
+        if (!modelToggleQuote(doc, [modelBlockById(doc, leaf.id)], md)) { wrong.push(`#${leaf.id} in`); continue; }
+        const out = emitOf(doc);
+        if (out === src) same++;
+        else if (reads(out) === reads(src)) meaning++;
+        else wrong.push(`#${leaf.id} reads differently`);
+      }
+      check(`a block in one of torture.md's quotes taken out and put back reads as it did — ${same} byte for byte, ` +
+        `${meaning} with a lazy line given its marker` + (wrong.length ? `, but ${wrong.join(" | ")}` : ""),
+        wrong.length === 0 && same > 0);
+    }
+  }
+
+  // ---- Stage 3, slice 2: the image --------------------------------------
+  //
+  // An image is made by the parser and the block it lands in is judged by
+  // the parser, so what is checked is the bytes, the rendering, and that a
+  // refusal leaves the block alone.
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const image = (src, from, to, fields) => {
+      const doc = parse(src);
+      const block = doc.blocks[0];
+      const range = modelSetImage(block, from, to, fields, md, modelReferenceEnv(doc, md));
+      return { range, out: emitOf(doc), html: modelRenderDocument(doc, md, {}), doc };
+    };
+    const same = (r) => r.html === md.render(r.out, modelReferenceEnv(r.doc, md));
+
+    let r = image("Hello world\n", 5, 5, { src: "pic.png", alt: "A picture", title: "" });
+    check(`an image goes in at the caret, one character wide (${JSON.stringify(r.out)})`,
+      r.out === "Hello![A picture](pic.png) world\n" && r.range.from === 5 && r.range.to === 6 && same(r));
+    r = image("Hello world\n", 6, 11, { src: "a b.png", alt: "x", title: 'say "hi"' });
+    check(`over a selection it replaces it, with the address and the title escaped (${JSON.stringify(r.out)})`,
+      r.out === 'Hello ![x](a%20b.png "say \\"hi\\"")\n' && same(r));
+    r = image("**bold** text\n", 2, 2, { src: "p.png", alt: "x" });
+    check(`inside bold text it stays inside the bold (${JSON.stringify(r.out)})`,
+      r.out === "**bo![x](p.png)ld** text\n" && same(r));
+    r = image("Hello\n", 0, 0, { src: "p.png", alt: "two *stars* and [brackets]" });
+    check(`a description is escaped, so it is never read as markup (${JSON.stringify(r.out)})`,
+      r.out === "![two \\*stars* and [brackets]](p.png)Hello\n" && same(r));
+
+    r = image('A ![old](o.png "T") b\n', 2, 3, { src: "n.png", alt: "old", title: "T" });
+    check(`a selection that is exactly one image changes that image (${JSON.stringify(r.out)})`,
+      r.out === 'A ![old](n.png "T") b\n' && same(r));
+    r = image('A ![old](o.png "T") b\n', 2, 3, { src: "o.png", alt: "old", title: "T" });
+    check("and the same answer back is no change at all", r.range === null && r.out === 'A ![old](o.png "T") b\n');
+    r = image("A ![al *x*][l] b\n\n[l]: q.png\n", 2, 3, { src: "z.png", alt: "al x", title: "" });
+    check(`a changed reference image is written inline, and its definition stays (${JSON.stringify(r.out)})`,
+      r.out === "A ![al x](z.png) b\n\n[l]: q.png\n");
+
+    r = image("Hello\n", 0, 0, { src: "p.png", alt: "" });
+    check(`an image with no description is fine (${JSON.stringify(r.out)})`, r.out === "![](p.png)Hello\n" && same(r));
+    r = image("Hello\n", 0, 0, { src: "", alt: "x" });
+    check("an image with no address is refused", r.range === null && r.out === "Hello\n");
+    r = image("Hello\n", 0, 0, { src: "javascript:alert(1)", alt: "x" });
+    check("and so is one the parser will not make, and the block is left alone",
+      r.range === null && r.out === "Hello\n");
+
+    {
+      const doc = parse('A ![two *x*](p.png "T") b\n');
+      const block = doc.blocks[0];
+      const at = modelImageAt(block, 2, 3);
+      const fields = at && modelImageFields(at.node);
+      check("an image is found only by a selection exactly its one character",
+        !!at && modelImageAt(block, 2, 2) === null && modelImageAt(block, 1, 3) === null);
+      check(`and its fields are what a reader gets: the description flattened (${JSON.stringify(fields)})`,
+        !!fields && fields.src === "p.png" && fields.alt === "two x" && fields.title === "T");
+    }
+
+    // Over the oracle: an image in the middle of every inline-bearing leaf
+    // renders exactly as the parser reads what it wrote.
+    let done = 0;
+    const wrong = [];
+    for (const file of ORACLE_FILES) {
+      const src = repoFile(file);
+      const doc = parse(src);
+      for (const leaf of leavesOf(doc).filter((b) => b.inlines)) {
+        const copy = modelForkDocument(doc);
+        const block = modelBlockById(copy, leaf.id);
+        const middle = Math.floor(modelInlineText(block.inlines).length / 2);
+        const made = modelSetImage(block, middle, middle, { src: "pic.png", alt: "x" }, md, modelReferenceEnv(copy, md));
+        if (!made) continue;
+        const out = emitOf(copy);
+        const env = modelReferenceEnv(copy, md);
+        if (modelRenderDocument(copy, md, {}).replace(/<p><\/p>\n?/g, "") !== md.renderer.render(md.parse(out, env), md.options, env)) {
+          wrong.push(`${file} #${leaf.id}`);
+        }
+        done++;
+      }
+    }
+    check(`an image put into the middle of each of ${done} leaves in the oracle renders as its file reads back` +
+      (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 5).join(" | ")}` : ""), wrong.length === 0 && done > 800);
+  }
+
+  // ── Stage 3's slice 3: the table formatter ────────────────────────────────
+  //
+  // Every table in the oracle, laid out again from the parser's own cells in
+  // the convention its lines keep to, comes back byte for byte. The cells are
+  // markdown-it's — its inline content, which has un-escaped `\|`, escaped
+  // again the way app.js's tableCellContent does — never this file's own
+  // splitting, so the sniff and the formatter cannot mark each other's homework.
+  // A table that keeps to no convention cannot pass and is not meant to; it is
+  // named in the label rather than excused.
+  {
+    const conforming = [];
+    const kinds = new Set();
+    const loose = [];
+    const wrong = [];
+    for (const file of ORACLE_FILES) {
+      const src = repoFile(file);
+      const lines = src.split("\n");
+      const tokens = md.parse(src, {});
+      for (let i = 0; i < tokens.length; i++) {
+        if (tokens[i].type !== "table_open") continue;
+        const [start, end] = tokens[i].map;
+        const where = `${file}:${start + 1}`;
+        // Its indent and a quote's `>` chain are where the table sits, not
+        // how it is written, so they come off before either half looks.
+        const own = lines.slice(start, end).map((line) => line.replace(/^(\s*>)+ ?/, "").trim());
+        const rows = [];
+        const aligns = [];
+        for (i++; tokens[i].type !== "table_close"; i++) {
+          const t = tokens[i];
+          if (t.type === "tr_open") rows.push([]);
+          if (t.type === "th_open") {
+            const style = t.attrGet("style") || "";
+            aligns.push((style.match(/text-align:(left|right|center)/) || [])[1] || "");
+          }
+          if (t.type === "inline") rows[rows.length - 1].push(t.content.replace(/\|/g, "\\|"));
+        }
+        const convention = sniffTableConvention(own);
+        if (!convention) {
+          loose.push(where);
+          continue;
+        }
+        if (formatMarkdownTable(rows, aligns, convention) !== own.join("\n")) wrong.push(where);
+        conforming.push(where);
+        if (!convention.pad) kinds.add("compact");
+        if (convention.aligned) kinds.add("aligned");
+        if (!convention.lead) kinds.add("pipeless");
+        if (convention.pad && !convention.aligned && convention.lead) kinds.add("one-space");
+      }
+    }
+    check(`each of the ${conforming.length} tables in the oracle that keeps to a convention comes back byte for byte` +
+      ` from the parser's cells (${loose.length} keep to none: ${loose.join(", ") || "none"})` +
+      (wrong.length ? `, but ${wrong.length} did not: ${wrong.join(", ")}` : ""),
+      wrong.length === 0 && conforming.length >= 6);
+    // Not vacuous: a check that only ever met one-space tables would pass a
+    // formatter that knew nothing else.
+    check(`and between them they keep to all four kinds of convention (${[...kinds].sort().join(", ")})`,
+      ["aligned", "compact", "one-space", "pipeless"].every((kind) => kinds.has(kind)));
+    // torture.md's first table is hand-padded on purpose, so its being read as
+    // keeping to nothing is the sniff refusing to guess, which is the point.
+    check("and torture.md's hand-padded table is the one that keeps to none",
+      loose.length === 1 && loose[0].startsWith("tests/fixtures/torture.md:"));
+  }
+
+  // ── Stage 3's slice 4: cells ──────────────────────────────────────────────
+  //
+  // Every cell in the oracle, edited one at a time with the real emitter: a
+  // letter typed on its end. Three things have to hold for each, and the
+  // second is D1 one table further out:
+  //   - the file outside the table comes back byte for byte;
+  //   - the table re-parses to exactly the edit, every other cell as it was;
+  //   - where the edit widened no column, only the edited row's line changes,
+  //     which is the row-where-it-can rule measured rather than assumed.
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const SENT = "\u2603TABLE\u2603";
+    const tablesOf = (doc) => modelFlatten(doc).filter((b) => b.kind === "table");
+    const cellsOf = (table) => modelFlatten({ blocks: [table] }).filter((b) => b.kind === "cell");
+    const parsedCells = (src) =>
+      md.parse(src, {}).filter((t, i, all) => t.type === "inline" && /^t[hd]_open$/.test(all[i - 1].type)).map((t) => t.content);
+    let edited = 0;
+    let oneLine = 0;
+    const wrong = [];
+    for (const file of ORACLE_FILES) {
+      const src = repoFile(file);
+      const doc = parse(src);
+      tablesOf(doc).forEach((table, t) => {
+        cellsOf(table).forEach((cell, c) => {
+          const copy = modelForkDocument(doc);
+          const there = cellsOf(tablesOf(copy)[t])[c];
+          const before = modelInlineText(there.inlines);
+          if (modelInlineSplice(there, before.length, before.length, "x") === null) {
+            wrong.push(`${file} table ${t} cell ${c} refused`);
+            return;
+          }
+          // Where the table sits, by the sentinel: the stub writes it for the
+          // one block it is handed, which is the table.
+          const marked = modelSerialise(copy, () => SENT);
+          const at = marked.indexOf(SENT);
+          const head = marked.slice(0, at);
+          const tail = marked.slice(at + SENT.length);
+          const out = emitOf(copy);
+          const where = `${file} table ${t} cell ${c}`;
+          if (!out.startsWith(head) || !out.endsWith(tail)) return wrong.push(`${where}: bytes outside the table moved`);
+          const was = table.source.split("\n");
+          const now = out.slice(head.length, out.length - tail.length).split("\n");
+          // What the edited cell should read back as is its own tree's source:
+          // typed at the end of a cell ending in a code span, the letter goes
+          // inside the span, which is the caret's boundary rule and right.
+          const want = parsedCells(table.source.split("\n").map((line) => line.replace(/^(\s*>)+ ?/, "").trim()).join("\n"));
+          want[c] = modelInlineSource(there.inlines, md, () => true).replace(/\\\|/g, "|").trim();
+          // Parsed with each line's prefix off: a table indented under an item
+          // is an indented code block on its own.
+          const bare = (lines) => lines.map((line) => line.replace(/^(\s*>)+ ?/, "").trim()).join("\n");
+          const got = parsedCells(bare(now));
+          if (got.join("\u0000") !== want.join("\u0000")) return wrong.push(`${where}: reads back as ${JSON.stringify(got[c])}`);
+          const changed = was.filter((line, i) => line !== now[i]).length;
+          const widened = table.tableConvention && table.tableConvention.aligned;
+          if (now.length !== was.length || (!widened && changed !== 1)) return wrong.push(`${where}: ${changed} lines changed`);
+          if (changed === 1) oneLine++;
+          edited++;
+        });
+      });
+    }
+    check(`every cell in the oracle, ${edited} of them, edited alone leaves the file outside its table untouched` +
+      ` and reads back as the edit, with only its own row's line changed in ${oneLine}` +
+      (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 4).join(" | ")}` : ""),
+      wrong.length === 0 && edited > 100);
+  }
+
+  // The same, by hand, for the decisions the sweep cannot see one at a time.
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const cellsOf = (doc) => modelFlatten(doc).filter((b) => b.kind === "cell");
+    const edit = (src, index, text) => {
+      const doc = parse(src);
+      const cell = cellsOf(doc)[index];
+      const end = modelInlineText(cell.inlines).length;
+      modelInlineSplice(cell, end, end, text);
+      return emitOf(doc);
+    };
+    check("a one-space table rewrites only the edited row when a cell grows",
+      edit("| a | b |\n| --- | --- |\n| 1 | 2 |\n", 2, "234") === "| a | b |\n| --- | --- |\n| 1234 | 2 |\n");
+    check("a padded table re-pads the whole column when a cell outgrows it",
+      edit("| a   | b   |\n| --- | --- |\n| 1   | 2   |\n", 2, "234") ===
+        "| a    | b   |\n| ---- | --- |\n| 1234 | 2   |\n");
+    check("a pipe typed into a cell is escaped, so it stays in the cell",
+      edit("|a|b|\n|-|-|\n|1|2|\n", 2, " | 3") === "|a|b|\n|-|-|\n|1 \\| 3|2|\n");
+    check("a table in a quote keeps its `>` on every line",
+      edit("> |a|b|\n> |-|-|\n> |1|2|\n", 3, "0") === "> |a|b|\n> |-|-|\n> |1|20|\n");
+    check("a table in a list item keeps the item's indent",
+      edit("- item\n\n  |a|b|\n  |-|-|\n  |1|2|\n", 2, "0") === "- item\n\n  |a|b|\n  |-|-|\n  |10|2|\n");
+    check("a hand-padded table keeps its other lines and writes the edited row in the default",
+      edit("| a |  b |\n| --- | --- |\n|c| d |\n", 2, "x") === "| a |  b |\n| --- | --- |\n| cx | d |\n");
+    check("a header cell is edited like any other",
+      edit("|a|b|\n|-|-|\n|1|2|\n", 0, "z") === "|az|b|\n|-|-|\n|1|2|\n");
+    const cells = cellsOf(parse("| a | b |\n| :-- | --: |\n| 1 | |\n"));
+    check("a cell records its alignment and whether it is a header",
+      cells[0].header && cells[1].align === "right" && !cells[2].header && cells[2].align === "left");
+    check("and an empty cell is a cell with an empty tree", cells[3].inlines.length === 0);
+
+    // Found by the review before slice 4's commit. markdown-it takes one
+    // backslash off before every pipe in a row, code and maths included, so a
+    // cell's source has to put one back before every pipe — and `\\|` in an
+    // equation was being treated as already escaped and lost its bars.
+    check("an equation's norm bars and a code span's pipe survive their table being rewritten",
+      edit("|$\\\\|x\\\\|$|`a\\|b`|\n|-|-|\n|1|2|\n", 2, "0") === "|$\\\\|x\\\\|$|`a\\|b`|\n|-|-|\n|10|2|\n");
+    // markdown-it pads a short row and drops a long row's extra cells, so the
+    // model holds neither, and laying the table out from its cells changed
+    // untouched rows.
+    check("a short row and a long row stay as written when another row is edited",
+      edit("|a|b|\n|-|-|\n|1|2|3|\n|4|\n", 0, "z") === "| az | b |\n|-|-|\n|1|2|3|\n|4|\n");
+    check("and an edited long row keeps its extra cell",
+      edit("|a|b|\n|-|-|\n|1|2|3|\n", 2, "0") === "|a|b|\n|-|-|\n| 10 | 2 | 3 |\n");
+    check("a table opening a quote inside a list item keeps both markers",
+      edit("- > |a|b|\n  > |-|-|\n  > |1|2|\n", 0, "z") === "- > |az|b|\n  > |-|-|\n  > |1|2|\n");
+    check("and one opening a list inside a list item keeps both of those",
+      edit("- - |a|b|\n    |-|-|\n    |1|2|\n", 0, "z") === "- - |az|b|\n    |-|-|\n    |1|2|\n");
+
+    // Paste into a cell, settled 2026-10-31: one line of inline content.
+    const flat = (markdown) => {
+      const doc = parse("|a|b|\n|-|-|\n|1|2|\n");
+      const blocks = modelCellBlocks(doc, md, parse(markdown).blocks);
+      return blocks.length === 1 && blocks[0].kind === "paragraph" ? modelInlineSource(blocks[0].inlines, md, () => true) : null;
+    };
+    check("pasted blocks become their inline content on one line, marks and links kept",
+      flat("# Title\n\nSome **bold** and a [link](u).\n\n- one\n- two\n") === "Title Some **bold** and a [link](u). one two");
+    check("a line break becomes a space, in both its spellings",
+      flat("a  \nb\\\nc\nd\n") === "a b c d");
+    // Escaped as little as stops it reading as markup: one backslash is enough.
+    check("a code block's text comes through as plain text",
+      flat("```\nx *y*\n```\n") === "x \\*y*");
+    check("and a line that would read as a block start stays a paragraph",
+      flat("1\\. not a list\n") === "1\\. not a list");
+    // And all the way through: the flattened paste lands in the cell, and the
+    // table is written back with it on its own line.
+    {
+      const doc = parse("|a|b|\n|-|-|\n|1|2|\n");
+      const cell = modelFlatten(doc).filter((b) => b.kind === "cell")[2];
+      const landed = modelInsertBlocks(doc, cell, 1, modelCellBlocks(doc, md, parse("**x**\n\ny\n").blocks));
+      check("a flattened paste lands inside the cell, and the table stays one line a row",
+        !!landed && modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc)) === "|a|b|\n|-|-|\n|1**x** y|2|\n");
+    }
+  }
+
+  // ── Stage 3's slice 5: table structure ────────────────────────────────────
+  //
+  // Rows, columns, alignment, deleting a table, and Insert → Table. Every
+  // command ends by parsing what it would write, so what is asserted here is
+  // the bytes it writes and what stays untouched around them.
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const cellsOf = (doc) => modelFlatten(doc).filter((b) => b.kind === "cell");
+    const run = (src, command) => {
+      const doc = parse(src);
+      const result = command(doc, cellsOf(doc));
+      return { doc, result, out: emitOf(doc) };
+    };
+    const SRC = "| a | b |\n| :-- | --: |\n| 1 | 2 |\n";
+
+    check("a row goes in below the caret's, aligned like the columns beside it",
+      run(SRC, (d, c) => modelTableInsertRow(d, c[2], true, md)).out === "| a | b |\n| :-- | --: |\n| 1 | 2 |\n| | |\n");
+    {
+      const { doc } = run(SRC, (d, c) => modelTableInsertRow(d, c[2], true, md));
+      const fresh = modelTableRows(modelFlatten(doc).find((b) => b.kind === "table"))[2].children;
+      check("and draws aligned too, since the alignment is on its cells' tokens",
+        fresh[0].align === "left" && /text-align:left/.test(fresh[0].tokens[0].attrGet("style")) &&
+          fresh[1].align === "right");
+    }
+    check("a row above puts it in front of the caret's",
+      run(SRC, (d, c) => modelTableInsertRow(d, c[2], false, md)).out === "| a | b |\n| :-- | --: |\n| | |\n| 1 | 2 |\n");
+    check("below the header it is the first body row",
+      run(SRC, (d, c) => modelTableInsertRow(d, c[0], true, md)).out === "| a | b |\n| :-- | --: |\n| | |\n| 1 | 2 |\n");
+    check("in a table with no body it makes the body",
+      run("| a | b |\n| --- | --- |\n", (d, c) => modelTableInsertRow(d, c[0], true, md)).out === "| a | b |\n| --- | --- |\n| | |\n");
+    {
+      const above = run(SRC, (d, c) => modelTableInsertRow(d, c[0], false, md));
+      check("nothing goes above the header, and the table is untouched by the asking",
+        !!above.result.refused && above.out === SRC);
+      const header = run(SRC, (d, c) => modelTableDeleteRow(d, c[0], md));
+      check("and the header row cannot be deleted", !!header.result.refused && header.out === SRC);
+    }
+    check("deleting a row takes it, and the last body row leaves a header-only table",
+      run(SRC, (d, c) => modelTableDeleteRow(d, c[2], md)).out === "| a | b |\n| :-- | --: |\n");
+    {
+      const { result } = run("|a|b|\n|-|-|\n|1|2|\n|3|4|\n", (d, c) => modelTableDeleteRow(d, c[2], md));
+      check("and the caret lands in the same column of the row that takes its place",
+        result.at.block.parent.children.indexOf(result.at.block) === 0 &&
+          modelInlineText(result.at.block.inlines) === "3");
+    }
+    check("a column goes in to the left or to the right, empty and unaligned",
+      run(SRC, (d, c) => modelTableInsertColumn(d, c[0], true, md)).out ===
+        "| a | | b |\n| :-- | --- | --: |\n| 1 | | 2 |\n" &&
+      run(SRC, (d, c) => modelTableInsertColumn(d, c[0], false, md)).out ===
+        "| | a | b |\n| --- | :-- | --: |\n| | 1 | 2 |\n");
+    check("deleting a column takes its cell from every row, alignment with it",
+      run(SRC, (d, c) => modelTableDeleteColumn(d, c[0], md)).out === "| b |\n| --: |\n| 2 |\n");
+    {
+      const { out, result } = run("before\n\n|a|\n|-|\n|1|\n\nafter\n", (d, c) => modelTableDeleteColumn(d, c[0], md));
+      check("the last column going takes the table, and an empty paragraph keeps its place",
+        out === "before\n\nafter\n" && result.at.block.kind === "paragraph" && result.at.block.inlines.length === 0);
+    }
+    check("deleting a table that is an item's only child leaves the item holding an empty paragraph",
+      (() => {
+        const doc = parse("- |a|b|\n  |-|-|\n  |1|2|\n- next\n");
+        modelTableDelete(doc, modelFlatten(doc).find((b) => b.kind === "table"), md);
+        return emitOf(doc) === "-\n- next\n" && modelFlatten(doc).filter((b) => b.kind === "item").length === 2;
+      })());
+    check("deleting the table does the same",
+      run("before\n\n|a|b|\n|-|-|\n|1|2|\n\nafter\n", (d, c) => modelTableDelete(d, d.blocks[1], md)).out === "before\n\nafter\n");
+    check("an alignment is set on the column, header and body",
+      run("|a|b|\n|-|-|\n|1|2|\n", (d, c) => modelTableAlign(d, c[1], "center", md)).out === "|a|b|\n|-|:-:|\n|1|2|\n");
+    check("and chosen again, it is taken off",
+      run(SRC, (d, c) => modelTableAlign(d, c[0], "left", md)).out === "| a | b |\n| --- | --: |\n| 1 | 2 |\n");
+    check("alignment is reported by the column's header cell, from any cell in it",
+      (() => { const d = parse(SRC); const c = cellsOf(d); return modelTableAlignment(c[2]) === "left" && modelTableAlignment(c[3]) === "right"; })());
+
+    check("a table padded to width is re-padded when a row or a column arrives",
+      run("| a   | b   |\n| --- | --- |\n| 1   | 2   |\n", (d, c) => modelTableInsertRow(d, c[2], true, md)).out ===
+        "| a   | b   |\n| --- | --- |\n| 1   | 2   |\n|     |     |\n" &&
+      run("| a   | b   |\n| --- | --- |\n| 1   | 2   |\n", (d, c) => modelTableInsertColumn(d, c[1], true, md)).out ===
+        "| a   | b   |     |\n| --- | --- | --- |\n| 1   | 2   |     |\n");
+    check("a hand-padded table, which keeps to no convention, is written whole in the default",
+      run("| a |  b |\n| --- | --- |\n|c| d |\n", (d, c) => modelTableInsertRow(d, c[2], true, md)).out ===
+        "| a | b |\n| --- | --- |\n| c | d |\n| | |\n");
+    check("and one edited in a cell afterwards is still written whole",
+      (() => {
+        const { doc } = run("| a |  b |\n| --- | --- |\n|c| d |\n", (d, c) => modelTableInsertRow(d, c[2], true, md));
+        const cell = cellsOf(doc)[0];
+        modelInlineSplice(cell, 1, 1, "x");
+        return emitOf(doc) === "| ax | b |\n| --- | --- |\n| c | d |\n| | |\n";
+      })());
+
+    // A row longer than its header has cells nobody was shown. Writing the table
+    // from the model would drop them from the file.
+    {
+      const long = "|a|b|\n|-|-|\n|1|2|3|\n";
+      for (const [name, command] of [
+        ["a row", (d, c) => modelTableInsertRow(d, c[2], true, md)],
+        ["a column", (d, c) => modelTableInsertColumn(d, c[0], true, md)],
+        ["a deletion", (d, c) => modelTableDeleteRow(d, c[2], md)],
+        ["an alignment", (d, c) => modelTableAlign(d, c[0], "left", md)],
+      ]) {
+        const { result, out } = run(long, command);
+        check(`${name} is refused in a table with a row longer than its header, and the file keeps its cell`,
+          !!result.refused && out === long);
+      }
+      check("while a short row is padded, which is only an improvement",
+        run("|a|b|\n|-|-|\n|1|\n", (d, c) => modelTableInsertColumn(d, c[0], true, md)).out ===
+          "| a | | b |\n| --- | --- | --- |\n| 1 | | |\n");
+    }
+
+    // Prefixes: a table in a quote or an item keeps its chain through a
+    // structural edit, and one put there takes the chain of where it landed.
+    check("a table in a quote keeps its `>` on every line when a row is added",
+      run("> |a|b|\n> |-|-|\n> |1|2|\n", (d, c) => modelTableInsertRow(d, c[2], true, md)).out ===
+        "> |a|b|\n> |-|-|\n> |1|2|\n> |||\n");
+    check("and in an item, the item's indent",
+      run("- item\n\n  |a|b|\n  |-|-|\n  |1|2|\n", (d, c) => modelTableInsertColumn(d, c[0], true, md)).out ===
+        "- item\n\n  |a||b|\n  |-|-|-|\n  |1||2|\n");
+    check("a table that opens its item keeps the marker on the first line",
+      run("- |a|b|\n  |-|-|\n  |1|2|\n", (d, c) => modelTableInsertRow(d, c[2], true, md)).out ===
+        "- |a|b|\n  |-|-|\n  |1|2|\n  |||\n");
+    check("a table pasted into a quote is written with the quote's `>`, which its recorded prefixes were not",
+      (() => {
+        const doc = parse("> before\n");
+        const block = modelFlatten(doc).find((b) => b.kind === "paragraph");
+        modelInsertBlocks(doc, block, 6, parse("|a|b|\n|-|-|\n|1|2|\n").blocks);
+        return emitOf(doc).split("\n").filter((line) => line.includes("|")).every((line) => line.startsWith(">"));
+      })());
+
+    // Insert → Table.
+    const insert = (src, offsetIn, which = -1) => {
+      const doc = parse(src);
+      modelEnsureBlock(doc, md);
+      const leaves = modelFlatten(doc).filter((b) => !b.children && b.inlines);
+      const leaf = leaves[which < 0 ? leaves.length + which : which];
+      const made = modelInsertTable(doc, leaf, offsetIn, md);
+      return { doc, made, out: emitOf(doc) };
+    };
+    check("Insert → Table in an empty document makes three columns, a header and two body rows",
+      insert("", 0).out === "| | | |\n| --- | --- | --- |\n| | | |\n| | | |");
+    {
+      const { made, doc } = insert("", 0);
+      check("with the caret in the first header cell, and a paragraph after it for the caret to leave by",
+        made.at.block === modelTableRows(made.table)[0].children[0] && made.at.offset === 0 &&
+          doc.blocks[doc.blocks.length - 1].kind === "paragraph");
+    }
+    check("at the end of a paragraph it goes after it with a blank line between",
+      insert("text\n", 4).out === "text\n\n| | | |\n| --- | --- | --- |\n| | | |\n| | | |\n");
+    check("in the middle it splits the paragraph, as a rule does",
+      insert("text here\n", 4).out === "text\n\n| | | |\n| --- | --- | --- |\n| | | |\n| | | |\n\nhere\n");
+    check("it takes an empty paragraph's place rather than leaving one either side",
+      (() => {
+        const doc = parse("one\n\ntwo\n");
+        const leaf = modelFlatten(doc).filter((b) => b.kind === "paragraph")[0];
+        modelInsertParagraph(doc, leaf, 3, md);
+        const empty = modelFlatten(doc).filter((b) => b.kind === "paragraph")[1];
+        modelInsertTable(doc, empty, 0, md);
+        return doc.blocks.length === 3 && doc.blocks[1].kind === "table" && emitOf(doc).startsWith("one\n\n| | | |");
+      })());
+    check("it is written the way the document's other tables are",
+      insert("| a   | b   |\n| --- | --- |\n| 1   | 2   |\n\ntext\n", 4).out.endsWith(
+        "text\n\n|     |     |     |\n| --- | --- | --- |\n|     |     |     |\n|     |     |     |\n"));
+    check("in a quote it is quoted, and in an item it is indented",
+      insert("> text\n", 4).out === "> text\n>\n> | | | |\n> | --- | --- | --- |\n> | | | |\n> | | | |\n" &&
+      insert("- item\n\n  more\n", 6).out.endsWith("  more\n\n  | | | |\n  | --- | --- | --- |\n  | | | |\n  | | | |\n"));
+    check("and is refused in a cell or in a block with no text",
+      (() => {
+        const doc = parse(SRC);
+        return modelInsertTable(doc, cellsOf(doc)[0], 0, md) === null;
+      })() && insert("```\ncode\n```\n", 0, 0).made === null);
+
+    // Reading order, for Tab and Enter.
+    {
+      const doc = parse("|a|b|\n|-|-|\n|1|2|\n");
+      const c = cellsOf(doc);
+      check("Tab's neighbour is the next cell in reading order, across rows, and null off either end",
+        modelTableCellBeside(c[1], 1) === c[2] && modelTableCellBeside(c[2], -1) === c[1] &&
+          modelTableCellBeside(c[3], 1) === null && modelTableCellBeside(c[0], -1) === null);
+      check("and Enter's is the cell below in the same column",
+        modelTableCellBelow(c[1]) === c[3] && modelTableCellBelow(c[3]) === null);
+    }
+
+    // Undo needs nothing but the barriers: a command run on a fork leaves the
+    // document it was forked from as it was, and a state forked before one still
+    // reads as it did after.
+    {
+      const doc = parse(SRC);
+      const state = modelForkDocument(doc);
+      modelTableInsertRow(doc, cellsOf(doc)[2], true, md);
+      modelTableAlign(doc, cellsOf(doc)[1], "center", md);
+      modelTableInsertColumn(doc, cellsOf(doc)[0], true, md);
+      check("a state taken before the commands still reads as it did",
+        emitOf(state) === SRC && emitOf(doc) !== SRC);
+      const fork = modelForkDocument(doc);
+      modelTableDeleteRow(fork, cellsOf(fork)[3], md);
+      check("and a command run on a fork leaves the document alone",
+        emitOf(doc).includes("| 1 |") && !emitOf(fork).includes("| 1 |"));
+    }
+  }
+
+  // Four of the commands on every table in the oracle: the file outside the
+  // table comes back untouched, and the grid is the one the command says. A
+  // command may refuse only a table with a row longer than its header, and the
+  // oracle holds none, so none is refused. (The alignment command's grid is the
+  // unchanged one, so its output is checked by the hand-written cases above.)
+  {
+    const emitOf = (doc) => modelSerialise(doc, (b) => modelEmitLeaf(b, md, doc));
+    const SENT = "☃TABLE☃";
+    const tablesOf = (doc) => modelFlatten(doc).filter((b) => b.kind === "table");
+    const gridOf = (table) => modelTableRows(table).map((row) => row.children.map((cell) => modelInlineText(cell.inlines)));
+    const commands = {
+      "row below": (d, cell) => modelTableInsertRow(d, cell, true, md),
+      "column right": (d, cell) => modelTableInsertColumn(d, cell, true, md),
+      "column left": (d, cell) => modelTableInsertColumn(d, cell, false, md),
+      "alignment": (d, cell) => modelTableAlign(d, cell, "center", md),
+    };
+    let done = 0;
+    let refused = 0;
+    const wrong = [];
+    for (const file of ORACLE_FILES) {
+      const doc = parse(repoFile(file));
+      tablesOf(doc).forEach((table, t) => {
+        const ragged = !!table.tableCells && table.tableCells.some((cells, i) => i !== 1 && cells.length > table.tableCells[0].length);
+        for (const [name, command] of Object.entries(commands)) {
+          const copy = modelForkDocument(doc);
+          const there = tablesOf(copy)[t];
+          const before = gridOf(there);
+          const cell = there.children.flatMap((s) => (s.children || [])).flatMap((r) => r.children || [])[0];
+          const where = `${file} table ${t} ${name}`;
+          const result = command(copy, cell);
+          if (result.refused) {
+            if (ragged) refused++;
+            else wrong.push(`${where}: refused unexpectedly (${result.refused})`);
+            continue;
+          }
+          const marked = modelSerialise(copy, () => SENT);
+          const at = marked.indexOf(SENT);
+          const head = marked.slice(0, at);
+          const tail = marked.slice(at + SENT.length);
+          const out = emitOf(copy);
+          if (!out.startsWith(head) || !out.endsWith(tail)) {
+            wrong.push(`${where}: bytes outside the table moved`);
+            continue;
+          }
+          const after = gridOf(tablesOf(copy)[t]);
+          const want = before.map((row) => row.slice());
+          if (name === "row below") want.splice(1, 0, row0(before));
+          if (name === "column right") want.forEach((row) => row.splice(1, 0, ""));
+          if (name === "column left") want.forEach((row) => row.unshift(""));
+          if (JSON.stringify(after) !== JSON.stringify(want)) wrong.push(`${where}: grid is ${JSON.stringify(after)}`);
+          done++;
+        }
+      });
+      function row0(grid) { return grid[0].map(() => ""); }
+    }
+    check(`every structural command on every table in the oracle, ${done} runs, leaves the file outside the table untouched` +
+      ` and builds the grid it says` + (wrong.length ? `, but ${wrong.length} did not: ${wrong.slice(0, 4).join(" | ")}` : ""),
+      wrong.length === 0 && done > 40);
+    check("and none was refused, since no table in the oracle has a row longer than its header", refused === 0);
+  }
+
+  // ── Stage 4's slice 1: the model writes the file ──────────────────────────
+  //
+  // `modelDocumentMarkdown` is what Save, Save As, Download and Copy markdown
+  // call under the model core. Most of what it does is proved above, block by
+  // block; what is here is the entry point itself, and the one case that is
+  // the reason this slice exists: a file the old save path loses data from.
+  {
+    let same = 0;
+    for (const path of ORACLE_FILES) {
+      const src = repoFile(path);
+      if (modelDocumentMarkdown(parse(src), md, 0) === src && modelDocumentMarkdown(parse(src), md, 40) === src) same++;
+    }
+    check(`modelDocumentMarkdown hands every unedited oracle file back byte-identical, ${same} of ${ORACLE_FILES.length}, ` +
+      "at no wrap width and at a narrow one", same === ORACLE_FILES.length);
+
+    // A table row longer than its header. The extra cell is never rendered, so
+    // the DOM never holds it and Turndown cannot write it back: the old save
+    // path dropped it from the file, measured in stage 3's hand pass. The model
+    // never asked the DOM, so an edit beside it leaves the row as written.
+    const long = "Intro text.\n\n| a | b |\n| --- | --- |\n| 1 | 2 | 3 |\n";
+    const doc = parse(long);
+    modelInlineSplice(doc.blocks[0], 0, 5, "Opening");
+    const out = modelDocumentMarkdown(doc, md);
+    check("an edit beside a table row longer than its header keeps the extra cell in the file",
+      out === "Opening text.\n\n| a | b |\n| --- | --- |\n| 1 | 2 | 3 |\n");
+
+    // The width is handed to the emitter: an edited paragraph is re-wrapped at
+    // it, and with 0 it is not.
+    const wrapped = parse("Short.\n");
+    modelInlineSplice(wrapped.blocks[0], 0, 6, "one two three four five six seven eight nine ten eleven twelve.");
+    const at30 = modelDocumentMarkdown(wrapped, md, 30);
+    check("an edited paragraph is re-wrapped at the width it is handed",
+      at30.split("\n").filter(Boolean).length > 1 && at30.split("\n").every((line) => line.length <= 30));
+    check("and a width of 0 leaves it on one line",
+      modelDocumentMarkdown(wrapped, md, 0).split("\n").filter(Boolean).length === 1);
+
+    // A blank document — New, or everything deleted — is an empty file, not a
+    // file holding the filler paragraph the caret needs.
+    const blank = parse("");
+    modelEnsureBlock(blank, md);
+    check("a blank document saves as an empty file", modelDocumentMarkdown(blank, md) === "");
+  }
 }

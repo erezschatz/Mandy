@@ -1,0 +1,2133 @@
+// The input layer. TODO 3.1, stage 2, slice 3 — docs/REWRITE.md is the design.
+//
+// This is the part of the rewrite with no counterpart in the repo and the only
+// part that can blow the estimate. Everything under it is data-structure work
+// of a kind this codebase already does well; this is the part where the
+// browser has opinions.
+//
+// **The whole idea is one line of it.** `beforeinput` fires on the editable
+// root *before* the engine mutates anything, with an `inputType` saying what it
+// is about to do — so the handler cancels every one of them, handled or not,
+// and the DOM can then only change through `modelRender`. That is D4's
+// treatment reversed: contenteditable is an input method whose intentions are
+// intercepted, rather than a data structure whose mutations are cleaned up
+// afterwards. Stage 0's spike asked exactly one question — will an engine
+// announce what it is about to do and let us do it instead — and Blink, Gecko
+// and WebKit all answered yes on 2026-09-10.
+//
+// Its own file rather than more of model.js, because it is an event layer
+// rather than the model, and because slices 4 and 5 grow it: structure edits,
+// then paste. model.js stays the thing a suite can drive with no browser.
+//
+// It installs itself on `#editor` at load, wherever there is one: since stage
+// 4's slice 4 the model is the only core. input-check.html has no `#editor` of
+// the app's and installs it on its own root.
+
+// What this slice handles. Everything else is still cancelled — see the
+// handler — so an unhandled type is a keystroke that does nothing rather than
+// one the browser gets to act on behind the model's back.
+//
+// The four delete-word and delete-content types are one implementation: the
+// engine has already worked out *what* it means to delete and says so in
+// `getTargetRanges()`, so the difference between a character and a word is the
+// browser's business and none of ours. That is the same reason the spike gave
+// for reading deletions off the target ranges rather than computing them: "a
+// deletion whose target range spans two blocks is a merge" then falls out
+// instead of being special-cased.
+const MODEL_INPUT_TEXT_TYPES = new Set([
+  "insertText",
+  "insertReplacementText",
+]);
+
+const MODEL_INPUT_DELETE_TYPES = new Set([
+  "deleteContentBackward",
+  "deleteContentForward",
+  "deleteWordBackward",
+  "deleteWordForward",
+  "deleteByCut",
+  "deleteContent",
+]);
+
+// From compositionstart to compositionend the engine owns one text node and
+// nothing may re-render, which is the guard that matters: a render during
+// composition takes the node the IME is holding out from under it, and that is
+// how CJK input breaks outright rather than subtly.
+let modelComposingBlock = null;
+
+function modelInputComposing() {
+  return modelComposingBlock !== null;
+}
+
+/**
+ * The span an event is about, in model coordinates, or null.
+ *
+ * `getTargetRanges()` first, because it is the engine saying what it intends
+ * rather than us guessing from the selection — for a collapsed caret and
+ * Backspace it is the character about to go, which we would otherwise have to
+ * work out ourselves and would get wrong at a mark boundary. The selection is
+ * the fallback for the types that carry no target range.
+ *
+ * **Both ends are named even when they are in different blocks**, which is
+ * slice 4's change to this function. Slice 3 returned null there and called it
+ * a merge it could not do; the merge is now `modelInputDelete`'s, and "a
+ * deletion whose target range spans two blocks is a merge" falls out of the
+ * engine's own answer rather than being worked out from a keystroke — which is
+ * what the spike said it would.
+ */
+function modelInputSpan(event, doc) {
+  let range = null;
+  const targets = typeof event.getTargetRanges === "function" ? event.getTargetRanges() : [];
+  if (targets && targets.length) {
+    range = targets[0];
+  } else {
+    const live = window.getSelection();
+    if (!live || !live.rangeCount) return null;
+    range = live.getRangeAt(0);
+  }
+
+  // **Outward at both ends only when there are two ends.** A selection covering
+  // an equation hands over a range whose end a browser has normalised to inside
+  // the `<span data-math>`, and clamping that inward would collapse the range
+  // and leave the equation standing. But a *collapsed* caret inside the same
+  // span is one position, and biasing its two ends apart turns it into a range
+  // covering the whole atom — so a keystroke replaces the equation instead of
+  // inserting beside it. Measured in Gecko on 2026-09-20, which puts the caret
+  // in there where Blink does not: typing `d` inside `$x = a*b*c$` reported
+  // `12–13` and ate the equation.
+  //
+  // So a collapsed range stays collapsed, at the atom's front edge, which is
+  // also where `modelDomLocate` would have put the caret. The result is a
+  // character inserted before the equation rather than one that destroys it.
+  const collapsed = range.collapsed === true ||
+    (range.startContainer === range.endContainer && range.startOffset === range.endOffset);
+  const from = modelDomBlockAt(editor, doc, range.startContainer, range.startOffset, -1);
+  const to = collapsed
+    ? from
+    : modelDomBlockAt(editor, doc, range.endContainer, range.endOffset, 1);
+  if (!from || !to) return null;
+  return { from, to, collapsed: collapsed || (from.block === to.block && from.offset === to.offset) };
+}
+
+// The same span, when both ends land in one block. Kept because most of this
+// file only ever wants that, and a caller reading `{ block, from, to }` says so.
+function modelInputRange(event, doc) {
+  const span = modelInputSpan(event, doc);
+  if (!span || span.from.block !== span.to.block) return null;
+  return {
+    block: span.from.block,
+    from: Math.min(span.from.offset, span.to.offset),
+    to: Math.max(span.from.offset, span.to.offset),
+  };
+}
+
+/**
+ * Show what an edit did, and tell the app about it.
+ *
+ * The order is the design's: change the model, then render from it, and the
+ * render applies the selection the edit asked for. Nothing holds a `Range`
+ * across that, because every node the old one pointed at has just been thrown
+ * away.
+ */
+function modelInputShow(doc, block, at, inputType) {
+  if (!modelRerenderBlock(editor, block, md, at)) {
+    // The block owns no element and neither does anything above it, which is
+    // the shape an html_block with two roots gets to. Falling back to the whole
+    // document is heavy and correct; silently doing nothing is neither.
+    modelRender(editor, doc, md, at);
+  }
+  modelInputAnnounce(inputType);
+  return true;
+}
+
+/**
+ * Show a **structural** edit, which is the whole document.
+ *
+ * A re-render of one block cannot express a block that was added or taken away,
+ * so this rebuilds `#editor`. Named rather than hidden: slice 1 measured a full
+ * render at 16.8ms on a 2,399-line document of 1,325 blocks, which is three
+ * times the size of anything in this repo, so an Enter there costs about a
+ * frame. The obvious optimisation — re-render the nearest container that owns
+ * an element, and only fall back to the document at top level — is available
+ * and is not taken, because a structural edit is rare next to a keystroke and a
+ * second render path is a second thing that can be subtly wrong about the
+ * block-to-element map.
+ */
+function modelInputRestructure(doc, at, inputType) {
+  modelEnsureBlock(doc, md);
+  modelRender(editor, doc, md, at);
+  modelInputAnnounce(inputType);
+  return true;
+}
+
+/**
+ * An empty item has no block to type into until something types into it.
+ *
+ * 1b records one as a childless leaf holding its own marker, so the caret is
+ * inside a block with no inline tree and every edit below would refuse. This is
+ * the one place a read turns into a write before the edit it was asked for.
+ */
+function modelInputRetarget(doc, span) {
+  const block = span.from.block;
+  if (!span.collapsed || block.kind !== "item" || block.children || block.inlines) return span;
+  const paragraph = modelFillItem(doc, block, md);
+  if (!paragraph) return span;
+  const at = { block: paragraph, offset: 0 };
+  return { from: at, to: at, collapsed: true };
+}
+
+/**
+ * Delete a span, without showing it. Hands back the position it collapsed to.
+ *
+ * One block is a splice — into the inline tree, or into the block's own source
+ * when it is a fence or an indented code block, which is slice 4's second text
+ * space. Two blocks is a **merge**: what is left of the first, what is left of
+ * the last, and every block strictly between them taken out — with the
+ * containers each removal emptied taken out too, which is `modelPruneBlock`'s
+ * job and the part that stops an empty `<ul>` being left behind.
+ *
+ * **A merge needs two blocks with a common text space.** A paragraph and a
+ * fence have none, so this refuses rather than approximating — the same refusal
+ * slice 3 made in the same place, now with one case fewer behind it.
+ */
+function modelInputDelete(doc, span) {
+  const from = span.from;
+  const to = span.to;
+
+  if (from.block === to.block) {
+    const start = Math.min(from.offset, to.offset);
+    const end = Math.max(from.offset, to.offset);
+    const offset = modelBearsSource(from.block)
+      ? modelSourceSplice(from.block, start, end, "", md)
+      : modelInlineSplice(from.block, start, end, "");
+    return offset === null ? null : { block: from.block, offset, structural: false };
+  }
+
+  // **Across cells, a deletion empties and never merges** (stage 3's slice 4,
+  // settled 2026-10-31): what it covers goes out of each cell and the grid
+  // stays. Between a cell and anything outside its table it is refused, which
+  // is also what Backspace at a cell's start is, since its range reaches into
+  // the cell before — and that has no text to lose, so it changes nothing.
+  if (from.block.kind === "cell" || to.block.kind === "cell") {
+    const table = (block) => {
+      let node = block;
+      while (node && node.kind !== "table") node = node.parent;
+      return node;
+    };
+    if (from.block.kind !== "cell" || to.block.kind !== "cell" || table(from.block) !== table(to.block)) return null;
+    const cells = modelFlatten({ blocks: [table(from.block)] }).filter((block) => block.kind === "cell");
+    const first = cells.indexOf(from.block);
+    const last = cells.indexOf(to.block);
+    if (first < 0 || last < first) return null;
+    const cuts = [];
+    for (let i = first; i <= last; i++) {
+      const cell = cells[i];
+      const start = i === first ? from.offset : 0;
+      const end = i === last ? to.offset : modelInlineText(cell.inlines).length;
+      if (end > start) cuts.push({ id: cell.id, start, end });
+    }
+    // On a fork first, so a cell that refuses its part leaves no other cell
+    // already cut.
+    const trial = modelForkDocument(doc);
+    if (cuts.some((cut) => modelInlineSplice(modelBlockById(trial, cut.id), cut.start, cut.end, "") === null)) return null;
+    for (const cut of cuts) modelInlineSplice(modelBlockById(doc, cut.id), cut.start, cut.end, "");
+    const covered = cuts.length > 0;
+    // Covering nothing — Backspace at a cell's start — leaves the caret where
+    // it was rather than moving it into the cell before.
+    return covered ? { block: from.block, offset: from.offset, structural: true } : null;
+  }
+
+  if (!from.block.inlines || !to.block.inlines) return null;
+  const flat = modelFlatten(doc).filter((block) => !block.children && block.kind !== "gap");
+  const first = flat.indexOf(from.block);
+  const last = flat.indexOf(to.block);
+  if (first < 0 || last < 0 || last < first) return null;
+
+  if (modelInlineSplice(from.block, from.offset, Number.MAX_SAFE_INTEGER, "") === null) return null;
+  if (modelInlineSplice(to.block, 0, to.offset, "") === null) return null;
+  for (const between of flat.slice(first + 1, last)) modelPruneBlock(doc, between);
+  const offset = modelMergeBlocks(doc, from.block, to.block);
+  return offset === null ? null : { block: from.block, offset, structural: true };
+}
+
+/**
+ * Text typed, or a deletion. One block or two.
+ *
+ * A deletion spanning two blocks is a merge and changes the shape of the
+ * document, so it is shown as a restructure; anything inside one block is the
+ * block. **Text across two blocks is refused**: replacing a multi-block
+ * selection with typed characters is a paste in everything but name, and paste
+ * is slice 5's.
+ */
+function modelInputWrite(doc, span, text, inputType = "") {
+  if (!span) return false;
+  const target = modelInputRetarget(doc, span);
+
+  if (text) {
+    if (target.from.block !== target.to.block) return false;
+    const block = target.from.block;
+    const start = Math.min(target.from.offset, target.to.offset);
+    const end = Math.max(target.from.offset, target.to.offset);
+    const revise = modelInputRevises(block, start, end);
+    // What the text being replaced was marked with, read before it goes.
+    const inherit = modelBearsSource(block) ? null : modelInputMarksOf(block, start, end);
+    const offset = modelBearsSource(block)
+      ? modelSourceSplice(block, start, end, text, md)
+      : modelInlineSplice(block, start, end, text);
+    if (offset === null) return false;
+    if (!modelBearsSource(block)) modelInputMarkTyped(doc, block, start, end, offset, text, inherit);
+    // After the splice, so the join is spent on this edit's own announcement
+    // and cannot be left standing for some later one if the splice refused.
+    if (revise && typeof undoJoin === "function") undoJoin();
+    // A rewrite extends the run it joined rather than starting a new one.
+    modelPendingTyped = { block, from: revise ? modelLastTyped.from : start, to: offset };
+    modelMathNext = { doc, id: block.id, at: offset };
+    modelInputShow(doc, block, { block, offset }, "insertText");
+    modelInputSettleMath(false);
+    return true;
+  }
+
+  if (modelInputRevealMath(doc, target, inputType)) return true;
+  const landed = modelInputDelete(doc, target);
+  if (!landed) return false;
+  const at = { block: landed.block, offset: landed.offset };
+  if (landed.structural) return modelInputRestructure(doc, at, "deleteContentBackward");
+  modelMathNext = { doc, id: landed.block.id, at: landed.offset };
+  modelInputShow(doc, landed.block, at, "deleteContentBackward");
+  modelInputSettleMath(false);
+  return true;
+}
+
+// ── Marks ────────────────────────────────────────────────────────────────────
+//
+// Slice 7's step 3: bold, italic and strikethrough under the model core. The
+// command itself is `modelToggleMark` in model.js; this is when it runs and
+// what the editor shows afterwards.
+
+const MODEL_MARK_INPUT_TYPES = { strong: "formatBold", em: "formatItalic", strike: "formatStrikeThrough" };
+const MODEL_INPUT_FORMATS = { formatBold: "strong", formatItalic: "em", formatStrikeThrough: "strike" };
+
+// The spelling a document with none of a mark yet should take: the sniffed
+// style app.js keeps, feature-tested because front/input-check.html ships no
+// app.js. Strikethrough has only one spelling, so it never asks.
+function modelInputMarkFallback(kind) {
+  if (typeof markdownStyle !== "object" || !markdownStyle) return undefined;
+  if (kind === "strong") return markdownStyle.strongDelimiter;
+  if (kind === "em") return markdownStyle.emDelimiter;
+  return undefined;
+}
+
+/**
+ * The marks waiting for the next character typed at a bare caret: `{ doc,
+ * block, offset, marks }`, where `marks` maps a kind to whether that text
+ * should carry it. Ctrl+B, type, Ctrl+B gives bold text, which is what all
+ * three engines do natively and so what people already have — decided
+ * 2026-09-28. It is consumed by the next text typed there, and dropped by
+ * anything that moves the caret.
+ */
+let modelPendingMarks = null;
+
+// Whether a mark kind is on at a caret: the marks the next character typed
+// there would carry, which is `modelInlineAt`'s boundary rule — a position
+// belongs to the node that ends there.
+function modelInputCaretHas(block, offset, kind) {
+  if (!block.inlines) return false;
+  return modelInlineAt(block.inlines, offset).path.some((node) => node.kind === kind);
+}
+
+/**
+ * Bold, italic or strikethrough, from the format bar or the Format menu.
+ *
+ * A selection is toggled and stays selected, since marks take no room in the
+ * offset space. A bare caret sets the pending mark instead, or clears one that
+ * is already set. Either way it is one undo step, announced as the
+ * `inputType` the engine itself would use.
+ */
+function modelInputFormat(kind) {
+  const doc = modelCurrentDocument();
+  if (!doc || !MODEL_MARK_KINDS.has(kind)) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+
+  if (!at.to) {
+    const same = modelPendingMarks && modelPendingMarks.doc === doc &&
+      modelPendingMarks.block === at.block && modelPendingMarks.offset === at.offset;
+    const marks = same ? modelPendingMarks.marks : new Map();
+    const now = marks.has(kind) ? marks.get(kind) : modelInputCaretHas(at.block, at.offset, kind);
+    if (marks.has(kind)) marks.delete(kind);
+    else marks.set(kind, !now);
+    modelPendingMarks = marks.size ? { doc, block: at.block, offset: at.offset, marks } : null;
+    return true;
+  }
+
+  const changed = modelToggleMark(doc, at, kind, md, modelInputMarkFallback(kind));
+  if (!changed.length) return true;
+  modelPendingMarks = null;
+  const inputType = MODEL_MARK_INPUT_TYPES[kind];
+  if (changed.length === 1) return modelInputShow(doc, changed[0], at, inputType);
+  modelRender(editor, doc, md, at);
+  modelInputAnnounce(inputType);
+  return true;
+}
+
+// The state the Format menu shows for a mark kind: the model's answer, with a
+// pending mark at the caret taking precedence, since it is the one thing the
+// screen cannot show.
+function modelInputMarkState(kind) {
+  const doc = modelCurrentDocument();
+  if (!doc) return "none";
+  const at = modelReadSelection(editor, doc);
+  if (!at) return "none";
+  const pending = modelPendingMarks;
+  if (!at.to && pending && pending.doc === doc && pending.block === at.block &&
+      pending.offset === at.offset && pending.marks.has(kind)) {
+    return pending.marks.get(kind) ? "all" : "none";
+  }
+  return modelMarkState(doc, at, kind);
+}
+
+/**
+ * Code from the format bar or the Format menu: one control, and the selection
+ * decides which of markdown's two code constructs it means, as in the old core.
+ * A range inside one block becomes a code span, and one inside a code span
+ * turns back into text — slice 7's step 4. A whole block, several whole blocks
+ * side by side, or a bare caret outside a code span become one fenced code
+ * block, and a caret in a code block turns it back into text — step 5.
+ */
+function modelInputCode() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  const to = at.to || at;
+  const refuse = () => {
+    if (typeof notify === "function") notify("Select inside a single block to format it as code.", { severity: "info" });
+    return true;
+  };
+
+  // In a cell Code is always a code span, since a cell cannot hold a fence: a
+  // caret or the whole cell spans the cell's whole content, and a selection
+  // across cells is refused like any block format there.
+  if (at.block.kind === "cell" || to.block.kind === "cell") {
+    if (to.block !== at.block) return modelInputCellRefusal(doc, at);
+    const cell = at.block;
+    let from = Math.min(at.offset, to.offset);
+    let end = Math.max(at.offset, to.offset);
+    if (from === end) {
+      from = 0;
+      end = modelInlineText(cell.inlines).length;
+    }
+    if (from === end) return true;
+    const range = modelToggleCode(cell, from, end, md, modelReferenceEnv(doc, md));
+    if (!range) return true;
+    modelPendingMarks = null;
+    return modelInputShow(doc, cell, { block: cell, offset: range.from, to: { block: cell, offset: range.to } }, "formatCode");
+  }
+
+  // A caret or selection in a code block turns it back into text.
+  if (to.block === at.block && (at.block.kind === "fence" || at.block.kind === "code")) {
+    const made = modelUnfence(doc, at.block, md);
+    if (!made) return true;
+    return modelInputBlockShown(doc, { block: made[0], offset: 0 });
+  }
+
+  // Several blocks become one code block, when the selection covers them whole
+  // and they sit side by side. Two bullets are two items, so they do not.
+  if (to.block !== at.block) {
+    const ranges = modelSelectedRanges(doc, at);
+    const first = ranges[0];
+    const last = ranges[ranges.length - 1];
+    if (!first || first.from !== 0 || last.to !== modelBlockText(last.block).length) return refuse();
+    const fence = modelMakeFence(doc, ranges.map((range) => range.block), md);
+    if (!fence) return refuse();
+    return modelInputBlockShown(doc, { block: fence, offset: 0 });
+  }
+
+  const block = at.block;
+  const from = Math.min(at.offset, to.offset);
+  const end = Math.max(at.offset, to.offset);
+  if (!block.inlines) return true;
+  const length = modelInlineText(block.inlines).length;
+  const inSpan = modelInlineLeafSpans(block.inlines).some((span) => span.node.kind === "code-span" &&
+    span.start <= from && end <= span.end && (from < end || from > span.start));
+  // A bare caret outside a code span, or the whole block, is the code block —
+  // slice 7's step 5, and the old core's reading of the same selection.
+  if (!inSpan && (from === end || (from === 0 && end === length))) {
+    const fence = modelMakeFence(doc, [block], md);
+    if (!fence) return refuse();
+    return modelInputBlockShown(doc, { block: fence, offset: 0 });
+  }
+  const range = modelToggleCode(block, from, end, md, modelReferenceEnv(doc, md));
+  if (!range) return true;
+  modelPendingMarks = null;
+  return modelInputShow(doc, block, { block, offset: range.from, to: { block, offset: range.to } }, "formatCode");
+}
+
+// The block formats are refused in a table cell, with a notice, the way a
+// heading is in a list item: a GFM cell holds one line of inline content, and
+// a paragraph, a heading, a list, a quote, a code block, a rule or a table of
+// contents is none of that. Stage 3's slice 4.
+function modelInputCellRefusal(doc, at) {
+  const to = at.to || at;
+  const touches = at.block.kind === "cell" || to.block.kind === "cell" ||
+    modelSelectedRanges(doc, at).some((range) => range.block.kind === "cell");
+  if (!touches) return false;
+  if (typeof notify === "function") {
+    notify("A table cell holds one line of text, so that cannot go in one.", { severity: "info" });
+  }
+  return true;
+}
+
+// A change to what kind a block is, shown: the whole document re-rendered,
+// since an element's tag has changed, and one undo step.
+function modelInputBlockShown(doc, at) {
+  modelPendingMarks = null;
+  modelEnsureBlock(doc, md);
+  modelRender(editor, doc, md, at);
+  modelInputAnnounce("formatBlock");
+  return true;
+}
+
+// The sniffed style a list falls back to when the document has none of that
+// type yet: app.js keeps it, and front/input-check.html ships no app.js.
+function modelInputListFallback() {
+  if (typeof markdownStyle !== "object" || !markdownStyle) return {};
+  return {
+    bullet: (markdownStyle.bulletListMarker || "-") + " ".repeat(markdownStyle.bulletPad || 1),
+    delimiter: markdownStyle.orderedDelimiter || ".",
+  };
+}
+
+/**
+ * Bullet list and Numbered list under the model core, slice 7's step 6.
+ *
+ * What it does is read off the selection. Leaves all inside items of one list
+ * **unwrap** those items when the list is already that type, and **switch the
+ * whole list** when it is not — markdown cannot mix the two in one list, so
+ * converting only the selected items would write three lists where the user
+ * saw one. Sibling paragraphs are **wrapped** into a new list. Anything else is
+ * refused with a notice.
+ *
+ * **It runs on a fork first.** Whether a list is tight or loose, and whether
+ * two lists merge, is the parser's decision, so `modelSettleLists` asks it; an
+ * operation the parser would read as a different shape is refused before the
+ * live document is touched.
+ */
+function modelInputList(ordered) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  if (modelInputCellRefusal(doc, at)) return true;
+  const leaves = modelSelectedRanges(doc, at).map((range) => range.block).filter((block) => block.kind !== "gap");
+  if (!leaves.length) return true;
+  const fallback = modelInputListFallback();
+  const refuse = () => {
+    if (typeof notify === "function") {
+      notify("Select paragraphs, or items of one list, to make a list.", { severity: "info" });
+    }
+    return true;
+  };
+
+  const items = leaves.map((leaf) => modelItemAncestor(leaf));
+  const list = items[0] && items[0].parent;
+  let run;
+  if (items.every((item) => item && item.parent === list)) {
+    const chosen = [...new Set(items)];
+    run = (d) => {
+      const target = modelBlockById(d, list.id);
+      if (modelListOrdered(target) === ordered) {
+        const moved = modelUnwrapItems(d, target, chosen.map((item) => modelBlockById(d, item.id)), md);
+        return moved && moved[0];
+      }
+      // A switched list beside a list of its new kind is one list to the
+      // parser, so it joins it, the way a new list does.
+      return modelSwitchList(d, target, ordered, md, fallback) ? modelJoinAdjacentList(d, target, md, true) : null;
+    };
+  } else if (leaves.every((leaf) => leaf.kind === "paragraph")) {
+    run = (d) => modelWrapList(d, leaves.map((leaf) => modelBlockById(d, leaf.id)), ordered, md, fallback);
+  } else {
+    return refuse();
+  }
+
+  const trial = modelForkDocument(doc);
+  const tried = run(trial);
+  if (!tried || !modelSettleLists(trial, tried, md)) return refuse();
+  const done = run(doc);
+  if (!done || !modelSettleLists(doc, done, md)) return refuse();
+  modelPendingMarks = null;
+  modelEnsureBlock(doc, md);
+  modelRender(editor, doc, md, at);
+  modelInputAnnounce(ordered ? "insertOrderedList" : "insertUnorderedList");
+  return true;
+}
+
+/**
+ * Format → Blockquote under the model core, stage 3's slice 1: a toggle over
+ * the leaves the selection touches — `modelToggleQuote` says which way, and
+ * what goes into the quote. On a fork first, through the shape check, the
+ * way the lists are. The leaves keep their ids through the parse that makes
+ * or unmakes a quote, so the selection is carried across by id.
+ */
+function modelInputQuote() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  if (modelInputCellRefusal(doc, at)) return true;
+  const ids = modelSelectedRanges(doc, at).map((range) => range.block.id);
+  const run = (d) => modelToggleQuote(d, ids.map((id) => modelBlockById(d, id)).filter(Boolean), md);
+  const trial = modelForkDocument(doc);
+  const tried = run(trial);
+  if (!tried || !modelSettleShape(trial, tried.block, md)) {
+    if (typeof notify === "function") notify("A blockquote cannot go there.", { severity: "info" });
+    return true;
+  }
+  const done = run(doc);
+  if (!done || !modelSettleShape(doc, done.block, md)) return true;
+  modelPendingMarks = null;
+  modelEnsureBlock(doc, md);
+  modelRender(editor, doc, md, modelResolveSelection(doc, modelRecordSelection(at)));
+  modelInputAnnounce("formatBlock");
+  return true;
+}
+
+/**
+ * Enter on an empty paragraph in a quote, and Backspace at the start of a
+ * quote's first block: both take the block out of the quote — see
+ * `modelQuoteKey`. Asked after the empty-item rules and before the generic
+ * edit, on a fork first, and false when neither applies so the key does what
+ * it does anywhere else.
+ */
+function modelInputQuoteKey(doc, backspace) {
+  const at = modelReadSelection(editor, doc);
+  if (!at || (at.to && (at.to.block !== at.block || at.to.offset !== at.offset))) return false;
+  // A quote holding a table is not left by a key pressed in a cell.
+  if (at.block.kind === "cell") return false;
+  if (backspace && at.offset !== 0) return false;
+  const trial = modelForkDocument(doc);
+  const tried = modelQuoteKey(trial, modelBlockById(trial, at.block.id), md, backspace);
+  if (!tried || !modelSettleShape(trial, tried.block, md)) return false;
+  const landed = modelQuoteKey(doc, at.block, md, backspace);
+  if (!landed || !modelSettleShape(doc, landed.block, md)) return false;
+  return modelInputRestructure(doc, landed, backspace ? "deleteContentBackward" : "insertParagraph");
+}
+
+// ── Insert and Clear ─────────────────────────────────────────────────────────
+//
+// Slice 7's step 7. Each structural insertion runs on a fork first and asks
+// the parser through the same shape check the lists use, so what would read
+// as something else — a rule under a line of text is a setext underline — is
+// refused before the live document is touched. `run(doc)` does the edit on
+// the document it is given and hands back `{ block, at }`: a block to check
+// around, and where the caret goes.
+function modelInputGuarded(run, inputType) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const trial = modelForkDocument(doc);
+  const tried = run(trial);
+  if (!tried || !modelSettleShape(trial, tried.block, md)) return false;
+  const done = run(doc);
+  if (!done || !modelSettleShape(doc, done.block, md)) return false;
+  modelPendingMarks = null;
+  modelEnsureBlock(doc, md);
+  modelRender(editor, doc, md, done.at);
+  modelInputAnnounce(inputType);
+  return true;
+}
+
+/**
+ * Insert → Horizontal rule: a rule at the caret, splitting the block there. A
+ * selection is not replaced — the rule goes in at its start — because the
+ * deletion that would take the selection out has to happen on the fork as
+ * well, and a rule over a selection is rare enough not to earn that.
+ */
+function modelInputRule() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at || !at.block.inlines) return true;
+  if (modelInputCellRefusal(doc, at)) return true;
+  const fallback = typeof markdownStyle === "object" && markdownStyle ? markdownStyle.hr : undefined;
+  const ok = modelInputGuarded((d) => {
+    const block = modelBlockById(d, at.block.id);
+    const made = block && modelInsertRule(d, block, at.offset, md, fallback);
+    return made && { block: made.rule, at: made.at };
+  }, "insertHorizontalRule");
+  // The one place it is refused in practice: the start of a bullet, where the
+  // bullet would be left empty and the rule read as outside the list.
+  if (!ok && typeof notify === "function") {
+    const opening = at.offset === 0 && modelItemAffix(at.block);
+    notify(opening && opening.first ? "A rule cannot go at the start of a list item." : "A rule cannot go there.",
+      { severity: "info" });
+  }
+  return true;
+}
+
+/**
+ * Insert → Table, and the table controls in the Format menu. Stage 3's slice 5.
+ *
+ * Each runs on a fork of the document first and on the real one only if the
+ * fork was accepted, the way the lists' commands do: the model's table commands
+ * mutate as they go and ask the parser at the end, and a refusal must leave
+ * nothing behind. A refusal comes back as a sentence, which is the notice.
+ */
+function modelInputTableRun(doc, cell, run, inputType) {
+  const trial = modelForkDocument(doc);
+  const tried = run(trial, modelBlockById(trial, cell.id));
+  if (!tried || tried.refused) {
+    if (typeof notify === "function") notify(tried ? tried.refused : "That cannot be done there.", { severity: "info" });
+    return true;
+  }
+  const done = run(doc, cell);
+  if (!done || done.refused) return true;
+  modelPendingMarks = null;
+  modelRender(editor, doc, md, done.at);
+  modelInputAnnounce(inputType);
+  return true;
+}
+
+// What each control does to the cell the caret is in. `offset` is where the
+// caret was, for the one that does not move it.
+const MODEL_TABLE_OPS = {
+  "table-row-above": (d, cell) => modelTableInsertRow(d, cell, false, md),
+  "table-row-below": (d, cell) => modelTableInsertRow(d, cell, true, md),
+  "table-col-left": (d, cell) => modelTableInsertColumn(d, cell, false, md),
+  "table-col-right": (d, cell) => modelTableInsertColumn(d, cell, true, md),
+  "table-delete-row": (d, cell) => modelTableDeleteRow(d, cell, md),
+  "table-delete-column": (d, cell) => modelTableDeleteColumn(d, cell, md),
+  "table-delete": (d, cell) => modelTableDelete(d, modelTableOf(cell), md),
+};
+const MODEL_TABLE_ALIGNS = { "table-align-left": "left", "table-align-center": "center", "table-align-right": "right" };
+
+function modelInputTable(action) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at || at.block.kind !== "cell") {
+    if (typeof notify === "function") notify("Put the caret in a table first.", { severity: "info" });
+    return true;
+  }
+  if (action in MODEL_TABLE_ALIGNS) {
+    return modelInputTableRun(doc, at.block,
+      (d, cell) => modelTableAlign(d, cell, MODEL_TABLE_ALIGNS[action], md, at.offset), "formatTableAlign");
+  }
+  const op = MODEL_TABLE_OPS[action];
+  return op ? modelInputTableRun(doc, at.block, op, "formatTable") : false;
+}
+
+// Whether the caret is in a table, and which way its column is aligned: what
+// the menu disables and checks by when it opens.
+function modelInputTableState() {
+  const doc = modelCurrentDocument();
+  const at = doc ? modelReadSelection(editor, doc) : null;
+  if (!at || at.block.kind !== "cell") return null;
+  return { align: modelTableAlignment(at.block) };
+}
+
+function modelInputInsertTable() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at || !at.block.inlines) return true;
+  if (modelInputCellRefusal(doc, at)) return true;
+  const ok = modelInputGuarded((d) => {
+    const block = modelBlockById(d, at.block.id);
+    const made = block && modelInsertTable(d, block, at.offset, md);
+    return made && { block: made.table, at: made.at };
+  }, "insertFromPaste");
+  if (!ok && typeof notify === "function") notify("A table cannot go there.", { severity: "info" });
+  return true;
+}
+
+/**
+ * Tab, Shift+Tab and Enter in a cell. The cell they arrive in selects its
+ * content, so typing replaces it, which is what a cell is in every editor
+ * people come from. Tab goes along the cells in reading order and Enter goes
+ * down the column; at the end of the table, Tab adds a row and so does Enter on
+ * the last row. Shift+Tab at the first cell does nothing. A selection across
+ * cells does nothing: there is no one place it means to go.
+ */
+function modelInputTableSelect(cell) {
+  const length = modelInlineText(cell.inlines || []).length;
+  return length ? { block: cell, offset: 0, to: { block: cell, offset: length } } : { block: cell, offset: 0 };
+}
+
+function modelInputTableMove(key, backward) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at || at.block.kind !== "cell") return false;
+  if (at.to && at.to.block !== at.block) return true;
+  const cell = at.block;
+  const next = (from) => (key === "tab" ? modelTableCellBeside(from, backward ? -1 : 1) : modelTableCellBelow(from));
+  const target = next(cell);
+  if (target) {
+    modelApplySelection(editor, modelInputTableSelect(target));
+    return true;
+  }
+  if (backward) return true;
+  return modelInputTableRun(doc, cell, (d, from) => {
+    const added = modelTableInsertRow(d, from, true, md);
+    if (!added || added.refused) return added;
+    const landed = next(from);
+    return { at: landed ? modelInputTableSelect(landed) : added.at };
+  }, "formatTable");
+}
+
+// Backspace at the start of the paragraph after a table goes into the table's
+// last cell instead of merging: cells never merge, and a paragraph cannot go
+// into one. Nothing is deleted.
+function modelInputAfterTable(doc) {
+  const at = modelReadSelection(editor, doc);
+  if (!at || at.to || at.offset !== 0 || at.block.kind === "cell") return false;
+  const before = modelLeafBeside(doc, at.block, -1);
+  if (!before || before.kind !== "cell") return false;
+  modelApplySelection(editor, { block: before, offset: modelInlineText(before.inlines || []).length });
+  return true;
+}
+
+/**
+ * Insert → Table of contents: `markdown`, which outline.js builds from its own
+ * nested list, goes in after the caret's top-level block, or at the start of
+ * the document when the caret is not in it.
+ */
+function modelInputToc(markdown) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (at && modelInputCellRefusal(doc, at)) return true;
+  return modelInputGuarded((d) => {
+    const block = at ? modelBlockById(d, at.block.id) : null;
+    const first = modelInsertAfter(d, block, modelParse(markdown, md).blocks);
+    const caret = at && block ? { block, offset: at.offset } : null;
+    return first && { block: first, at: caret };
+  }, "insertFromPaste");
+}
+
+// Edit → Clear document: everything gone, one ordinary undo step.
+function modelInputClear() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const paragraph = modelClearDocument(doc, md);
+  modelPendingMarks = null;
+  modelRender(editor, doc, md, paragraph ? { block: paragraph, offset: 0 } : null);
+  modelInputAnnounce("deleteContent");
+  return true;
+}
+
+const MODEL_BLOCK_LEVELS = { p: 0, h1: 1, h2: 2, h3: 3, h4: 4, h5: 5, h6: 6 };
+
+/**
+ * Paragraph and Heading 1–6 under the model core, slice 7's step 5: every leaf
+ * the selection touches, whole, since there is no such thing as half a
+ * heading. A selection touching a table cell is refused with a notice, since a
+ * cell holds one line (stage 3's slice 4), and a heading inside a list item is
+ * refused, TODO 1.1.5's answer.
+ */
+function modelInputBlockFormat(format) {
+  const doc = modelCurrentDocument();
+  if (!doc || !(format in MODEL_BLOCK_LEVELS)) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  if (modelInputCellRefusal(doc, at)) return true;
+  let changed = false;
+  for (const range of modelSelectedRanges(doc, at)) {
+    if (modelSetHeading(doc, range.block, MODEL_BLOCK_LEVELS[format], md)) changed = true;
+  }
+  if (!changed) return true;
+  return modelInputBlockShown(doc, at);
+}
+
+/**
+ * Insert → Image…, stage 3's slice 2. One dialog with three fields — the
+ * address, the description and an optional title — filled in when the
+ * selection is exactly one image, which it then changes; otherwise the image
+ * goes in at the caret, or in place of a selection inside one block. The
+ * selection is read before the dialog takes focus, the document is checked to
+ * be the same one after it closes, and the change runs on a fork first, since
+ * replacing a selection deletes before the parser has judged the result.
+ */
+async function modelInputImage() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  const to = at.to || at;
+  const say = (message) => {
+    if (typeof notify === "function") notify(message, { severity: "info" });
+    return true;
+  };
+  if (to.block !== at.block || !at.block.inlines) {
+    return say("Put the caret in a paragraph, a heading or a list item to insert an image.");
+  }
+  const block = at.block;
+  const from = Math.min(at.offset, to.offset);
+  const end = Math.max(at.offset, to.offset);
+  const existing = modelImageAt(block, from, end);
+  const current = existing ? modelImageFields(existing.node) : { src: "", alt: "", title: "" };
+  const answer = typeof askForInput === "function"
+    ? await askForInput("", {
+      title: existing ? "Edit image" : "Insert image",
+      fields: [
+        { name: "src", label: "Image address", placeholder: "https://example.com/picture.png", value: current.src },
+        { name: "alt", label: "Description", placeholder: "What the image shows", value: current.alt, prose: true },
+        { name: "title", label: "Title (optional)", placeholder: "Shown on hover", value: current.title, prose: true },
+      ],
+      confirmLabel: existing ? "Update" : "Insert",
+    })
+    : null;
+  if (answer === null) return true;
+  if (modelCurrentDocument() !== doc) return true;
+  if (!answer.src) return say("An image needs an address.");
+  editor.focus();
+  const env = modelReferenceEnv(doc, md);
+  const trial = modelForkDocument(doc);
+  const tried = modelSetImage(modelBlockById(trial, block.id), from, end, answer, md, env);
+  if (!tried) {
+    return say("That address cannot be used for an image.");
+  }
+  const range = modelSetImage(block, from, end, answer, md, env);
+  if (!range) return true;
+  modelPendingMarks = null;
+  return modelInputShow(doc, block, { block, offset: range.to }, "insertImage");
+}
+
+/**
+ * Insert → Link…, slice 7's step 4. The same dialog and the same four cases as
+ * the old core — wrap a selection, insert the address at a bare caret,
+ * retarget the link the caret is in, or unlink it when the address is left
+ * empty — with the model doing each. The selection is read in model
+ * coordinates **before** the dialog takes focus, and the document is checked
+ * to be the same one after it closes.
+ */
+async function modelInputLink() {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  const to = at.to || at;
+  if (to.block !== at.block) {
+    if (typeof notify === "function") notify("Select inside a single block to make a link.", { severity: "info" });
+    return true;
+  }
+  const block = at.block;
+  if (!block.inlines) return true;
+  const from = Math.min(at.offset, to.offset);
+  const end = Math.max(at.offset, to.offset);
+  const existing = modelLinkAt(block, from, end);
+  const current = existing ? existing.node.token.attrGet("href") || "" : "";
+  const answer = typeof askForInput === "function"
+    ? await askForInput("Link address", {
+      title: existing ? "Edit link" : "Insert link",
+      placeholder: "https://example.com",
+      value: current,
+      confirmLabel: existing ? "Update" : "Insert",
+    })
+    : null;
+  if (answer === null) return true;
+  if (modelCurrentDocument() !== doc) return true;
+  const href = typeof normaliseLinkHref === "function" ? normaliseLinkHref(answer) : answer.trim();
+  if (!existing && !href) return true;
+  editor.focus();
+  const range = modelSetLink(block, from, end, href, md, modelReferenceEnv(doc, md));
+  if (!range) return true;
+  modelPendingMarks = null;
+  const selection = from === end && !existing
+    ? { block, offset: range.to }
+    : { block, offset: range.from, to: { block, offset: range.to } };
+  return modelInputShow(doc, block, selection, "insertLink");
+}
+
+// The same for Code, which is not a mark: a code span is a leaf, and a code
+// block a kind of block.
+// The same for the block formats — Heading 1–6, the two lists and Blockquote.
+function modelInputBlockState(format) {
+  const doc = modelCurrentDocument();
+  if (!doc) return "none";
+  const at = modelReadSelection(editor, doc);
+  return at ? modelBlockState(doc, at, format) : "none";
+}
+
+function modelInputCodeState() {
+  const doc = modelCurrentDocument();
+  if (!doc) return "none";
+  const at = modelReadSelection(editor, doc);
+  return at ? modelCodeState(doc, at) : "none";
+}
+
+// The marks every character of `[start, end)` carries, by kind, or null for an
+// empty range: what text typed over that range should carry.
+function modelInputMarksOf(block, start, end) {
+  if (start === end || !block.inlines) return null;
+  const marks = new Map();
+  for (const kind of MODEL_MARK_KINDS) {
+    const covers = modelMarkCovers(block, start, end, kind);
+    if (covers !== null) marks.set(kind, covers);
+  }
+  return marks.size ? marks : null;
+}
+
+/**
+ * Give text just typed the marks it should have, after the splice.
+ *
+ * **Typing over a selection keeps what the selection was marked with**, which
+ * is stage 0's open finding: a new run inherits from what was deleted when
+ * something was, and from the left otherwise — so typing over a fully bold
+ * word gives bold, where the boundary rule alone would give whatever sits to
+ * the left of the selection. And a bare caret's pending marks are applied
+ * here, to the text typed where they were set.
+ */
+function modelInputMarkTyped(doc, block, start, end, offset, text, inherit) {
+  let marks = inherit;
+  const pending = modelPendingMarks;
+  modelPendingMarks = null;
+  if (!marks && start === end && pending && pending.doc === doc &&
+      pending.block === block && pending.offset === start) marks = pending.marks;
+  if (!marks || offset <= start) return;
+  for (const [kind, want] of marks) {
+    if (modelInputCaretHas(block, offset, kind) === want) continue;
+    modelSetMark(block, start, offset, kind, want, md,
+      modelMarkPreference(doc, kind, modelInputMarkFallback(kind)), modelReferenceEnv(doc, md));
+  }
+  // A mark never starts with a space, so a space typed first leaves the marks
+  // waiting for the letter after it.
+  if (marks === (pending && pending.marks) && !text.trim()) {
+    modelPendingMarks = { doc, block, offset, marks };
+  }
+}
+
+// Anything that moves the caret away from a pending mark drops it.
+function modelInputSelectionMarks() {
+  const pending = modelPendingMarks;
+  if (!pending) return;
+  const doc = modelCurrentDocument();
+  const at = doc === pending.doc ? modelReadSelection(editor, doc) : null;
+  if (!at || at.to || at.block !== pending.block || at.offset !== pending.offset) modelPendingMarks = null;
+}
+
+// ── Equations by typing ──────────────────────────────────────────────────────
+//
+// Slice 7's step 10, on probation: docs/REWRITE.md has the decisions and the
+// tripwire. `model.js` finds, converts and reveals; this decides when. A span
+// converts once the caret is outside it and not sitting straight after its
+// closing `$` — `mathSpan` says no to a closing `$` followed by a digit, and at
+// the end of the text it cannot see one coming, so `$5 and $` must wait to see
+// whether `10` follows. That one rule covers every trigger the plan names: the
+// next character typed, Enter (the caret goes to the next block), and the caret
+// leaving by any other route, which is the `selectionchange` below.
+
+/**
+ * The edit a typed equation would come from: `{ doc, id, at }`, the block and
+ * the offset the last text edit left the caret at. Only a span touching that
+ * offset is considered, so a plain-text paste of `$x$` stays the literal text
+ * it was pasted as unless somebody types against it.
+ *
+ * Set by a text edit or a deletion inside one block, kept across Enter and
+ * Shift+Enter — the two edits whose whole point here is that the caret moves
+ * on — and dropped by every other announcement. Keyed on the document object,
+ * so an undo, which installs a different one, leaves it describing nothing.
+ */
+let modelMathPending = null;
+let modelMathNext = null;
+const MODEL_MATH_KEEPS = new Set(["insertParagraph", "insertLineBreak"]);
+
+/**
+ * The conversion just made, `{ doc, id, source }`, until anything else
+ * happens. If the next thing is a different document — an undo — the user
+ * took the conversion back, and it is **declined**: that span in that block
+ * is left as text until its text changes, or the very next keystroke would
+ * convert it straight back.
+ */
+let modelMathLast = null;
+const modelMathDeclined = new Set();
+
+function modelMathKey(id, source) {
+  return id + "\n" + source;
+}
+
+/**
+ * Convert the pending span if the caret has left it. `leaving` is true when
+ * the caret is known to be elsewhere whatever the selection says.
+ *
+ * Its own undo step, announced as `insertEquation`, so Ctrl+Z straight after
+ * gives back exactly the text that was typed.
+ */
+function modelInputSettleMath(leaving) {
+  if (modelInputComposing()) return false;
+  const doc = modelCurrentDocument();
+  if (modelMathLast && modelMathLast.doc !== doc) {
+    modelMathDeclined.add(modelMathKey(modelMathLast.id, modelMathLast.source));
+    modelMathLast = null;
+  }
+  const pending = modelMathPending;
+  if (!pending || !doc) return false;
+  if (pending.doc !== doc) {
+    modelMathPending = null;
+    return false;
+  }
+  const block = modelBlockById(doc, pending.id);
+  if (!block || !block.inlines) {
+    modelMathPending = null;
+    return false;
+  }
+
+  const caret = leaving ? null : modelReadSelection(editor, doc);
+  if (caret && caret.to) return false; // a selection is being made; wait for it
+  const here = caret && caret.block === block ? caret.offset : null;
+  const span = modelMathCandidates(block).find((candidate) =>
+    candidate.start <= pending.at && pending.at <= candidate.end + 1 &&
+    !modelMathDeclined.has(modelMathKey(block.id, candidate.source)) &&
+    (here === null || here <= candidate.start || here > candidate.end));
+  if (!span) {
+    if (here === null) modelMathPending = null;
+    return false;
+  }
+
+  if (modelMathConvert(block, span.start, span.end, md) === null) {
+    modelMathPending = null;
+    return false;
+  }
+  modelMathPending = null;
+  // The caret where it was, moved back by the TeX the atom now stands for when
+  // it was after it.
+  const at = here === null
+    ? caret
+    : { block, offset: here > span.end ? here - (span.end - span.start) + 1 : here };
+  modelInputShow(doc, block, at, "insertEquation");
+  modelMathLast = { doc, id: block.id, source: span.source };
+  // Said out loud, because text turning into something else as the caret moves
+  // on reads as a glitch unless the editor owns up to it — and the toast is
+  // where the way back is named. Feature-tested: front/input-check.html ships
+  // no notify.js, and toolbar.js is what knows Cmd from Ctrl.
+  if (typeof notify === "function") {
+    const keys = typeof shortcutLabel === "function" ? shortcutLabel("Ctrl+Z") : "Ctrl/Cmd+Z";
+    notify(`Converted to an equation. ${keys} keeps it as text.`);
+  }
+  return true;
+}
+
+/**
+ * Backspace into an equation shows its source instead of deleting it, and
+ * Delete does the same from the other side. Only from a bare caret: an
+ * equation that is selected, or part of a wider selection, is deleted like
+ * anything else, which is how a whole one is removed.
+ */
+function modelInputRevealMath(doc, span, inputType) {
+  const backward = inputType === "deleteContentBackward";
+  if (!backward && inputType !== "deleteContentForward") return false;
+  const live = window.getSelection();
+  if (!live || !live.isCollapsed) return false;
+  if (span.from.block !== span.to.block) return false;
+  const block = span.from.block;
+  const start = Math.min(span.from.offset, span.to.offset);
+  if (Math.max(span.from.offset, span.to.offset) !== start + 1) return false;
+  const offset = modelMathReveal(block, start, backward);
+  if (offset === null) return false;
+  // Revealed on purpose, so a decline from an earlier undo no longer applies:
+  // leaving the source is meant to re-form it.
+  const revealed = modelMathCandidates(block).find((candidate) => candidate.start === start);
+  if (revealed) modelMathDeclined.delete(modelMathKey(block.id, revealed.source));
+  modelMathNext = { doc, id: block.id, at: offset };
+  return modelInputShow(doc, block, { block, offset }, "deleteEquation");
+}
+
+function modelInputSelectionMath() {
+  modelInputSettleMath(false);
+}
+
+/**
+ * Enter and Backspace on an empty item, which are the two hand-rolled clusters
+ * arriving as model rules — see `modelEmptyItemKey`.
+ *
+ * Asked before the generic handling and answering for itself, because what the
+ * engine would report for either is a deletion or a split of a block that holds
+ * nothing: the shape is the same and the intent is not.
+ */
+function modelInputEmptyItem(doc, backspace) {
+  const at = modelReadSelection(editor, doc);
+  if (!at || at.block.kind === "cell") return false;
+  const item = modelItemAncestor(at.block);
+  if (!item || !modelIsEmptyBlock(item)) return false;
+  if (backspace && at.offset !== 0) return false;
+  const landed = modelEmptyItemKey(doc, item, md, backspace);
+  return modelInputRestructure(doc, landed, backspace ? "deleteContentBackward" : "insertParagraph");
+}
+
+// A cell holds one line, so Shift+Enter there does nothing, and Enter moves
+// down a row (modelInputTableMove).
+function modelInputInCell(span) {
+  return !!span && (span.from.block.kind === "cell" || span.to.block.kind === "cell");
+}
+
+/**
+ * Enter. Slice 4's step 2.
+ *
+ * A selection is deleted first and the split happens where it collapsed, which
+ * is what every editor does and what the model already has the pieces for. In a
+ * fence there is no split to make — its content is source — so Enter is a
+ * newline in the body, which is also what it does today.
+ */
+function modelInputParagraph(doc, span) {
+  if (!span) return false;
+  if (modelInputInCell(span)) {
+    if (performance.now() - modelEnterShifted < 200) return true;
+    return modelInputTableMove("enter", false) || true;
+  }
+  const target = modelInputRetarget(doc, span);
+
+  let block = target.from.block;
+  let offset = target.from.offset;
+  if (!target.collapsed) {
+    const landed = modelInputDelete(doc, target);
+    if (!landed) return false;
+    block = landed.block;
+    offset = landed.offset;
+  }
+
+  if (modelBearsSource(block)) {
+    const at = modelSourceSplice(block, offset, offset, "\n", md);
+    if (at === null) return false;
+    return modelInputShow(doc, block, { block, offset: at }, "insertParagraph");
+  }
+
+  const landed = modelInsertParagraph(doc, block, offset, md);
+  if (!landed) return false;
+  return modelInputRestructure(doc, landed, "insertParagraph");
+}
+
+/**
+ * Shift+Enter. Slice 4's step 4.
+ *
+ * The spelling comes from `sniffMarkdownStyle`'s document-wide answer, read
+ * here and handed over rather than reached for in model.js — the same boundary
+ * the parser injection draws. `markdownStyle` is app.js's, which is why this
+ * file loads after it.
+ */
+function modelInputLineBreak(doc, span) {
+  if (!span) return false;
+  if (modelInputInCell(span)) return true;
+  const target = modelInputRetarget(doc, span);
+  let block = target.from.block;
+  let offset = target.from.offset;
+  if (!target.collapsed) {
+    const landed = modelInputDelete(doc, target);
+    if (!landed) return false;
+    block = landed.block;
+    offset = landed.offset;
+  }
+  const spelling = typeof markdownStyle === "object" && markdownStyle ? markdownStyle.hardBreak : "  ";
+  const at = modelInsertBreak(block, offset, spelling);
+  if (at === null) return false;
+  return modelInputShow(doc, block, { block, offset: at }, "insertLineBreak");
+}
+
+/**
+ * Tab and Shift+Tab, and the Format menu's two items, which ask the identical
+ * question. Hands back whether it answered.
+ */
+function modelIndentAtCaret(outdent) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  const at = modelReadSelection(editor, doc);
+  if (!at) return true;
+  // Format → Indent and Outdent reach here without Tab's guard: from a cell
+  // in a table inside a list item they would move the whole item.
+  if (modelInputCellRefusal(doc, at)) return true;
+  const item = modelItemAncestor(at.block);
+  if (!item) return true;
+  const moved = outdent ? modelOutdentItem(doc, item) : modelIndentItem(doc, item);
+  if (!moved) return true;
+  modelRender(editor, doc, md, at);
+  modelInputAnnounce(outdent ? "formatOutdent" : "formatIndent");
+  return true;
+}
+
+/**
+ * Tab is the first thing this layer binds that is not an `inputType`, and it
+ * has to be: a keydown is where Tab arrives, and no engine reports it as an
+ * editing intention. It is also the shape slice 7's format shortcuts take.
+ *
+ * **Outside a list Tab keeps its default job of leaving the editor**, which is
+ * a keyboard user's only way out and is today's rule kept rather than
+ * re-decided.
+ */
+// The last format a key applied: `{ kind, time }`. A `formatBold` or
+// `formatItalic` raised by the same keystroke is then ignored, or the two would
+// cancel out — the keydown's `preventDefault` should stop the engine raising
+// one at all, and this is for an engine that raises it anyway.
+let modelKeyFormatted = null;
+const MODEL_FORMAT_KEYS = { b: "strong", i: "em" };
+
+// When a Shift+Enter keydown last arrived, or never after a plain Enter. WebKit
+// reports Shift+Enter in a table cell as `insertParagraph` — measured
+// 2026-11-01, where Chromium sends `insertLineBreak` — so without this a cell's
+// Enter rule would take Shift+Enter for Enter and move down a row.
+//
+// "Never" is -Infinity and not 0. Zero is a time like any other: it read as a
+// Shift+Enter at the page's first instant, so for the first 200ms after a load
+// a plain Enter in a cell did nothing. Found 2026-11-12, by the `model-input`
+// suite, which runs inside that window.
+let modelEnterShifted = -Infinity;
+
+function modelInputKeydown(event) {
+  if (event.key === "Enter") modelEnterShifted = event.shiftKey ? performance.now() : -Infinity;
+  // Ctrl/Cmd+B and Ctrl/Cmd+I, slice 7's step 8 and TODO 1.7 for the model
+  // core. Matched on a lowercased `key`, CLAUDE.md's rule, so Caps Lock does not
+  // hand the key back to the browser. `preventDefault` takes it from the
+  // engine, which in Gecko on macOS opens the bookmarks sidebar and in WebKit
+  // does nothing at all.
+  const key = (event.key || "").toLowerCase();
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !event.isComposing &&
+      MODEL_FORMAT_KEYS[key]) {
+    event.preventDefault();
+    modelKeyFormatted = { kind: MODEL_FORMAT_KEYS[key], time: performance.now() };
+    modelInputFormat(MODEL_FORMAT_KEYS[key]);
+    return;
+  }
+  // Backspace at the start of a quote's first block, taken here as well as
+  // from `beforeinput`, because **WebKit raises no `beforeinput` for a
+  // Backspace at the very start of the document** — measured 2026-10-27 in
+  // Playwright's WebKit, where a quote opening the document never heard the
+  // key while Chromium sent `deleteContentBackward`. Cancelling the keydown
+  // means no `beforeinput` follows, so the rule runs once either way.
+  if (event.key === "Backspace" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
+      !event.isComposing) {
+    const doc = modelCurrentDocument();
+    if (doc && modelInputQuoteKey(doc, true)) event.preventDefault();
+    return;
+  }
+  if (event.key !== "Tab" || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+  const doc = modelCurrentDocument();
+  if (!doc) return;
+  const at = modelReadSelection(editor, doc);
+  // Taken in a cell and moves between cells: left to the engine, Tab would
+  // take focus out of the editor.
+  if (at && at.block.kind === "cell") {
+    event.preventDefault();
+    modelInputTableMove("tab", event.shiftKey === true);
+    return;
+  }
+  if (!at || !modelItemAncestor(at.block)) return;
+  event.preventDefault();
+  modelIndentAtCaret(event.shiftKey === true);
+}
+
+/**
+ * Tell the rest of the app that the document changed.
+ *
+ * The repo's convention since long before this: a programmatic edit raises a
+ * synthetic `input` event, and autosave, the dirty flag, the outline and the
+ * undo stack all hang off exactly that. It matters more here than anywhere,
+ * because `preventDefault()` on the `beforeinput` means the engine will not
+ * raise one — so an edit that forgot this would be invisible to every one of
+ * them, and the toolbar would go on claiming the document matches the file.
+ *
+ * `inputType` is carried because undo.js coalesces on it.
+ */
+function modelInputAnnounce(inputType) {
+  modelLastTyped = modelPendingTyped;
+  modelPendingTyped = null;
+  modelMathPending = modelMathNext || (MODEL_MATH_KEEPS.has(inputType) ? modelMathPending : null);
+  modelMathNext = null;
+  modelMathLast = null;
+  const event = typeof InputEvent === "function"
+    ? new InputEvent("input", { inputType, bubbles: true })
+    : new Event("input", { bubbles: true });
+  editor.dispatchEvent(event);
+}
+
+/**
+ * What the last keystroke typed: `{ block, from, to }`, or null.
+ *
+ * Set by a text edit through `modelInputWrite` and **replaced on every
+ * announcement**, so any other edit — a deletion, an Enter, a paste, a
+ * composition — clears it. An undo installs a fresh copy of the document with
+ * its own block objects, so a record from before it can never match again.
+ */
+let modelLastTyped = null;
+let modelPendingTyped = null;
+
+/**
+ * Whether a text edit rewrites exactly what the last keystroke typed.
+ *
+ * The macOS press-and-hold accent. Hold `e` and the engine types it as an
+ * ordinary edit; pick `é` from the popup and it replaces that `e` — as an
+ * `insertText` whose target range covers it in Firefox, and as an
+ * `insertReplacementText` doing the same in Safari, both measured on
+ * `front/input-check.html`. The wait on the popup is far past the coalescing
+ * window, so without a join one Cmd+Z took back the accent and left a bare
+ * vowel nobody typed.
+ *
+ * **Keyed on the model, not on the selection.** The first version asked
+ * whether the selection was collapsed while the range was not, and still
+ * failed in Firefox — macOS marks the vowel while the popup is up. What both
+ * engines agree on is where the range *is*: inside what was just typed, ending
+ * where it ended. Selecting a word typed earlier and typing over it fails that,
+ * and stays its own step.
+ */
+function modelInputRevises(block, start, end) {
+  const last = modelLastTyped;
+  return !!last && start < end && last.block === block &&
+    end === last.to && start >= last.from;
+}
+
+/**
+ * Every `beforeinput`, cancelled.
+ *
+ * **Cancelled first and unconditionally**, before anything is looked at, which
+ * is the property the whole design rests on: an `inputType` this slice has
+ * never heard of is a keystroke that does nothing, rather than one the engine
+ * gets to act on behind the model's back. A handler that cancelled only what it
+ * understood would leave the DOM and the model to drift apart on exactly the
+ * inputs nobody thought of.
+ *
+ * The one type that cannot be cancelled is `insertCompositionText`, and the
+ * spec says so: an IME has to write into the DOM while composing. Calling
+ * `preventDefault()` on it is a harmless no-op, and the real handling is the
+ * composition pair below.
+ */
+function modelInputBeforeInput(event) {
+  event.preventDefault();
+
+  const doc = modelCurrentDocument();
+  if (!doc) return;
+  // The engine owns the node under the caret until compositionend. Reading it
+  // now would see half a syllable; rendering now would take it away.
+  if (modelInputComposing()) return;
+
+  if (MODEL_INPUT_TEXT_TYPES.has(event.inputType)) {
+    // **A text edit that carries no text is not a deletion.** Safari sends
+    // `insertReplacementText` with `data` null and the text in `dataTransfer`,
+    // which is where the specification puts it for that type — and reading
+    // `data` alone turned its accent popup into a Backspace that erased the
+    // letter. Measured in Safari on 2026-09-28. Anything still empty after both
+    // is refused, since writing nothing over a range is a deletion nobody asked
+    // for.
+    const text = event.data ||
+      (event.dataTransfer && event.dataTransfer.getData("text/plain")) || "";
+    if (!text) return;
+    modelInputWrite(doc, modelInputSpan(event, doc), text);
+    return;
+  }
+  if (MODEL_INPUT_DELETE_TYPES.has(event.inputType)) {
+    if (modelInputEmptyItem(doc, true)) return;
+    if (event.inputType === "deleteContentBackward" && modelInputQuoteKey(doc, true)) return;
+    if (event.inputType === "deleteContentBackward" && modelInputAfterTable(doc)) return;
+    modelInputWrite(doc, modelInputSpan(event, doc), "", event.inputType);
+    return;
+  }
+  if (event.inputType === "insertParagraph") {
+    if (modelInputEmptyItem(doc, false)) return;
+    if (modelInputQuoteKey(doc, false)) return;
+    modelInputParagraph(doc, modelInputSpan(event, doc));
+    return;
+  }
+  if (event.inputType === "insertLineBreak") {
+    modelInputLineBreak(doc, modelInputSpan(event, doc));
+    return;
+  }
+  // The engine's own undo gesture — the macOS trackpad swipe, a context menu,
+  // a mobile keyboard's own button — which means exactly what Ctrl+Z means and
+  // so goes to exactly the same place. Cancelled like everything else either
+  // way; what this adds is that the intention is now carried out rather than
+  // dropped, which is the right default for a type nobody has claimed and the
+  // wrong one for this pair.
+  //
+  // **A bonus entry point rather than the mechanism.** `undo.js` binds the
+  // keyboard itself, on `document`, and calls `preventDefault` — which should
+  // stop the engine running the default action these types are raised as part
+  // of, so a Ctrl+Z should never arrive here as well. *Should*: that is a
+  // per-engine fact and it is asked on the check page rather than assumed
+  // here, because the shape of any suppression depends on which engine needs
+  // one. If a Ctrl+Z ever does raise one of these, the symptom is two steps
+  // back for one press — confusing, and recoverable with a redo.
+  //
+  // Feature-tested because `front/input-check.html` deliberately ships no
+  // `undo.js`: it measures this layer against a real engine, not the
+  // application around it, so there the event is logged and nothing happens.
+  if (event.inputType === "historyUndo") {
+    if (typeof undo === "function") undo();
+    return;
+  }
+  // The engine's own format commands, a bonus entry point the way the history
+  // pair is: a context menu's Bold, or a keystroke the keydown above did not
+  // see. Ignored when the keydown already did the work, or the mark would go
+  // on and straight back off.
+  const format = MODEL_INPUT_FORMATS[event.inputType];
+  if (format) {
+    const keyed = modelKeyFormatted;
+    if (keyed && keyed.kind === format && performance.now() - keyed.time < 200) return;
+    modelInputFormat(format);
+    return;
+  }
+  if (event.inputType === "historyRedo") {
+    if (typeof redo === "function") redo();
+  }
+}
+
+/**
+ * Composition, which is decided rather than discovered.
+ *
+ * `insertCompositionText` cannot be cancelled, so the rule is that from
+ * `compositionstart` to `compositionend` the engine owns the one text node
+ * under the caret and the model waits. On `compositionend` the block's DOM text
+ * is diffed against the model's and the difference applied as a single edit,
+ * then rendered — one undo step for one composed word, which is also what the
+ * platform's own editors do. Dead keys and the macOS accent popup are
+ * compositions and take the same path.
+ *
+ * The diff is a common prefix and suffix rather than anything cleverer, because
+ * a composition replaces one contiguous run: that is what an IME does by
+ * construction, and a smarter diff would only be able to disagree with it.
+ */
+function modelInputCompositionStart() {
+  const doc = modelCurrentDocument();
+  if (!doc) return;
+  const at = modelReadSelection(editor, doc);
+  modelComposingBlock = at ? at.block : null;
+  // A composition starting somewhere the model cannot name would end by
+  // reading a block it never held. Better to know now.
+  if (!modelComposingBlock) modelComposingBlock = false;
+}
+
+function modelInputCompositionEnd() {
+  const block = modelComposingBlock;
+  modelComposingBlock = null;
+  const doc = modelCurrentDocument();
+  if (!doc || !block) return;
+
+  const el = modelElementFor(editor, block);
+  if (!el) return;
+  // Read as the model holds it: the DOM builder draws a space that would
+  // collapse as U+00A0 (`modelHoldSpaces`), and diffing that against the
+  // model's plain space would rewrite text the composition never touched.
+  const now = modelDomText(el).replace(/\u00A0/g, " ");
+  const was = modelBlockText(block);
+  if (now === was) return;
+
+  let head = 0;
+  while (head < now.length && head < was.length && now[head] === was[head]) head += 1;
+  let tail = 0;
+  while (
+    tail < now.length - head &&
+    tail < was.length - head &&
+    now[now.length - 1 - tail] === was[was.length - 1 - tail]
+  ) tail += 1;
+
+  const inserted = now.slice(head, now.length - tail);
+  const offset = modelInlineSplice(block, head, was.length - tail, inserted);
+  if (offset === null) return;
+  modelRerenderBlock(editor, block, md, { block, offset });
+  // A composition that replaced text the model already held is rewriting what
+  // was just typed — the press-and-hold accent turning `e` into `é` — so it
+  // belongs to that keystroke's undo step rather than being its own. One that
+  // only inserted, like a dead key, is an ordinary step. Feature-tested for the
+  // reason the history route is: this file's check page ships no undo.js.
+  if (was.length - tail > head && typeof undoJoin === "function") undoJoin();
+  modelInputAnnounce("insertCompositionText");
+}
+
+// ── Paste and drop ───────────────────────────────────────────────────────────
+//
+// Slice 5. Content arriving from outside the document, which is the one thing
+// the model cannot produce for itself — so it is also the one place Turndown
+// survives into the new core, converting somebody else's HTML on the way in.
+// It leaves the save path at stage 4; this is the last thing it does.
+//
+// **The `paste` and `drop` events rather than `beforeinput`.** Both fire first,
+// both carry their data by specification, and cancelling either stops the
+// insertion before an `insertFromPaste` or `insertFromDrop` is ever raised.
+// `beforeinput` goes on cancelling those types too, which costs nothing and is
+// what the design says to do with a type nobody has claimed — so a browser that
+// raised one without the event before it still changes nothing behind the
+// model's back.
+
+/**
+ * HTML from a clipboard or a drag, as blocks.
+ *
+ * `sanitisePastedHtml` and `normaliseNbsp` exactly as today — a paste should
+ * keep its bold, its links and its tables, and only what nobody can see goes —
+ * then `htmlFragmentToMarkdown` and `modelParse`. Hands back null when the
+ * fragment sanitises to nothing, which is a paste of pure wrappers and is the
+ * caller's cue to fall through to the plain text rather than insert an empty
+ * string and leave the user wondering where their paste went.
+ *
+ * **Both converters are app.js's, and both are feature-tested**, which is not
+ * defensive coding: `front/input-check.html` deliberately does not load app.js,
+ * because what it measures is this layer against a real engine and not the
+ * application around it. There the HTML branch falls through to the plain text
+ * and the page says so, so the questions that page exists to answer — does the
+ * engine hand over `text/html` at all, does cancelling the event stop the
+ * insertion, where does a drop land — are still the ones being asked. In both
+ * real bundles model-input.js loads after app.js and the test always passes.
+ */
+function modelPasteBlocks(doc, html) {
+  if (!html || !html.trim()) return null;
+  if (typeof sanitisePastedHtml !== "function" || typeof htmlFragmentToMarkdown !== "function") return null;
+  const clean = sanitisePastedHtml(html);
+  if (!clean.trim()) return null;
+  const markdown = htmlFragmentToMarkdown(clean);
+  if (!markdown.trim()) return null;
+  return modelParse(markdown, md).blocks;
+}
+
+/**
+ * Put a clipboard's two flavours into the document at a model position.
+ *
+ * HTML first and plain text as the fallback, which is the order the old
+ * core's paste always used. **Plain text is never parsed as
+ * markdown** — today's behaviour, and the reason Insert → *Paste markdown* is a
+ * separate action: that one is this pipeline without the Turndown step.
+ */
+function modelInputPaste(doc, at, html, text, inputType = "insertFromPaste") {
+  if (!at) return false;
+  const blocks = modelPasteBlocks(doc, html) || (text ? modelTextBlocks(doc, md, text) : null);
+  if (!blocks || !blocks.length) return false;
+  const landed = modelInputInsertBlocks(doc, at, blocks);
+  if (!landed) return false;
+  return modelInputRestructure(doc, landed, inputType);
+}
+
+// Paste, drop, Paste markdown and a drag moving text all land blocks through
+// here, and that is where a cell's rule is applied: what lands in a table cell
+// is flattened to one line first (stage 3's slice 4). Paste without formatting
+// never makes blocks for a cell — it joins its lines with a space where it
+// splices — so it does not need to come this way. Anywhere else the blocks
+// land as they are.
+function modelInputInsertBlocks(doc, at, blocks) {
+  const landing = at.block.kind === "cell" ? modelCellBlocks(doc, md, blocks) : blocks;
+  if (!landing.length) return null;
+  return modelInsertBlocks(doc, at.block, at.offset, landing);
+}
+
+// Where an edit lands: the selection, with any range it covers deleted first.
+// Hands back null when the model cannot name the position, which is a refusal
+// rather than a guess about where the content should go.
+function modelInputCollapsed(doc) {
+  const at = modelReadSelection(editor, doc);
+  if (!at) return null;
+  const live = window.getSelection();
+  if (!live || !live.rangeCount || live.getRangeAt(0).collapsed) return at;
+  // No event to read a target range off — a menu click and a drop have none —
+  // so `modelInputSpan` falls through to the live selection, which is what a
+  // paste replaces.
+  const span = modelInputSpan({}, doc);
+  if (!span || span.collapsed) return at;
+  const landed = modelInputDelete(doc, span);
+  return landed ? { block: landed.block, offset: landed.offset } : null;
+}
+
+function modelInputPasteEvent(event) {
+  const doc = modelCurrentDocument();
+  if (!doc || modelInputComposing()) return;
+  event.preventDefault();
+  const data = event.clipboardData;
+  if (!data) return;
+  modelInputPaste(doc, modelInputCollapsed(doc), data.getData("text/html"), data.getData("text/plain"));
+}
+
+/**
+ * A drag that started inside the editor is a **move**, not a copy.
+ *
+ * The engine would raise `deleteByDrag` and `insertFromDrop` as a pair; both
+ * are cancelled, so doing only the insert would duplicate the text and leave
+ * the original standing — which is the worst of the three possible answers,
+ * because it looks like it worked. The source is recorded here, in model
+ * coordinates, because by the time `drop` fires the selection has moved.
+ */
+let modelDragSource = null;
+
+function modelInputDragStart() {
+  const doc = modelCurrentDocument();
+  if (!doc) return;
+  const live = window.getSelection();
+  if (!live || !live.rangeCount || live.getRangeAt(0).collapsed) return;
+  modelDragSource = modelInputSpan({}, doc);
+}
+
+function modelInputDragEnd() {
+  modelDragSource = null;
+}
+
+/**
+ * Say that a drop is welcome here, on every `dragover`.
+ *
+ * **Without this there is no `drop` event at all**, and that is the spec rather
+ * than a quirk: an element accepts a drop only if something cancels `dragover`
+ * over it. On the old core nobody had to, because the browser performs the drop
+ * *itself* — a `contenteditable` is a drop target the engine handles natively.
+ * Under the model core that native drop is exactly what is suppressed, so the
+ * editor becomes an ordinary **scripted** drop target and has to say so.
+ *
+ * Missing from slice 5 and found by hand on 2026-09-21: drag-and-drop did
+ * nothing in Blink and WebKit while working in Gecko, which is the engines
+ * disagreeing about how much they will do for a `contenteditable` that has
+ * stopped behaving like one — not about drag and drop.
+ *
+ * `dragenter` as well as `dragover`, because the two are one answer: an engine
+ * that reads the first as the refusal never sends the second.
+ *
+ * **`dropEffect` is what the cursor shows**, and it has to match what will
+ * actually happen or the pointer promises the wrong thing: a drag that started
+ * in this editor is a *move* — see `modelInputDrop` — and anything from outside
+ * is a copy, because we cannot remove it from wherever it came from.
+ */
+function modelInputDragOver(event) {
+  if (!modelCurrentDocument()) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = modelDragSource ? "move" : "copy";
+}
+
+/**
+ * The model position under the pointer.
+ *
+ * Two spellings, because this is one of the places the engines never agreed:
+ * `caretPositionFromPoint` is the standard and Gecko's, `caretRangeFromPoint`
+ * is Blink's and WebKit's. Which one answers is a browser fact, so the check
+ * page reports it rather than this file assuming it.
+ */
+function modelInputPointAt(doc, x, y) {
+  const owner = editor.ownerDocument;
+  let node = null;
+  let offset = 0;
+  if (typeof owner.caretPositionFromPoint === "function") {
+    const position = owner.caretPositionFromPoint(x, y);
+    if (position) {
+      node = position.offsetNode;
+      offset = position.offset;
+    }
+  }
+  if (!node && typeof owner.caretRangeFromPoint === "function") {
+    const range = owner.caretRangeFromPoint(x, y);
+    if (range) {
+      node = range.startContainer;
+      offset = range.startOffset;
+    }
+  }
+  return node ? modelDomBlockAt(editor, doc, node, offset, -1) : null;
+}
+
+/**
+ * Say that a drop was refused, and why.
+ *
+ * A refusal is correct and indistinguishable from a failure: the text stays
+ * where it was either way. So it is announced as a `modeldroprefused` event
+ * carrying the reason, which `front/input-check.html` logs — the same lesson
+ * as its "no dragstart followed" line, that a page which says nothing reads as
+ * having no opinion. The app listens to nothing, so it costs nothing there.
+ */
+function modelInputRefuseDrop(reason) {
+  editor.dispatchEvent(new CustomEvent("modeldroprefused", { detail: { reason } }));
+}
+
+function modelInputDrop(event) {
+  const doc = modelCurrentDocument();
+  if (!doc || modelInputComposing()) return;
+  event.preventDefault();
+  const data = event.dataTransfer;
+  if (!data) return;
+
+  let at = modelInputPointAt(doc, event.clientX, event.clientY);
+  const source = modelDragSource;
+  modelDragSource = null;
+  if (!at) return;
+
+  if (source) {
+    // **A drag spanning two blocks is refused rather than approximated**, which
+    // is the same refusal the merge made before slice 4 gave it an
+    // implementation: the offsets on the far side of a merge are not the
+    // offsets the drop was measured against, and getting that wrong moves the
+    // user's text somewhere they did not point at.
+    if (source.from.block !== source.to.block) return modelInputRefuseDrop("spans two blocks");
+    const start = Math.min(source.from.offset, source.to.offset);
+    const end = Math.max(source.from.offset, source.to.offset);
+    if (at.block === source.from.block && at.offset >= start && at.offset <= end) {
+      return modelInputRefuseDrop("dropped onto itself");
+    }
+    // **What moves is the model's own content, read before it is taken out**,
+    // not what the engine put on the drag: measured 2026-10-01, Firefox and
+    // Chrome both left an equation out of a dragged selection, so the move
+    // deleted it. See modelInlineSourceRange.
+    const moved = modelInlineSourceRange(source.from.block, start, end, md);
+    if (moved === null || !moved.trim()) return;
+    if (modelInlineSplice(source.from.block, start, end, "") === null) return;
+    // Only when the two are in the same block does taking the source out move
+    // the target; anywhere else the offset still names the same place.
+    if (at.block === source.from.block && at.offset > end) at = { block: at.block, offset: at.offset - (end - start) };
+    const landed = modelInputInsertBlocks(doc, at, modelParse(moved, md).blocks);
+    if (landed) modelInputRestructure(doc, landed, "insertFromDrop");
+    return;
+  }
+
+  modelInputPaste(doc, at, data.getData("text/html"), data.getData("text/plain"), "insertFromDrop");
+}
+
+// ── The clipboard, reached from the menu ─────────────────────────────────────
+//
+// Edit → Paste, Edit → Paste without formatting and Insert → Paste markdown.
+// The menu reads the clipboard itself, since execCommand("paste") is refused in
+// web content, and hands what it read to these.
+
+function modelPasteInto(html, text) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  return modelInputPaste(doc, modelInputCollapsed(doc), html, text);
+}
+
+function modelPastePlain(text) {
+  const doc = modelCurrentDocument();
+  if (!doc || !text) return false;
+  const at = modelInputCollapsed(doc);
+  if (!at) return false;
+  // One line is an ordinary insertion and must not split anything; several are
+  // blocks. `modelInlineSplice` normalises U+00A0 on the way through, which is
+  // the same boundary slice 3 put it at.
+  // In a cell several lines are one: a cell cannot hold a line break.
+  if (at.block.kind === "cell") text = text.replace(/\s*[\r\n]+\s*/g, " ").trim();
+  if (!/[\r\n]/.test(text)) {
+    const offset = modelInlineSplice(at.block, at.offset, at.offset, text);
+    if (offset === null) return false;
+    return modelInputShow(doc, at.block, { block: at.block, offset }, "insertFromPaste");
+  }
+  const landed = modelInsertBlocks(doc, at.block, at.offset, modelTextBlocks(doc, md, text));
+  if (!landed) return false;
+  return modelInputRestructure(doc, landed, "insertFromPaste");
+}
+
+/**
+ * Insert → *Paste markdown*: the same pipeline with the Turndown step taken
+ * out, because what is on the clipboard is already markdown.
+ *
+ * It is the one paste that *parses*, which is exactly the distinction the menu
+ * draws — and the reason it sits in Insert rather than beside Edit's Paste.
+ */
+function modelPasteMarkdown(text) {
+  const doc = modelCurrentDocument();
+  if (!doc || !text || !text.trim()) return false;
+  const at = modelInputCollapsed(doc);
+  if (!at) return false;
+  const landed = modelInputInsertBlocks(doc, at, modelParse(text, md).blocks);
+  if (!landed) return false;
+  return modelInputRestructure(doc, landed, "insertFromPaste");
+}
+
+// ── Installation ─────────────────────────────────────────────────────────────
+//
+// After app.js, which defines `editor` and `md`, and after model.js, which
+// defines everything else here. Registered only under the model core: with the
+// flag off this file is inert, and the editor is the one the rest of CLAUDE.md
+// describes.
+
+/**
+ * A caret that lands *inside* an equation moves to the edge it is nearer.
+ *
+ * Slice 7's step 2, measured by hand on 2026-10-01: a click just after an
+ * equation that ends a line puts the caret on one of MathJax's own glyph
+ * elements (`MJX-C`, offset 0) — first in Firefox, until the wrapper was made
+ * uneditable, and then in Chrome even with the wrapper and the container both
+ * uneditable, where no caret stop on `tests/caret-guard-check.html` helped
+ * either. `modelDomOffset` reads any position inside an atom as its front
+ * edge, which is right for a range's start and wrong for this, so a letter
+ * typed there went in front of the equation the user had clicked after.
+ *
+ * So the side comes from where the caret actually is on screen, not from the
+ * DOM: the glyph it sits on is past the equation's midpoint or it is not. That
+ * holds in any engine and for any shape of stop, and a click on an equation
+ * mid-line goes to its nearer edge as well. A selection that is not collapsed
+ * is left alone — dragging across an equation is a real selection of it — and
+ * so is anything during a composition, which owns the text under the caret.
+ */
+function modelInputLeaveAtom() {
+  if (modelInputComposing()) return;
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount || !selection.isCollapsed) return;
+  const anchor = selection.anchorNode;
+  const element = anchor && (anchor.nodeType === 1 ? anchor : anchor.parentElement);
+  const atom = element && element.closest && element.closest("[data-math]");
+  if (!atom && element && element.closest) modelInputLeaveFront(selection, element);
+  if (!atom || !editor.contains(atom)) return;
+
+  // The glyph the caret sits on, or the element it is inside. A collapsed range
+  // there can measure as an empty rectangle at the origin, so the element's own
+  // box is the reliable one.
+  const at = anchor.nodeType === 1 && anchor.childNodes[selection.anchorOffset]
+    ? anchor.childNodes[selection.anchorOffset]
+    : element;
+  const glyph = (at.nodeType === 1 ? at : element).getBoundingClientRect();
+  // A caret at the *end* of an element that has children — Blink puts one at
+  // `MJX-MATH` offset 1 for a click after a line-ending equation — names no
+  // child to measure, and the element's own centre is never past the
+  // equation's midpoint. Its right edge is where the caret is.
+  const atEnd = anchor.nodeType === 1 && anchor.childNodes.length > 0 &&
+    selection.anchorOffset >= anchor.childNodes.length;
+  // When a click has just placed it, though, the click is the answer. An
+  // equation of one glyph — `$z$` — *is* its glyph, so the glyph's centre is
+  // the equation's centre and a click after it ties with a click before it.
+  const press = modelInputFreshPress();
+  modelInputCaretBeside(atom, press ? press.x : atEnd ? glyph.right : glyph.left + glyph.width / 2);
+}
+
+// The last mouse press in the editor, which `modelInputLeaveAtom` reads: the
+// engine places a click's caret on the mousedown, and the `selectionchange` it
+// raises follows within a task or two. A caret that lands inside an equation
+// later than this did not come from a click, and is measured the old way.
+let modelInputPress = null;
+const MODEL_PRESS_FRESH_MS = 500;
+
+function modelInputFreshPress() {
+  return modelInputPress && performance.now() - modelInputPress.time < MODEL_PRESS_FRESH_MS
+    ? modelInputPress : null;
+}
+
+/**
+ * A click after an equation that WebKit puts in front of it.
+ *
+ * Measured by hand in Safari on 2026-10-10: the caret does not land inside the
+ * equation, as it does in Blink, but in the caret stop in front of it — the
+ * zero-width `<span data-filler>` `modelPlaceStops` puts before an equation that
+ * starts a line — so `modelInputLeaveAtom` saw nothing to leave and a letter
+ * went in front of the equation the user had clicked after. Only an equation
+ * that starts its line has a front stop.
+ *
+ * So a caret that a click has just put in a stop is moved after the equation
+ * when the click was on the equation's own line and past its midpoint. A click
+ * before it, or on another line, leaves the caret in the stop, where it belongs.
+ *
+ * **WebKit has a second spelling of the same place**, found by
+ * `tests/browser/equation-typing.spec.mjs` on 2026-10-21 in Playwright's WebKit
+ * 27.2: an equation that ends its line with text before it — `Also $z$` — has no
+ * front stop, and a click anywhere after it puts the caret at the *end of that
+ * text*. That is in front of the equation too, in a text node rather than a
+ * stop, so the same rule covers it: whatever position directly precedes the
+ * equation counts, however the engine spells it.
+ */
+function modelInputLeaveFront(selection, element) {
+  const press = modelInputFreshPress();
+  if (!press) return;
+  const atom = modelInputAtomAhead(selection, element);
+  if (!atom || !editor.contains(atom)) return;
+  const box = atom.getBoundingClientRect();
+  if (press.y < box.top || press.y > box.bottom) return;
+  if (press.x > box.left + box.width / 2) modelInputCaretBeside(atom, press.x);
+}
+
+// The equation a collapsed caret sits directly in front of, or null: from
+// inside its caret stop, from the end of the text node just before it, or from
+// an element offset that names it.
+function modelInputAtomAhead(selection, element) {
+  const isAtom = (node) => node && node.nodeType === 1 && node.hasAttribute("data-math");
+  const stop = element.closest(`[${MODEL_FILLER_ATTR}]`);
+  if (stop) return isAtom(stop.nextSibling) ? stop.nextSibling : null;
+  const anchor = selection.anchorNode;
+  const offset = selection.anchorOffset;
+  if (anchor.nodeType === 3) {
+    return offset === anchor.data.length && isAtom(anchor.nextSibling) ? anchor.nextSibling : null;
+  }
+  const next = anchor.childNodes[offset];
+  return isAtom(next) ? next : null;
+}
+
+// Put the caret at whichever edge of `atom` the screen position `x` is nearer.
+function modelInputCaretBeside(atom, x) {
+  const box = atom.getBoundingClientRect();
+  const after = x > box.left + box.width / 2;
+  const selection = window.getSelection();
+  const parent = atom.parentNode;
+  const index = Array.prototype.indexOf.call(parent.childNodes, atom);
+  const range = document.createRange();
+  const stop = atom.previousSibling;
+  if (after) range.setStart(parent, index + 1);
+  // In front of an equation that starts a line, inside the caret stop, the one
+  // place there Firefox draws a caret — see modelPlaceStops.
+  else if (stop && stop.nodeType === 1 && stop.hasAttribute(MODEL_FILLER_ATTR) && stop.firstChild) {
+    range.setStart(stop.firstChild, stop.firstChild.textContent.length);
+  } else range.setStart(parent, index);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+/**
+ * A press *on* an equation puts the caret beside it, at the nearer edge.
+ *
+ * Measured in Blink on 2026-10-01: clicking an uneditable equation does not
+ * move the caret at all — no `selectionchange` fires — so the next letter
+ * landed wherever the caret already was, somewhere else in the document. The
+ * press is cancelled, which also stops a drag selection starting *on* an
+ * equation; one starting beside it still works, and a press on an equation
+ * already inside the selection is left alone, since that is how a drag of the
+ * selection begins. Shift is left to the engine, since it extends a selection
+ * rather than placing a caret.
+ *
+ * **A press on an image selects the image**, stage 3's slice 2, which is what
+ * makes Insert → Image… able to edit one. Measured 2026-10-30 in Playwright's
+ * engines: Gecko selects a clicked image itself, Blink puts the caret at the
+ * start of the line and WebKit leaves no selection at all, so the press is
+ * taken here and the image selected the way Gecko already does it.
+ */
+function modelInputPressAtom(event) {
+  if (event.button !== 0 || event.shiftKey) return;
+  const image = event.target && event.target.tagName === "IMG" ? event.target : null;
+  if (image && editor.contains(image)) {
+    const live = window.getSelection();
+    if (live && live.rangeCount && !live.isCollapsed && live.getRangeAt(0).intersectsNode(image)) return;
+    event.preventDefault();
+    editor.focus({ preventScroll: true });
+    const range = editor.ownerDocument.createRange();
+    range.selectNode(image);
+    live.removeAllRanges();
+    live.addRange(range);
+    return;
+  }
+  const atom = event.target && event.target.closest && event.target.closest("[data-math]");
+  if (!atom || !editor.contains(atom)) return;
+  // Pressing on an equation that is part of the current selection is how a
+  // drag of that selection starts (slice 5), so it is left to the engine.
+  const selection = window.getSelection();
+  if (selection && selection.rangeCount && !selection.isCollapsed &&
+      selection.getRangeAt(0).intersectsNode(atom)) return;
+  event.preventDefault();
+  editor.focus({ preventScroll: true });
+  modelInputCaretBeside(atom, event.clientX);
+}
+
+/**
+ * Copy and cut write the clipboard themselves — slice 7's step 2.
+ *
+ * Measured by hand on 2026-10-01: copying or cutting a selection with an
+ * equation in it, in Firefox and in Chrome, left the equation out of what was
+ * pasted — and a cut deleted it from the document. The engines serialise the
+ * selection themselves and the uneditable equation does not survive that, the
+ * same loss a drag had. A copy of the selected DOM does keep it, stamp and all,
+ * and the paste path already turns that back into `$…$` (measured in Blink), so
+ * that is what goes on the clipboard as HTML: paragraphs and list items keep
+ * their structure, which a copy out of the model would have to rebuild. The
+ * caret stops go, being nothing. The plain half shows each equation as its
+ * `$…$` source rather than MathJax's glyph text, and keeps line breaks by
+ * measuring `innerText` on a copy placed off screen.
+ *
+ * A cut then deletes through the model, the way Backspace over the same
+ * selection would, announced as `deleteByCut` so it is its own undo step.
+ */
+// Set when `modelInputClipboard` has written a copy to the clipboard, so the
+// Edit menu's Cut knows its copy landed before it deletes anything.
+let modelClipboardWritten = false;
+
+function modelInputClipboard(event, cut) {
+  const doc = modelCurrentDocument();
+  if (!doc || modelInputComposing() || !event.clipboardData) return;
+  const live = window.getSelection();
+  if (!live || !live.rangeCount || live.isCollapsed) return;
+  const range = live.getRangeAt(0);
+  if (!editor.contains(range.commonAncestorContainer)) return;
+
+  const holder = document.createElement("div");
+  holder.appendChild(range.cloneContents());
+  // **The marks around the selection go with it.** A double-click inside a bold
+  // word selects only the text inside the `<strong>`, so the range's own
+  // contents carry no bold, and pasting gave plain text where every editor
+  // people arrive from gives bold. Found by step 8's spec on 2026-10-26; the
+  // keyboard's Ctrl/Cmd+C had the same gap, being the same handler. Each mark,
+  // code span and link between the selection and its block wraps what was
+  // copied, innermost first.
+  const wrappers = new Set(["STRONG", "B", "EM", "I", "S", "DEL", "STRIKE", "CODE", "A"]);
+  let around = range.commonAncestorContainer;
+  if (around.nodeType !== 1) around = around.parentNode;
+  while (around && around !== editor && !around.hasAttribute(MODEL_BLOCK_ATTR)) {
+    if (wrappers.has(around.tagName)) {
+      const wrap = around.cloneNode(false);
+      while (holder.firstChild) wrap.appendChild(holder.firstChild);
+      holder.appendChild(wrap);
+    }
+    around = around.parentNode;
+  }
+  for (const stop of holder.querySelectorAll(`[${MODEL_FILLER_ATTR}]`)) stop.remove();
+  // A space the DOM builder drew as U+00A0 is a plain space in the model, and
+  // should be one wherever it is pasted — see `modelHoldSpaces`.
+  const walker = document.createTreeWalker(holder, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.textContent.includes("\u00A0")) node.textContent = node.textContent.replace(/\u00A0/g, " ");
+  }
+  const html = holder.innerHTML;
+  for (const equation of holder.querySelectorAll("[data-math]")) {
+    const typeset = equation.querySelector("mjx-container[data-tex]");
+    const source = !typeset ? equation.textContent
+      : typeset.getAttribute("data-display") === "block"
+        ? `$$${typeset.getAttribute("data-tex")}$$`
+        : `$${typeset.getAttribute("data-tex")}$`;
+    equation.replaceWith(document.createTextNode(source));
+  }
+  holder.style.cssText = "position:fixed;left:-99999px;top:0;white-space:pre-wrap";
+  document.body.appendChild(holder);
+  const text = holder.innerText;
+  holder.remove();
+
+  event.preventDefault();
+  event.clipboardData.setData("text/html", html);
+  event.clipboardData.setData("text/plain", text);
+  modelClipboardWritten = true;
+  if (!cut) return;
+
+  const span = modelInputSpan({}, doc);
+  if (!span || span.collapsed) return;
+  const landed = modelInputDelete(doc, modelInputRetarget(doc, span));
+  if (!landed) return;
+  const at = { block: landed.block, offset: landed.offset };
+  if (landed.structural) modelInputRestructure(doc, at, "deleteByCut");
+  else modelInputShow(doc, landed.block, at, "deleteByCut");
+}
+
+/**
+ * Edit → Copy and Edit → Cut, slice 7's step 8.
+ *
+ * Copy is `document.execCommand("copy")`, the one `execCommand` left in the
+ * app — `execcommand.js` went with the old core in stage 4's slice 5, and this
+ * was the one command it still let through. It raises the same `copy` event
+ * Ctrl/Cmd+C does, and `modelInputClipboard` answers it, so the menu and the
+ * keyboard put the same thing on the clipboard. It edits nothing, which is why
+ * it may stay when every other command could not. **Cut is that copy and then the model's own
+ * deletion**, run only when the copy reached the handler — a copy the engine
+ * refused deletes nothing. `cut` itself is never run here: a cut event the
+ * handler did not cancel would edit the page behind the model's back.
+ */
+function modelInputMenuClipboard(cut) {
+  const doc = modelCurrentDocument();
+  if (!doc) return false;
+  modelClipboardWritten = false;
+  document.execCommand("copy");
+  if (!modelClipboardWritten || !cut) return modelClipboardWritten;
+  const span = modelInputSpan({}, doc);
+  if (!span || span.collapsed) return true;
+  const landed = modelInputDelete(doc, modelInputRetarget(doc, span));
+  if (!landed) return true;
+  const at = { block: landed.block, offset: landed.offset };
+  if (landed.structural) modelInputRestructure(doc, at, "deleteByCut");
+  else modelInputShow(doc, landed.block, at, "deleteByCut");
+  return true;
+}
+
+function modelInputInstall(root) {
+  root.ownerDocument.addEventListener("selectionchange", modelInputLeaveAtom);
+  root.ownerDocument.addEventListener("selectionchange", modelInputSelectionMath);
+  root.ownerDocument.addEventListener("selectionchange", modelInputSelectionMarks);
+  root.addEventListener("mousedown", (event) => {
+    modelInputPress = { x: event.clientX, y: event.clientY, time: performance.now() };
+  }, true);
+  root.addEventListener("mousedown", modelInputPressAtom);
+  root.addEventListener("copy", (event) => modelInputClipboard(event, false));
+  root.addEventListener("cut", (event) => modelInputClipboard(event, true));
+  root.addEventListener("beforeinput", modelInputBeforeInput);
+  root.addEventListener("compositionstart", modelInputCompositionStart);
+  root.addEventListener("compositionend", modelInputCompositionEnd);
+  root.addEventListener("keydown", modelInputKeydown);
+  root.addEventListener("paste", modelInputPasteEvent);
+  root.addEventListener("dragstart", modelInputDragStart);
+  root.addEventListener("dragend", modelInputDragEnd);
+  root.addEventListener("dragenter", modelInputDragOver);
+  root.addEventListener("dragover", modelInputDragOver);
+  root.addEventListener("drop", modelInputDrop);
+}
+
+if (typeof editor !== "undefined" && editor) {
+  modelInputInstall(editor);
+}

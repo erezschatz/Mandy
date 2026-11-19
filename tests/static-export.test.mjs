@@ -1,7 +1,7 @@
 // The HTML export is the document alone: no editor, no scripts beyond the
 // theme sniffer, and self-contained enough to open from a mail attachment.
 
-import { loadApp, loadSource } from "./dom.mjs";
+import { loadApp, loadSource, makeEl, makeText } from "./dom.mjs";
 
 const DOC_HTML = `<h1>Quarterly Report</h1>
 <p>Body text with <strong>bold</strong>.</p>
@@ -12,6 +12,9 @@ function makeNode(html) {
   return {
     innerHTML: html,
     attrs: { contenteditable: "true", spellcheck: "true" },
+    // No children of its own: the markup is a string here. The model's view is
+    // stripped by a tree walk, which the stub-tree checks at the end drive.
+    childNodes: [],
     removeAttribute(n) { delete this.attrs[n]; },
     querySelector(sel) {
       if (sel !== "h1") return null;
@@ -106,7 +109,12 @@ export default async function run(check) {
   // slug, and a stub here would have hidden it.
   const { slugifyTitle, headingAnchors } = loadApp();
 
-  loadSource("static-export.js", {
+  // model.js for real, because modelExportClone is where the export's clone
+  // now comes from; the spy records that the export asked it rather than
+  // cloning the editor itself.
+  let cloned = 0;
+  const editorStub = makeNode(DOC_HTML);
+  const api = loadSource(["model.js", "static-export.js"], {
     slugifyTitle,
     headingAnchors,
     document: {
@@ -125,7 +133,7 @@ export default async function run(check) {
           : makeFrag(tag),
       body: { appendChild() {}, removeChild() {} },
     },
-    editor: makeNode(DOC_HTML),
+    editor: editorStub,
     // Stubbed rather than loaded: this suite checks the wiring — whether the
     // nav is emitted at all, and where it lands — while outline.test.mjs
     // checks that the entries and the nesting are right.
@@ -152,7 +160,12 @@ export default async function run(check) {
     alert: (m) => { throw new Error("alert: " + m); },
     console,
     onToolbarAction: (action, fn) => { if (action === "export-html") handler = fn; },
-  });
+    localStorage: { getItem: () => null, setItem() {} },
+    __onClone: (root) => { if (root === editorStub) cloned++; },
+  }, `;
+  const realClone = modelExportClone;
+  modelExportClone = (root) => { __onClone(root); return realClone(root); };
+  return { modelStripView };`);
 
   check("registers an export-html handler", !!handler);
   await handler();
@@ -205,4 +218,58 @@ export default async function run(check) {
   check("no contenteditable survives", !written.includes("contenteditable"));
   check("no editor scripts are bundled", !written.includes("<script src="));
   check("theme sniffer is present", written.includes("prefers-color-scheme: dark"));
+
+  check("the export takes its clone from modelExportClone", cloned >= 1);
+
+  // --- the model's view, which no export may carry ---------------------------
+  //
+  // Stage 4's slice 2. The model core's renderer stamps a block id on each
+  // element it owns, a filler <br> in an empty block, a zero-width stop in
+  // front of an equation that starts a line and a <br> behind one that ends
+  // it, and makes the equation's wrapper uneditable. In a static page those
+  // are noise; in a Word file the stop is a character and the <br> a break.
+  const doc = makeEl("div");
+  doc.setAttribute("contenteditable", "true");
+  const p = makeEl("p", { parent: doc });
+  p.setAttribute("data-block", "3");
+  const stop = makeEl("span", { parent: p });
+  stop.setAttribute("data-filler", "");
+  stop.appendChild(makeText("\u200B"));
+  const math = makeEl("span", { parent: p });
+  math.setAttribute("data-math", "");
+  math.setAttribute("contenteditable", "false");
+  const mjx = makeEl("mjx-container", { parent: math });
+  mjx.setAttribute("contenteditable", "false");
+  mjx.setAttribute("data-tex", "x");
+  makeEl("br", { parent: p }).setAttribute("data-filler", "");
+  const empty = makeEl("p", { parent: doc });
+  empty.setAttribute("data-block", "4");
+  makeEl("br", { parent: empty }).setAttribute("data-filler", "");
+  const list = makeEl("ul", { parent: doc });
+  list.setAttribute("data-block", "5");
+  const item = makeEl("li", { parent: list });
+  item.setAttribute("data-block", "6");
+  item.appendChild(makeText("kept"));
+  makeEl("br", { parent: item }); // a real hard break, which stays
+
+  api.modelStripView(doc);
+  const all = (node, out = []) => {
+    for (const child of node.childNodes) {
+      if (child.nodeType === 1) { out.push(child); all(child, out); }
+    }
+    return out;
+  };
+  const elements = all(doc);
+  check("no block id survives", elements.every((el) => !el.hasAttribute("data-block")));
+  check("no filler survives", elements.every((el) => !el.hasAttribute("data-filler")));
+  check("no contenteditable survives inside", elements.every((el) => !el.hasAttribute("contenteditable")));
+  check("the caret stop's zero-width character went with it",
+    !p.childNodes.some((n) => n.nodeType === 3 || n.tagName === "SPAN" && !n.hasAttribute("data-math")));
+  check("the equation itself stays, stamp and all",
+    p.childNodes.length === 1 && p.childNodes[0] === math && mjx.getAttribute("data-tex") === "x");
+  check("an empty block keeps its element and loses its filler", empty.childNodes.length === 0);
+  check("a <br> the document holds is not a filler and stays",
+    item.childNodes.length === 2 && item.childNodes[1].tagName === "BR");
+  check("the root is the caller's: stripping leaves its own attributes alone",
+    doc.getAttribute("contenteditable") === "true");
 }

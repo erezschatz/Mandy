@@ -1,36 +1,26 @@
 // Undo and redo, on our own stack rather than the browser's.
 //
-// The browser's native undo is fine right up until something assigns
-// editor.innerHTML — open a file, paste markdown, start a new document,
-// restore from autosave, load the welcome document — at which point the whole
-// native stack is discarded and Ctrl+Z silently stops doing anything for the
-// rest of the session. Silently is the problem: nothing looks broken, the
-// shortcut just stops answering, and the first you know of it is when you
-// needed it.
-//
-// So the document's history is kept here instead, as whole-innerHTML snapshots
-// with the caret position beside them. Snapshots rather than a diff or a
-// command log because contenteditable is not a data structure we control: the
-// browser splits nodes on Enter, merges them on Backspace, normalises markup on
-// paste and rewrites a trailing space to an NBSP behind our back. Anything
-// finer-grained would have to model all of that correctly, and the failure mode
-// of getting it wrong is a corrupted document.
+// The browser's own stack has nothing on it: the input layer cancels every
+// `beforeinput` (model-input.js), so the engine never edits the document and
+// never records an edit. The model is the document, and its history is kept
+// here, as forks of the model with the caret beside each one.
 //
 // Two things drive the stack, and only two:
 //
-//   1. The editor's own `input` event, which covers typing, deleting, IME,
-//      drag-and-drop, cut, native paste and every execCommand the format bar
-//      runs. Also synthetic input events, which is how a programmatic edit that
-//      should be undoable announces itself (see `insertToc` in outline.js).
+//   1. The editor's own `input` event, which every model edit dispatches once
+//      it has rendered — typing, deleting, IME, paste, drop, cut, the formats
+//      and the structural commands alike.
 //   2. `undoReset()`, called wherever the document is *replaced* rather than
 //      edited.
 //
 // That second one is the whole point of the file, and it is a deliberate line:
 // history does not cross a document boundary. Undo after opening a file must
 // not hand back the previous file's text — you would then be one Ctrl+S away
-// from writing the old document into the new file's path. Every site that
-// assigns editor.innerHTML has to pick a side, and tests/undo.test.mjs counts
-// them so a new one cannot quietly skip the decision.
+// from writing the old document into the new file's path. Every caller of the
+// two doors a document arrives through — `loadDocumentMarkdown` and
+// `loadBlankDocument` in app.js, which hand the model markdown to render — has
+// to pick a side, and tests/undo.test.mjs counts that nothing outside the
+// model's render assigns `editor.innerHTML`.
 //
 // `undoPark()` / `undoAdopt()` are the one sanctioned crossing of that line,
 // for a tab switch — where the outgoing document is neither replaced nor edited
@@ -41,8 +31,16 @@
 // tab from ever reaching another tab's content.
 
 // Deep enough that nobody reaches the end of it in normal editing, small enough
-// that a large document cannot run the tab out of memory: each snapshot is a
-// full copy of the document, so this is the cap that matters.
+// that a large document cannot run the tab out of memory.
+//
+// **A model state is bigger than the HTML string this was sized for**, and for
+// a while there was a byte budget here to bound that. It is gone, and the
+// reasoning is in CHANGELOG.md: slice 6's step 7 makes a state share the
+// contents of every paragraph the edit did not touch, which takes it to about
+// the size of the document's outline — smaller than the string it replaced —
+// so a budget would have been a ceiling nothing could reach. If states ever get
+// heavy again, that is the moment to measure against the case that made them
+// heavy, rather than to carry a guard sized for a case nobody has met.
 const UNDO_LIMIT = 100;
 
 // Consecutive edits of the same kind, close together in time, collapse into one
@@ -51,8 +49,6 @@ const UNDO_LIMIT = 100;
 // (Enter, bold, paste, a formatBlock) is a deliberate act and earns its own
 // step. `inputType` is what makes that distinction available; a synthetic event
 // has none, so a programmatic edit never coalesces into the typing before it.
-// The exception is an execCommand insert, which reports the same `insertText` a
-// keystroke does however it was triggered — that is what `undoBreak()` is for.
 const UNDO_COALESCE_MS = 600;
 const UNDO_COALESCING = new Set([
   "insertText",
@@ -86,8 +82,8 @@ function freshHistory() {
     nextId: 0,
     lastType: null,
     lastTime: 0,
-    // Set by undoBreak(), cleared by the input event it isolates.
-    breakOnce: false,
+    // Set by undoJoin(), cleared by the input event it merges.
+    joinOnce: false,
   };
 }
 
@@ -97,125 +93,68 @@ let history = freshHistory();
 // everyone else's benefit. Without it an undo would record itself as an edit.
 let undoApplying = false;
 
-// ── Selection, as a character offset ─────────────────────────────────────────
+// ── What a state is ──────────────────────────────────────────────────────────
 //
-// A Range cannot be stored: restoring a snapshot replaces every node it points
-// at. An offset into the document's text survives that, because it describes a
-// position in the content rather than in the tree.
+// Everything else in this file is about the stack — coalescing, UNDO_LIMIT,
+// the redo branch, the ids file-api.js reads, park and adopt — and only these
+// two operations know what a state actually *is*. They were the two seams
+// between the old core and the model while both ran (TODO 3.1, stage 2's slice
+// 6); the old core's half went in stage 4's slice 5, and the seams stayed
+// because keeping what a state is in two functions is still what keeps the
+// stack machinery the `tabs` suite guards ignorant of it.
 
-function undoTextLength(node) {
-  if (node.nodeType === 3) return node.textContent.length;
-  let total = 0;
-  for (const child of node.childNodes) total += undoTextLength(child);
-  return total;
+/**
+ * What the document is right now: a **fork** of the model, which copies the
+ * document's outline and shares its contents, and marks the live document as
+ * sharing them, so the next edit copies the one block it touches before writing
+ * to it. A state that moved with the document would not be a state, and copying
+ * the whole document to prevent that was slice 6's step 1 — step 7 is why it no
+ * longer has to.
+ *
+ * The caret is a `(blockId, offset)`, which is a block *id* rather than a block
+ * precisely so that a state holds no reference into the document it is a copy
+ * of.
+ */
+function undoCaptureState() {
+  const doc = modelCurrentDocument();
+  if (!doc) return { model: null, selection: null };
+  return { model: modelForkDocument(doc), selection: undoCaptureModelCaret(doc) };
 }
 
-// Character offset of (node, offset) within root, or null if it is not inside.
-function undoTextOffset(root, node, offset) {
-  let total = 0;
-  let found = false;
-
-  (function walk(current) {
-    if (found) return;
-    if (current === node) {
-      if (current.nodeType === 3) {
-        total += offset;
-      } else {
-        // An element container: `offset` counts child nodes, not characters.
-        const children = current.childNodes;
-        for (let i = 0; i < offset && i < children.length; i++) {
-          total += undoTextLength(children[i]);
-        }
-      }
-      found = true;
-      return;
-    }
-    if (current.nodeType === 3) {
-      total += current.textContent.length;
-      return;
-    }
-    for (const child of current.childNodes) {
-      walk(child);
-      if (found) return;
-    }
-  })(root);
-
-  return found ? total : null;
+function undoCaptureModelCaret(doc) {
+  return modelRecordSelection(modelReadSelection(editor, doc));
 }
 
-// The reverse: the text node and offset that many characters in. Returns the
-// last position in the document when the offset runs past the end, which is
-// what happens when a snapshot is restored over shorter content.
-function undoLocateOffset(root, target) {
-  let remaining = target;
-  let result = null;
-  let last = null;
-
-  (function walk(current) {
-    if (result) return;
-    if (current.nodeType === 3) {
-      const length = current.textContent.length;
-      last = { node: current, offset: length };
-      if (remaining <= length) {
-        result = { node: current, offset: remaining };
-        return;
-      }
-      remaining -= length;
-      return;
-    }
-    for (const child of current.childNodes) {
-      walk(child);
-      if (result) return;
-    }
-  })(root);
-
-  return result || last;
-}
-
-function undoCaptureSelection() {
-  const selection = typeof window !== "undefined" && window.getSelection
-    ? window.getSelection()
-    : null;
-  if (!selection || !selection.rangeCount) return null;
-
-  const range = selection.getRangeAt(0);
-  if (!editor.contains(range.startContainer)) return null;
-
-  return {
-    start: undoTextOffset(editor, range.startContainer, range.startOffset),
-    end: undoTextOffset(editor, range.endContainer, range.endOffset),
-  };
-}
-
-function undoRestoreSelection(saved) {
-  if (!saved || saved.start === null) return;
-
-  const from = undoLocateOffset(editor, saved.start);
-  const to = saved.end === null ? from : undoLocateOffset(editor, saved.end);
-  if (!from || !to) return;
-
-  try {
-    const range = document.createRange();
-    range.setStart(from.node, from.offset);
-    range.setEnd(to.node, to.offset);
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
-  } catch {
-    // A snapshot restored over content that no longer has the same shape can
-    // produce an offset the range rejects. The document is right either way,
-    // and a caret in the wrong place is not worth throwing over.
+/**
+ * Put a state on screen, caret and all, then focus.
+ *
+ * **It installs a fork of the stored state**, never the stored object. The next
+ * edit mutates what it installs, so handing over the entry itself would edit
+ * the history — and the way that shows is undo, redo, undo, where the second
+ * visit finds the state the first one left behind. A fork is enough because it
+ * copies the outline and re-marks the contents as shared, so the first edit
+ * after a restore copies what it is about to write to.
+ *
+ * A state with no model is one taken before a document existed. Nothing is put
+ * on screen for it, which is the honest answer: there was nothing.
+ */
+function undoApplyState(snapshot) {
+  if (snapshot.model) {
+    // Resolved against the clone being installed, never against the state:
+    // the caret has to land in the tree that is about to be rendered, which is
+    // the whole reason a state records ids rather than blocks. It goes in
+    // inside the render, in the render's own coordinates, because nothing may
+    // hold a Range across one.
+    const doc = modelForkDocument(snapshot.model);
+    modelRestoreDocument(editor, doc, md, modelResolveSelection(doc, snapshot.selection));
   }
+  if (editor.focus) editor.focus();
 }
 
 // ── The stack ────────────────────────────────────────────────────────────────
 
 function undoSnapshot() {
-  return {
-    html: editor.innerHTML,
-    selection: undoCaptureSelection(),
-    id: history.nextId++,
-  };
+  return { ...undoCaptureState(), id: history.nextId++ };
 }
 
 // The id of the document's current state. Undo and redo hand back a snapshot
@@ -228,9 +167,7 @@ function undoPosition() {
 
 function applyUndoSnapshot(snapshot) {
   undoApplying = true;
-  editor.innerHTML = snapshot.html;
-  if (editor.focus) editor.focus();
-  undoRestoreSelection(snapshot.selection);
+  undoApplyState(snapshot);
 
   // Before the event, not after it. file-api.js's own input listener asks
   // undoPosition() where the document now is, and answering with the state we
@@ -264,39 +201,38 @@ function undoReset() {
 }
 
 /**
- * Bring the current snapshot back in line with the document, without pushing a
- * step. For an edit made *after* the `input` event that announced it — which is
- * execcommand.js's normalisation and nothing else so far. Dispatching a second
- * input event would work too and would be wrong: it would make one action cost
- * two Ctrl+Z, the first of which would appear to do nothing.
+ * Merge the next edit into the step before it, whatever its type and however
+ * long it has been. For a composition that **rewrites what was just typed**:
+ * the macOS press-and-hold accent types the plain vowel as an ordinary
+ * keystroke, waits for the user to pick from the popup — well past the
+ * coalescing window — and then replaces that vowel. Without this, one Ctrl+Z
+ * takes back the accent and leaves the vowel, which is not a thing anybody
+ * typed. Found by hand in Firefox on 2026-09-23.
  */
-function undoRefresh() {
-  history.current = undoSnapshot();
-}
-
-/**
- * Keep the next edit out of the run of typing around it. For a programmatic
- * insert that arrives as `insertText` and so is indistinguishable from a
- * keystroke — paste-without-formatting is the one that needs it, since it goes
- * in through execCommand("insertText") like any typed character. Without this
- * a plain paste lands in the middle of whatever the user was typing and one
- * Ctrl+Z takes back both. Isolates the step on both sides: nothing before it
- * merges in, and nothing typed after it merges into the paste.
- */
-function undoBreak() {
-  history.breakOnce = true;
+function undoJoin() {
+  history.joinOnce = true;
 }
 
 /**
  * Detach the whole history and leave a fresh one in its place. For a tab
- * switch: stash the returned bundle on the outgoing tab, swap editor.innerHTML
- * to the incoming document, then undoAdopt that tab's stored bundle. Nothing
+ * switch: stash the returned bundle on the outgoing tab, put the incoming
+ * document on screen, then undoAdopt that tab's stored bundle. Nothing
  * here touches the editor — the content swap is the caller's.
  */
 function undoPark() {
   const parked = history;
   history = freshHistory();
   return parked;
+}
+
+/**
+ * The savepoint a parked bundle would answer with: where its document was when
+ * it was parked. For a save that finishes after its tab has left the screen,
+ * which records the save against that bundle rather than the live history. The
+ * bundle is otherwise opaque to its caller, so this is the one thing it may ask.
+ */
+function undoBundlePosition(bundle) {
+  return bundle && bundle.current ? bundle.current.id : null;
 }
 
 /**
@@ -335,10 +271,11 @@ editor.addEventListener("input", (event) => {
   const type = event && event.inputType;
   const now = Date.now();
   const coalesce =
-    !history.breakOnce &&
-    UNDO_COALESCING.has(type) &&
-    type === history.lastType &&
-    now - history.lastTime < UNDO_COALESCE_MS;
+    history.joinOnce || (
+      UNDO_COALESCING.has(type) &&
+      type === history.lastType &&
+      now - history.lastTime < UNDO_COALESCE_MS
+    );
 
   if (!coalesce) {
     history.undoStack.push(history.current);
@@ -348,12 +285,44 @@ editor.addEventListener("input", (event) => {
   // Any fresh edit invalidates the redo branch, coalesced or not.
   history.redoStack = [];
   history.current = undoSnapshot();
-  // A broken step is also one nothing may merge *into*, so the type it reports
-  // must not match whatever comes next either.
-  history.lastType = history.breakOnce ? null : type;
+  history.lastType = type;
   history.lastTime = now;
-  history.breakOnce = false;
+  history.joinOnce = false;
 });
+
+/**
+ * Keep the state we are in up to date with where the caret *is*, not only
+ * where it was when the state was taken.
+ *
+ * An undo puts back the caret its state carries, and a state used to carry the
+ * caret from the moment it was taken — just after the edit *before* it. That
+ * is the right place only if the caret never moved in between. Click
+ * somewhere, type, undo, and the caret went back to wherever the previous edit
+ * had left it; undo the first edit after opening a file, whose state was taken
+ * with no caret at all, and it went nowhere — invisible in Firefox, with
+ * arrow keys starting from the top. That was the caret half of the undo bug
+ * once filed as TODO 1.6, found by hand on 2026-09-23 through
+ * `tests/fixtures/undo-check.md`, and it was in both cores. So the state that is current follows the caret until the next
+ * edit pushes it, and what an undo restores is **where the caret was when the
+ * edit being undone began**.
+ *
+ * Only a caret inside the editor counts, so clicking the toolbar does not wipe
+ * it, and not while undo is applying a state or an IME holds the text, when
+ * what the selection points at is not yet the model's.
+ */
+function undoFollowCaret() {
+  const state = history.current;
+  if (undoApplying || !state) return;
+  if (typeof modelInputComposing === "function" && modelInputComposing()) return;
+  if (!state.model) return;
+  const doc = modelCurrentDocument();
+  const caret = doc ? undoCaptureModelCaret(doc) : null;
+  if (caret) state.selection = caret;
+}
+
+if (typeof document !== "undefined" && document.addEventListener) {
+  document.addEventListener("selectionchange", undoFollowCaret);
+}
 
 // Registered as toolbar actions rather than bound to keys alone: the Edit menu
 // renders them from the same spec every other item comes from, so the shortcut
@@ -361,8 +330,10 @@ editor.addEventListener("input", (event) => {
 onToolbarAction("undo", () => undo());
 onToolbarAction("redo", () => redo());
 
-// The native stack is not merely unused, it is actively wrong after the first
-// innerHTML assignment — so these preventDefault rather than falling through.
+// The native stack is empty, because the engine never edits anything, so these
+// preventDefault rather than falling through to a browser action that has
+// nothing to undo — or, in an engine that ever did record something, would
+// change the page behind the model's back.
 document.addEventListener("keydown", (event) => {
   if (!(event.ctrlKey || event.metaKey)) return;
   const key = (event.key || "").toLowerCase();

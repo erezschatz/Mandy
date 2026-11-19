@@ -317,12 +317,28 @@
         align-items: center;
         gap: 10px;
         min-width: 0;
+        /* The menus never give way. They are the controls; the directory beside
+           them is information, and with both groups shrinkable a deep path took
+           width from the menubar until "Insert" read "Inser" — measured at
+           1024px with a 60-character path. `.toolbar-right`'s own `min-width:
+           0` is the other half: without it the path could not ellipsise, and
+           with it alone the menubar still lost, because flex shares shrinkage
+           between the two rather than spending it all on the one that can
+           afford it. */
+        flex-shrink: 0;
       }
 
       .toolbar-right {
         display: flex;
         align-items: center;
         gap: 12px;
+        /* Without this the group keeps its content's full width and the *menus*
+           are what a deep path squeezes — measured with a 60-character
+           directory, which clipped "Insert" to "Inser". `.toolbar-path` already
+           knows how to shrink and ellipsise; it could not, because its parent
+           was not allowed to. The menus are controls and the directory is
+           information, so the information gives way. */
+        min-width: 0;
       }
 
       .app-mark {
@@ -399,6 +415,12 @@
         left: -4px;
         z-index: 200;
         min-width: 244px;
+        /* The Format menu is taller than a short window since the table
+           controls joined it, and a panel hung off a sticky bar has no page to
+           scroll it by: its last items were unreachable. */
+        max-height: calc(100vh - var(--toolbar-height) - 16px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
         padding: 6px;
         border: 1px solid var(--rule);
         border-radius: 10px;
@@ -457,6 +479,13 @@
 
       .menu-item[aria-pressed="true"] .menu-check {
         visibility: visible;
+      }
+
+      /* Some of the selection has it: the menu's version of the format bar's
+         outlined .mixed button. */
+      .menu-item[aria-pressed="mixed"] .menu-check {
+        visibility: visible;
+        opacity: 0.4;
       }
 
       .menu-label {
@@ -689,11 +718,13 @@
         z-index: 10;
       }
 
+      /* Inline, which is what a markdown image is: it sits in a paragraph's
+         line. As a block it took a line of its own, so the caret beside it
+         drew on the line above or below. An image alone in its paragraph,
+         like the welcome banner, still has the line to itself. */
       #editor img {
         max-width: 100%;
         height: auto;
-        display: block;
-        margin: 1rem 0;
       }
 
       /* The welcome banner ships as a light lockup; swap in the
@@ -1585,6 +1616,13 @@
            filenames, which read better in a face where every character is
            the same width. */
         font: 13.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      /* A field holding words rather than an address — an image's
+         description — in the dialog's own face. */
+      .notify-dialog-input-prose {
+        font: inherit;
+        font-size: 13.5px;
       }
 
       .notify-dialog-input:focus {

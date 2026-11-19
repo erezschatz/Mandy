@@ -1,0 +1,8 @@
+{
+  "name": "plan-edited",
+  "core": "legacy",
+  "edited": true,
+  "source": "Plan\n====\n\n1. First step\n2. Second step\n\n> A quoted line\n> and its lazy partner\n\nEnds with a backslash break\\\nand the line after it.\n",
+  "html": "<h1>Plan</h1>\n<ol>\n<li>First step edited</li>\n<li>Second step</li>\n</ol>\n<blockquote>\n<p>A quoted line\nand its lazy partner</p>\n</blockquote>\n<p>Ends with a backslash break<br>\nand the line after it.</p>\n",
+  "expected": "# Plan\n\n1. First step edited\n2. Second step\n\n> A quoted line and its lazy partner\n\nEnds with a backslash break\\\nand the line after it.\n"
+}

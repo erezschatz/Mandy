@@ -12,9 +12,14 @@ configureMarkdownParser(md);
 // one document and no file API -- these names are what everything resolves to,
 // so the single-document path is the fallback rather than a second
 // implementation.
+//
+// `markdown` is the document itself, as the markdown a save would write. It
+// replaced the `content` key (the editor's HTML) and the `source` key (the
+// markdown that HTML came from) in stage 4's slice 4, under a new name so that a
+// stored document never has to be asked which of the two it holds —
+// legacy-storage.js converts the old pair once.
 const DOCUMENT_KEYS = {
-  content: "markdownContent",
-  source: "markdownSource",
+  markdown: "mandy-markdown",
   path: "mandy-current-file",
   dirty: "mandy-dirty",
   mtime: "mandy-file-mtime",
@@ -35,96 +40,6 @@ function documentKey(name) {
 // before markdown-style.js existed.
 let markdownStyle = Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
 
-// The blocks of the document as it arrived, so an untouched one can be saved
-// back as the bytes it came in as rather than as Turndown's rendering of it.
-let markdownSource = new Map();
-
-// A reference definition has no representation in the parsed document at all
-// -- markdown-it consumes the line silently, so unlike everything else
-// Turndown serialises, there is nothing left to read it back from. Stashed
-// here the same way Mermaid and LaTeX stash what their own rendering destroys
-// (see renderers.js), except a definition has no element to stash onto, so
-// this keeps the raw line text keyed by its label instead. referenceAwareLink
-// above is the other half: it stamps which label a reference link resolved
-// through, so the referenceLink Turndown rule below can look the line back up
-// by that label and know whether to bother.
-let referenceDefinitions = new Map();
-
-// CommonMark's own label matching: trim, collapse internal whitespace, fold
-// case. Deliberately not markdown-it's normalizeReference -- that lives on
-// the parser instance and only matters for resolving href/title correctly,
-// which referenceAwareLink already does. This one only has to agree with
-// itself between the scan below and the Turndown rule that reads its output,
-// so it does not need to reproduce markdown-it's exact Unicode case-folding,
-// and staying independent of the parser keeps both testable without one.
-function normalizeReferenceLabel(label) {
-  return (label || "").trim().replace(/\s+/g, " ").toLowerCase();
-}
-
-// Reads the raw markdown for reference definitions and keys their exact
-// source lines by label, so the Turndown rule below can hand one back
-// byte-for-byte rather than re-deriving "[label]: url" in some house style
-// that would not match what the author wrote. Deliberately narrow: this
-// catches the common single-line "[label]: destination" / '"title"' form and
-// nothing that spans lines. A definition markdown-it parses but this misses
-// simply never finds a match at save time, so the link that used it saves as
-// a plain inline link instead of losing its target outright.
-function scanReferenceDefinitions(markdown) {
-  const definitions = new Map();
-  let fence = null;
-
-  for (const line of (markdown || "").split("\n")) {
-    const fenceMatch = line.match(/^\s{0,3}(`{3,}|~{3,})/);
-    if (fence) {
-      if (fenceMatch && fenceMatch[1][0] === fence[0] && fenceMatch[1].length >= fence.length) {
-        fence = null;
-      }
-      continue;
-    }
-    if (fenceMatch) {
-      fence = fenceMatch[1];
-      continue;
-    }
-
-    if (!isReferenceDefinitionLine(line)) continue;
-    const label = line.match(/^ {0,3}\[([^\]]+)\]:/)[1];
-    const key = normalizeReferenceLabel(label);
-    // First definition wins: CommonMark's own precedence when a label is
-    // defined more than once.
-    if (!definitions.has(key)) definitions.set(key, line);
-  }
-
-  return definitions;
-}
-
-// The labels a given save actually used, so appendReferenceDefinitions only
-// brings back the ones still pointed at -- an edit that removed the last link
-// to a label drops its definition too, rather than leaving an orphan nobody
-// references. Reset at the top of every htmlToMarkdown call; the Turndown
-// rule below fills it in as it runs.
-let usedReferenceLabels = new Set();
-
-// Appended after Turndown and before the reflow/restore pass, so a
-// reference's destination is exactly as immune to re-wrapping as every other
-// definition line (see isReferenceDefinitionLine in markdown-style.js) and so
-// an unedited definition that happens to still be present as its own block in
-// the source is eligible for the same byte-restore every other segment gets.
-//
-// Always at the end of the document, regardless of where the source placed
-// it. Mid-document definitions do not survive this -- markdown-it gives them
-// no DOM node to track a position with -- so "collected once at the end" is
-// the deliberate answer to a question that was otherwise open, rather than
-// a gap.
-function appendReferenceDefinitions(markdown, usedLabels) {
-  const lines = [];
-  for (const key of usedLabels) {
-    const line = referenceDefinitions.get(key);
-    if (line) lines.push(line);
-  }
-  if (!lines.length) return markdown;
-  return markdown.replace(/\n*$/, "\n") + "\n" + lines.join("\n") + "\n";
-}
-
 const turndownService = new TurndownService({
   headingStyle: "atx",
   codeBlockStyle: "fenced",
@@ -139,30 +54,21 @@ const turndownService = new TurndownService({
 // over it, so the serialiser can be re-styled in place. It has to be: the rules
 // below are registered against this instance, and rebuilding it to change an
 // option would drop them.
-// Persisted next to the autosave because the autosave is HTML: a reload
-// restores the document but carries no markdown to re-read, so without this the
-// style and the source index are gone and the first save after any reload
-// rewrites the whole file in the defaults. Stored as the source rather than as
-// the derived style so both come back from one string.
-function adoptMarkdownStyle(markdown, remember = true) {
+//
+// The style is the document's as it is now rather than as it was opened
+// (decision 1 of stage 4): every door a document arrives through sniffs it, and
+// the autosave holds the markdown a save would write, so a reload sniffs that.
+// The model reads the wrap width and the table convention off it when it emits
+// an edited block; Turndown reads the rest when a paste or the table of
+// contents is converted.
+function adoptMarkdownStyle(markdown) {
   markdownStyle = sniffMarkdownStyle(markdown);
-  markdownSource = indexMarkdownBlocks(markdown);
-  referenceDefinitions = scanReferenceDefinitions(markdown);
-  if (remember) {
-    try {
-      localStorage.setItem(documentKey("source"), markdown);
-    } catch (error) {
-      // A document too big for the quota still edits and saves; it just loses
-      // byte fidelity across a reload.
-      console.warn("[Style] Could not persist the source document:", error);
-    }
-  }
   pushMarkdownStyleOptions();
 }
 
 // The subset of the sniffed style that Turndown itself reads. One shared
-// service instance serialises every document, so its options are per-document
-// state like the rest of this cluster -- pushed here rather than at each of the
+// service instance converts for every document, so its options are per-document
+// state like the style they come from -- pushed here rather than at each of the
 // two call sites, which must not be able to drift apart.
 function pushMarkdownStyleOptions() {
   turndownService.options.hr = markdownStyle.hr;
@@ -172,75 +78,31 @@ function pushMarkdownStyleOptions() {
   turndownService.options.br = markdownStyle.hardBreak;
 }
 
-// The per-tab half of the markdown state above, for the tabbed view: the sniffed
-// conventions, the block index and the reference definitions, all three derived
-// from the one string a document arrived as and so rebuilt together by
-// adoptMarkdownStyle. They move together for the same reason, and the Turndown
-// options go with them -- a switch that carried the new tab's block index but
-// left the outgoing document's bullet marker on the shared service would write
-// the wrong marker into the file the next save touched.
+// The per-tab half of the style, for the tabbed view. The Turndown options go
+// with it -- a switch that left the outgoing document's bullet marker on the
+// shared service would write the wrong marker into the next paste.
 //
 // Storage is the caller's business, as in undoPark()/undoAdopt() and
 // filePark()/fileAdopt(): these move what is in memory and nothing else.
 function markdownStylePark() {
-  const parked = {
-    style: markdownStyle,
-    source: markdownSource,
-    references: referenceDefinitions,
-  };
+  const parked = { style: markdownStyle };
   markdownStyleAdopt(null);
   return parked;
 }
 
-// `markdownStyleAdopt(null)` is Turndown's own defaults with nothing indexed:
-// a document that has never had markdown read into it, which is exactly what a
-// fresh tab is until a file is opened or markdown is pasted into it.
+// `markdownStyleAdopt(null)` is Turndown's own defaults: a document that has
+// never had markdown read into it, which is exactly what a fresh tab is until a
+// file is opened or markdown is pasted into it.
 function markdownStyleAdopt(bundle) {
   markdownStyle = bundle ? bundle.style : Object.assign({}, MARKDOWN_STYLE_DEFAULTS);
-  markdownSource = bundle ? bundle.source : new Map();
-  referenceDefinitions = bundle ? bundle.references : new Map();
   pushMarkdownStyleOptions();
 }
 
-// The adopt for a document with no bundle to adopt: re-sniffed from the source
-// its own storage key kept. The page load and a switch into a tab this session
-// has never shown both arrive here — the document is already on screen either
-// way, restored from the content key, and what is missing is only the style and
-// the block index the markdown carries. Re-adopting rather than re-rendering is
-// the point: the markup is not touched.
-//
-// `remember: false` because the source is already under that exact key; writing
-// it back would be the same bytes and one more chance to blow the quota.
-function markdownStyleAdoptStored() {
-  const source = localStorage.getItem(documentKey("source"));
-  if (source) adoptMarkdownStyle(source, false);
-  else markdownStyleAdopt(null);
-}
-
-// A Mermaid diagram drawn before diagrams were removed on 2026-10-01 goes back to
-// the fence it came from. The load paths unwrap them first (renderers.js), so
-// this is the backstop for any that reach a save another way — the model core on
-// `rewrite` runs stored HTML through Turndown before anything can unwrap it.
-// Without it the SVG's text would be written into the file in the diagram's
-// place.
-turndownService.addRule("mermaid", {
-  filter: function (node) {
-    return node.classList && node.classList.contains("mermaid-wrapper");
-  },
-  replacement: function (content, node) {
-    const sourceElement = node.querySelector(".mermaid-source");
-    if (sourceElement) {
-      const source = sourceElement.textContent.trim();
-      return "\n\n```mermaid\n" + source + "\n```\n\n";
-    }
-    return "";
-  },
-});
-
-// The LaTeX counterpart of the mermaid rule above. MathJax renders the source
-// away, so without this a save writes the rendered glyphs back to the file:
-// $$\frac{a}{b}$$ returns as "ab", and there is no getting it back.
-// renderers.js stamps data-tex while the TeX is still recoverable.
+// MathJax renders the source away, so without this an equation copied out of a
+// document and pasted back would arrive as its rendered glyphs: $$\frac{a}{b}$$
+// returns as "ab", and there is no getting it back. renderers.js stamps
+// data-tex while the TeX is still recoverable, and the model's clipboard copies
+// the stamped container.
 turndownService.addRule("mathjax", {
   filter: function (node) {
     return node.nodeName === "MJX-CONTAINER" && node.hasAttribute("data-tex");
@@ -255,11 +117,26 @@ turndownService.addRule("mathjax", {
   },
 });
 
+// The model core's fillers: the empty-block `<br>`, and the caret stops beside
+// an equation at a line's edge (TODO 3.1, slice 7's step 2) — a zero-width
+// character in front, a `<br>` behind. None is content. The model's clipboard
+// strips them from what it copies, but a fragment of the editor's DOM can reach
+// Turndown another way — stored HTML from the flag's days does, through
+// legacy-storage.js — and without the rule the character would be written into
+// the document and the `<br>` would become a hard break.
+turndownService.addRule("modelFiller", {
+  filter: function (node) {
+    return node.nodeType === 1 && node.hasAttribute("data-filler");
+  },
+  replacement: function () {
+    return "";
+  },
+});
+
 // Turndown ships no strikethrough rule either -- that one lives in
-// turndown-plugin-gfm too -- so execCommand("strikeThrough")'s <s> or <del>
-// fell through to the default and the markup round-tripped as plain text,
-// silently, with the document still looking struck-through on screen right up
-// until save. markdown-it's own strikethrough rule is a core rule, not a
+// turndown-plugin-gfm too -- so an <s> or <del> fell through to the default and
+// the markup round-tripped as plain text, silently, with the document still
+// looking struck-through on screen right up until save. markdown-it's own strikethrough rule is a core rule, not a
 // plugin, so parsing `~~text~~` back in already worked; only the way out was
 // missing.
 turndownService.addRule("strikethrough", {
@@ -305,22 +182,31 @@ function isFirstTableRow(node) {
   return !section.previousElementSibling;
 }
 
+// The cell and row rules do not write the table: a cell's width is only known
+// once every row is in, so they hand their pieces up and the `table` rule lays
+// the whole thing out with formatMarkdownTable, in the document's sniffed
+// convention. The markers are U+0000, which the HTML parser replaces wherever it
+// meets one, so no cell's own text can contain one.
+const TABLE_CELL = "\u0000C";
+const TABLE_ROW = "\u0000R";
+const TABLE_ALIGN = "\u0000A";
+
 turndownService.addRule("tableCell", {
   filter: ["th", "td"],
   replacement: function (content) {
-    return " " + tableCellContent(content) + " |";
+    return TABLE_CELL + tableCellContent(content);
   },
 });
 
+// The first row carries the alignments too, read off its cells.
 turndownService.addRule("tableRow", {
   filter: "tr",
   replacement: function (content, node) {
-    const row = "|" + content;
-    if (!isFirstTableRow(node)) return "\n" + row;
-    const rule = Array.prototype.map
-      .call(node.children, (cell) => " " + tableColumnRule(cell) + " |")
-      .join("");
-    return "\n" + row + "\n|" + rule;
+    if (!isFirstTableRow(node)) return TABLE_ROW + content;
+    const aligns = Array.prototype.map
+      .call(node.children, (cell) => tableColumnRule(cell))
+      .join(" ");
+    return TABLE_ROW + TABLE_ALIGN + aligns + TABLE_ALIGN + content;
   },
 });
 
@@ -331,10 +217,30 @@ turndownService.addRule("tableSection", {
   },
 });
 
+// The rows reach here in document order, header first. A table whose header
+// carried no alignment marker -- markup from somewhere stranger than markdown-it
+// -- gets one plain column per header cell. Anything ahead of the first row is
+// a <caption>, which markdown has no place for, so its text goes before the
+// table as its own paragraph rather than being lost.
 turndownService.addRule("table", {
   filter: "table",
   replacement: function (content) {
-    return "\n\n" + content.trim() + "\n\n";
+    const split = content.split(TABLE_ROW);
+    const caption = split[0].trim();
+    const pieces = split.slice(1);
+    let aligns = null;
+    const rows = pieces.map((piece) => {
+      const marked = piece.match(/^\u0000A([^\u0000]*)\u0000A/);
+      if (marked) {
+        aligns = marked[1].split(" ").map(tableCellAlignment);
+        piece = piece.slice(marked[0].length);
+      }
+      return piece.split(TABLE_CELL).slice(1);
+    });
+    if (!rows.length) return caption ? "\n\n" + caption + "\n\n" : "";
+    if (!aligns) aligns = rows[0].map(() => "");
+    const lead = caption ? caption + "\n\n" : "";
+    return "\n\n" + lead + formatMarkdownTable(rows, aligns, markdownStyle.table || TABLE_CONVENTION_DEFAULT) + "\n\n";
   },
 });
 
@@ -357,27 +263,13 @@ turndownService.addRule("autolink", {
   },
 });
 
-// Reference links are inlined by default the way every un-styled Turndown
-// link is, which loses the whole point of writing one: a source that cites
-// the same URL twenty times over arrives with one definition and would leave
-// with twenty copies. referenceAwareLink stamps which label a link resolved
-// through; this rule reads the stamp back and only trusts it if the
-// definition survived the scan in scanReferenceDefinitions, so a label
-// markdown-it resolved but the scan could not find (a definition spanning
-// more than one line, say) falls through to Turndown's own default and saves
-// as a plain inline link rather than as a reference with nothing to point at.
-turndownService.addRule("referenceLink", {
-  filter: function (node) {
-    if (node.nodeName !== "A") return false;
-    const label = node.getAttribute("data-ref-label");
-    return Boolean(label) && referenceDefinitions.has(normalizeReferenceLabel(label));
-  },
-  replacement: function (content, node) {
-    const label = node.getAttribute("data-ref-label");
-    usedReferenceLabels.add(normalizeReferenceLabel(label));
-    return "[" + content + "][" + label + "]";
-  },
-});
+// There is no `referenceLink` rule here, and that is deliberate. A link the
+// model's clipboard copies carries its `data-ref-label` stamp, and writing
+// `[text][label]` for it would hand the paste a reference the pasted fragment
+// does not define — `modelParse` reads it with no definitions, so it came back
+// as literal brackets. Turndown's own inline form is the answer that always
+// resolves. The rule lives on in legacy-storage.js, for the one conversion
+// where the definitions are known: stored HTML with its own source.
 
 // Turndown hardcodes "*   one" and "1.  one" -- marker plus three or two spaces
 // -- which is legal, uncommon, and enough on its own to touch every list line
@@ -449,7 +341,7 @@ const formatBar = document.getElementById("formatBar");
 // always moves it outside the backticks and drops it, saving `` `> ` `` as
 // `` `>` ``. Swapping the edge space for a placeholder before Turndown ever
 // parses the string sidesteps that: the placeholder is not whitespace, so
-// Turndown leaves it exactly where it is, and htmlToMarkdown decodes it back
+// Turndown leaves it exactly where it is, and htmlFragmentToMarkdown decodes it back
 // once Turndown is done. A code span shielded on both edges gets two
 // placeholders per edge rather than one, because CommonMark itself strips a
 // single leading-and-trailing space pair from a code span's content -- the
@@ -457,28 +349,21 @@ const formatBar = document.getElementById("formatBar");
 // placeholder on each side would come back stripped on the next parse.
 const CODE_EDGE_SPACE = String.fromCharCode(0xe000);
 
-// U+00A0 is the one invisible character a user cannot get rid of from inside
-// the app. Browsers write it in place of a trailing space in an edited
-// contenteditable text node, so it arrives without ever being typed; it renders
-// as a space and copies into other documents as one; and find-in-page matches
-// it *against* a plain space, so searching "hello world" cheerfully finds the
-// "hello\u00a0world" the user is then unable to locate and delete. There is no
-// move available to them: the character is invisible, unsearchable, and comes
-// from the editor rather than from anything they wrote.
+// U+00A0 is an invisible character a user cannot get rid of from inside the
+// app: it renders as a space and copies into other documents as one, and
+// find-in-page matches it *against* a plain space, so searching "hello world"
+// cheerfully finds the "hello\u00a0world" the user is then unable to locate
+// and delete. Web pages put it in their HTML freely, so it arrives by paste.
 //
-// So it is normalised rather than preserved, and this is the one place the file
-// deliberately does not come back byte-identical.
+// So it is normalised rather than preserved, at the boundary: the model's own
+// text edits do the same for typed text (modelNormaliseTyped), and the old
+// core's habit of writing one in place of a trailing space went with the old
+// core, since the engine writes nothing any more. Decision D3.
 //
-// It runs before Turndown, and on the HTML rather than on the markdown, for two
-// separate reasons. The markdown has already been through
-// restoreSourceWrapping by then, which hands back the original bytes of every
-// block that still matches -- normalising there would strip a U+00A0 the author
-// really did write, out of a paragraph nobody touched. Doing it here means only
-// text that was actually edited is normalised, which is the boundary we want
-// anyway. And the shield below tests for a literal space, so converting first
-// is also what lets it see a trailing one at the edge of a code span: Turndown
-// treats U+00A0 as whitespace (JS \s matches it) and moves it outside the
-// backticks, so an unconverted one escaped the span *and* landed in the file.
+// It runs before Turndown, on the HTML, because the shield below tests for a
+// literal space: Turndown treats U+00A0 as whitespace (JS \s matches it) and
+// moves it outside the backticks, so an unconverted one escaped the span *and*
+// landed in the document.
 //
 // Both spellings, because innerHTML serialises U+00A0 back out as the entity.
 // A literal "&amp;nbsp;" in the document is safe: it has no "&nbsp;" substring.
@@ -507,28 +392,124 @@ function shieldCodeEdgeSpaces(html) {
   return container.innerHTML;
 }
 
-// Turndown's output never ends in a newline, so every saved file was one git
-// reports as "\ No newline at end of file". Normalised here rather than in
-// saveFile because Download MD writes a file too, and a copied document that
-// ends in a newline is what the clipboard's consumers expect anyway.
-function htmlToMarkdown(html) {
-  usedReferenceLabels = new Set();
-  const markdown = turndownService.turndown(shieldCodeEdgeSpaces(normaliseNbsp(html)))
-    .replace(new RegExp(CODE_EDGE_SPACE, "g"), " ")
-    .replace(/\n*$/, "\n");
-  const withReferences = appendReferenceDefinitions(markdown, usedReferenceLabels);
-  // Re-wrap first, restore second: restoring puts back original bytes, and the
-  // re-wrap must not then take a hand-broken line back apart.
-  const wrapped = reflowMarkdown(withReferences, markdownStyle.wrapWidth);
-  return restoreSourceWrapping(wrapped, markdownSource);
+// The Turndown conversion, which is all a *fragment* may go through: a paste,
+// a drop, and the table of contents outline.js builds. The document itself is
+// never converted from HTML any more — the model writes it — so there is no
+// file to restore against and no width to re-wrap to here. The old core's
+// document conversion, which did both, is legacy-storage.js's, and is used only
+// to convert this browser's old autosave once.
+function htmlFragmentToMarkdown(html) {
+  return turndownService.turndown(shieldCodeEdgeSpaces(normaliseNbsp(html)))
+    .replace(new RegExp(CODE_EDGE_SPACE, "g"), " ");
 }
 
-// The only place markdown enters the document, which is why the sniff lives
-// here rather than at the four call sites -- open, upload, paste and the
-// welcome document all route through it, and a fifth would be easy to forget.
-function markdownToHtml(markdown) {
+// The open document as the markdown a save writes — the one question Save,
+// Save As, Download and Copy markdown all ask. The model writes it: an untouched
+// block goes back as the bytes it was parsed from, and only an edited one is
+// composed, in the document's own conventions and at its sniffed width.
+//
+// There is always a model once the page has booted. Before then there is no
+// document to write, and writing nothing over a file would be the worst answer,
+// so it throws and the caller reports it.
+function documentMarkdown() {
+  const markdown = currentModelMarkdown();
+  if (markdown === null) throw new Error("no document is loaded yet");
+  return markdown;
+}
+
+// The model's answer alone: the markdown it would write, or null when there is
+// no model document to ask. Throws when the emitter refuses, as a save would.
+function currentModelMarkdown() {
+  const doc = modelCurrentDocument();
+  return doc ? modelDocumentMarkdown(doc, md, markdownStyle.wrapWidth) : null;
+}
+
+// ── The editable export's markdown ───────────────────────────────────────────
+//
+// Under the model core an editable export carries its document as markdown in
+// `<script type="text/markdown" id="app-document">` (stage 4's slice 2). A
+// script element ends at the first `</script` whatever its type, and plenty of
+// documents say that — this repo's own do — so `&` and `<` are written as
+// entities: the one reversible pair that leaves no `<` inside the element. A
+// script's text is never entity-decoded by the parser, so it is undone here.
+function encodeEmbeddedMarkdown(markdown) {
+  return markdown.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}
+
+function decodeEmbeddedMarkdown(text) {
+  return text.replace(/&(amp|lt);/g, (_, name) => (name === "amp" ? "&" : "<"));
+}
+
+// The markdown an exported document was made with, or null for one that
+// embeds HTML in the editor instead.
+function readEmbeddedMarkdown() {
+  const element = document.getElementById("app-document");
+  return element ? decodeEmbeddedMarkdown(element.textContent) : null;
+}
+
+// The same, for a caller that has a user waiting: a document the emitter
+// refuses is reported and answers null, so the action stops rather than
+// writing or copying something other than the document. `action` finishes the
+// sentence — "save", "download", "copy".
+function documentMarkdownFor(action) {
+  try {
+    return documentMarkdown();
+  } catch (err) {
+    console.error(`[Save] Could not ${action} the document:`, err);
+    notify(`Could not ${action} the document: ${err.message}`, { severity: "error" });
+    return null;
+  }
+}
+
+// ── The document arrives ─────────────────────────────────────────────────────
+//
+// Two doors, and every route that replaces the document goes through one of
+// them: Open and Reload, the welcome document, upload, New, the boot restore,
+// a tab this session has never shown, and an exported document's boot. The
+// model parses the markdown and renders itself into the editor, so nothing in
+// this file assigns editor.innerHTML.
+//
+// The sniff belongs in the door rather than at its callers, because
+// forgetting it at one of seven is easy.
+function loadDocumentMarkdown(markdown) {
   adoptMarkdownStyle(markdown);
-  return md.render(markdown);
+  modelLoad(editor, markdown, md);
+}
+
+// A document with nothing in it: a model with no blocks, which renders as the
+// one filler paragraph a contenteditable needs to be clickable at all — see
+// modelRender.
+function loadBlankDocument() {
+  modelLoad(editor, "", md);
+}
+
+/**
+ * Put the reader at the top of the document with a caret in its first block.
+ *
+ * For a document that has just been swapped in whole — New, today — where
+ * neither the scroll position nor the caret means anything any more. **Every
+ * engine does the right thing here but one, and that one leaves the document
+ * unusable**: measured 2026-09-28, Blink clamps the scroll to the shorter
+ * document and repairs the selection into the new first block by itself, while
+ * WebKit keeps the old scroll offset — showing empty space below a
+ * one-paragraph document, with the header out of view — and keeps a selection
+ * pointing at nodes that no longer exist, so there is no caret and typing goes
+ * nowhere until the user scrolls up and clicks. Done here rather than trusted
+ * to the engine, which is also what makes it the same in all three.
+ *
+ * Focus before the selection, and without scrolling, so focusing cannot move
+ * a caret this is about to place, nor the view it is about to reset.
+ */
+function showDocumentStart() {
+  if (typeof window.scrollTo === "function") window.scrollTo(0, 0);
+  if (editor.focus) editor.focus({ preventScroll: true });
+  const selection = window.getSelection && window.getSelection();
+  if (!selection) return;
+  const range = document.createRange();
+  range.setStart(editor.firstElementChild || editor, 0);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 // ── Button handlers ──────────────────────────────────────────────────────────
@@ -537,7 +518,8 @@ function markdownToHtml(markdown) {
 // exist in exported documents, and registering an action nothing renders is
 // harmless.
 onToolbarAction("download-md", () => {
-  const markdown = htmlToMarkdown(editor.innerHTML);
+  const markdown = documentMarkdownFor("download");
+  if (markdown === null) return;
 
   const blob = new Blob([markdown], { type: "text/markdown" });
   const url = URL.createObjectURL(blob);
@@ -555,7 +537,8 @@ onToolbarAction("upload-md", () => {
 });
 
 onToolbarAction("copy-md", async (button) => {
-  const markdown = htmlToMarkdown(editor.innerHTML);
+  const markdown = documentMarkdownFor("copy");
+  if (markdown === null) return;
 
   try {
     await navigator.clipboard.writeText(markdown);
@@ -579,9 +562,8 @@ onToolbarAction("copy-md", async (button) => {
 // The file association is not dropped here. Only file-api.js knows there is
 // one, and it hooks the same action to drop it (see its "new" handler).
 function resetDocument() {
-  editor.innerHTML = "<p><br></p>";
-  localStorage.removeItem(documentKey("content"));
-  localStorage.removeItem(documentKey("source"));
+  loadBlankDocument();
+  localStorage.removeItem(documentKey("markdown"));
   // Or a block of the old document could come back on the next save. The three
   // assignments this replaces left Turndown carrying the *previous* document's
   // bullet marker and emphasis delimiter, since nothing pushed the reset style
@@ -647,66 +629,25 @@ onToolbarAction("new", async () => {
 // still claim to be notes.md. That is right for starting over, and wrong for
 // emptying the document you have open: this reads like Ctrl+A then Delete
 // instead. The content goes; the file you're editing, its undo history and
-// its autosave don't. `runCommand` raises `input` the same as typing would,
-// so it undoes as one ordinary step and needs no dialog of its own — Ctrl+Z
-// already covers it.
-//
-// The selection is built directly rather than via execCommand("selectAll"),
-// because a menu click can land here with the caret nowhere near the editor
-// — selectAll scopes to wherever focus already is, and this document has no
-// guarantee focus was ever inside #editor this session. selectNodeContents
-// pins the range to the editor regardless.
+// its autosave don't. It is one model edit, so it undoes as one ordinary step
+// and needs no dialog of its own.
 onToolbarAction("clear", () => {
-  editor.focus();
-  const range = document.createRange();
-  range.selectNodeContents(editor);
-  const selection = window.getSelection();
-  selection.removeAllRanges();
-  selection.addRange(range);
-  runCommand("delete");
+  // A model edit, slice 7's step 7.
+  if (typeof modelInputClear === "function") modelInputClear();
 });
 
-// Cross-browser identical per D4 / TODO 1.1's measurements — including the
-// id="null" Chrome leaves on it, which normaliseEditorMarkup already strips
-// for any <hr> regardless of how it got there — so this needs nothing beyond
-// the command itself. execCommand raises input for free.
-onToolbarAction("insert-hr", () => runCommand("insertHorizontalRule"));
+onToolbarAction("insert-hr", () => {
+  // A model insertion, slice 7's step 7.
+  if (typeof modelInputRule === "function") modelInputRule();
+});
 
-// Insert / edit a link. Four cases, and only the first has an execCommand:
+// Insert / edit a link: a model command, slice 7's step 4 — see
+// `modelInputLink`. Ctrl/Cmd+K reaches it through the toolbar action below.
 //
-//   - text selected, not already a link   createLink, which the browser check
-//                                         measured identical in both engines
-//   - a bare caret                        insert the address as its own link
-//   - the caret is inside a link          retarget it by setting href directly
-//   - the caret is inside a link,         unlink it
-//     address left empty
-//
-// createLink inside an existing <a> is the one combination the browser check
-// does not cover and the engines disagree on — Chrome nests a second anchor —
-// so the retarget and unlink cases are done by hand. The direct-mutation ones
-// dispatch a synthetic `input`, the same convention insertToc and the format
-// bar's Code branch already follow, so undo, autosave and the dirty flag hear
-// them. createLink and insertHTML raise it themselves through runCommand.
-function linkAncestor(node) {
-  let el = node && node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
-  while (el && el !== editor) {
-    if (el.tagName === "A") return el;
-    el = el.parentElement;
-  }
-  return null;
-}
-
-function attrEscape(value) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 // A bare "example.com" is almost never meant as a relative path, so give it a
 // scheme. Anything already carrying one, an #anchor, or a path is left exactly
-// as typed — markdown puts no other constraint on an href.
+// as typed — markdown puts no other constraint on an href. model-input.js asks
+// this for the address the dialog was given.
 function normaliseLinkHref(value) {
   const href = value.trim();
   if (!href) return "";
@@ -716,83 +657,38 @@ function normaliseLinkHref(value) {
   return href;
 }
 
-async function insertLink() {
-  const selection = window.getSelection();
-  if (!selection.rangeCount) return;
-  const live = selection.getRangeAt(0);
-  if (!editor.contains(live.commonAncestorContainer)) return;
+onToolbarAction("insert-link", async () => {
+  if (typeof modelInputLink === "function") await modelInputLink();
+});
 
-  const range = live.cloneRange();
-  const existing = linkAncestor(range.commonAncestorContainer);
-  const answer = await askForInput("Link address", {
-    title: existing ? "Edit link" : "Insert link",
-    placeholder: "https://example.com",
-    value: existing ? existing.getAttribute("href") || "" : "",
-    confirmLabel: existing ? "Update" : "Insert",
-  });
-  if (answer === null) return; // backed out — leave the link alone
+// Insert → Image…, stage 3's slice 2: a model command. Feature-tested, since
+// a bundle decides for itself what it ships.
+onToolbarAction("insert-image", async () => {
+  if (typeof modelInputImage === "function") await modelInputImage();
+});
 
-  const href = normaliseLinkHref(answer);
-
-  if (existing) {
-    if (href) retargetLink(existing, href);
-    else unwrapLink(existing);
-    editor.dispatchEvent(new Event("input", { bubbles: true }));
-    return;
-  }
-
-  if (!href) return;
-
-  // The dialog took focus, and the selection went with it.
-  editor.focus();
-  selection.removeAllRanges();
-  selection.addRange(range);
-
-  if (range.collapsed) {
-    runCommand("insertHTML", `<a href="${attrEscape(href)}">${attrEscape(href)}</a>`);
-    return;
-  }
-  runCommand("createLink", href);
+// Insert → Table and the table controls in the Format menu, stage 3's slice 5:
+// model commands, feature-tested for Insert → Image…'s reason. The controls
+// are disabled outside a table.
+function tableControl(run) {
+  if (typeof modelInputTable === "function") run();
 }
 
-// A reference link that points somewhere new is no longer that reference. The
-// `referenceLink` Turndown rule writes `[text][label]` off the `data-ref-label`
-// stamp and never reads the href, so a stamp left behind here threw the new
-// address away on save, silently, with the right one on screen until reload.
-// Dropping it makes this one link inline and leaves the definition alone for
-// any other link using the label — the dialog names one link, so it changes
-// one. An Update that keeps the same address keeps the stamp, and with it the
-// author's reference form.
-function retargetLink(link, href) {
-  if (link.getAttribute("href") !== href) link.removeAttribute("data-ref-label");
-  link.setAttribute("href", href);
-}
-
-function unwrapLink(link) {
-  const parent = link.parentNode;
-  while (link.firstChild) parent.insertBefore(link.firstChild, link);
-  parent.removeChild(link);
-}
-
-onToolbarAction("insert-link", insertLink);
+onToolbarAction("insert-table", () => tableControl(() => modelInputInsertTable()));
+onToolbarAction("table-row-above", () => tableControl(() => modelInputTable("table-row-above")));
+onToolbarAction("table-row-below", () => tableControl(() => modelInputTable("table-row-below")));
+onToolbarAction("table-col-left", () => tableControl(() => modelInputTable("table-col-left")));
+onToolbarAction("table-col-right", () => tableControl(() => modelInputTable("table-col-right")));
+onToolbarAction("table-delete-row", () => tableControl(() => modelInputTable("table-delete-row")));
+onToolbarAction("table-delete-column", () => tableControl(() => modelInputTable("table-delete-column")));
+onToolbarAction("table-delete", () => tableControl(() => modelInputTable("table-delete")));
+onToolbarAction("table-align-left", () => tableControl(() => modelInputTable("table-align-left")));
+onToolbarAction("table-align-center", () => tableControl(() => modelInputTable("table-align-center")));
+onToolbarAction("table-align-right", () => tableControl(() => modelInputTable("table-align-right")));
 
 onToolbarAction("paste-md", async () => {
   try {
-    const clipboardText = await navigator.clipboard.readText();
-    if (clipboardText && clipboardText.trim()) {
-      const html = markdownToHtml(clipboardText);
-      // Caret insertion, not a document replacement — there is a real Open
-      // now, and wanting the replacement is New followed by this. runCommand
-      // raises `input` for free, so undo, autosave and the dirty flag pick it
-      // up the same way a real paste does, and this is no longer an
-      // editor.innerHTML assignment site for undo.js to know about.
-      runCommand("insertHTML", html);
-      await renderLatex(editor);
-      // The renderer runs after the `input` event above already scheduled
-      // a debounced autosave, so without this an immediate reload could still
-      // catch the pre-render markup.
-      localStorage.setItem(documentKey("content"), editor.innerHTML);
-    }
+    modelPasteMarkdown(await navigator.clipboard.readText());
   } catch (err) {
     notify("Unable to access clipboard. Please grant clipboard permissions.", {
       severity: "error",
@@ -806,12 +702,10 @@ if (fileInput) {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = (event) => {
       const markdown = event.target.result;
-      const html = markdownToHtml(markdown);
-      editor.innerHTML = html;
-      await renderLatex(editor);
-      localStorage.setItem(documentKey("content"), editor.innerHTML);
+      loadDocumentMarkdown(markdown);
+      flushAutosave();
       // This is Open, for the variant with no file server behind it.
       undoReset();
     };
@@ -880,8 +774,8 @@ const LINK_SCHEMES = ["http:", "https:", "mailto:"];
 // headings under the tab strip after the redesign moved that out to a sticky
 // sibling. Called rather than defined here because format-bar.js is the file
 // that positions against the chrome; it loads after this one, which costs
-// nothing — a Ctrl/Cmd+click is long past load, the same way `runCommand` is
-// only ever called at click time.
+// nothing — a Ctrl/Cmd+click is long past load, so the function only has to be
+// present in the bundle by then.
 function scrollToAnchor(target) {
   const top = target.getBoundingClientRect().top + window.scrollY -
     chromeClearance() - 12;
@@ -1019,58 +913,19 @@ function sanitisePastedHtml(html) {
   return container.innerHTML;
 }
 
-// The plain half of a paste, and the whole of Paste without formatting.
-//
-// This is what Ctrl/Cmd+Shift+V lands in: Chrome 152 and Firefox 154 both strip
-// text/html for that binding (measured by tests/paste-check.html), so a plain
-// paste arrives here rather than in the branch above. execCommand raises it as
-// `insertText`, which is exactly what a keystroke raises, so without the break
-// a paste in the middle of a sentence would be undone together with the
-// sentence.
-//
-// The character only, never the entity: in text/plain an "&nbsp;" is six
-// characters somebody actually copied.
-function insertPlainText(text) {
-  if (!text || !text.trim()) return;
-  undoBreak();
-  runCommand("insertText", text.replace(/\u00a0/g, " "));
-}
-
-// Shared by the paste event and the Edit menu's Paste, so the two cannot
-// disagree about what a paste does — the menu reads the clipboard through the
-// async API instead of an event, and that is the only difference between them.
-function insertPastedContent(html, text) {
-  if (html && html.trim()) {
-    const clean = sanitisePastedHtml(html);
-    // A fragment that was nothing but wrappers sanitises to nothing. Falling
-    // through to the plain text is better than inserting an empty string and
-    // leaving the user to wonder where their paste went.
-    if (clean.trim()) {
-      runCommand("insertHTML", clean);
-      return;
-    }
-  }
-  insertPlainText(text);
-}
-
-editor.addEventListener("paste", (e) => {
-  e.preventDefault();
-  insertPastedContent(
-    e.clipboardData.getData("text/html"),
-    e.clipboardData.getData("text/plain"),
-  );
+// Cut and Copy go through the model's own clipboard handler, slice 7's step 8 —
+// see `modelInputMenuClipboard`. `mousedown` is prevented over the toolbar, so
+// clicking the menu item does not blur the editor and take the selection with
+// it.
+onToolbarAction("cut", () => {
+  if (typeof modelInputMenuClipboard === "function") modelInputMenuClipboard(true);
+});
+onToolbarAction("copy", () => {
+  if (typeof modelInputMenuClipboard === "function") modelInputMenuClipboard(false);
 });
 
-// Cut and Copy go through execCommand, which is enough on its own: it acts on
-// the editor's live selection, and `mousedown` is prevented over the toolbar so
-// clicking the menu item does not blur the editor and take that selection with
-// it. Cut raises `input` for free, so undo, autosave and the dirty flag pick it
-// up the way any other edit is picked up.
-onToolbarAction("cut", () => runCommand("cut"));
-onToolbarAction("copy", () => runCommand("copy"));
-
-// Paste cannot: execCommand("paste") is refused in web content in every engine,
-// so the menu has to read the clipboard itself. That is a permission the app
+// Paste reads the clipboard itself: execCommand("paste") is refused in web
+// content in every engine, so there is no event for the model to answer. That is a permission the app
 // may not have — paste-md has always had the same problem and reports it the
 // same way — and the keyboard route works regardless, which is what the message
 // points at.
@@ -1087,7 +942,7 @@ onToolbarAction("paste", async () => {
         text = await (await item.getType("text/plain")).text();
       }
     }
-    insertPastedContent(html, text);
+    modelPasteInto(html, text);
   } catch (err) {
     notify("Unable to read the clipboard. Press Ctrl+V to paste instead.", {
       severity: "error",
@@ -1097,7 +952,8 @@ onToolbarAction("paste", async () => {
 
 onToolbarAction("paste-plain", async () => {
   try {
-    insertPlainText(await navigator.clipboard.readText());
+    const text = await navigator.clipboard.readText();
+    modelPastePlain(text);
   } catch (err) {
     notify("Unable to read the clipboard. Press Ctrl+Shift+V to paste instead.", {
       severity: "error",
@@ -1107,10 +963,26 @@ onToolbarAction("paste-plain", async () => {
 
 let saveTimer;
 
+// The document as it was last stored, or null when nothing is. Every reader
+// asks this rather than reading the key itself, because a document
+// legacy-storage.js converted on this load but could not write is held in
+// memory there instead, and has to open anyway. Feature-tested, since an
+// exported document and the suites that boot without it have no conversion.
+function storedDocument() {
+  const key = documentKey("markdown");
+  const stored = localStorage.getItem(key);
+  if (stored !== null) return stored;
+  return typeof legacyStoredMarkdown === "function" ? legacyStoredMarkdown(key) : null;
+}
+
+function isBlankMarkdown(markdown) {
+  return !markdown || markdown.trim() === "";
+}
+
 // Write the document now rather than when the debounce runs out. A tab switch
 // has to call this before parking the outgoing document: the timer
-// resolves documentKey("content") when it fires, so a switch inside its one
-// second would write the *incoming* tab's content -- correctly, under the
+// resolves documentKey("markdown") when it fires, so a switch inside its one
+// second would write the *incoming* tab's document -- correctly, under the
 // incoming tab's key -- and the outgoing tab's last edits would simply never be
 // written anywhere. Autosave is the only thing carrying unsaved work across a
 // browser reload, so that is real loss rather than a stale cache.
@@ -1118,21 +990,35 @@ let saveTimer;
 // Unconditional: if the debounce has already fired, this rewrites the same
 // bytes, which costs nothing and is one fewer state to reason about than asking
 // whether a write is pending.
+//
+// **What it writes is the markdown a save would write**, since stage 4's slice
+// 4: the model is the document, and its rendering is not. A blank document is
+// no key at all. A model the emitter refuses to write leaves the last good
+// write where it was — the same refusal a save reports to the user, said on
+// the console here because this runs on every pause in typing.
 function flushAutosave() {
   clearTimeout(saveTimer);
   saveTimer = null;
-  localStorage.setItem(documentKey("content"), editor.innerHTML);
+  let markdown;
+  try {
+    markdown = currentModelMarkdown();
+  } catch (error) {
+    console.warn("[Autosave] The document could not be written, so the last autosave stands:", error);
+    return;
+  }
+  if (markdown === null) return;
+  try {
+    if (isBlankMarkdown(markdown)) localStorage.removeItem(documentKey("markdown"));
+    else localStorage.setItem(documentKey("markdown"), markdown);
+  } catch (error) {
+    console.warn("[Autosave] Could not store the document:", error);
+  }
 }
 
 editor.addEventListener("input", () => {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushAutosave, 1000);
 });
-
-function isBlankContent(html) {
-  const trimmed = (html || "").trim();
-  return trimmed === "" || trimmed === "<p><br></p>" || trimmed === "<p></p>";
-}
 
 // Put the caret at the top of whatever is in the editor now. Every route that
 // replaces the document wholesale ends here — New, and the tab swaps in
@@ -1178,45 +1064,40 @@ async function loadWelcomeDocument() {
   try {
     const res = await fetch("/welcome.md");
     if (!res.ok) throw new Error(res.statusText);
-    editor.innerHTML = markdownToHtml(await res.text());
+    loadDocumentMarkdown(await res.text());
     return true;
   } catch (error) {
     console.error("[Welcome] Could not load welcome.md:", error);
-    editor.innerHTML = "<p><br></p>";
+    loadBlankDocument();
     return false;
   }
 }
 
 window.addEventListener("load", () => {
-  const saved = localStorage.getItem(documentKey("content"));
+  const saved = storedDocument();
   const isExported = editor.hasAttribute("data-exported");
 
   (async () => {
     if (isExported) {
-      // Exported HTML file: keep the embedded content, ignore localStorage
+      // Exported HTML file: its own document, never this browser's autosave.
+      // It carries its document as markdown and an empty editor. One exported
+      // before stage 4's slice 2 carried HTML in the editor instead, and runs
+      // the bundle it was exported with, so this code never meets one; if it
+      // ever does, the HTML goes into the model through the paste converter
+      // rather than leaving an editor with no model behind it.
       editor.removeAttribute("data-exported");
-    } else if (saved && !isBlankContent(saved)) {
-      editor.innerHTML = saved;
-      markdownStyleAdoptStored();
+      const embedded = readEmbeddedMarkdown();
+      loadDocumentMarkdown(embedded !== null ? embedded : htmlFragmentToMarkdown(editor.innerHTML));
+    } else if (!isBlankMarkdown(saved)) {
+      loadDocumentMarkdown(saved);
     } else {
-      if (saved) localStorage.removeItem(documentKey("content"));
-      localStorage.removeItem(documentKey("source"));
+      if (saved !== null) localStorage.removeItem(documentKey("markdown"));
       await loadWelcomeDocument();
     }
 
-    // Stored HTML can still hold a diagram drawn before Mermaid was removed;
-    // it goes back to its fenced code block. See renderers.js.
-    unwrapMermaidDiagrams(editor);
-    try {
-      await renderLatex(editor);
-    } catch (error) {
-      console.error("[MathJax] Startup render error:", error);
-    }
-
     // One baseline for all three branches above — exported, restored and
-    // welcome — and deliberately after the renderers, so the first snapshot is
-    // the document as it will actually be seen rather than the markup before
-    // MathJax rewrote parts of it.
+    // welcome. A state is the model rather than the DOM, so MathJax finishing
+    // later changes nothing it records.
     undoReset();
     // Only file-api.js knows whether this session's restored document is
     // dirty, and an exported document has no file-api.js at all.
@@ -1225,18 +1106,8 @@ window.addEventListener("load", () => {
 });
 
 window.addEventListener("beforeunload", (e) => {
-  const currentContent = editor.innerHTML.trim();
-  // Check if content is empty or just the empty paragraph placeholder
-  const willSave =
-    currentContent &&
-    currentContent !== "<p><br></p>" &&
-    currentContent !== "<p></p>" &&
-    currentContent !== "";
-
-  // Only save if content is not essentially empty
-  if (willSave) {
-    localStorage.setItem(documentKey("content"), editor.innerHTML);
-  }
+  // The debounce may not have run out, and this is the last chance to write.
+  flushAutosave();
 
   // The one guard that cannot use ask(): the browser will not wait on a
   // Promise, so this gets returnValue and the browser's own wording, with no
@@ -1267,270 +1138,15 @@ window.addEventListener("beforeunload", (e) => {
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 
-// Returns the <li> the caret is in, or null. Scoped to the editor: a selection
-// in a list somewhere else on the page is not ours to indent.
-function listItemAtCaret() {
-  const anchor = window.getSelection().anchorNode;
-  const element = anchor && (anchor.closest ? anchor : anchor.parentElement);
-  const item = element && element.closest && element.closest("li");
-  return item && editor.contains(item) ? item : null;
-}
-
-// execCommand puts the nested list beside the item it belongs to rather than
-// inside it — in Chrome and in Firefox both, measured, not folklore — so the
-// parent list can be one hop further up than the spec shape suggests. Look for
-// either: execcommand.js normalises the markup after every command, but this
-// also runs against lists that arrived by paste or from a file.
-function isNested(item) {
-  const list = item.parentElement;
-  return !!(list && list.parentElement && list.parentElement.closest("ul, ol"));
-}
-
-// execCommand's outdent isn't trustworthy here in either engine: Firefox
-// merges the item into the one above it (<li>one<br>two</li>) instead of
-// unnesting it, silently losing a bullet with no way back, and that markup is
-// indistinguishable from a deliberate hard break so normaliseEditorMarkup
-// cannot repair it after the fact — see tests/list-indent-check.html, which
-// still measures all three engines doing it. So this does the move by
-// hand instead of asking execCommand for it, in both browsers: `item` leaves
-// its list and becomes a sibling of the <li> it was nested under, and any
-// items that followed it in that list move with it, becoming its own nested
-// sublist rather than being left behind under the old parent.
-function outdentListItem(item) {
-  const innerList = item.parentElement;
-
-  // execCommand's own indent leaves the nested list beside the item it
-  // belongs to rather than inside it (see isNested above), and
-  // normaliseEditorMarkup folds that back into the spec shape after every
-  // execCommand — but this bypasses execCommand, and a list pasted in from
-  // elsewhere can still arrive in the sibling shape. Fold it here too, rather
-  // than teach every step below both shapes.
-  if (innerList.parentElement && innerList.parentElement.tagName !== "LI") {
-    const owner = innerList.previousElementSibling;
-    if (owner && owner.tagName === "LI") {
-      innerList.parentElement.removeChild(innerList);
-      owner.appendChild(innerList);
-    }
-  }
-
-  const parentItem = innerList.parentElement;
-  const outerList = parentItem.closest("ul, ol");
-
-  const selection = window.getSelection();
-  const anchorNode = selection.anchorNode;
-  const anchorOffset = selection.anchorOffset;
-
-  const following = [];
-  for (let sibling = item.nextElementSibling; sibling; sibling = sibling.nextElementSibling) {
-    following.push(sibling);
-  }
-
-  if (following.length) {
-    let subList = item.querySelector(":scope > ul, :scope > ol");
-    if (!subList) {
-      subList = document.createElement(innerList.tagName);
-      item.appendChild(subList);
-    }
-    // Appended in document order, and after whatever the item already had
-    // nested under it: `following` were siblings of `item`, so they sit below
-    // it on screen, and below its own sublist with it. Prepending each in turn
-    // got both of those backwards — it reversed the run, which needs two
-    // followers to be visible at all and so had no test until a real browser
-    // showed it.
-    for (const node of following) {
-      innerList.removeChild(node);
-      subList.appendChild(node);
-    }
-  }
-
-  innerList.removeChild(item);
-  if (!innerList.children.length) parentItem.removeChild(innerList);
-
-  outerList.insertBefore(item, parentItem.nextSibling);
-
-  // Moving nodes rather than replacing them keeps the Range's endpoints
-  // valid, but contenteditable doesn't always keep the visible caret in sync
-  // with that — so put it back explicitly rather than trust the browser.
-  if (anchorNode && editor.contains(anchorNode)) {
-    const range = document.createRange();
-    const max = anchorNode.nodeType === 3 ? anchorNode.length : anchorNode.childNodes.length;
-    range.setStart(anchorNode, Math.min(anchorOffset, max));
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-  }
-
-  editor.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-// Same two guards Tab and Shift+Tab use below, pulled out so the toolbar
-// control (TODO 1.1.3) can ask the identical question a keypress does rather
-// than re-deriving it: a first item can't nest under nothing (markdown has no
-// way to write it, and Turndown would emit an indent that parses back as a
-// code block), and outdent only applies where there is a level to leave.
-function canIndentListItem(item) {
-  return !!(item && item.previousElementSibling);
-}
-
-function canOutdentListItem(item) {
-  return !!(item && isNested(item));
-}
-
-// Tab indents a bullet instead of moving focus — but only inside a list, and
-// only where the nesting is expressible: markdown cannot write a first item
-// nested under nothing, and Turndown would emit an indent that parses back as
-// a code block. Shift+Tab only unnests; plain outdent turns a top-level item
-// into a paragraph, which is a formatting change, not an indent. Everywhere
-// else Tab keeps its default job of leaving the editor, which is a keyboard
-// user's only way out.
-editor.addEventListener("keydown", (e) => {
-  if (e.key !== "Tab" || e.ctrlKey || e.metaKey || e.altKey) return;
-
-  const item = listItemAtCaret();
-  if (!item) return;
-
-  if (e.shiftKey) {
-    if (!canOutdentListItem(item)) return;
-    e.preventDefault();
-    outdentListItem(item);
-    return;
-  }
-
-  if (!canIndentListItem(item)) return;
-  e.preventDefault();
-  runCommand("indent");
-});
-
-// TODO 1.1.3: the engine-side move above had no control reaching it outside
-// Tab / Shift+Tab, so touch had no way to nest a bullet at all. These are that
-// control's handlers — same guards, same calls, just reached from the Format
-// menu instead of a keypress. A caret outside a list, or one a guard rejects,
-// is a silent no-op, the same as pressing Tab does in either of those cases.
+// Tab and Shift+Tab in a list, and Enter and Backspace on an empty bullet,
+// are model-input.js's, as model rules with no engine in them. The Format
+// menu's two list items reach the same rules.
 onToolbarAction("indent-list-item", () => {
-  const item = listItemAtCaret();
-  if (canIndentListItem(item)) runCommand("indent");
+  modelIndentAtCaret(false);
 });
 
 onToolbarAction("outdent-list-item", () => {
-  const item = listItemAtCaret();
-  if (canOutdentListItem(item)) outdentListItem(item);
-});
-
-// Whether the caret's <li> holds nothing — no text, no nested list, no image.
-// The <br> a browser parks in an otherwise empty block does not count.
-function listItemIsEmpty(item) {
-  if ((item.textContent || "").trim()) return false;
-  for (const child of item.children || []) {
-    if (child.nodeType === 1 && child.tagName !== "BR") return false;
-  }
-  return true;
-}
-
-function listHasItem(list) {
-  for (const child of list.children || []) {
-    if (child.nodeType === 1 && child.tagName === "LI") return true;
-  }
-  return false;
-}
-
-// Same explicit-Range dance outdentListItem uses: contenteditable does not
-// reliably keep the visible caret with nodes that have just moved, so it is put
-// back by hand rather than trusted.
-function caretToStartOf(target) {
-  const selection = window.getSelection();
-  if (!selection || !document.createRange) return;
-  const range = document.createRange();
-  range.setStart(target, 0);
-  range.collapse(true);
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-function caretToEndOf(target) {
-  const selection = window.getSelection();
-  if (!selection || !document.createRange) return;
-  const kids = target.childNodes || target.children || [];
-  const last = kids[kids.length - 1];
-  const range = document.createRange();
-  if (last && last.nodeType === 3) range.setStart(last, (last.textContent || "").length);
-  else range.setStart(target, kids.length);
-  range.collapse(true);
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-// Enter and Backspace on an empty bullet, done by hand.
-//
-// Left to contenteditable, both are a lottery: Chrome splits the <ul> and
-// strands blank <p><br></p> blocks between the halves, Backspace drops the
-// caret at the start of the *next* item instead of the end of the one before,
-// and a single Enter can move the caret two rows down — every one of those was
-// a bug report. execCommand has no clean primitive for it, so this is the call
-// outdentListItem already made for Shift+Tab: do the move ourselves in one
-// deterministic shape, and raise `input` so autosave, the dirty flag, undo and
-// the outline all hear it.
-editor.addEventListener("keydown", (e) => {
-  if (e.key !== "Enter" && e.key !== "Backspace") return;
-  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing) return;
-
-  const item = listItemAtCaret();
-  if (!item || !listItemIsEmpty(item)) return;
-
-  const list = item.parentElement;
-  if (!list || (list.tagName !== "UL" && list.tagName !== "OL")) return;
-
-  // Backspace with a bullet directly above: the empty item just goes, and the
-  // caret lands at the end of that bullet — where the user expected it, and
-  // where contenteditable would not have put it.
-  const prev = item.previousElementSibling;
-  if (e.key === "Backspace" && prev && prev.tagName === "LI") {
-    e.preventDefault();
-    list.removeChild(item);
-    caretToEndOf(prev);
-    editor.dispatchEvent(new Event("input", { bubbles: true }));
-    return;
-  }
-
-  // A nested empty item outdents one level rather than leaving the list
-  // outright — Enter and a first-item Backspace both. outdentListItem is
-  // exactly that move, and already raises `input` and restores the caret.
-  if (isNested(item)) {
-    e.preventDefault();
-    outdentListItem(item);
-    return;
-  }
-
-  // Top level: leave the list for a paragraph. Enter splits the list at the
-  // caret — items above stay, items below become a fresh list after the new
-  // paragraph. Backspace (only reached on the first item) puts the paragraph
-  // before the list and leaves the rest of it intact.
-  e.preventDefault();
-  const para = document.createElement("p");
-  para.appendChild(document.createElement("br"));
-
-  const followers = [];
-  for (let s = item.nextElementSibling; s; s = s.nextElementSibling) followers.push(s);
-
-  list.removeChild(item);
-
-  if (e.key === "Backspace") {
-    list.parentNode.insertBefore(para, list);
-  } else {
-    list.insertAdjacentElement("afterend", para);
-    if (followers.length) {
-      const rest = document.createElement(list.tagName === "OL" ? "ol" : "ul");
-      for (const s of followers) {
-        list.removeChild(s);
-        rest.appendChild(s);
-      }
-      para.insertAdjacentElement("afterend", rest);
-    }
-  }
-
-  if (!listHasItem(list)) list.parentNode.removeChild(list);
-
-  caretToStartOf(para);
-  editor.dispatchEvent(new Event("input", { bubbles: true }));
+  modelIndentAtCaret(true);
 });
 
 document.addEventListener("keydown", (e) => {
@@ -1557,13 +1173,12 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     runToolbarAction("export-pdf");
   }
-  // Ctrl/Cmd+K for a link, the way every editor binds it. insertLink is a
+  // Ctrl/Cmd+K for a link, the way every editor binds it. The link command is a
   // no-op unless the selection is in the editor, so an unfocused window just
   // loses the keystroke rather than acting on nothing.
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && key === "k") {
     e.preventDefault();
     runToolbarAction("insert-link");
   }
-  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y live in undo.js: execCommand's stack is
-  // discarded by every innerHTML assignment in this file.
+  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y live in undo.js.
 });

@@ -6,7 +6,7 @@
 // toolbar.js, app.js and file-api.js load concatenated into one scope, the way
 // the page (and the export bundle) actually runs them.
 
-import { loadSource, makeEl, markdownitStub, walk } from "./dom.mjs";
+import { fakeModelCore, loadSource, makeEl, markdownitStub, walk } from "./dom.mjs";
 
 const HOME = "/home/x";
 
@@ -51,13 +51,13 @@ function boot({
   const asked = [];
   const askedActions = [];
   const toasts = [];
-  // Clear goes through runCommand rather than replacing editor.innerHTML, and
-  // this suite does not load execcommand.js — recorded rather than executed.
+  // Clear is the model's edit rather than a replacement of the document, and
+  // this suite does not load model-input.js — recorded rather than executed.
   const commands = [];
   // One bag for both targets: file-api.js binds `focus` on window and
   // `visibilitychange` on document, and no name is claimed by both.
   const listeners = {};
-  if (savedContent !== undefined) store.set("markdownContent", savedContent);
+  if (savedContent !== undefined) store.set("mandy-markdown", savedContent);
   if (savedPath !== undefined) store.set("mandy-current-file", savedPath);
   if (savedDir !== undefined) store.set("mandy-last-dir", savedDir);
   if (savedDirty !== undefined) store.set("mandy-dirty", savedDirty);
@@ -101,16 +101,16 @@ function boot({
     execCommand() {},
   };
 
+  const model = fakeModelCore(extra.get("editor"));
   const api = loadSource(
     ["toolbar.js", "markdown-parser.js", "markdown-style.js", "app.js", "file-api.js"],
     {
+      ...model.scope,
       document,
-      // execcommand.js is not in this suite's bundle: Clear's own weight is
-      // the recording below, not what a real execCommand does with it.
-      runCommand: (cmd) => {
-        commands.push(cmd);
-        return true;
-      },
+      // Clear is a model edit (model-input.js, which this suite does not load):
+      // recorded, so a check can see it went there rather than through New's
+      // reset.
+      modelInputClear: () => commands.push("model-clear"),
       localStorage: {
         getItem: (k) => (store.has(k) ? store.get(k) : null),
         setItem: (k, v) => store.set(k, v),
@@ -125,9 +125,6 @@ function boot({
         getSelection: () => ({ removeAllRanges() {}, addRange() {} }),
       },
       navigator: { clipboard: {} },
-      // Loaded by renderers.js in the app, which this suite does not need — but
-      // openFile calls both on every read, reload included.
-      renderLatex: async () => {},
       // /api/home on boot; a save echoes back the path it was given, which is
       // what the real endpoint does and what setCurrentFile reads. /api/browse
       // answers 400 for anything outside `realDirs`, the way the server does
@@ -318,7 +315,7 @@ function boot({
     // fake the emptied editor and dispatch, because app.js's confirm() returned
     // before the dispatcher moved on. Now app.js stops on a dialog, so this has
     // to settle — which is the ordering the whole thing hinges on: run it too
-    // early and isBlankContent sees the document still full and keeps the path.
+    // early and the blank check sees the document still full and keeps the path.
     newDocument: async () => {
       toolbar.listeners.click[0]({
         target: document.querySelector('[data-action="new"]'),
@@ -389,7 +386,7 @@ export default async function run(check) {
   check("path restored alongside content", r.path === "/home/erez/notes/plan.md");
   check("label shows the basename", r.labelNow() === "plan.md");
 
-  r = boot({ savedContent: "<p><br></p>", savedPath: "/home/erez/notes/plan.md" });
+  r = boot({ savedContent: "\n", savedPath: "/home/erez/notes/plan.md" });
   check("path dropped when the content is blank", !r.path);
   check("stale path key removed from storage", !r.store.has("mandy-current-file"));
 
@@ -406,7 +403,7 @@ export default async function run(check) {
   r = boot({});
   check("a missing last directory is handled", r.dir === null);
 
-  r = boot({ savedContent: "<p><br></p>", savedDir: "/home/erez/projects/docs" });
+  r = boot({ savedContent: "\n", savedDir: "/home/erez/projects/docs" });
   check("last directory kept across a blank document",
     r.dir === "/home/erez/projects/docs");
 
@@ -460,8 +457,8 @@ export default async function run(check) {
   r.clickAction("clear");
   await settle();
   check("clear asks nothing", r.asked.length === 0);
-  check("clear goes through runCommand, not a document replacement",
-    r.commands.includes("delete"));
+  check("clear is the model's edit, not a document replacement",
+    r.commands.includes("model-clear"));
   check("clear keeps the file open", r.pathNow() === "/home/erez/notes/plan.md");
   check("and keeps it persisted",
     r.store.get("mandy-current-file") === "/home/erez/notes/plan.md");
@@ -667,7 +664,7 @@ export default async function run(check) {
   await r.newDocument();
   check("new drops the persisted baseline", !r.store.has("mandy-file-mtime"));
 
-  r = boot({ savedContent: "<p><br></p>", savedPath: OPEN, savedMtime: T1 });
+  r = boot({ savedContent: "\n", savedPath: OPEN, savedMtime: T1 });
   check("and a blank document never restores one", !r.store.has("mandy-file-mtime"));
 
   // The flag with teeth: a save over a file that moved on destroys whatever

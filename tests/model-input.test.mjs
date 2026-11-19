@@ -1,0 +1,1439 @@
+// The input layer's routing. TODO 3.1, stage 2, slices 3, 4 and 5.
+//
+// **What this suite can see, and what it deliberately cannot.** `beforeinput`
+// itself is unreachable from here: tests/dom.mjs has no editing engine, so a
+// stub can only deliver the event it was told to deliver and would agree with
+// any handler at all. What *is* reachable is the routing — which inputType goes
+// where, what is cancelled, what happens during a composition — and that is a
+// pure function of the event, which a hand-built event object answers honestly.
+//
+// So the model is stubbed and the dispatcher is real. That is the opposite of
+// the usual arrangement here and it is deliberate: `modelInlineSplice` and the
+// render are covered by the `model` suite against the real thing, and stubbing
+// them is what lets this suite assert *routing* rather than re-assert those.
+//
+// The half neither suite can reach — does the engine actually send these, is it
+// actually cancelable, what does a real IME do — is front/input-check.html,
+// which needs a human at a keyboard and is per browser and per version.
+
+import { loadSource, makeEl } from "./dom.mjs";
+
+export default async function run(check) {
+  // One rig per case: the handler keeps composition state across events, so a
+  // shared one would let an earlier check decide a later one.
+  const rig = ({
+    coreOn = true, doc = { blocks: [] }, range = null, splice = 7,
+    source = false, at = null, item = null, empty = false, hardBreak = "  ",
+    html = "", point = null, selection = false, history = true,
+    domText = "abX", blockText = "ab", spans = [], reveal = null, collapsed = false,
+    quote = null, quoteToggle = { block: {} }, settle = true,
+    image = null, dialog = null, imageSet = { from: 0, to: 1 },
+    below = null, tableResult = { at: { block: {}, offset: 0 } }, inserted = { table: {}, at: { block: {}, offset: 0 } },
+  } = {}) => {
+    const calls = {
+      splice: [], rerender: [], render: [], announced: [], sourceSplice: [],
+      merged: [], pruned: [], split: [], broke: [], emptyItem: [], moved: [], filled: [],
+      parsed: [],
+      cut: [], textBlocks: [], inserted: [], sanitised: [], turndown: [],
+      history: [], refused: [], joined: 0, converted: [], revealed: [], toasts: [],
+      toggled: [], quoteKey: [], quoteToggled: [], asked: [], imaged: [], cellBlocks: [], headings: [],
+      applied: [], tableOps: [],
+    };
+    // What a case can move between events: the document an undo would swap in,
+    // and where the caret is.
+    const state = { doc, at };
+    const editor = makeEl("div");
+    // The two halves of a drop position, which are the two spellings the
+    // engines never agreed on. A case that wants a drop supplies `point`.
+    editor.ownerDocument = {
+      caretPositionFromPoint: () => (point ? { offsetNode: point, offset: 0 } : null),
+      addEventListener() {},
+    };
+    const block = { kind: "paragraph", inlines: [], source: "x" };
+    editor.dispatchEvent = (event) => {
+      calls.announced.push(event.inputType ?? event.type);
+      if (event.type === "modeldroprefused") calls.refused.push(event.detail.reason);
+    };
+
+    const api = loadSource(
+      ["model-input.js"],
+      {
+        editor,
+        md: {},
+        markdownStyle: { hardBreak },
+        modelCurrentDocument: () => state.doc,
+        // A list answers one call each, for a case whose edits differ.
+        modelInlineSplice: (b, from, to, text) => {
+          calls.splice.push({ block: b, from, to, text });
+          return Array.isArray(splice) ? splice.shift() : splice;
+        },
+        // Slice 4's second text space. The stub answers for whichever kind the
+        // case asked for, so the routing question -- inline tree or source --
+        // is the only thing under test here.
+        modelBearsSource: () => source,
+        modelSourceSplice: (b, from, to, text) => {
+          calls.sourceSplice.push({ block: b, from, to, text });
+          return splice;
+        },
+        modelFlatten: () => doc.blocks || [],
+        modelPruneBlock: (d, b) => calls.pruned.push(b),
+        modelMergeBlocks: (d, first, second) => {
+          calls.merged.push({ first, second });
+          return 3;
+        },
+        modelInsertParagraph: (d, b, offset) => {
+          calls.split.push({ block: b, offset });
+          return { block: b, offset: 0 };
+        },
+        modelInsertBreak: (b, offset, spelling) => {
+          calls.broke.push({ block: b, offset, spelling });
+          return offset + 1;
+        },
+        modelItemAncestor: () => item,
+        modelIsEmptyBlock: () => empty,
+        modelEmptyItemKey: (d, i, parser, backspace) => {
+          calls.emptyItem.push({ item: i, backspace });
+          return { block, offset: 0 };
+        },
+        modelIndentItem: (d, i) => { calls.moved.push({ item: i, outdent: false }); return i; },
+        modelOutdentItem: (d, i) => { calls.moved.push({ item: i, outdent: true }); return i; },
+        modelFillItem: (d, i) => { calls.filled.push(i); return null; },
+        modelEnsureBlock: () => null,
+        // The paste pipeline. `sanitisePastedHtml` and `htmlFragmentToMarkdown`
+        // are app.js's and are stubbed here for the same reason the model is:
+        // what this suite asserts is which branch runs, not what Turndown makes
+        // of a fragment.
+        sanitisePastedHtml: (raw) => { calls.sanitised.push(raw); return html; },
+        htmlFragmentToMarkdown: (clean) => { calls.turndown.push(clean); return clean; },
+        modelParse: (markdown) => {
+          calls.parsed.push(markdown);
+          return { blocks: [{ kind: "paragraph", inlines: [], source: markdown }] };
+        },
+        // What an internal drag carries: the model's own content for the range.
+        modelInlineSourceRange: (b, from, to) => {
+          calls.cut.push({ block: b, from, to });
+          return "from the model";
+        },
+        modelTextBlocks: (d, parser, text) => {
+          calls.textBlocks.push(text);
+          return [{ kind: "paragraph", inlines: [], source: text }];
+        },
+        modelInsertBlocks: (d, b, offset, blocks) => {
+          calls.inserted.push({ block: b, offset, blocks });
+          return { block: b, offset };
+        },
+        modelRerenderBlock: (root, b, parser, sel) => {
+          calls.rerender.push({ block: b, selection: sel });
+          return editor;
+        },
+        modelRender: (root, d, parser, sel) => calls.render.push({ doc: d, selection: sel }),
+        modelDomBlockAt: () => range && range.shift(),
+        modelReadSelection: () => state.at || { block, offset: 0 },
+        // Slice 7's step 8: the format route ends in model.js's toggle, which
+        // is the model's and is stubbed, so what is asserted is that it is
+        // reached and with which kind.
+        MODEL_MARK_KINDS: new Set(["strong", "em", "strike"]),
+        modelToggleMark: (d, sel, kind) => { calls.toggled.push(kind); return []; },
+        // Equations by typing: the model half is the model suite's, so here a
+        // case says which spans exist and the conversion only records itself.
+        modelBlockById: (d, id) => ((d && d.blocks) || []).find((b) => b.id === id) || block,
+        modelMathCandidates: () => spans,
+        modelMathConvert: (b, from, to) => {
+          calls.converted.push({ from, to });
+          return from + 1;
+        },
+        notify: (message) => calls.toasts.push(message),
+        // Stage 3's slice 1. The quote's own rules are the model suite's; what
+        // is asserted here is when they are asked, and what a refusal does.
+        // The fork is the document itself, since nothing here is mutated.
+        modelForkDocument: (d) => d,
+        modelSettleShape: () => settle,
+        modelQuoteKey: (d, b, parser, backspace) => { calls.quoteKey.push({ block: b, backspace }); return quote; },
+        modelToggleQuote: (d, leaves) => { calls.quoteToggled.push(leaves); return quoteToggle; },
+        modelSelectedRanges: (d, sel) => [{ block: sel.block }],
+        modelRecordSelection: (sel) => (sel ? { block: sel.block.id, offset: sel.offset } : null),
+        modelResolveSelection: (d, rec) => (rec ? { block: "resolved", offset: rec.offset } : null),
+        // Stage 3's slice 2: Insert → Image…. The dialog answers what a case
+        // says, and the model's half is the model suite's.
+        askForInput: (message, options) => { calls.asked.push(options); return Promise.resolve(dialog); },
+        modelImageAt: () => image,
+        modelImageFields: () => ({ src: "old.png", alt: "Old", title: "" }),
+        modelSetImage: (b, from, to, fields) => { calls.imaged.push({ block: b, from, to, fields }); return imageSet; },
+        modelReferenceEnv: () => ({}),
+        // Stage 3's slice 4. A cell's text is its nodes' content here, and the
+        // flattening is the model suite's: what is asserted is that a landing
+        // in a cell asks for it and lands what it hands back.
+        modelInlineText: (nodes) => (nodes || []).map((n) => n.content || "").join(""),
+        modelCellBlocks: (d, parser, blocks) => {
+          calls.cellBlocks.push(blocks);
+          return [{ kind: "paragraph", inlines: [], flattened: true }];
+        },
+        // Stage 3's slice 5. Reading order and the column are the model
+        // suite's; here a case says what is below, and every command only
+        // records itself, so what is asserted is which one a control reaches.
+        modelTableCellBeside: (c, step) => {
+          const cells = ((state.doc && state.doc.blocks) || []).filter((b) => b.kind === "cell");
+          return cells[cells.indexOf(c) + step] || null;
+        },
+        modelTableCellBelow: () => below,
+        modelApplySelection: (root, selection) => { calls.applied.push(selection); return true; },
+        modelLeafBeside: (d, b, step) => {
+          const flat = (d.blocks || []).filter((x) => !x.children);
+          return flat[flat.indexOf(b) + step] || null;
+        },
+        modelTableOf: (c) => c.parent && c.parent.parent,
+        modelTableAlignment: () => "left",
+        modelTableInsertRow: (d, c, down) => { calls.tableOps.push(down ? "row-below" : "row-above"); return tableResult; },
+        modelTableInsertColumn: (d, c, right) => { calls.tableOps.push(right ? "col-right" : "col-left"); return tableResult; },
+        modelTableDeleteRow: () => { calls.tableOps.push("delete-row"); return tableResult; },
+        modelTableDeleteColumn: () => { calls.tableOps.push("delete-column"); return tableResult; },
+        modelTableDelete: () => { calls.tableOps.push("delete"); return tableResult; },
+        modelTableAlign: (d, c, align, parser, offset) => { calls.tableOps.push(`align-${align}@${offset}`); return tableResult; },
+        modelInsertTable: (d, b, offset) => { calls.tableOps.push(`insert@${offset}`); return inserted; },
+        modelSetHeading: (d, b, level) => { calls.headings.push({ block: b, level }); return true; },
+        modelMathReveal: (b, offset, backward) => {
+          calls.revealed.push({ offset, backward });
+          return reveal;
+        },
+        modelElementFor: () => editor,
+        modelDomText: () => domText,
+        modelBlockText: () => blockText,
+        // A drag records its source from the live selection, so a case that
+        // drags has to have one. `collapsed: false` is the whole of what both
+        // `modelInputDragStart` and `modelInputSpan` ask it.
+        window: {
+          // `selection: "caret"` is a live selection that is only a caret, which
+          // is what an engine leaves standing while it rewrites behind it.
+          getSelection: () => (selection
+            ? { rangeCount: 1, isCollapsed: collapsed, getRangeAt: () => (selection === "caret"
+              ? { collapsed: true, startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }
+              : { collapsed: false, startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }) }
+            : { rangeCount: 0 }),
+        },
+        InputEvent: class {
+          constructor(type, init) { this.type = type; this.inputType = init && init.inputType; }
+        },
+        Event: class {
+          constructor(type) { this.type = type; }
+        },
+        CustomEvent: class {
+          constructor(type, init) { this.type = type; this.detail = init && init.detail; }
+        },
+        // undo.js's two. Absent when `history` is false, which is
+        // front/input-check.html's situation exactly: it ships no undo.js, so
+        // the route has to find nothing and do nothing rather than throw.
+        ...(history ? {
+          undo: () => { calls.history.push("undo"); return true; },
+          undoJoin: () => { calls.joined += 1; },
+          redo: () => { calls.history.push("redo"); return true; },
+        } : {}),
+        console,
+      },
+      "; return { modelInputBeforeInput, modelInputCompositionStart," +
+        " modelInputCompositionEnd, modelInputComposing, modelInputInstall," +
+        " modelInputKeydown, modelIndentAtCaret, modelInputPasteEvent," +
+        " modelInputDrop, modelInputDragStart, modelInputDragOver," +
+        " modelPastePlain, modelPasteMarkdown, modelInputSelectionMath, modelInputQuote, modelInputImage," +
+        " modelInputBlockFormat, modelInputPaste, modelInputTable, modelInputTableState, modelInputInsertTable };",
+    );
+    return { api, calls, editor, block, state };
+  };
+
+  // A beforeinput the handler understands nothing about.
+  const event = (inputType, { data = null, targets = null } = {}) => {
+    const e = { inputType, data, prevented: 0 };
+    e.preventDefault = () => { e.prevented += 1; };
+    if (targets) e.getTargetRanges = () => targets;
+    return e;
+  };
+  const here = (block, offset) => ({ block, offset });
+
+  // --- cancelled first, and unconditionally --------------------------------
+  //
+  // The property the whole design rests on. An inputType this slice has never
+  // heard of has to be a keystroke that does nothing, rather than one the
+  // engine gets to act on behind the model's back -- so the cancel comes before
+  // anything is looked at, including before the document is known to exist.
+
+  {
+    const { api, calls } = rig();
+    const e = event("formatJustifyFull");
+    api.modelInputBeforeInput(e);
+    check("an inputType nobody handles is still cancelled", e.prevented === 1);
+    check("and nothing is done with it", calls.splice.length === 0 && calls.rerender.length === 0);
+  }
+  // Slice 7's step 8: the engine's own format commands reach the toggle, a
+  // bonus entry point like the history pair, and Ctrl/Cmd+B and I are bound.
+  {
+    const block = { kind: "paragraph", inlines: [] };
+    const sel = { block, offset: 0, to: { block, offset: 2 } };
+    const { api, calls } = rig({ at: sel });
+    for (const type of ["formatBold", "formatItalic", "formatStrikeThrough"]) {
+      const e = event(type);
+      api.modelInputBeforeInput(e);
+      check(`${type} is cancelled`, e.prevented === 1);
+    }
+    check("and each reaches the model's toggle with its own kind",
+      calls.toggled.join() === "strong,em,strike");
+  }
+  {
+    const block = { kind: "paragraph", inlines: [] };
+    const { api, calls } = rig({ at: { block, offset: 0, to: { block, offset: 2 } } });
+    let prevented = 0;
+    const key = (k, extra = {}) => api.modelInputKeydown({
+      key: k, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, isComposing: false,
+      preventDefault() { prevented++; }, ...extra,
+    });
+    key("b");
+    check("Ctrl+B bolds the selection, and takes the key from the browser",
+      calls.toggled.join() === "strong" && prevented === 1);
+    key("I");
+    check("Ctrl+I italicises, Caps Lock or not", calls.toggled.join() === "strong,em" && prevented === 2);
+    const e = event("formatItalic");
+    api.modelInputBeforeInput(e);
+    check("and a formatItalic the same keystroke raises is ignored, so the two do not cancel out",
+      calls.toggled.join() === "strong,em" && e.prevented === 1);
+    key("b", { shiftKey: true });
+    check("Ctrl+Shift+B is not Bold", calls.toggled.length === 2);
+  }
+  {
+    const { api } = rig({ doc: null });
+    const e = event("insertText", { data: "x" });
+    api.modelInputBeforeInput(e);
+    check("with no document open it is cancelled anyway", e.prevented === 1);
+  }
+  {
+    // Every type this slice names, plus a run of ones it does not, all cancelled.
+    const { api } = rig({ doc: null });
+    const types = [
+      "insertText", "insertReplacementText", "deleteContentBackward",
+      "deleteContentForward", "deleteWordBackward", "deleteWordForward",
+      "deleteByCut", "insertParagraph", "insertLineBreak", "insertFromPaste",
+      "insertFromDrop", "historyUndo", "historyRedo", "formatItalic",
+      "insertCompositionText", "insertOrderedList",
+    ];
+    const missed = types.filter((type) => {
+      const e = event(type);
+      api.modelInputBeforeInput(e);
+      return e.prevented !== 1;
+    });
+    check(
+      `every inputType is cancelled, handled or not (${types.length} tried)` +
+        (missed.length ? ` — ${missed.join(", ")}` : ""),
+      missed.length === 0,
+    );
+  }
+
+  // --- the types this slice handles ----------------------------------------
+
+  {
+    const target = { id: 1 };
+    const r = rig({ range: [here(target, 2), here(target, 2)] });
+    const e = event("insertText", { data: "q", targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] });
+    r.api.modelInputBeforeInput(e);
+    check(
+      `insertText splices its data in (${JSON.stringify(r.calls.splice[0] && r.calls.splice[0].text)})`,
+      r.calls.splice.length === 1 && r.calls.splice[0].text === "q" &&
+        r.calls.splice[0].from === 2 && r.calls.splice[0].to === 2,
+    );
+    check("and renders the block it changed, with the caret the splice returned",
+      r.calls.rerender.length === 1 && r.calls.rerender[0].selection.offset === 7);
+    check("and announces the change, or nothing downstream would hear it",
+      r.calls.announced.length === 1 && r.calls.announced[0] === "insertText");
+    check("an ordinary keystroke is its own undo step", r.calls.joined === 0);
+  }
+
+  // --- the press-and-hold accent ------------------------------------------
+  //
+  // Both engines type the vowel as an ordinary edit and then replace it, far
+  // past the coalescing window. Each case is the engine's own log, replayed:
+  // the first event is the `e`, the second the accent landing over it.
+
+  const typedAt = (at) => ({ startContainer: 1, startOffset: at, endContainer: 1, endOffset: at });
+  const over = (from, to) => ({ startContainer: 1, startOffset: from, endContainer: 2, endOffset: to });
+
+  {
+    // Firefox: `insertText "e" 23–23`, then `insertText "é" 23–24`.
+    const t = { id: 3 };
+    const r = rig({ splice: 24, range: [here(t, 23), here(t, 23), here(t, 24)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "e", targets: [typedAt(23)] }));
+    check("the vowel itself is an ordinary step", r.calls.joined === 0);
+    r.api.modelInputBeforeInput(event("insertText", { data: "é", targets: [over(23, 24)] }));
+    check(`Firefox's accent replaces the vowel (${JSON.stringify(r.calls.splice[1])})`,
+      r.calls.splice.length === 2 && r.calls.splice[1].from === 23 &&
+        r.calls.splice[1].to === 24 && r.calls.splice[1].text === "é");
+    check("and joins the vowel's undo step", r.calls.joined === 1);
+  }
+
+  {
+    // Safari: `insertText "e" 42–42`, then `insertReplacementText 42–43` with
+    // **no `data`** -- the text is in `dataTransfer`, where the spec puts it.
+    const t = { id: 2 };
+    const r = rig({ splice: 43, range: [here(t, 42), here(t, 42), here(t, 43)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "e", targets: [typedAt(42)] }));
+    const e = event("insertReplacementText", { targets: [over(42, 43)] });
+    e.dataTransfer = { getData: (type) => (type === "text/plain" ? "é" : "") };
+    r.api.modelInputBeforeInput(e);
+    check(`Safari's accent is read from dataTransfer (${JSON.stringify(r.calls.splice[1])})`,
+      r.calls.splice.length === 2 && r.calls.splice[1].text === "é" &&
+        r.calls.splice[1].from === 42 && r.calls.splice[1].to === 43);
+    check("so it is announced as text, not as the deletion that erased the letter",
+      r.calls.announced[1] === "insertText");
+    check("and joins the vowel's undo step too", r.calls.joined === 1);
+  }
+
+  {
+    // A text edit carrying no text at all changes nothing, rather than
+    // deleting its range.
+    const t = { id: 2 };
+    const r = rig({ range: [here(t, 42), here(t, 43)] });
+    r.api.modelInputBeforeInput(event("insertReplacementText", { targets: [over(42, 43)] }));
+    check("a text edit with no text is refused, not treated as a deletion",
+      r.calls.splice.length === 0 && r.calls.announced.length === 0);
+  }
+
+  {
+    // Typing over a range that is not what was just typed is a new edit.
+    const t = { id: 3 };
+    const r = rig({ splice: 24, range: [here(t, 10), here(t, 10), here(t, 23), here(t, 24)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "e", targets: [typedAt(10)] }));
+    r.api.modelInputBeforeInput(event("insertText", { data: "x", targets: [over(23, 24)] }));
+    check("typing over text the last keystroke did not type does not join",
+      r.calls.splice.length === 2 && r.calls.joined === 0);
+  }
+
+  {
+    // Any other edit in between clears the record: the rewrite has to follow
+    // the keystroke directly.
+    const t = { id: 3 };
+    const r = rig({ splice: 24, range: [here(t, 23), here(t, 23), here(t, 24), here(t, 23), here(t, 24)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "e", targets: [typedAt(23)] }));
+    r.api.modelInputBeforeInput(event("deleteContentBackward", { targets: [over(23, 24)] }));
+    r.api.modelInputBeforeInput(event("insertText", { data: "é", targets: [over(23, 24)] }));
+    check("an edit between the keystroke and the rewrite breaks the link", r.calls.joined === 0);
+  }
+
+  {
+    // A rewrite the model refuses never announces, so it must not leave a
+    // join standing for whatever edit comes next.
+    const t = { id: 3 };
+    const r = rig({ splice: [24, null], range: [here(t, 23), here(t, 23), here(t, 24)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "e", targets: [typedAt(23)] }));
+    r.api.modelInputBeforeInput(event("insertText", { data: "é", targets: [over(23, 24)] }));
+    check("a refused rewrite leaves no join behind",
+      r.calls.splice.length === 2 && r.calls.announced.length === 1 && r.calls.joined === 0);
+  }
+
+  {
+    // The four delete types are one implementation, because the engine has
+    // already decided what a word is and says so in the target ranges.
+    for (const type of ["deleteContentBackward", "deleteContentForward", "deleteWordBackward", "deleteWordForward", "deleteByCut"]) {
+      const target = { id: 2 };
+      const r = rig({ range: [here(target, 1), here(target, 5)] });
+      const e = event(type, { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 4 }] });
+      r.api.modelInputBeforeInput(e);
+      check(
+        `${type} deletes the range the engine named (${r.calls.splice[0] ? r.calls.splice[0].from + "–" + r.calls.splice[0].to : "none"})`,
+        r.calls.splice.length === 1 && r.calls.splice[0].from === 1 &&
+          r.calls.splice[0].to === 5 && r.calls.splice[0].text === "",
+      );
+    }
+  }
+
+  {
+    // **Two blocks is a merge**, which slice 4 turned from a refusal into the
+    // handling. The shape is what matters: what is left of the first block,
+    // what is left of the last, and then the join -- so a Backspace at a
+    // block's start deletes nothing at either end and merges, which is the
+    // commonest case there is.
+    const first = { id: 3, inlines: [] };
+    const second = { id: 4, inlines: [] };
+    const doc = { blocks: [first, second] };
+    const r = rig({ doc, range: [here(first, 4), here(second, 0)] });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 4 }] });
+    r.api.modelInputBeforeInput(e);
+    check("a deletion spanning two blocks merges them",
+      r.calls.merged.length === 1 && r.calls.merged[0].first === first && r.calls.merged[0].second === second);
+    check("clearing what the range covered at each end first",
+      r.calls.splice.length === 2 && r.calls.splice[0].from === 4 && r.calls.splice[1].to === 0);
+    check("and rendering the whole document, since a block has gone",
+      r.calls.render.length === 1 && r.calls.rerender.length === 0);
+    check("and it is still cancelled, so the engine does not do it too", e.prevented === 1);
+  }
+
+  {
+    // A merge needs two blocks with a common text space. A paragraph and a
+    // fence have none -- one is an inline tree, the other is source -- so this
+    // refuses, which is the same refusal slice 3 made with one case fewer
+    // behind it.
+    const first = { id: 11, inlines: [] };
+    const fence = { id: 12, inlines: null };
+    const r = rig({ doc: { blocks: [first, fence] }, range: [here(first, 4), here(fence, 0)] });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check("a merge into a block with no inline tree is refused rather than approximated",
+      r.calls.merged.length === 0 && r.calls.splice.length === 0 && r.calls.render.length === 0);
+  }
+
+  // --- slice 4: the structural types ---------------------------------------
+
+  {
+    const target = { id: 20, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, range: [here(target, 4), here(target, 4)] });
+    const e = event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 4, endContainer: 1, endOffset: 4 }] });
+    r.api.modelInputBeforeInput(e);
+    check(`insertParagraph splits at the caret (${r.calls.split[0] && r.calls.split[0].offset})`,
+      r.calls.split.length === 1 && r.calls.split[0].block === target && r.calls.split[0].offset === 4);
+    check("and renders the document rather than the block, since the count changed",
+      r.calls.render.length === 1 && r.calls.rerender.length === 0);
+    check("announced as its own inputType, so undo does not coalesce it with typing",
+      r.calls.announced.length === 1 && r.calls.announced[0] === "insertParagraph");
+  }
+
+  {
+    // A selection is deleted first and the split happens where it collapsed.
+    const target = { id: 21, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, range: [here(target, 2), here(target, 6)] });
+    const e = event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 4 }] });
+    r.api.modelInputBeforeInput(e);
+    check("Enter over a selection deletes it first, then splits where it collapsed",
+      r.calls.splice.length === 1 && r.calls.splice[0].text === "" && r.calls.split.length === 1 &&
+        r.calls.split[0].offset === 7);
+  }
+
+  {
+    // Enter inside a fence is a newline in its body: its content is source, so
+    // there is no block to split.
+    const target = { id: 22, inlines: null };
+    const r = rig({ doc: { blocks: [target] }, source: true, range: [here(target, 3), here(target, 3)] });
+    const e = event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 3, endContainer: 1, endOffset: 3 }] });
+    r.api.modelInputBeforeInput(e);
+    check("Enter in a source-bearing block writes a newline into its body instead",
+      r.calls.sourceSplice.length === 1 && r.calls.sourceSplice[0].text === "\n" && r.calls.split.length === 0);
+    check("and re-renders that block alone, because nothing was added or removed",
+      r.calls.rerender.length === 1 && r.calls.render.length === 0);
+  }
+
+  {
+    const target = { id: 23, inlines: null };
+    const r = rig({ doc: { blocks: [target] }, source: true, range: [here(target, 1), here(target, 1)] });
+    const e = event("insertText", { data: "z", targets: [{ startContainer: 1, startOffset: 1, endContainer: 1, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check("typing in a source-bearing block goes to the source space, not the inline one",
+      r.calls.sourceSplice.length === 1 && r.calls.sourceSplice[0].text === "z" && r.calls.splice.length === 0);
+  }
+
+  {
+    for (const [spelling, label] of [["  ", "two spaces"], ["\\", "a backslash"]]) {
+      const target = { id: 24, inlines: [] };
+      const r = rig({ doc: { blocks: [target] }, hardBreak: spelling, range: [here(target, 2), here(target, 2)] });
+      const e = event("insertLineBreak", { targets: [{ startContainer: 1, startOffset: 2, endContainer: 1, endOffset: 2 }] });
+      r.api.modelInputBeforeInput(e);
+      check(`a new hard break takes the document's own spelling (${label})`,
+        r.calls.broke.length === 1 && r.calls.broke[0].spelling === spelling);
+    }
+  }
+
+  {
+    // The two hand-rolled clusters, asked before the generic handling: what the
+    // engine reports for either is a split or a deletion of a block holding
+    // nothing, and the shape says nothing about the intent.
+    for (const [type, backspace] of [["insertParagraph", false], ["deleteContentBackward", true]]) {
+      const target = { id: 25, inlines: [] };
+      const r = rig({ doc: { blocks: [target] }, item: { kind: "item" }, empty: true, at: { block: target, offset: 0 } });
+      const e = event(type, { targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] });
+      r.api.modelInputBeforeInput(e);
+      check(`${type} on an empty item is the list rule, not the generic edit`,
+        r.calls.emptyItem.length === 1 && r.calls.emptyItem[0].backspace === backspace &&
+          r.calls.split.length === 0 && r.calls.splice.length === 0);
+    }
+  }
+
+  {
+    // ...and only at the start of it, for Backspace: mid-item it is an ordinary
+    // deletion of whatever the engine named.
+    const target = { id: 26, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, item: { kind: "item" }, empty: true, at: { block: target, offset: 3 },
+      range: [here(target, 2), here(target, 3)] });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 2, endContainer: 1, endOffset: 3 }] });
+    r.api.modelInputBeforeInput(e);
+    check("Backspace away from an item's start is an ordinary deletion",
+      r.calls.emptyItem.length === 0 && r.calls.splice.length === 1);
+  }
+
+  // --- stage 3's slice 1: the quote's keys and its control ----------------
+
+  {
+    // Enter and Backspace at a quote's edge are asked after the empty-item
+    // rules and before the generic edit, and only answer when the model does.
+    for (const [type, backspace] of [["insertParagraph", false], ["deleteContentBackward", true]]) {
+      const target = { id: 40, inlines: [] };
+      const landed = { block: target, offset: 0 };
+      const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 }, quote: landed });
+      r.api.modelInputBeforeInput(event(type, { targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] }));
+      check(`${type} the quote rule answers is the quote rule, not the generic edit`,
+        r.calls.quoteKey.length === 2 && r.calls.quoteKey[1].backspace === backspace &&
+          r.calls.split.length === 0 && r.calls.splice.length === 0 && r.calls.render.length === 1 &&
+          r.calls.announced[0] === type);
+    }
+  }
+
+  {
+    // The model saying no is an ordinary key, and so is the shape check
+    // saying no on the fork, before the document is touched.
+    for (const [label, opts] of [["the model has no quote rule there", {}], ["the parser refuses the shape", { quote: { block: {}, offset: 0 }, settle: false }]]) {
+      const target = { id: 41, inlines: [] };
+      const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 }, ...opts,
+        range: [here(target, 0), here(target, 0)] });
+      r.api.modelInputBeforeInput(event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] }));
+      check(`Enter is an ordinary split when ${label}`,
+        r.calls.quoteKey.length === 1 && r.calls.split.length === 1);
+    }
+  }
+
+  {
+    // Empty items first: an empty item in a quote is the list's business.
+    const target = { id: 42, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, item: { kind: "item" }, empty: true, at: { block: target, offset: 0 },
+      quote: { block: target, offset: 0 } });
+    r.api.modelInputBeforeInput(event("insertParagraph"));
+    check("an empty item is asked before the quote", r.calls.emptyItem.length === 1 && r.calls.quoteKey.length === 0);
+  }
+
+  {
+    // Backspace only at a block's start, only as a character deletion, and
+    // never over a selection.
+    const target = { id: 43, inlines: [] };
+    const cases = [
+      ["mid-block", { at: { block: target, offset: 2 } }, "deleteContentBackward"],
+      ["a word deletion", { at: { block: target, offset: 0 } }, "deleteWordBackward"],
+      ["over a selection", { at: { block: target, offset: 0, to: { block: target, offset: 2 } } }, "deleteContentBackward"],
+    ];
+    for (const [label, opts, type] of cases) {
+      const r = rig({ doc: { blocks: [target] }, quote: { block: target, offset: 0 }, ...opts,
+        range: [here(target, 0), here(target, 1)] });
+      r.api.modelInputBeforeInput(event(type, { targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 1 }] }));
+      check(`Backspace ${label} does not ask the quote rule`, r.calls.quoteKey.length === 0);
+    }
+  }
+
+  {
+    // WebKit raises no beforeinput for a Backspace at the very start of the
+    // document, so the keydown asks the same rule — and cancels only when it
+    // answered, leaving every other Backspace to the engine and beforeinput.
+    const target = { id: 45, inlines: [] };
+    const press = (opts, extra = {}) => {
+      const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 }, ...opts });
+      const e = { key: "Backspace", prevented: 0, preventDefault() { this.prevented += 1; }, ...extra };
+      r.api.modelInputKeydown(e);
+      return { r, e };
+    };
+    const taken = press({ quote: { block: target, offset: 0 } });
+    check("a Backspace keydown the quote rule answers is cancelled and handled",
+      taken.e.prevented === 1 && taken.r.calls.render.length === 1);
+    const left = press({});
+    check("one it does not answer is left to the engine", left.e.prevented === 0 && left.r.calls.quoteKey.length === 1);
+    const modified = press({ quote: { block: target, offset: 0 } }, { altKey: true });
+    check("and a modified Backspace is not asked at all", modified.e.prevented === 0 && modified.r.calls.quoteKey.length === 0);
+  }
+
+  {
+    // Format → Blockquote: a fork first, then the document, then one render
+    // with the selection carried across by id.
+    const target = { id: 44, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 3 } });
+    r.api.modelInputQuote();
+    check("Blockquote toggles on a fork and then on the document, and renders once",
+      r.calls.quoteToggled.length === 2 && r.calls.render.length === 1 &&
+        r.calls.render[0].selection && r.calls.render[0].selection.block === "resolved" &&
+        r.calls.render[0].selection.offset === 3 && r.calls.announced[0] === "formatBlock");
+    const refused = rig({ doc: { blocks: [target] }, at: { block: target, offset: 3 }, quoteToggle: null });
+    refused.api.modelInputQuote();
+    check("a Blockquote the model refuses says so and changes nothing",
+      refused.calls.quoteToggled.length === 1 && refused.calls.render.length === 0 &&
+        refused.calls.toasts.length === 1 && refused.calls.announced.length === 0);
+  }
+
+  // --- stage 3's slice 2: Insert → Image… ---------------------------------
+
+  {
+    const target = { id: 50, inlines: [] };
+    const answer = { src: "pic.png", alt: "A picture", title: "" };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 3 }, dialog: answer });
+    r.editor.focus = () => {};
+    await r.api.modelInputImage();
+    const asked = r.calls.asked[0];
+    check("Insert → Image… asks for an address, a description and a title",
+      !!asked && asked.title === "Insert image" && asked.fields.map((f) => f.name).join() === "src,alt,title");
+    check("and puts the image in on a fork, then in the document, at the caret, as one undo step",
+      r.calls.imaged.length === 2 && r.calls.imaged[1].block === target && r.calls.imaged[1].from === 3 &&
+        r.calls.imaged[1].fields === answer && r.calls.announced[0] === "insertImage");
+  }
+
+  {
+    const target = { id: 51, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 2, to: { block: target, offset: 3 } },
+      image: { node: {} }, dialog: { src: "new.png", alt: "Old", title: "" } });
+    r.editor.focus = () => {};
+    await r.api.modelInputImage();
+    const asked = r.calls.asked[0];
+    check("a selection that is one image is edited, with the dialog filled in from it",
+      !!asked && asked.title === "Edit image" && asked.confirmLabel === "Update" && asked.fields[0].value === "old.png" &&
+        asked.fields[1].value === "Old");
+  }
+
+  {
+    const target = { id: 52, inlines: [] };
+    const cases = [
+      ["backing out of the dialog changes nothing", { dialog: null }, 0],
+      ["an empty address is refused, and says so", { dialog: { src: "", alt: "x", title: "" } }, 1],
+      ["an image the model refuses says so", { dialog: { src: "javascript:x", alt: "", title: "" }, imageSet: null }, 1],
+    ];
+    for (const [label, opts, toasts] of cases) {
+      const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 }, ...opts });
+      r.editor.focus = () => {};
+      await r.api.modelInputImage();
+      check(label, r.calls.toasts.length === toasts && r.calls.render.length === 0 && r.calls.rerender.length === 0 &&
+        r.calls.announced.length === 0);
+    }
+    const other = { id: 53, inlines: [] };
+    const across = rig({ doc: { blocks: [target, other] }, at: { block: target, offset: 0, to: { block: other, offset: 1 } },
+      dialog: { src: "p.png", alt: "", title: "" } });
+    await across.api.modelInputImage();
+    check("a selection across two blocks is refused before the dialog opens",
+      across.calls.asked.length === 0 && across.calls.toasts.length === 1);
+  }
+
+  // --- slice 4: Tab, which is not an inputType -----------------------------
+
+  {
+    const target = { id: 27, inlines: [] };
+    const listItem = { kind: "item" };
+    for (const shift of [false, true]) {
+      const r = rig({ doc: { blocks: [target] }, item: listItem, at: { block: target, offset: 0 } });
+      const e = { key: "Tab", shiftKey: shift, prevented: 0, preventDefault() { this.prevented += 1; } };
+      r.api.modelInputKeydown(e);
+      check(`${shift ? "Shift+Tab outdents" : "Tab indents"} the item the caret is in`,
+        r.calls.moved.length === 1 && r.calls.moved[0].outdent === shift && e.prevented === 1);
+      check("announced as its own inputType so it is one undo step",
+        r.calls.announced.length === 1 && r.calls.announced[0] === (shift ? "formatOutdent" : "formatIndent"));
+    }
+  }
+
+  {
+    // Outside a list Tab keeps its default job of leaving the editor, which is
+    // a keyboard user's only way out -- today's rule kept rather than re-decided.
+    const target = { id: 28, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, item: null, at: { block: target, offset: 0 } });
+    const e = { key: "Tab", shiftKey: false, prevented: 0, preventDefault() { this.prevented += 1; } };
+    r.api.modelInputKeydown(e);
+    check("Tab outside a list is not taken from the browser",
+      e.prevented === 0 && r.calls.moved.length === 0);
+  }
+
+  {
+    // The Format menu's two items ask the identical question. The flag is read
+    // by app.js rather than in here, so that front/input-check.html can install
+    // the layer without flipping the flag for the app on the same origin — a
+    // guard in here made Tab do nothing on the one page built to measure it.
+    const target = { id: 29, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, item: { kind: "item" }, at: { block: target, offset: 0 } });
+    check("the toolbar path moves the item the caret is in", r.api.modelIndentAtCaret(false) === true &&
+      r.calls.moved.length === 1);
+    const none = rig({ doc: null });
+    check("and answers no with no document open", none.api.modelIndentAtCaret(false) === false);
+  }
+
+  {
+    // A block whose content is source says so with a null, and the dispatcher
+    // has to stop rather than render something it did not change.
+    const target = { id: 5 };
+    const r = rig({ range: [here(target, 0), here(target, 0)], splice: null });
+    const e = event("insertText", { data: "x", targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] });
+    r.api.modelInputBeforeInput(e);
+    check("a splice that refuses stops the edit rather than rendering anyway",
+      r.calls.splice.length === 1 && r.calls.rerender.length === 0 && r.calls.announced.length === 0);
+  }
+
+  {
+    // **A collapsed caret stays collapsed.** Found by hand in Gecko on
+    // 2026-09-20, which puts the caret *inside* a rendered equation where Blink
+    // does not. Both ends of that one position clamp outward -- correctly for a
+    // real selection, which must not collapse onto an atom's front edge -- and
+    // the caret became a range covering the whole equation, so typing a
+    // character ate it. The rig's stub hands back a different answer per call,
+    // so a handler that asked twice gets two offsets and one that asks once
+    // gets one: which is exactly the difference under test.
+    const target = { id: 9 };
+    const r = rig({ range: [here(target, 12), here(target, 13)] });
+    const e = event("insertText", {
+      data: "d",
+      targets: [{ startContainer: 1, startOffset: 4, endContainer: 1, endOffset: 4 }],
+    });
+    r.api.modelInputBeforeInput(e);
+    check(
+      `a caret inside an atom inserts rather than replacing it (${r.calls.splice[0] ? r.calls.splice[0].from + "–" + r.calls.splice[0].to : "none"})`,
+      r.calls.splice.length === 1 && r.calls.splice[0].from === 12 && r.calls.splice[0].to === 12,
+    );
+
+    // And the other half of the same rule, which is why the bias exists at all.
+    const two = { id: 10 };
+    const s2 = rig({ range: [here(two, 12), here(two, 13)] });
+    const e2 = event("insertText", {
+      data: "d",
+      targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 11 }],
+    });
+    s2.api.modelInputBeforeInput(e2);
+    check(
+      `while a real selection over one still replaces it (${s2.calls.splice[0] ? s2.calls.splice[0].from + "–" + s2.calls.splice[0].to : "none"})`,
+      s2.calls.splice.length === 1 && s2.calls.splice[0].from === 12 && s2.calls.splice[0].to === 13,
+    );
+  }
+
+  // --- composition ----------------------------------------------------------
+  //
+  // insertCompositionText cannot be cancelled, so the rule is that the engine
+  // owns the node under the caret until compositionend and the model waits. The
+  // guard that matters is the re-render suppression: a render during
+  // composition takes the node the IME is holding out from under it.
+
+  {
+    const target = { id: 6 };
+    const r = rig({ range: [here(target, 0), here(target, 0)] });
+    check("nothing is composing to begin with", r.api.modelInputComposing() === false);
+    r.api.modelInputCompositionStart();
+    check("compositionstart records that one is", r.api.modelInputComposing() === true);
+
+    const e = event("insertCompositionText", { data: "あ" });
+    r.api.modelInputBeforeInput(e);
+    check("and nothing renders while it runs", r.calls.rerender.length === 0 && r.calls.render.length === 0);
+    check("though the event is still cancelled, for the types that can be", e.prevented === 1);
+
+    r.api.modelInputCompositionEnd();
+    check("compositionend is no longer composing", r.api.modelInputComposing() === false);
+    check("a composition that only inserted is its own undo step", r.calls.joined === 0);
+    check(
+      `and applies the difference as one edit (${JSON.stringify(r.calls.splice[0])})`,
+      r.calls.splice.length === 1 && r.calls.splice[0].from === 2 &&
+        r.calls.splice[0].to === 2 && r.calls.splice[0].text === "X",
+    );
+    check("as one step, announced once", r.calls.announced.length === 1);
+  }
+
+  {
+    // The macOS press-and-hold accent: the vowel was typed as an ordinary
+    // keystroke, and the composition *replaces* it. That belongs to the
+    // keystroke's undo step, or one Ctrl+Z leaves a bare "e" nobody typed.
+    const target = { id: 7 };
+    const r = rig({ range: [here(target, 0), here(target, 0)], blockText: "cafe", domText: "café" });
+    r.api.modelInputCompositionStart();
+    r.api.modelInputCompositionEnd();
+    check(`a composition that rewrote what was typed replaces it (${JSON.stringify(r.calls.splice[0])})`,
+      r.calls.splice.length === 1 && r.calls.splice[0].from === 3 &&
+        r.calls.splice[0].to === 4 && r.calls.splice[0].text === "é");
+    check("and joins the undo step before it", r.calls.joined === 1);
+  }
+
+  // --- slice 5: paste and drop ---------------------------------------------
+  //
+  // The `paste` event rather than `beforeinput`: it fires first, carries
+  // clipboardData by specification, and cancelling it stops the insertion
+  // before an insertFromPaste is ever raised.
+
+  const clipboard = (types) => ({
+    preventDefault() { this.prevented = (this.prevented || 0) + 1; },
+    clipboardData: { getData: (type) => types[type] || "" },
+    prevented: 0,
+  });
+
+  {
+    const target = { id: 40, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 2 }, html: "<p>hi</p>" });
+    const e = clipboard({ "text/html": "<p>hi</p>", "text/plain": "hi" });
+    r.api.modelInputPasteEvent(e);
+    check("a paste is cancelled, so the engine does not insert it too", e.prevented === 1);
+    check("the HTML branch runs when there is HTML",
+      r.calls.sanitised.length === 1 && r.calls.turndown.length === 1 && r.calls.parsed.length === 1);
+    check("and the plain text is not touched", r.calls.textBlocks.length === 0);
+    check(`the blocks land at the selection (${r.calls.inserted[0] && r.calls.inserted[0].offset})`,
+      r.calls.inserted.length === 1 && r.calls.inserted[0].block === target && r.calls.inserted[0].offset === 2);
+    check("and the document re-renders, since the block count changed",
+      r.calls.render.length === 1 && r.calls.announced[0] === "insertFromPaste");
+  }
+
+  {
+    // A fragment that was nothing but wrappers sanitises to nothing. Falling
+    // through to the plain text beats inserting an empty string and leaving the
+    // user to wonder where their paste went.
+    const target = { id: 41, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 }, html: "   " });
+    r.api.modelInputPasteEvent(clipboard({ "text/html": "<div><span></span></div>", "text/plain": "fallback" }));
+    check("HTML that sanitises to nothing falls through to the plain text",
+      r.calls.parsed.length === 0 && r.calls.textBlocks.length === 1 && r.calls.textBlocks[0] === "fallback");
+  }
+
+  {
+    // **Plain text is never parsed as markdown**, which is today's behaviour
+    // and the reason Insert -> Paste markdown is a separate action.
+    const target = { id: 42, inlines: [] };
+    const r = rig({ doc: { blocks: [target] }, at: { block: target, offset: 0 } });
+    r.api.modelInputPasteEvent(clipboard({ "text/plain": "*not emphasis*" }));
+    check("a plain-text paste never reaches the parser",
+      r.calls.parsed.length === 0 && r.calls.textBlocks[0] === "*not emphasis*");
+
+    // ...and Paste markdown is the same pipeline with the Turndown step gone.
+    const two = { id: 43, inlines: [] };
+    const s = rig({ doc: { blocks: [two] }, at: { block: two, offset: 0 } });
+    s.api.modelPasteMarkdown("# heading");
+    check("while Paste markdown parses it and runs no Turndown",
+      s.calls.parsed.length === 1 && s.calls.turndown.length === 0 && s.calls.inserted.length === 1);
+
+    // One line of plain text is an ordinary insertion and must not split.
+    const three = { id: 44, inlines: [] };
+    const u = rig({ doc: { blocks: [three] }, at: { block: three, offset: 1 } });
+    u.api.modelPastePlain("just words");
+    check("one line of plain text is a splice rather than a block insert",
+      u.calls.splice.length === 1 && u.calls.inserted.length === 0);
+    const four = { id: 45, inlines: [] };
+    const v = rig({ doc: { blocks: [four] }, at: { block: four, offset: 1 } });
+    v.api.modelPastePlain("two\nlines");
+    check("and several lines are blocks", v.calls.inserted.length === 1 && v.calls.splice.length === 0);
+  }
+
+  {
+    // A drop lands where the pointer was, not where the caret was.
+    const dropped = { id: 46, inlines: [] };
+    const node = {};
+    const r = rig({ doc: { blocks: [dropped] }, point: node, range: [here(dropped, 5)] });
+    const e = {
+      prevented: 0, clientX: 10, clientY: 20,
+      preventDefault() { this.prevented += 1; },
+      dataTransfer: { getData: (type) => (type === "text/plain" ? "moved" : "") },
+    };
+    r.api.modelInputDrop(e);
+    check("a drop is cancelled", e.prevented === 1);
+    check(`and lands at the position under the pointer (${r.calls.inserted[0] && r.calls.inserted[0].offset})`,
+      r.calls.inserted.length === 1 && r.calls.inserted[0].offset === 5);
+    check("announced as its own inputType", r.calls.announced[0] === "insertFromDrop");
+  }
+
+  {
+    // **A drag that started inside the editor is a move, not a copy.** Both
+    // halves are cancelled, so doing only the insert would duplicate the text
+    // and leave the original standing -- which looks like it worked, and is the
+    // worst of the three possible answers.
+    const block = { id: 47, inlines: [] };
+    const node = {};
+    const r = rig({
+      doc: { blocks: [block] }, point: node, selection: true,
+      range: [here(block, 2), here(block, 6), here(block, 20)],
+    });
+    r.api.modelInputDragStart();
+    r.api.modelInputDrop({
+      clientX: 1, clientY: 1, preventDefault() {},
+      dataTransfer: { getData: () => "moved" },
+    });
+    check(`the source range is deleted before the insert (${r.calls.splice[0] ? r.calls.splice[0].from + "–" + r.calls.splice[0].to : "none"})`,
+      r.calls.splice.length === 1 && r.calls.splice[0].from === 2 && r.calls.splice[0].to === 6 &&
+        r.calls.splice[0].text === "");
+    check(`and the drop offset moves back by what was taken out (${r.calls.inserted[0] && r.calls.inserted[0].offset})`,
+      r.calls.inserted.length === 1 && r.calls.inserted[0].offset === 16);
+    // **What moves is the model's own content, cut before the source goes**,
+    // never the drag's clipboard data: Firefox and Chrome both left an equation
+    // out of that, so the move deleted it from the document.
+    check(`what lands is the model's content for the source range (${JSON.stringify(r.calls.parsed)})`,
+      r.calls.cut.length === 1 && r.calls.cut[0].from === 2 && r.calls.cut[0].to === 6 &&
+        r.calls.parsed.length === 1 && r.calls.parsed[0] === "from the model");
+    check("and the drag's own clipboard data is never read",
+      r.calls.sanitised.length === 0 && r.calls.textBlocks.length === 0);
+  }
+
+  {
+    // **Without a cancelled `dragover` there is no `drop` at all**, and that is
+    // the spec rather than a quirk: an element accepts a drop only if something
+    // cancels `dragover` over it. The old core never had to, because a
+    // `contenteditable` is a drop target the engine handles natively — and the
+    // model core suppresses exactly that, so the editor becomes an ordinary
+    // scripted target and has to say so. Missing from slice 5, and drag and
+    // drop did nothing in Blink and WebKit while working in Gecko.
+    const target = { id: 51, inlines: [] };
+    const over = { prevented: 0, preventDefault() { this.prevented += 1; }, dataTransfer: { dropEffect: "none" } };
+    const r = rig({ doc: { blocks: [target] } });
+    r.api.modelInputDragOver(over);
+    check("dragover is cancelled, or nothing can ever be dropped here", over.prevented === 1);
+    check(`and a drag from outside reads as a copy (${over.dataTransfer.dropEffect})`,
+      over.dataTransfer.dropEffect === "copy");
+
+    // The cursor has to promise what will actually happen, and a drag that
+    // started in this editor is a move.
+    const inside = { prevented: 0, preventDefault() { this.prevented += 1; }, dataTransfer: { dropEffect: "none" } };
+    const s = rig({ doc: { blocks: [target] }, selection: true, range: [here(target, 1), here(target, 4)] });
+    s.api.modelInputDragStart();
+    s.api.modelInputDragOver(inside);
+    check(`while one that started here reads as a move (${inside.dataTransfer.dropEffect})`,
+      inside.dataTransfer.dropEffect === "move");
+
+    // With no document there is nothing to drop into, and saying otherwise
+    // would take the drop away from whatever else might have wanted it.
+    const none = { prevented: 0, preventDefault() { this.prevented += 1; }, dataTransfer: { dropEffect: "none" } };
+    rig({ doc: null }).api.modelInputDragOver(none);
+    check("with no document open the drop is not claimed", none.prevented === 0);
+  }
+
+  {
+    // Dropping a selection onto itself is a no-op rather than a delete.
+    const block = { id: 48, inlines: [] };
+    const r = rig({ doc: { blocks: [block] }, point: {}, selection: true,
+      range: [here(block, 2), here(block, 8), here(block, 5)] });
+    r.api.modelInputDragStart();
+    r.api.modelInputDrop({ clientX: 1, clientY: 1, preventDefault() {}, dataTransfer: { getData: () => "x" } });
+    check("dropping a selection inside itself changes nothing",
+      r.calls.splice.length === 0 && r.calls.inserted.length === 0);
+    // And says so, because a refusal and a failure look identical on screen.
+    check(`and announces the refusal (${r.calls.refused.join(", ")})`,
+      r.calls.refused.length === 1 && r.calls.refused[0] === "dropped onto itself");
+  }
+
+  {
+    // A drag spanning two blocks is refused rather than approximated: the
+    // offsets on the far side of a merge are not the ones the drop was measured
+    // against, and getting that wrong moves the text somewhere nobody pointed.
+    const one = { id: 49, inlines: [] };
+    const two = { id: 50, inlines: [] };
+    const r = rig({ doc: { blocks: [one, two] }, point: {}, selection: true,
+      range: [here(one, 1), here(two, 3), here(two, 9)] });
+    r.api.modelInputDragStart();
+    r.api.modelInputDrop({ clientX: 1, clientY: 1, preventDefault() {}, dataTransfer: { getData: () => "x" } });
+    check("a drag spanning two blocks is refused",
+      r.calls.splice.length === 0 && r.calls.inserted.length === 0);
+    check(`and announces why (${r.calls.refused.join(", ")})`,
+      r.calls.refused.length === 1 && r.calls.refused[0] === "spans two blocks");
+  }
+
+  // --- slice 6: the engine's own undo gesture -------------------------------
+  //
+  // `historyUndo` and `historyRedo` are what an engine raises for the macOS
+  // trackpad swipe, a context menu's Undo, or a mobile keyboard's own button.
+  // They were cancelled and routed nowhere, which is the right default for a
+  // type nobody has claimed and the wrong one for a pair that means exactly
+  // what Ctrl+Z means.
+  //
+  // What a stub can see is the routing, which is all this file ever claims:
+  // whether an engine sends them at all is the check page's question, and it
+  // cannot be answered here or by any suite in this repo.
+
+  {
+    const r = rig();
+    const e = event("historyUndo");
+    r.api.modelInputBeforeInput(e);
+    check("historyUndo undoes", r.calls.history.join() === "undo");
+    check("and is cancelled like everything else", e.prevented === 1);
+    // It is a history operation, not an edit: it must not reach the model's
+    // own edit paths, which would put a second step on the stack it is
+    // walking back through.
+    check("and never reaches the inline edit",
+      r.calls.splice.length === 0 && r.calls.rerender.length === 0);
+  }
+
+  {
+    const r = rig();
+    r.api.modelInputBeforeInput(event("historyRedo"));
+    check("historyRedo redoes", r.calls.history.join() === "redo");
+  }
+
+  // The page that measures this layer against a real engine ships no undo.js
+  // on purpose -- it is the application around the layer, not the layer. So
+  // the route has to find nothing and do nothing, rather than throw and take
+  // the rest of the protocol with it.
+  {
+    const r = rig({ history: false });
+    const e = event("historyUndo");
+    r.api.modelInputBeforeInput(e);
+    check("with no undo.js in the bundle the route does nothing",
+      r.calls.history.length === 0 && r.calls.splice.length === 0);
+    check("and still cancels", e.prevented === 1);
+  }
+
+  // Composition owns the caret's text node until it ends, so an undo in the
+  // middle of one would pull that node out from under the IME.
+  {
+    const r = rig();
+    r.api.modelInputCompositionStart();
+    const e = event("historyUndo");
+    r.api.modelInputBeforeInput(e);
+    check("and a history gesture mid-composition is cancelled and ignored",
+      r.calls.history.length === 0 && e.prevented === 1);
+  }
+
+  // --- slice 7's step 10: equations by typing --------------------------------
+  //
+  // Which span, and what a conversion writes, are the model suite's. What is
+  // pinned here is *when*: never with the caret inside the span or straight
+  // after its closing `$`, always as its own undo step, never again once an
+  // undo has taken it back — and Backspace revealing rather than deleting.
+
+  const typing = (opts, typedOffset, caretOffset) => {
+    const target = { id: 1 };
+    const r = rig({ range: [here(target, typedOffset - 1), here(target, typedOffset - 1)], splice: typedOffset, ...opts });
+    r.state.at = { block: r.block, offset: caretOffset };
+    const e = event("insertText", { data: " ", targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] });
+    r.api.modelInputBeforeInput(e);
+    return r;
+  };
+  const xSpan = [{ start: 0, end: 3, source: "$x$" }];
+  {
+    const r = typing({ spans: xSpan }, 4, 4);
+    check(`a character typed after the closing $ converts the span (${JSON.stringify(r.calls.converted)})`,
+      r.calls.converted.length === 1 && r.calls.converted[0].from === 0 && r.calls.converted[0].to === 3);
+    check(`as its own undo step, after the keystroke's (${r.calls.announced.join(", ")})`,
+      r.calls.announced.join(",") === "insertText,insertEquation");
+    check(`and says so, naming the way back (${JSON.stringify(r.calls.toasts)})`,
+      r.calls.toasts.length === 1 && /equation/.test(r.calls.toasts[0]) && /Z keeps it as text/.test(r.calls.toasts[0]));
+    const last = r.calls.rerender[r.calls.rerender.length - 1];
+    check(`and the caret stays after what was typed, past the one-character equation (${last.selection.offset})`,
+      last.selection.offset === 2);
+  }
+  {
+    const r = typing({ spans: xSpan }, 3, 3);
+    check("the closing $ itself converts nothing, since a digit may follow",
+      r.calls.converted.length === 0 && r.calls.announced.join(",") === "insertText" && r.calls.toasts.length === 0);
+    r.state.at = { block: { id: "elsewhere" }, offset: 0 };
+    r.api.modelInputSelectionMath();
+    check("but the caret leaving the block does",
+      r.calls.converted.length === 1 && r.calls.announced.join(",") === "insertText,insertEquation");
+  }
+  {
+    const r = typing({ spans: xSpan }, 2, 2);
+    check("nor does an edit with the caret inside the span", r.calls.converted.length === 0);
+    r.state.at = { block: r.block, offset: 0 };
+    r.api.modelInputSelectionMath();
+    check("until the caret moves out in front of it", r.calls.converted.length === 1);
+  }
+  {
+    const r = typing({ spans: [{ start: 20, end: 23, source: "$y$" }] }, 4, 4);
+    check("a span nowhere near the edit is left alone, so pasted text stays literal",
+      r.calls.converted.length === 0);
+  }
+  {
+    const r = typing({ spans: [] }, 4, 4);
+    check("text with no span in it converts nothing", r.calls.converted.length === 0);
+  }
+  {
+    const r = typing({ spans: xSpan }, 3, 3);
+    r.state.at = { block: r.block, offset: 0, to: { block: r.block, offset: 2 } };
+    r.api.modelInputSelectionMath();
+    check("a selection being made is waited for rather than converted under", r.calls.converted.length === 0);
+  }
+  {
+    // The undo is a different document object, which is what the input layer
+    // sees of one: undo.js installs a clone.
+    const r = typing({ spans: xSpan }, 4, 4);
+    r.state.doc = { blocks: [], undone: true };
+    r.api.modelInputSelectionMath();
+    const e = event("insertText", { data: " ", targets: [{ startContainer: 1, startOffset: 0, endContainer: 1, endOffset: 0 }] });
+    r.calls.converted.length = 0;
+    r.api.modelInputBeforeInput(e);
+    check("once an undo takes a conversion back, the same span stays text", r.calls.converted.length === 0);
+  }
+
+  {
+    const target = { id: 1 };
+    const r = rig({ range: [here(target, 2), here(target, 3)], selection: "caret", collapsed: true, reveal: 6 });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check(`Backspace into an equation reveals it (${JSON.stringify(r.calls.revealed)})`,
+      r.calls.revealed.length === 1 && r.calls.revealed[0].offset === 2 && r.calls.revealed[0].backward === true);
+    check("rather than deleting it", r.calls.splice.length === 0);
+    check(`as its own undo step, with the caret inside the source (${r.calls.announced.join(", ")})`,
+      r.calls.announced.join(",") === "deleteEquation" && r.calls.rerender[0].selection.offset === 6);
+  }
+  {
+    const target = { id: 1 };
+    const r = rig({ range: [here(target, 2), here(target, 3)], selection: "caret", collapsed: false, reveal: 6 });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check("an equation that is selected is deleted, not revealed",
+      r.calls.revealed.length === 0 && r.calls.splice.length === 1);
+  }
+  {
+    const target = { id: 1 };
+    const r = rig({ range: [here(target, 2), here(target, 3)], selection: "caret", collapsed: true, reveal: null });
+    const e = event("deleteContentBackward", { targets: [{ startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check("and a character that is not an equation is deleted as before",
+      r.calls.revealed.length === 1 && r.calls.splice.length === 1);
+  }
+
+  // --- installation ---------------------------------------------------------
+
+  {
+    const root = makeEl("div");
+    // selectionchange fires on the document, not on the editable root.
+    const onDocument = {};
+    root.ownerDocument = {
+      addEventListener: (type, fn) => { (onDocument[type] = onDocument[type] || []).push(fn); },
+    };
+    const { api } = rig();
+    api.modelInputInstall(root);
+    check(
+      `all the listeners are bound (${Object.keys(root.listeners).sort().join(", ")})`,
+      !!root.listeners.beforeinput && !!root.listeners.compositionstart &&
+        !!root.listeners.compositionend && !!root.listeners.keydown &&
+        !!root.listeners.paste && !!root.listeners.drop &&
+        !!root.listeners.dragstart && !!root.listeners.dragend &&
+        !!root.listeners.dragover && !!root.listeners.dragenter &&
+        !!root.listeners.mousedown && !!root.listeners.copy && !!root.listeners.cut,
+    );
+    // Slice 7's step 2: a caret that lands inside an equation, or a press on
+    // one, goes to its nearer edge. Where it goes is screen geometry, which only
+    // a browser has, so that half is checked by hand; this pins that both
+    // listeners are there at all.
+    check("a caret landing inside an equation is watched for on the document",
+      (onDocument.selectionchange || []).length >= 1);
+    // Slice 7's step 10: a typed equation converts when the caret leaves it,
+    // and a caret can leave without any edit at all.
+    check("and so is a caret leaving a typed equation",
+      (onDocument.selectionchange || []).includes(api.modelInputSelectionMath));
+
+  }
+
+  // ── Stage 3's slice 4: cells ──────────────────────────────────────────────
+  //
+  // A table of one row of three cells, with the parent links the input layer
+  // walks to find which table a cell is in. `modelFlatten` hands back the
+  // document's blocks whatever it is asked, so the document is the cells.
+  const tableOf = () => {
+    const table = { kind: "table" };
+    const row = { kind: "row", parent: table };
+    const cell = (id, text) => ({ id, kind: "cell", parent: row, inlines: [{ content: text }] });
+    const cells = [cell(60, "abc"), cell(61, "def"), cell(62, "ghi")];
+    return { table, cells, doc: { blocks: cells } };
+  };
+  const span = { startContainer: 1, startOffset: 0, endContainer: 2, endOffset: 1 };
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, range: [here(cells[0], 1), here(cells[2], 2)] });
+    const e = event("deleteContentBackward", { targets: [span] });
+    r.api.modelInputBeforeInput(e);
+    // Twice: on the trial fork, so no cell is cut unless every one can be, and
+    // then for real. The stub's fork is the document itself.
+    const cut = r.calls.splice.map((c) => `${c.block.id}:${c.from}-${c.to}`).join(" ");
+    check(`a deletion across cells empties what it covers in each and merges nothing (${cut})`,
+      cut === "60:1-3 61:0-3 62:0-2 60:1-3 61:0-3 62:0-2" && r.calls.merged.length === 0 && r.calls.pruned.length === 0);
+    check("and renders the document, since three cells changed", r.calls.render.length === 1);
+  }
+
+  {
+    // Backspace at a cell's start: the engine's range reaches into the cell
+    // before and covers nothing, which changes nothing — the caret stays.
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, range: [here(cells[0], 3), here(cells[1], 0)] });
+    const e = event("deleteContentBackward", { targets: [span] });
+    r.api.modelInputBeforeInput(e);
+    check("Backspace at a cell's start deletes nothing and moves nothing",
+      r.calls.splice.length === 0 && r.calls.render.length === 0 && r.calls.merged.length === 0 && e.prevented === 1);
+  }
+
+  {
+    const { cells, doc } = tableOf();
+    const outside = { id: 70, kind: "paragraph", inlines: [] };
+    const r = rig({ doc: { blocks: [...doc.blocks, outside] }, range: [here(cells[2], 1), here(outside, 0)] });
+    r.api.modelInputBeforeInput(event("deleteContentBackward", { targets: [span] }));
+    check("a deletion between a cell and a block outside its table is refused",
+      r.calls.splice.length === 0 && r.calls.merged.length === 0 && r.calls.render.length === 0);
+  }
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, range: [here(cells[0], 1), here(cells[1], 1)] });
+    r.api.modelInputBeforeInput(event("insertText", { data: "x", targets: [span] }));
+    check("typing over a selection across cells is refused", r.calls.splice.length === 0 && r.calls.render.length === 0);
+  }
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[1], 1), range: [here(cells[1], 1), here(cells[1], 1)] });
+    const e = event("insertLineBreak", { targets: [{ startContainer: 1, startOffset: 1, endContainer: 1, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check("Shift+Enter in a cell still does nothing",
+      r.calls.broke.length === 0 && r.calls.render.length === 0 && r.calls.applied.length === 0 && e.prevented === 1);
+  }
+
+  {
+    // A cell in a table in a quote in a list item: neither key's rule is asked.
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[0], 0), item: { kind: "item" }, empty: true, quote: { block: cells[0], offset: 0 },
+      range: [here(cells[0], 0), here(cells[0], 0)] });
+    r.api.modelInputBeforeInput(event("deleteContentBackward", { targets: [span] }));
+    check("Backspace in a cell asks neither the empty-item rule nor the quote rule",
+      r.calls.emptyItem.length === 0 && r.calls.quoteKey.length === 0);
+  }
+
+  {
+    // WebKit reports Shift+Enter in a cell as insertParagraph, so the keydown
+    // before it is what says which key it was.
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[0], 1), below: cells[2], range: [here(cells[0], 1), here(cells[0], 1)] });
+    r.api.modelInputKeydown({ key: "Enter", shiftKey: true, preventDefault() {} });
+    const e = event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 1, endContainer: 1, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    check("an insertParagraph straight after a Shift+Enter keydown in a cell is Shift+Enter, and does nothing",
+      e.prevented === 1 && r.calls.applied.length === 0 && r.calls.render.length === 0);
+  }
+
+  // ── Stage 3's slice 5: moving through a table, and its controls ──────────
+  const selects = (r) => r.calls.applied.map((a) => `${a.block.id}:${a.offset}${a.to ? "-" + a.to.offset : ""}`).join(" ");
+  const key = (r, k, shift = false) => {
+    const e = { key: k, shiftKey: shift, prevented: 0, preventDefault() { this.prevented += 1; } };
+    r.api.modelInputKeydown(e);
+    return e;
+  };
+  const enter = (r, cell) => {
+    const e = event("insertParagraph", { targets: [{ startContainer: 1, startOffset: 1, endContainer: 1, endOffset: 1 }] });
+    r.api.modelInputBeforeInput(e);
+    return e;
+  };
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[0], 1), item: { kind: "item" }, range: [here(cells[0], 1), here(cells[0], 1)] });
+    const e = key(r, "Tab");
+    check("Tab in a cell is taken from the engine and selects the next cell's content, even inside a list item",
+      e.prevented === 1 && selects(r) === "61:0-3" && r.calls.moved.length === 0 && r.calls.render.length === 0);
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[1], 1) });
+    key(r, "Tab", true);
+    check("Shift+Tab goes back a cell", selects(r) === "60:0-3");
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[0], 0) });
+    const e = key(r, "Tab", true);
+    check("and at the first cell does nothing, with the key still taken",
+      e.prevented === 1 && r.calls.applied.length === 0 && r.calls.tableOps.length === 0);
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[2], 1), below: null });
+    const e = key(r, "Tab");
+    check("Tab on the last cell adds a row, below, and selects where it comes to",
+      e.prevented === 1 && r.calls.tableOps.join() === "row-below,row-below" && r.calls.render.length === 1);
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[0], 1), range: [here(cells[0], 1), here(cells[0], 1)] });
+    const empty = { id: 90, kind: "cell", parent: cells[0].parent, inlines: [] };
+    const e = enter(rig({ doc, at: here(cells[0], 1), below: empty, range: [here(cells[0], 1), here(cells[0], 1)] }), cells[0]);
+    const down = rig({ doc, at: here(cells[0], 1), below: empty, range: [here(cells[0], 1), here(cells[0], 1)] });
+    const ev = enter(down, cells[0]);
+    check("Enter in a cell moves down a row, to a caret when the cell below is empty",
+      ev.prevented === 1 && selects(down) === "90:0" && down.calls.split.length === 0 && down.calls.render.length === 0);
+    const last = rig({ doc, at: here(cells[0], 1), below: null, range: [here(cells[0], 1), here(cells[0], 1)] });
+    enter(last, cells[0]);
+    check("and on the last row adds one first", last.calls.tableOps.join() === "row-below,row-below" && last.calls.render.length === 1);
+    check("without splitting anything", r.calls.split.length === 0 && last.calls.split.length === 0);
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: { block: cells[0], offset: 1, to: { block: cells[1], offset: 1 } }, below: cells[2],
+      range: [here(cells[0], 1), here(cells[1], 1)] });
+    const e = enter(r, cells[0]);
+    check("with a selection across cells, Enter and Tab do nothing",
+      e.prevented === 1 && r.calls.applied.length === 0 && (key(r, "Tab"), r.calls.applied.length === 0));
+  }
+  {
+    // Backspace at the start of the paragraph after a table.
+    const { cells, doc } = tableOf();
+    const after = { id: 70, kind: "paragraph", inlines: [] };
+    const full = { blocks: [...doc.blocks, after] };
+    const r = rig({ doc: full, at: here(after, 0), range: [here(cells[2], 3), here(after, 0)] });
+    const e = event("deleteContentBackward", { targets: [span] });
+    r.api.modelInputBeforeInput(e);
+    check("Backspace at the start of the paragraph after a table puts the caret at the end of the last cell",
+      e.prevented === 1 && selects(r) === "62:3" && r.calls.splice.length === 0 && r.calls.merged.length === 0 && r.calls.render.length === 0);
+    const mid = rig({ doc: full, at: here(after, 2), range: [here(after, 1), here(after, 2)] });
+    mid.api.modelInputBeforeInput(event("deleteContentBackward", { targets: [span] }));
+    check("while Backspace later in that paragraph is an ordinary deletion", mid.calls.applied.length === 0 && mid.calls.splice.length === 1);
+  }
+  for (const [action, ops] of [
+    ["table-row-above", "row-above,row-above"], ["table-row-below", "row-below,row-below"],
+    ["table-col-left", "col-left,col-left"], ["table-col-right", "col-right,col-right"],
+    ["table-delete-row", "delete-row,delete-row"], ["table-delete-column", "delete-column,delete-column"],
+    ["table-delete", "delete,delete"], ["table-align-center", "align-center@2,align-center@2"],
+  ]) {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[1], 2) });
+    r.api.modelInputTable(action);
+    check(`${action} reaches its command, on a fork first, and renders once`,
+      r.calls.tableOps.join() === ops && r.calls.render.length === 1 && r.calls.announced.length === 1);
+  }
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[1], 2), tableResult: { refused: "No header." } });
+    r.api.modelInputTable("table-delete-row");
+    check("a refusal is said and nothing is done for real",
+      r.calls.tableOps.length === 1 && r.calls.toasts.join() === "No header." && r.calls.render.length === 0);
+    const outside = rig({ doc, at: here({ id: 80, kind: "paragraph", inlines: [] }, 0) });
+    outside.api.modelInputTable("table-delete-row");
+    check("and a control used outside a table says so", outside.calls.tableOps.length === 0 && outside.calls.toasts.length === 1);
+    check("the menu's state is the caret's column, or null outside a table",
+      rig({ doc, at: here(cells[1], 0) }).api.modelInputTableState().align === "left" &&
+        outside.api.modelInputTableState() === null);
+  }
+  {
+    const paragraph = { id: 80, kind: "paragraph", inlines: [] };
+    const r = rig({ doc: { blocks: [paragraph] }, at: here(paragraph, 3) });
+    r.api.modelInputInsertTable();
+    check("Insert → Table puts the table in at the caret and renders", r.calls.tableOps.join() === "insert@3,insert@3" && r.calls.render.length === 1);
+    const { cells, doc } = tableOf();
+    const inCell = rig({ doc, at: here(cells[0], 1) });
+    inCell.api.modelInputInsertTable();
+    check("and is refused inside a cell, where a cell holds one line", inCell.calls.tableOps.length === 0 && inCell.calls.toasts.length === 1);
+  }
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[1], 1) });
+    r.api.modelInputBlockFormat("h2");
+    check("a block format in a cell is refused, and says so",
+      r.calls.headings.length === 0 && r.calls.toasts.length === 1 && r.calls.render.length === 0);
+  }
+
+  {
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, html: "<h1>T</h1><p>x</p>" });
+    r.api.modelInputPaste(doc, here(cells[1], 1), "<h1>T</h1><p>x</p>", "T\n\nx");
+    check("a paste into a cell is flattened before it lands",
+      r.calls.cellBlocks.length === 1 && r.calls.inserted.length === 1 && r.calls.inserted[0].blocks[0].flattened === true);
+    const plain = rig({ doc, at: here(cells[1], 1) });
+    plain.api.modelPastePlain("two\nlines");
+    check("and plain text pasted into one becomes one line",
+      plain.calls.splice.length === 1 && plain.calls.splice[0].text === "two lines" && plain.calls.inserted.length === 0);
+    const elsewhere = rig({ doc, html: "<p>x</p>" });
+    elsewhere.api.modelInputPaste(doc, here({ id: 80, kind: "paragraph", inlines: [] }, 0), "<p>x</p>", "x");
+    check("while a paste anywhere else is not flattened", elsewhere.calls.cellBlocks.length === 0 && elsewhere.calls.inserted.length === 1);
+  }
+
+  {
+    // A refusal part-way leaves every cell as it was: the trial says no and
+    // nothing is cut for real.
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, splice: [1, null], range: [here(cells[0], 1), here(cells[1], 1)] });
+    r.api.modelInputBeforeInput(event("deleteContentBackward", { targets: [span] }));
+    check("a deletion across cells that one cell refuses cuts no cell at all",
+      r.calls.splice.length === 2 && r.calls.render.length === 0);
+  }
+
+  {
+    // Format → Indent from a cell in a table inside a list item would move
+    // the whole item, so it is refused like the block formats.
+    const { cells, doc } = tableOf();
+    const r = rig({ doc, at: here(cells[0], 1), item: { kind: "item" } });
+    r.api.modelIndentAtCaret(false);
+    r.api.modelIndentAtCaret(true);
+    check("Indent and Outdent from the menu are refused in a cell", r.calls.moved.length === 0 && r.calls.toasts.length === 2);
+  }
+}

@@ -87,12 +87,10 @@ function mathJaxStyles() {
 }
 
 // The rendered document, stripped of everything that only means something
-// inside the editor.
+// inside the editor — the root's attributes and the model's view, which
+// modelExportClone in model.js removes for all three document exports.
 function documentBody() {
-  const clone = editor.cloneNode(true);
-  clone.removeAttribute("contenteditable");
-  clone.removeAttribute("spellcheck");
-  clone.removeAttribute("data-exported");
+  const clone = modelExportClone(editor);
 
   // The editor resolves #anchors live on click, but this file ships no JS at
   // all, so a table of contents only works here if the ids are real. Stamped on

@@ -8,7 +8,7 @@
 //                  and they are the heavy ones worth never re-fetching.
 //   /api/*       → never touched. Those are live file reads and writes.
 
-const VERSION = "v1.42";
+const VERSION = "v1.96";
 const SHELL_CACHE = `mandy-shell-${VERSION}`;
 const RUNTIME_CACHE = `mandy-runtime-${VERSION}`;
 
@@ -25,15 +25,17 @@ const SHELL_ASSETS = [
   "/lazy-load.js",
   "/markdown-parser.js",
   "/markdown-style.js",
+  "/model.js",
   "/app.js",
+  "/model-input.js",
   "/undo.js",
-  "/execcommand.js",
   "/outline.js",
   "/renderers.js",
   "/pdf-export.js",
   "/format-bar.js",
   "/static-export.js",
   "/html-export.js",
+  "/legacy-storage.js",
   "/tabs.js",
   "/file-api.js",
   "/theme-manager.js",

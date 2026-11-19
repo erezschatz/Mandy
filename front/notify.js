@@ -305,6 +305,14 @@ function ask(message, options = {}) {
  * differs — ask() resolves to an action's `value`, this resolves to what was
  * typed — and the modal scaffold is deliberately a second copy: both builders
  * live in this file, which is the one place Mandy's dialogs are built.
+ *
+ * **Given `fields`, it asks for several lines instead**, and resolves to an
+ * object keyed by each field's `name`, every value trimmed. Insert → Image…
+ * is the first caller (stage 3's slice 2), with an address, a description and
+ * a title. Each field is `{ name, label, placeholder, value, prose }`, where
+ * `prose` sets it in the dialog's own face rather than the monospace an
+ * address reads best in. `message`, if any, goes above them. Without `fields`
+ * nothing changes: one field, labelled by `message`, resolving to a string.
  */
 function askForInput(message, options = {}) {
   const {
@@ -358,19 +366,33 @@ function askForInput(message, options = {}) {
 
     // The label wraps the field so clicking the prompt text focuses it, and so
     // there is no id to collide with a second dialog open at the same time.
-    const label = document.createElement("label");
-    label.className = "notify-dialog-message";
-    label.textContent = message;
+    const specs = Array.isArray(options.fields)
+      ? options.fields
+      : [{ name: null, label: message, placeholder, value }];
+    if (Array.isArray(options.fields) && message) {
+      const lead = document.createElement("p");
+      lead.className = "notify-dialog-message";
+      lead.textContent = message;
+      panel.appendChild(lead);
+    }
+    const inputs = specs.map((spec) => {
+      const label = document.createElement("label");
+      label.className = "notify-dialog-message";
+      label.textContent = spec.label || "";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = spec.prose ? "notify-dialog-input notify-dialog-input-prose" : "notify-dialog-input";
+      input.placeholder = spec.placeholder || "";
+      input.value = spec.value || "";
+      label.appendChild(input);
+      panel.appendChild(label);
+      return input;
+    });
+    const field = inputs[0];
 
-    const field = document.createElement("input");
-    field.type = "text";
-    field.className = "notify-dialog-input";
-    field.placeholder = placeholder;
-    field.value = value;
-    label.appendChild(field);
-    panel.appendChild(label);
-
-    const submit = () => close(field.value.trim());
+    const submit = () => close(Array.isArray(options.fields)
+      ? Object.fromEntries(specs.map((spec, i) => [spec.name, inputs[i].value.trim()]))
+      : field.value.trim());
 
     const row = document.createElement("div");
     row.className = "notify-dialog-actions";
@@ -393,14 +415,14 @@ function askForInput(message, options = {}) {
       if (event.target === backdrop) close(dismiss);
     });
 
-    const focusables = [field, cancelBtn, okBtn];
+    const focusables = [...inputs, cancelBtn, okBtn];
     backdrop.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
         close(dismiss);
         return;
       }
-      if (event.key === "Enter" && event.target === field) {
+      if (event.key === "Enter" && inputs.includes(event.target)) {
         event.preventDefault();
         submit();
         return;

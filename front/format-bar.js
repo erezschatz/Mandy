@@ -80,7 +80,11 @@ function atBlockStart(range) {
     }
   })(block);
 
-  return !before.trim();
+  // A zero-width character counts as nothing for the same reason whitespace
+  // does — nothing on screen tells it apart from nothing at all — and since
+  // TODO 3.1's slice 7 the model core puts one in front of an equation that
+  // starts a line, for Firefox's caret.
+  return !before.replace(/\u200B/g, "").trim();
 }
 
 // What the bar is being positioned against.
@@ -203,16 +207,20 @@ function showFormatBar() {
 
 // One predicate per button, each checking for an ancestor tag between a text
 // node and #editor — the same test the old anchor-only walk made, just run
-// per node instead of once. p/h1/h2/h3 match their own tag directly, the way
-// formatBlock leaves it; bold, italic and strikethrough fold every spelling
-// execCommand can produce; ul/ol/code match on presence anywhere in the
-// chain, nested list or not, which is what the single-node walk always did
-// too.
+// per node instead of once. p and the headings match their own tag directly;
+// bold, italic and strikethrough fold every spelling of the tag, since pasted
+// HTML is the only thing that ever wrote the other ones and the model renders
+// what markdown-it renders; ul/ol/code match on presence anywhere in the
+// chain, nested list or not.
 const FORMAT_PREDICATES = {
   p: (node) => hasAncestorTag(node, "P"),
   h1: (node) => hasAncestorTag(node, "H1"),
   h2: (node) => hasAncestorTag(node, "H2"),
   h3: (node) => hasAncestorTag(node, "H3"),
+  h4: (node) => hasAncestorTag(node, "H4"),
+  h5: (node) => hasAncestorTag(node, "H5"),
+  h6: (node) => hasAncestorTag(node, "H6"),
+  quote: (node) => hasAncestorTag(node, "BLOCKQUOTE"),
   bold: (node) => hasAncestorTag(node, "STRONG", "B"),
   italic: (node) => hasAncestorTag(node, "EM", "I"),
   strikethrough: (node) => hasAncestorTag(node, "S", "DEL", "STRIKE"),
@@ -304,6 +312,56 @@ function updateActiveButtons() {
   }
 }
 
+// The Format menu's Bold, Italic and Strikethrough say whether the caret or
+// the selection already has the mark, stamped as the menu opens. Under the
+// model core the model answers, pending marks included; otherwise the DOM
+// does, through the same predicates the format bar's own buttons use.
+// Code is checked the same way: a caret in a code span or a code block, or a
+// selection that is all code. Not a mark to the model, so it asks its own.
+const MENU_MARKS = { bold: "strong", italic: "em", strikethrough: "strike", code: "code" };
+// And the block formats: the caret in a heading, a list or a quote is in
+// something other than plain text, and the menu says so. The model answers per
+// leaf touched; a bundle without it falls back to the DOM predicates the bar
+// uses.
+const MENU_BLOCKS = ["h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "quote"];
+const MENU_CHECKS = Object.keys(MENU_MARKS).concat(MENU_BLOCKS);
+
+function formatMenuState(format) {
+  if (MENU_BLOCKS.includes(format) && typeof modelInputBlockState === "function") {
+    return modelInputBlockState(format);
+  }
+  if (format === "code" && typeof modelInputCodeState === "function") {
+    return modelInputCodeState();
+  }
+  if (typeof modelInputMarkState === "function") {
+    return modelInputMarkState(MENU_MARKS[format]);
+  }
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return "none";
+  const range = selection.getRangeAt(0);
+  if (!editor.contains(range.commonAncestorContainer)) return "none";
+  const nodes = selection.isCollapsed ? caretNodes(range) : textNodesInRange(range);
+  return formatState(nodes, FORMAT_PREDICATES[format]);
+}
+
+onMenuOpen("formatMenu", (wrapper) => {
+  for (const format of MENU_CHECKS) {
+    const item = wrapper.querySelector(`[data-action="format-${format}"]`);
+    if (!item) continue;
+    const state = formatMenuState(format);
+    item.setAttribute("aria-pressed", state === "all" ? "true" : state === "mixed" ? "mixed" : "false");
+  }
+  // The table controls, stage 3's slice 5: live only with the caret in a table
+  // under the model core, and the alignment items check the caret's column.
+  const table = typeof modelInputTableState === "function" ? modelInputTableState() : null;
+  for (const item of wrapper.querySelectorAll('[data-action^="table-"]')) {
+    item.disabled = !table;
+    if (!item.hasAttribute("aria-pressed")) continue;
+    const align = item.getAttribute("data-action").replace("table-align-", "");
+    item.setAttribute("aria-pressed", table && table.align === align ? "true" : "false");
+  }
+});
+
 const BLOCK_TAGS = ["P", "H1", "H2", "H3", "LI", "PRE"];
 
 // Never returns #editor. Formatting must not target the editable root: swapping
@@ -323,173 +381,10 @@ function blockAncestor(node) {
   return element && element !== editor ? element : null;
 }
 
-// The blocks a selection actually touches — the innermost one around each end
-// and everything between, not `editor.children`.
-//
-// Top-level children were wrong in exactly one way, and it was destructive: a
-// selection inside a single bullet reported the whole `<ul>`, so Code replaced
-// the list with one `<pre>` and ran every item together. The innermost block is
-// the `<li>` the text is in, which is what the caret is actually sitting in.
-//
-// Walked rather than queried because the check has to run under the DOM stub
-// too, where querySelectorAll answers with nothing.
-function blocksInRange(range) {
-  const hits = [];
-  (function walk(node) {
-    for (const child of node.children || []) {
-      if (child.nodeType !== 1) continue;
-      if (BLOCK_TAGS.includes(child.tagName) && range.intersectsNode(child)) {
-        hits.push(child);
-      }
-      walk(child);
-    }
-  })(editor);
-
-  // A nested list reports both `<li>`s and only the inner one holds the text.
-  return hits.filter(
-    (el) => !hits.some((other) => other !== el && el.contains(other)),
-  );
-}
-
-// Whether Code should produce a block rather than an inline span.
-//
-// Three cases, and the middle one is the reason this exists: selecting two
-// words in a paragraph and pressing Code used to turn the entire paragraph into
-// a fenced block. Markdown has two different constructs here and the button
-// only ever reached one of them.
-function coversWholeBlocks(range, blocks) {
-  // Across a block boundary there is no inline answer — markdown has no code
-  // span that spans two paragraphs — so the block is the only thing it can be.
-  if (blocks.length > 1) return true;
-  // A caret is not a partial selection. Every other block format acts on the
-  // whole block from a bare caret, and Code should not be the one that makes
-  // you select the line first.
-  if (range.collapsed) return true;
-  return range.toString().trim() === (blocks[0].textContent || "").trim();
-}
-
-// The inline `<code>` the selection sits in, if any. A `<code>` inside a `<pre>`
-// is the code block's own and belongs to the other branch.
-function inlineCodeAt(range) {
-  const node = range.commonAncestorContainer;
-  const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
-  const code = element && element.closest && element.closest("code");
-  if (!code || !editor.contains(code)) return null;
-  return code.closest("pre") ? null : code;
-}
-
-function toggleInlineCode(range) {
-  const existing = inlineCodeAt(range);
-  if (existing) {
-    existing.parentNode.replaceChild(
-      document.createTextNode(existing.textContent),
-      existing,
-    );
-    return;
-  }
-
-  const text = range.toString();
-  if (!text.trim()) return;
-
-  // textContent, not the extracted nodes: markdown has no way to express bold
-  // inside a code span, so anything carried in would be silently dropped by
-  // Turndown on the next save. Dropping it here at least happens on screen.
-  const code = document.createElement("code");
-  code.textContent = text;
-  range.deleteContents();
-  range.insertNode(code);
-
-  // Leave the new span selected rather than collapsing the caret to wherever
-  // deleteContents left it, so pressing Code twice is a toggle.
-  const selection = window.getSelection();
-  if (selection.removeAllRanges && document.createRange) {
-    const next = document.createRange();
-    next.selectNodeContents(code);
-    selection.removeAllRanges();
-    selection.addRange(next);
-  }
-}
-
-function saveSoon() {
-  setTimeout(() => {
-    localStorage.setItem(documentKey("content"), editor.innerHTML);
-  }, 100);
-}
-
-// Hand-rolled because there is no execCommand for either kind of code.
-//
-// Which kind is the whole decision, and it is made from the selection rather
-// than from a second button: a partial selection means an inline span, whole
-// blocks mean a fenced block. Markdown draws that line too, so a button that
-// only reached one of them could not write half of what the format offers.
-function toggleCode(range) {
-  const block = blockAncestor(range.commonAncestorContainer);
-  const pre = block && block.closest("pre");
-
-  if (pre && editor.contains(pre)) {
-    const container = pre.parentNode;
-    const text = pre.textContent;
-    if (container.tagName === "LI") {
-      // Undoes the nested case below: the <pre> is the li's only child, not a
-      // wrapper standing in for the li itself, so it comes out and the li's
-      // own text takes its place — same shape the li had before toggling on.
-      pre.remove();
-      container.textContent = text;
-    } else {
-      const paragraph = document.createElement("p");
-      paragraph.textContent = text;
-      container.replaceChild(paragraph, pre);
-    }
-    return;
-  }
-
-  const blocks = blocksInRange(range);
-  if (!blocks.length) return toggleInlineCode(range);
-
-  // A whole bullet nests its fence inside the <li> instead of replacing it —
-  // swapping the <li> itself for a <pre> would be invalid markup, but a <pre>
-  // as the li's only child round-trips through markdown fine.
-  if (blocks.length === 1 && blocks[0].tagName === "LI" && coversWholeBlocks(range, blocks)) {
-    const li = blocks[0];
-    const preElement = document.createElement("pre");
-    const codeElement = document.createElement("code");
-    codeElement.textContent = li.textContent;
-    preElement.appendChild(codeElement);
-    li.textContent = "";
-    li.appendChild(preElement);
-    return;
-  }
-
-  // A <pre> can only stand in for a block that is a direct child of the
-  // editor — the list-item case above is the one exception, handled by
-  // nesting rather than replacing.
-  const atTopLevel = blocks.every((b) => b.parentNode === editor);
-
-  if (!coversWholeBlocks(range, blocks) || !atTopLevel) {
-    // Inline is only safe within a single block. Across two, deleteContents
-    // would pull the blocks themselves apart — so selecting three bullets and
-    // pressing Code would delete the list to make a code span markdown cannot
-    // write anyway. Nothing to do, and better said than done silently.
-    if (blocks.length === 1) return toggleInlineCode(range);
-    notify("Select inside a single block to format it as code.", { severity: "info" });
-    return;
-  }
-
-  const preElement = document.createElement("pre");
-  const codeElement = document.createElement("code");
-  codeElement.textContent = blocks.map((b) => b.textContent).join("\n");
-  preElement.appendChild(codeElement);
-
-  blocks[0].parentNode.replaceChild(preElement, blocks[0]);
-  for (const extra of blocks.slice(1)) extra.remove();
-}
-
 // TODO 1.1.5: a heading inside a list item is expressible in both HTML and
 // markdown, but not something the editor should offer a way to make by
-// accident — Chrome already refused it after normaliseEditorMarkup unwrapped
-// the list it used to swallow, Firefox never did. Settled as a no-op in both
-// engines rather than "whichever is less destructive," and refused here,
-// where the selection still exists, rather than after the fact.
+// accident. Settled as a no-op, and refused here, where the selection still
+// exists, rather than after the fact.
 function headingTargetsListItem(format, range) {
   if (!/^h[1-6]$/.test(format)) return false;
   const node = range.commonAncestorContainer;
@@ -510,46 +405,22 @@ function applyFormat(format) {
   // and what the bar does afterwards depends on which bar it was.
   const caret = !!selection.isCollapsed;
 
-  switch (format) {
-    case "bold":
-      runCommand("bold");
-      break;
-    case "italic":
-      runCommand("italic");
-      break;
-    // Cross-browser identical per D4 / TODO 1.1's measurements, so this needs
-    // no normalisation of its own — only the Turndown rule that reads it back.
-    case "strikethrough":
-      runCommand("strikeThrough");
-      break;
-    // The list commands toggle: run inside an existing list, they unwrap it.
-    case "ul":
-      runCommand("insertUnorderedList");
-      break;
-    case "ol":
-      runCommand("insertOrderedList");
-      break;
-    case "code":
-      toggleCode(range);
-      // The one branch that raises no input event of its own. Every execCommand
-      // above raises one, and autosave, the dirty flag, the outline and the undo
-      // stack all hang off exactly that — so before this a code block was
-      // invisible to Ctrl+Z and left the toolbar claiming the document still
-      // matched the file on disk.
-      editor.dispatchEvent(new Event("input", { bubbles: true }));
-      break;
-    // p, h1, h2, h3. formatBlock spans a multi-block selection natively and
-    // works inside the editable root rather than on it.
-    //
-    // These act on the whole block even from a partial selection, by design
-    // rather than by omission — there is no such thing as half a heading, and
-    // every editor people already use behaves this way. Disabling them on a
-    // partial selection was the alternative and would read as broken. Code is
-    // the only format with a real inline counterpart, which is why it is the
-    // only one that reads the selection's extent.
-    default:
-      runCommand("formatBlock", `<${format}>`);
-  }
+  // Every format is a model command: the three marks (slice 7's step 3), Code
+  // (step 4's span and step 5's fence), Paragraph and the six headings (step
+  // 5), the two lists (step 6) and the blockquote (stage 3's slice 1). They
+  // act on the whole block from a partial selection where there is no inline
+  // counterpart, by design — there is no such thing as half a heading. Code is
+  // the only one that reads the selection's extent.
+  //
+  // Feature-tested, since a bundle decides for itself what it ships, and one
+  // without model-input.js has nothing to format with.
+  const mark = { bold: "strong", italic: "em", strikethrough: "strike" }[format];
+  if (mark && typeof modelInputFormat === "function") modelInputFormat(mark);
+  else if (/^(p|h[1-6])$/.test(format) && typeof modelInputBlockFormat === "function") modelInputBlockFormat(format);
+  else if ((format === "ul" || format === "ol") && typeof modelInputList === "function") modelInputList(format === "ol");
+  else if (format === "quote" && typeof modelInputQuote === "function") modelInputQuote();
+  else if (format === "code" && typeof modelInputCode === "function") modelInputCode();
+  else return;
 
   // Bold, italic and strikethrough leave the bar up so they can be combined on
   // one selection.
@@ -566,7 +437,6 @@ function applyFormat(format) {
   } else if (format !== "bold" && format !== "italic" && format !== "strikethrough") {
     hideFormatBar();
   }
-  saveSoon();
 }
 
 document.addEventListener("selectionchange", () => {
@@ -622,9 +492,7 @@ document.querySelectorAll(".format-btn").forEach((btn) => {
 // the editor would take the selection with it and every one of these would
 // return having done nothing.
 // h4-h6 (TODO 1.1.2) are Format-menu-only — see toolbar.js — but they still go
-// through the one applyFormat entry point everything else here does; the
-// default `formatBlock` branch already handles any tag name, so no new case
-// was needed for them, only the registration.
-for (const format of ["p", "h1", "h2", "h3", "h4", "h5", "h6", "bold", "italic", "strikethrough", "ul", "ol", "code"]) {
+// through the one applyFormat entry point everything else here does.
+for (const format of ["p", "h1", "h2", "h3", "h4", "h5", "h6", "bold", "italic", "strikethrough", "ul", "ol", "code", "quote"]) {
   onToolbarAction(`format-${format}`, () => applyFormat(format));
 }

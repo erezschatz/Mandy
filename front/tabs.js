@@ -10,7 +10,7 @@
 // never sees a tab list -- which is also what the test suites that boot without
 // this file are exercising.
 //
-// It must load after app.js, which defines DOCUMENT_KEYS and isBlankContent,
+// It must load after app.js, which defines DOCUMENT_KEYS and storedDocument,
 // and before file-api.js, which reads the open file's path out of storage at
 // its own load time and has to be given the active tab's key by then.
 
@@ -71,6 +71,12 @@ function persistTabList() {
 // truth already deleted is the one outcome here that loses the user's work,
 // and localStorage gives no transaction to lean on.
 function migrateSingleDocument(id) {
+  // A flat document legacy-storage.js could not convert on this load is not
+  // moved: see legacyFlatUnconverted. Thrown, so it takes the same road as a
+  // write that fails, and the session runs on the flat names.
+  if (typeof legacyFlatUnconverted === "function" && legacyFlatUnconverted()) {
+    throw new Error("the open document has not been converted to markdown yet");
+  }
   const copied = [];
   try {
     for (const name of Object.keys(DOCUMENT_KEYS)) {
@@ -157,13 +163,13 @@ function tabsSwitchAllowed() {
 
 // ── The list operations ──────────────────────────────────────────────────────
 
-// What a tab with nothing in it holds. The same markup app.js's New writes, and
-// for the same reason: a document with no block in it has nowhere to put the
-// caret.
-const BLANK_DOCUMENT = "<p><br></p>";
+// What a tab with nothing in it holds: no markdown at all, which the model
+// renders as the one empty paragraph a caret needs.
+const BLANK_DOCUMENT = "";
 
 // A record is `{ id }` and, once this session has shown a tab and moved off it,
-// the three parked bundles -- `file`, `md`, `undo`. A tab restored from a page
+// the three parked bundles -- `file`, `md`, `undo` -- and, under the model core,
+// the parked model `doc`. A tab restored from a page
 // load has none of them: its persisted half is under its own six storage keys
 // and its undo history did not survive the reload, so switching into one
 // hydrates from storage instead. That is the same split the single-document app
@@ -185,6 +191,10 @@ function parkActive() {
   tab.undo = undoPark();
   tab.file = filePark();
   tab.md = markdownStylePark();
+  // The model is the document, and the markdown flushed above is what it would
+  // write, so parking the model is what lets the tab come back without a parse
+  // — and as the same object its history describes.
+  tab.doc = modelParkDocument();
 }
 
 // The other half, and the ordering in it is the whole of what stage 4 had to
@@ -198,18 +208,32 @@ function parkActive() {
 // has to land on top of the history it was measured against or a dirty document
 // reports clean -- and it only misfires when two tabs' edit counts line up, so
 // nothing but the order itself will catch it.
+// The markdown style has no ordering constraint of its own. A parked tab adopts
+// its bundle; a tab this session has never shown is sniffed by the markdown
+// door from its stored markdown, which is the document as it is now rather
+// than as it was opened (decision 1 of stage 4).
+//
+// The model is the one part of a tab that is not a bundle of its own. It is
+// parked as the document itself (`tab.doc`) beside the history it describes,
+// because undo states are forks of it: the two have to come back together, and
+// a re-parse would hand the history a document it was never taken from.
 function adoptActive(tab) {
-  editor.innerHTML = localStorage.getItem(documentKey("content")) || BLANK_DOCUMENT;
-  // A tab's stored HTML can still hold a diagram drawn before Mermaid was
-  // removed. Feature-tested: the tabs suite loads this file without renderers.js.
-  if (typeof unwrapMermaidDiagrams === "function") unwrapMermaidDiagrams(editor);
+  // Content first, as ever. A parked model is rendered as it stands, which is
+  // the whole of what stage 4's slice 3 bought: no parse, and the document comes
+  // back as the same object the outgoing tab's history describes. A tab with no
+  // model has never been shown this session and takes its stored markdown,
+  // which is the one place a model is built from storage.
+  if (tab.doc) {
+    markdownStyleAdopt(tab.md || null);
+    modelRestoreDocument(editor, tab.doc, md);
+  } else {
+    const stored = storedDocument();
+    loadDocumentMarkdown(stored === null ? BLANK_DOCUMENT : stored);
+  }
   undoAdopt(tab.undo || null);
 
   if (tab.file) fileAdopt(tab.file);
   else fileAdoptStored();
-
-  if (tab.md) markdownStyleAdopt(tab.md);
-  else markdownStyleAdoptStored();
 
   focusDocumentStart();
 }
@@ -269,6 +293,9 @@ function newTab() {
   // editor and adopts nothing everywhere -- the same path a restored tab takes,
   // reading a document that happens not to be there.
   adoptActive(tab);
+  // A new document starts at its top with a caret in it. WebKit leaves neither:
+  // see showDocumentStart in app.js.
+  showDocumentStart();
   return tab.id;
 }
 
@@ -323,6 +350,85 @@ function closeTab(id) {
   return true;
 }
 
+// A save that finished after its tab had moved off the screen. The tab's state
+// is in its parked bundle, so the save is written there, the way the screen would
+// have written it: the file is the tab's, the tab is clean at the position it was
+// parked with, and its storage says so for a reload. Nothing on the screen moves.
+function recordSaveOnTab(id, path, modified) {
+  const tab = findTab(id);
+  if (!tab || !tab.file || !tab.undo) {
+    console.warn("[Tabs] A save finished for a tab with no parked state:", id);
+    return;
+  }
+  tab.file.currentFilePath = path;
+  tab.file.isDirty = false;
+  tab.file.fileMtime = modified;
+  tab.file.diskChanged = false;
+  tab.file.cleanPosition = undoBundlePosition(tab.undo);
+  try {
+    localStorage.setItem(tabKeyFor(id, "path"), path);
+    if (modified) localStorage.setItem(tabKeyFor(id, "mtime"), modified);
+    else localStorage.removeItem(tabKeyFor(id, "mtime"));
+    localStorage.removeItem(tabKeyFor(id, "dirty"));
+  } catch (error) {
+    console.warn("[Tabs] Could not persist a save for a background tab:", error);
+  }
+  renderTabBar();
+}
+
+
+// A background tab's file, checked against disk. The window the person is
+// reading never gets focus while they read it, so this is the only thing that
+// notices an outside write to a document that is not on screen. Each tab's mark
+// goes onto that tab -- its parked record, or its own field for one never
+// shown -- and never onto the document showing, which the active check keeps.
+//
+// A stat that comes back after the tab has been saved, shown or closed is
+// dropped rather than applied: its baseline is no longer the one it was asked
+// about, and the next pass asks again with the current one.
+async function checkBackgroundDiskChanged() {
+  let changed = false;
+  for (const tab of openTabs.slice()) {
+    if (tab.id === activeTabId) continue;
+    const parked = tab.file;
+    const path = parked ? parked.currentFilePath : localStorage.getItem(tabKeyFor(tab.id, "path"));
+    const baseline = parked ? parked.fileMtime : localStorage.getItem(tabKeyFor(tab.id, "mtime"));
+    if (!path || !baseline) continue;
+
+    let modified;
+    try {
+      ({ modified } = await statFile(path));
+    } catch {
+      // A file that has gone is a different problem, and a toast on every
+      // three-second poll would be no way to raise it.
+      continue;
+    }
+
+    const now = findTab(tab.id);
+    if (!now || now.id === activeTabId) continue;
+    const current = now.file ? now.file.fileMtime : localStorage.getItem(tabKeyFor(now.id, "mtime"));
+    if (current !== baseline) continue;
+
+    const flag = Boolean(modified) && modified !== baseline;
+    if (now.file) now.file.diskChanged = flag;
+    else now.diskChanged = flag;
+    changed = true;
+  }
+  if (changed) renderTabBar();
+}
+
+// The poll. The page is watched on a second screen, so it runs while the page is
+// visible, not only when the window is focused. Started on load, which the
+// suites never fire, so no timer runs under test.
+const DISK_POLL_MS = 3000;
+window.addEventListener("load", () => {
+  setInterval(() => {
+    if (document.hidden) return;
+    if (typeof checkDiskChanged === "function") checkDiskChanged();
+    checkBackgroundDiskChanged();
+  }, DISK_POLL_MS);
+});
+
 // Whether any document other than the one on screen has unsaved edits, for
 // app.js's beforeunload. A tab this session has shown carries the answer in its
 // parked file bundle; one restored from a page load and never opened carries it
@@ -365,10 +471,9 @@ function tabDescriptor(tab) {
   return {
     path: localStorage.getItem(tabKeyFor(tab.id, "path")),
     isDirty: localStorage.getItem(tabKeyFor(tab.id, "dirty")) === "1",
-    // Nothing has stat'd this tab's file since the page loaded, so there is
-    // nothing to claim about it. Switching to it re-baselines and the check on
-    // the next window focus answers properly.
-    diskChanged: false,
+    // Set by the background check, which stats a tab's file while it is not on
+    // screen. Before that check has run there is nothing to claim, so false.
+    diskChanged: tab.diskChanged === true,
   };
 }
 

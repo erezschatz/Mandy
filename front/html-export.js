@@ -55,12 +55,23 @@ function unwrapInline(text) {
 }
 
 onToolbarAction("export-editable", async () => {
-  const currentContent = editor.innerHTML;
-  const currentText = editor.textContent || "";
-  const needsMathJax =
-    containsLatex(currentText) ||
-    currentContent.includes("mjx-container") ||
-    currentContent.includes("MJX-CHTML");
+  // The document travels as markdown, beside the bundle, and the editor ships
+  // empty: embedding the rendered HTML would make every open of the file a
+  // conversion from HTML, which stage 4 ran once and then retired.
+  let markdown;
+  try {
+    markdown = documentMarkdown();
+  } catch (err) {
+    console.error("[Export] Could not write the document:", err);
+    notify(`Could not export the document: ${err.message}`, { severity: "error" });
+    return;
+  }
+  const currentContent = "";
+  const needsMathJax = containsLatex(markdown);
+  // Escaped by app.js's encoder, which its boot undoes. No whitespace around
+  // it, so the element's textContent is exactly what was written.
+  const documentScript =
+    `<script type="text/markdown" id="app-document">${encodeEmbeddedMarkdown(markdown)}${CLOSE}\n    `;
 
   // file-api.js is the one module deliberately left out: it drives the
   // server-backed Open/Save, and an exported document has no server. app.js
@@ -78,9 +89,10 @@ onToolbarAction("export-editable", async () => {
     "/lazy-load.js",
     "/markdown-parser.js",
     "/markdown-style.js",
+    "/model.js",
     "/app.js",
+    "/model-input.js",
     "/undo.js",
-    "/execcommand.js",
     "/outline.js",
     "/renderers.js",
     "/format-bar.js",
@@ -191,7 +203,7 @@ ${cssContent}
                     <g fill="currentColor" stroke="none" font-size="7" text-anchor="end"><text x="7" y="8.4">1</text><text x="7" y="14.4">2</text><text x="7" y="20.4">3</text></g>
                 </svg>
             </button>
-            <button class="format-btn" data-format="code" title="Code Block">
+            <button class="format-btn" data-format="code" title="Code">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="16 18 22 12 16 6"></polyline>
                     <polyline points="8 6 2 12 8 18"></polyline>
@@ -209,7 +221,7 @@ ${cssContent}
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"><\/script>
     <script src="https://cdn.jsdelivr.net/npm/turndown@7.1.2/dist/turndown.min.js"><\/script>
     ${needsMathJax ? MATHJAX_TAGS : ""}
-    <script id="app-script">
+    ${documentScript}<script id="app-script">
 ${jsContent}
     <\/script>
 </body>

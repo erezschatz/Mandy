@@ -160,26 +160,20 @@ function renderOutline() {
   outlineNav.appendChild(list);
 }
 
-// The debounce defends typing, and a document swap is not typing. A record
-// whose target is the editor itself, of type childList, is a top-level
-// structural change: a whole document arriving through `editor.innerHTML` --
-// a tab switch, Open, Reload, New, the welcome fetch -- or an Enter or
-// Backspace at the top level, all of which are one-shot and want the sidebar
-// to follow at once. A record inside the subtree, or a text change, is someone
-// typing, and keeps the second. Read off the record rather than off a flag
-// the callers would set, so nothing that assigns `innerHTML` has to know the
-// outline exists. Measured 2026-09-18: a swap is exactly one such
-// record, and used to wait the full second behind it.
+// The debounce defends typing, and a document swap is not typing. **The
+// property is immediacy**: a whole document arriving redraws the sidebar at
+// once, because a second's wait reads as the app being unable to parse what is
+// in front of it rather than as a deliberate delay.
+//
+// The model **says so**: modelRender calls renderOutline itself, the way the
+// disk-changed check and the file descriptor announce themselves, so every
+// record here is someone editing and waits its second. A top-level Enter
+// splices `#editor`'s children, and rebuilding the whole sidebar synchronously
+// on the commonest structural keystroke there is would be the debounce's own
+// bug wearing the fix's clothes. The old core had to infer a swap from the
+// record shape instead, and that went with it in stage 4's slice 4.
 function scheduleOutline(records) {
-  const swap = (records || []).some(
-    (record) => record.target === editor && record.type === "childList",
-  );
   clearTimeout(outlineTimer);
-  if (swap) {
-    outlineTimer = null;
-    renderOutline();
-    return;
-  }
   outlineTimer = setTimeout(renderOutline, OUTLINE_DEBOUNCE);
 }
 
@@ -274,6 +268,17 @@ function insertToc() {
   }
 
   const list = buildNestedList(entries);
+
+  // Under the model core the list goes in as model blocks, slice 7's step 7:
+  // the same list, through the conversion a save of it already makes, so its
+  // shape and its inline allowlist stay in one place. Writing to the editor
+  // directly, as below, would be a divergence rather than an edit there — the
+  // model would never hear of the list, and the next render would throw it
+  // away.
+  if (typeof modelInputToc === "function" && typeof htmlFragmentToMarkdown === "function") {
+    modelInputToc(htmlFragmentToMarkdown(list.outerHTML));
+    return;
+  }
   const block = blockAtCaret();
 
   // No dedupe on a second invocation. A marker class would not survive a save

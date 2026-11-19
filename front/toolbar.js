@@ -89,6 +89,13 @@ const TOOLBAR_MENUS = [
 
   { id: "insertMenu", label: "Insert", variants: ALL, items: [
     { action: "insert-link", label: "Link\u2026", shortcut: "Ctrl+K", variants: ALL },
+    // Stage 3's slice 2, model core only. No check, unlike the formats: an
+    // image is an atom, so the caret is never inside one to report.
+    { action: "insert-image", label: "Image\u2026", variants: ALL },
+    // Stage 3's slice 5, model core only: three columns, a header and two body
+    // rows. The rest of a table's structure is in Format, where the caret's
+    // table is what the controls act on.
+    { action: "insert-table", label: "Table", variants: ALL },
     { id: "tocInsertBtn", action: "insert-toc", label: "Table of contents", variants: ALL },
     { action: "insert-hr", label: "Horizontal rule", variants: ALL },
     { separator: true, variants: ALL },
@@ -101,32 +108,60 @@ const TOOLBAR_MENUS = [
   // These drive applyFormat in format-bar.js, which the format bar's own
   // buttons already went through — the menu is a second way to reach the same
   // ten formats, not a second implementation of them.
+  //
+  // **Every format that is not plain text is checkable**, so the menu says
+  // what the caret or the selection is already in — a heading, a list, a
+  // quote — as well as which marks it has. Paragraph is the plain case and has
+  // no check. format-bar.js stamps them all as the menu opens.
   { id: "formatMenu", label: "Format", variants: ALL, items: [
     { action: "format-p", label: "Paragraph", variants: ALL },
-    { action: "format-h1", label: "Heading 1", variants: ALL },
-    { action: "format-h2", label: "Heading 2", variants: ALL },
-    { action: "format-h3", label: "Heading 3", variants: ALL },
+    { action: "format-h1", label: "Heading 1", checkable: true, variants: ALL },
+    { action: "format-h2", label: "Heading 2", checkable: true, variants: ALL },
+    { action: "format-h3", label: "Heading 3", checkable: true, variants: ALL },
     // TODO 1.1.2: same formatBlock call as h1-h3, just with no room on the
     // floating format bar — six heading buttons there is the level-picker
     // question that item left open, so these landed in the menu only.
-    { action: "format-h4", label: "Heading 4", variants: ALL },
-    { action: "format-h5", label: "Heading 5", variants: ALL },
-    { action: "format-h6", label: "Heading 6", variants: ALL },
+    { action: "format-h4", label: "Heading 4", checkable: true, variants: ALL },
+    { action: "format-h5", label: "Heading 5", checkable: true, variants: ALL },
+    { action: "format-h6", label: "Heading 6", checkable: true, variants: ALL },
     { separator: true, variants: ALL },
-    { action: "format-bold", label: "Bold", shortcut: "Ctrl+B", variants: ALL },
-    { action: "format-italic", label: "Italic", shortcut: "Ctrl+I", variants: ALL },
-    { action: "format-strikethrough", label: "Strikethrough", variants: ALL },
+    // Checkable: format-bar.js stamps aria-pressed on these when the menu
+    // opens, so the menu says which marks the caret or the selection already
+    // has — "true" for all of it, "mixed" for some.
+    { action: "format-bold", label: "Bold", shortcut: "Ctrl+B", checkable: true, variants: ALL },
+    { action: "format-italic", label: "Italic", shortcut: "Ctrl+I", checkable: true, variants: ALL },
+    { action: "format-strikethrough", label: "Strikethrough", checkable: true, variants: ALL },
     { separator: true, variants: ALL },
-    { action: "format-ul", label: "Bullet list", variants: ALL },
-    { action: "format-ol", label: "Numbered list", variants: ALL },
-    { action: "format-code", label: "Code block", variants: ALL },
+    { action: "format-ul", label: "Bullet list", checkable: true, variants: ALL },
+    { action: "format-ol", label: "Numbered list", checkable: true, variants: ALL },
+    // Stage 3's slice 1. A toggle, and a model command like every format.
+    { action: "format-quote", label: "Blockquote", checkable: true, variants: ALL },
+    // "Code", not "Code block": one control does both, and the selection
+    // decides which — a code span inside a line, a code block for whole lines.
+    // Checkable for the same reason as the three marks above.
+    { action: "format-code", label: "Code", checkable: true, variants: ALL },
     { separator: true, variants: ALL },
-    // TODO 1.1.3: the engine-side move (outdentListItem, Tab/Shift+Tab) was
-    // already there with no control reaching it outside a keypress, which left
-    // touch with no way to nest a bullet at all. Not part of applyFormat's ten
-    // — these call app.js's indent/outdent handlers directly, same as Tab does.
+    // TODO 1.1.3: the list move (Tab/Shift+Tab) was already there with no
+    // control reaching it outside a keypress, which left touch with no way to
+    // nest a bullet at all. Not part of applyFormat — these reach the same
+    // model rules Tab and Shift+Tab do, through app.js's handlers.
     { action: "indent-list-item", label: "Indent list item", shortcut: "Tab", variants: ALL },
     { action: "outdent-list-item", label: "Outdent list item", shortcut: "Shift+Tab", variants: ALL },
+    { separator: true, variants: ALL },
+    // Stage 3's slice 5, model core only. Disabled unless the caret is in a
+    // table — format-bar.js does that when the menu opens, along with the
+    // alignment checks, which show the caret's column. Tab and Enter move
+    // between cells and add the next row, so neither is listed as a shortcut.
+    { action: "table-row-above", label: "Table row above", variants: ALL },
+    { action: "table-row-below", label: "Table row below", variants: ALL },
+    { action: "table-col-left", label: "Table column left", variants: ALL },
+    { action: "table-col-right", label: "Table column right", variants: ALL },
+    { action: "table-delete-row", label: "Delete table row", variants: ALL },
+    { action: "table-delete-column", label: "Delete table column", variants: ALL },
+    { action: "table-delete", label: "Delete table", variants: ALL },
+    { action: "table-align-left", label: "Align column left", checkable: true, variants: ALL },
+    { action: "table-align-center", label: "Align column centre", checkable: true, variants: ALL },
+    { action: "table-align-right", label: "Align column right", checkable: true, variants: ALL },
   ] },
 
   { id: "viewMenu", label: "View", variants: ALL, items: [
@@ -167,6 +202,17 @@ const TOOLBAR_MENUS = [
 // without it file-api.js would run while the question was still on screen, see
 // a document that is not blank yet, and leave the file association behind.
 const toolbarActions = new Map();
+
+// Handlers to run as a menu opens, by menu id, for items whose state depends on
+// where the caret is: read at the moment someone looks rather than kept up to
+// date on every caret move.
+const menuOpenHandlers = new Map();
+
+function onMenuOpen(id, handler) {
+  const handlers = menuOpenHandlers.get(id);
+  if (handlers) handlers.push(handler);
+  else menuOpenHandlers.set(id, [handler]);
+}
 
 function onToolbarAction(action, handler) {
   const handlers = toolbarActions.get(action);
@@ -313,6 +359,7 @@ function showMenu(trigger) {
   const wrapper = trigger.parentElement;
   if (openMenu && openMenu.wrapper === wrapper) return;
   closeMenu();
+  for (const handler of menuOpenHandlers.get(trigger.getAttribute("data-menu")) || []) handler(wrapper);
   wrapper.setAttribute("data-open", "true");
   trigger.setAttribute("aria-expanded", "true");
   openMenu = { wrapper, trigger };

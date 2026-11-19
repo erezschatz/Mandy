@@ -39,9 +39,10 @@ function loadOutline() {
   const actions = new Map();
   const selection = { anchorNode: null };
   const timers = [];
+  const decorated = [];
 
   return loadSource(
-    ["markdown-parser.js", "markdown-style.js", "app.js", "outline.js"],
+    ["markdown-parser.js", "markdown-style.js", "model.js", "app.js", "outline.js"],
     {
       window: {
         markdownit: markdownitStub([], {}),
@@ -51,6 +52,7 @@ function loadOutline() {
         scrollTo: (opts) => scrolled.push(opts),
         scrollY: 0,
         getSelection: () => selection,
+        location: { search: "" },
       },
       TurndownService: class {
         constructor() {}
@@ -98,6 +100,10 @@ function loadOutline() {
         }
       },
       notify: (message) => alerts.push(message),
+      // renderers.js's hook, which the model's renderer feature-tests. Recorded
+      // with what the editor held at the moment, so a check can tell a call
+      // made after the build from one made before it.
+      renderAfterModel: (node) => decorated.push({ node, children: node.children.length }),
       // Immediate rather than deferred: a suite that had to wait a second for
       // the debounce would be a suite nobody runs.
       setTimeout: (fn) => {
@@ -118,11 +124,12 @@ function loadOutline() {
         actions,
         selection,
         timers,
+        decorated,
       },
     },
     "; return { ctx: __ctx, outlineDepths, outlineEntries, copyInline," +
       " buildNestedList, insertToc, setOutlineOpen, renderOutline," +
-      " outlineIsOpen, anchorSlug };",
+      " outlineIsOpen, anchorSlug, modelRender, md };",
   );
 }
 
@@ -356,33 +363,93 @@ export default function run(check) {
       ctx.observed[0].options.characterData === true,
   );
 
-  // TODO 4.6: a document swap is one childList record on the editor itself,
-  // and it must not wait behind the typing debounce. The stub's setTimeout
-  // runs its callback at once, so the observable difference is whether the
-  // timer was armed at all -- `timers` grows by one on the debounced path and
-  // not on the immediate one.
+  // TODO 4.6, restated as the property rather than as the mechanism, which is
+  // what stage 2's slice 1 needed and what these should have asserted all
+  // along: **a whole document arriving redraws the sidebar at once**, and every
+  // other mutation waits behind the debounce. A second's delay reads as the app
+  // being unable to parse what is in front of it, which is why this is a
+  // property and not a preference.
+  //
+  // The model says so directly from modelRender, and every mutation record
+  // waits behind the debounce, because from stage 2's slice 4 a top-level
+  // Enter produces a childList record on the editor itself — the record the
+  // old core read as a whole document arriving — and rebuilding the sidebar
+  // synchronously on the commonest structural keystroke there is would be the
+  // debounce's own bug. The inference went with the old core in stage 4's
+  // slice 4.
+  //
+  // The stub's setTimeout runs its callback at once, so the observable
+  // difference is whether the timer was armed at all: `timers` grows by one on
+  // the debounced path and not on the immediate one.
   const observer = ctx.observed[0].fn;
   setOutlineOpen(true);
   let armed = ctx.timers.length;
-  observer([{ target: editor, type: "childList" }]);
-  check(
-    "a document swap renders the outline without arming the debounce",
-    ctx.timers.length === armed,
-  );
-  const nav = ctx.container.children.find((c) => c.id === "outline");
-  check("and the sidebar has been redrawn by the time the swap returns",
-    !!nav && nav.children.length === 1);
-
-  armed = ctx.timers.length;
   observer([{ target: editor.children[0], type: "childList" }]);
   check(
-    "a change inside the document still waits behind the debounce",
+    "a change inside the document waits behind the debounce",
     ctx.timers.length === armed + 1,
   );
   armed = ctx.timers.length;
   observer([{ target: editor.children[0], type: "characterData" }]);
   check("and so does typing", ctx.timers.length === armed + 1);
   setOutlineOpen(false);
+
+  // A second context, so the sidebar starts from a document with a heading in it.
+  {
+    const core = loadOutline();
+    const c = core.ctx;
+
+    const coreEditor = c.byId.get("editor");
+    withHeadings(coreEditor, [["h1", "Heading"]]);
+    core.setOutlineOpen(true);
+
+    // The record the old core read as a swap is also what an Enter at the top
+    // level produces, so it arms the debounce like any other mutation.
+    const before = c.timers.length;
+    c.observed[0].fn([{ target: coreEditor, type: "childList" }]);
+    check(
+      "a childList record on the editor itself waits behind the debounce, since an Enter makes it too",
+      c.timers.length === before + 1,
+    );
+
+    // And a document arriving is announced rather than inferred: modelRender
+    // calls renderOutline itself, with no mutation record in between. The
+    // redraw has to be *observable* or this passes by doing nothing, so the
+    // sidebar is checked to hold the heading before and to have replaced it
+    // with the no-headings message after -- an empty model being the one
+    // document whose render is reachable without an HTML parser in the stub.
+    const nav = () => c.container.children.find((x) => x.id === "outline");
+    check(
+      "the sidebar is showing the heading first",
+      nav().children.length === 1 && nav().children[0].tagName === "UL",
+    );
+    // The incoming document has no headings, which is what makes the redraw
+    // visible: the sidebar has to have swapped the heading list for the
+    // no-headings message by the time modelRender returns. The stub reads
+    // headings off querySelectorAll rather than off the children, so the swap
+    // is staged there.
+    const armedBefore = c.timers.length;
+    coreEditor.ownerDocument = { createElement: (tag) => makeEl(tag) };
+    withHeadings(coreEditor, []);
+    const decoratedBefore = c.decorated.length;
+    core.modelRender(coreEditor, { prefix: "", blocks: [], nextId: 1 }, core.md);
+    // Slice 7's step 2: a render hands what it built to Mermaid and MathJax,
+    // which draw over the fence and the TeX markdown-it left. After the build,
+    // or they find an empty editor and draw nothing.
+    const call = c.decorated[decoratedBefore];
+    check(
+      "a whole-document render hands the built editor to the renderers, once, after building it",
+      c.decorated.length === decoratedBefore + 1 && call.node === coreEditor && call.children === 1,
+    );
+    check(
+      "and a whole-document render redraws it at once, arming nothing" +
+        ` (${JSON.stringify(nav().children.map((k) => k.className))}, ${c.timers.length - armedBefore} timers armed)`,
+      c.timers.length === armedBefore &&
+        nav().children.length === 1 &&
+        nav().children[0].className === "outline-empty",
+    );
+    core.setOutlineOpen(false);
+  }
 
   check(
     "both toolbar actions are registered",

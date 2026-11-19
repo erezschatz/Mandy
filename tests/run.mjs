@@ -9,15 +9,15 @@ const SUITES = [
   ["file-path", "./file-path.test.mjs"],
   ["export-variant", "./export-variant.test.mjs"],
   ["tabs", "./tabs.test.mjs"],
+  ["legacy-storage", "./legacy-storage.test.mjs"],
   ["latex", "./latex.test.mjs"],
   ["save-fidelity", "./save-fidelity.test.mjs"],
   ["links", "./links.test.mjs"],
-  ["list-indent", "./list-indent.test.mjs"],
   ["outline", "./outline.test.mjs"],
   ["notify", "./notify.test.mjs"],
   ["undo", "./undo.test.mjs"],
-  ["execcommand", "./execcommand.test.mjs"],
   ["model", "./model.test.mjs"],
+  ["model-input", "./model-input.test.mjs"],
 ];
 
 let passed = 0;

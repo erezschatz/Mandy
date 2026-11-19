@@ -348,6 +348,27 @@ subscript, and x^2^ with a superscript. An abbreviation too:
 
 *[SU]: Ordnance Survey grid square
 
+Three more tables, each written the way the one above is not. Compact:
+
+|Unit|Mass (kg)|Kept|
+|:--|--:|:-:|
+|Core A|4.2|yes|
+|Core B \| C|12.75|no|
+
+Padded to width, with the numbers set right:
+
+| Sample   | Depth (m) | Notes          |
+| -------- | --------: | -------------- |
+| Bexley 1 |      12.4 | dry            |
+| Fold 2   |       3.2 | `pipe \| here` |
+
+And with no pipes at the edges:
+
+Grid | Owner
+--- | ---
+SU 44 | the parish
+SU 45 | nobody
+
 Appendix
 --------
 

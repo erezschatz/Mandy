@@ -257,18 +257,19 @@ export function markdownitStub(inlineRules = [], renderRules = {}) {
 // app.js calls configureMarkdownParser at its own top level, and `mathSpan`
 // stays reachable below because these share one scope the way <script> tags do.
 // TurndownService is a recorder here: no suite needs conversion, only the rules.
-export function loadApp() {
+// model.js is not loaded: a suite that wants the model loads it on its own.
+//
+// `legacy` loads legacy-storage.js after app.js as well, the way index.html
+// does, for the suites that drive the old core's save path it now holds. Its
+// conversion runs at load against the stub storage below, which holds nothing,
+// so it converts nothing.
+export function loadApp({ legacy = false } = {}) {
   const noop = () => {};
-  // Honours the tag: outdentListItem builds a sublist of the same kind as the
-  // one it came out of, so a stub that answers DIV to everything cannot tell
-  // an <ol> that stayed an <ol> from one that did not.
   const el = (tag = "div") => makeEl(tag);
   const rules = {};
   const opts = {};
   const opened = [];
   const scrolled = [];
-  const commands = [];
-  const inputAnswers = [];
   const root = makeEl("html");
 
   const inlineRules = [];
@@ -295,7 +296,7 @@ export function loadApp() {
   };
 
   return loadSource(
-    ["markdown-parser.js", "markdown-style.js", "app.js"],
+    ["markdown-parser.js", "markdown-style.js", "app.js", ...(legacy ? ["legacy-storage.js"] : [])],
     {
       window: {
         markdownit: markdownitStub(inlineRules, renderRules),
@@ -337,16 +338,7 @@ export function loadApp() {
         documentElement: root,
         querySelector: () => null,
         body: { appendChild: noop, removeChild: noop },
-        execCommand: (cmd) => commands.push(cmd),
         createRange: () => ({ setStart: noop, collapse: noop }),
-      },
-      // app.js reaches execCommand through execcommand.js's wrapper now. The
-      // recorder stands in for it, so a suite reads the command the module asked
-      // for rather than the normalisation a browser would run afterwards — that
-      // half has its own suite.
-      runCommand: (cmd) => {
-        commands.push(cmd);
-        return true;
       },
 
       localStorage: { getItem: () => null, setItem: noop, removeItem: noop },
@@ -354,10 +346,7 @@ export function loadApp() {
       onToolbarAction: noop,
       toolbarButton: () => null,
       runToolbarAction: noop,
-      // insertLink's dialog. A suite pushes answers onto `inputAnswers` before
-      // driving it; an empty queue is the user backing out.
       Node: { ELEMENT_NODE: 1, TEXT_NODE: 3 },
-      askForInput: () => Promise.resolve(inputAnswers.length ? inputAnswers.shift() : null),
       setTimeout: noop,
       clearTimeout: noop,
       console,
@@ -367,21 +356,77 @@ export function loadApp() {
       __opts: opts,
       __opened: opened,
       __scrolled: scrolled,
-      __commands: commands,
-      __inputAnswers: inputAnswers,
       __selection: selection,
       __root: root,
       __byId: byId,
     },
     "; return { rules: __rules, inlineRules: __inlineRules," +
       " renderRules: __renderRules, mathSpan, options: __opts, opened: __opened," +
-      " scrolled: __scrolled, commands: __commands, selection: __selection," +
-      " inputAnswers: __inputAnswers, insertLink," +
+      " scrolled: __scrolled, selection: __selection," +
       " documentElement: __root, byId: __byId," +
-      " htmlToMarkdown, anchorSlug, headingAnchors, openExternalLink, normaliseLinkHref," +
-      " slugifyTitle, isBlankContent, sniffMarkdownStyle, reflowMarkdown," +
-      " adoptMarkdownStyle, normaliseNbsp, isGhostElement," +
-      " scanReferenceDefinitions, normalizeReferenceLabel, appendReferenceDefinitions," +
-      " referenceDefinitionsNow: () => referenceDefinitions };",
+      " htmlFragmentToMarkdown, anchorSlug, headingAnchors, openExternalLink, normaliseLinkHref," +
+      " slugifyTitle, encodeEmbeddedMarkdown, decodeEmbeddedMarkdown, sniffMarkdownStyle," +
+      " adoptMarkdownStyle, markdownStyleAdopt, normaliseNbsp, isGhostElement" +
+      (legacy
+        ? ", legacyHtmlToMarkdown, legacyConvertDocument, isBlankContent," +
+          " scanReferenceDefinitions, normalizeReferenceLabel, appendReferenceDefinitions," +
+          " legacyState: () => ({ source: legacySource, references: legacyReferenceDefinitions })," +
+          " converting: (on) => { legacyConverting = on; }"
+        : "") +
+      " };",
   );
+}
+
+// The model, stood in for, for the suites that boot app.js and file-api.js
+// without a parser: `tabs`, `file-path` and `export-variant`. Since stage 4's
+// slice 4 every document goes into the model, and the real one needs markdown-it
+// and an HTML parser this stub does not have. What can be asked of it honestly
+// is which path a document takes -- a parked model comes back without a parse,
+// a tab never shown is parsed once from its stored markdown, a save writes what
+// the model holds -- and the render itself is the `model` suite's and the
+// browser's.
+//
+// Markdown and HTML are the same string here: a document loaded from `x` shows
+// `x` in the editor, and writes `x` back.
+//
+// The document on screen is the model's document: `current` is the object the
+// model last rendered, and its html is read from the editor when it is asked
+// for, so a check that writes innerHTML is an edit the model has heard of.
+// That is the invariant the real core keeps, and the reason the stub reads the
+// screen rather than keeping its own copy.
+//
+// Counted, not just answered: `parses` is every time markdown became a document,
+// and a parked tab coming back must not add one.
+export function fakeModelCore(editor) {
+  // A session always has a document on screen, so the stand-in starts with one
+  // rather than none. It is not counted as a parse: nothing was parsed, the
+  // boot simply began with an empty document, as the real one does.
+  const core = { parses: 0, renders: 0, seq: 1, current: { id: 1, html: "" } };
+  const snapshot = () => (core.current ? { ...core.current, html: editor.innerHTML } : null);
+  core.scope = {
+    modelCurrentDocument: () => snapshot(),
+    modelParkDocument: () => {
+      const doc = snapshot();
+      core.current = null;
+      return doc;
+    },
+    modelLoad: (root, markdown) => {
+      core.parses += 1;
+      core.current = { id: ++core.seq, html: markdown };
+      root.innerHTML = markdown;
+      return core.current;
+    },
+    modelRestoreDocument: (root, doc) => {
+      core.renders += 1;
+      core.current = doc;
+      root.innerHTML = doc.html;
+      return doc;
+    },
+    modelForkDocument: (doc) => ({ ...doc }),
+    modelDocumentMarkdown: (doc) => doc.html,
+    modelReadSelection: () => null,
+    modelRecordSelection: () => null,
+    modelResolveSelection: () => null,
+  };
+  return core;
 }

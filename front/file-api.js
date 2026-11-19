@@ -167,8 +167,7 @@ function setCurrentFile(filePath) {
 // question a page load asks — which is why it is this function again rather
 // than a second reading of the same three keys somewhere else.
 function restoreCurrentFile() {
-  const savedContent = localStorage.getItem(documentKey("content"));
-  if (savedContent && !isBlankContent(savedContent)) {
+  if (!isBlankMarkdown(storedDocument())) {
     isDirty = localStorage.getItem(documentKey("dirty")) === "1";
     fileMtime = localStorage.getItem(documentKey("mtime"));
     setCurrentFile(localStorage.getItem(documentKey("path")));
@@ -263,10 +262,9 @@ function fileAdoptStored() {
   renderCurrentFile();
 }
 
-// Typing, formatting and paste all land here: execCommand fires input too, so
-// the format bar marks the document edited without needing its own hook.
-// Assigning editor.innerHTML does not, which is why opening a file and clearing
-// do not trip this — and applying an undo/redo snapshot does, deliberately
+// Every model edit lands here, since each one dispatches input once it has
+// rendered. Loading a document does not, which is why opening a file does not
+// trip this — and applying an undo/redo snapshot does, deliberately
 // (see undo.js): that is what lets undoing back to cleanPosition report clean
 // again instead of the flag only ever latching true. undo.js registers its own
 // input listener first, so undoPosition() already reflects the post-edit id by
@@ -292,7 +290,13 @@ onToolbarAction("new", () => {
   // it no longer has.
   if (typeof newTab === "function") return;
 
-  if (isBlankContent(editor.innerHTML)) {
+  let blank = false;
+  try {
+    blank = isBlankMarkdown(documentMarkdown());
+  } catch {
+    // A document the emitter refuses is not blank, so the association stays.
+  }
+  if (blank) {
     markClean();
     setFileMtime(null);
     setCurrentFile(null);
@@ -328,7 +332,8 @@ function fileDialogIsOpen() {
 // already decided which file it is acting on. Every such operation
 // has an await between naming a path and reading or writing the bytes -- the
 // worst is saveFile, which takes a path, then awaits confirmOverwrite and
-// possibly the whole save browser, and only then reads editor.innerHTML. Switch
+// possibly the whole save browser, and only then asks the model for the
+// document's markdown. Switch
 // tabs in that window and one document's content goes over another document's
 // file, with the toast reporting success.
 //
@@ -611,13 +616,43 @@ async function confirmDiscard({ title, detail = "", discardLabel = "Discard" }) 
   return saveCurrentOrPrompt();
 }
 
+// ── Binding ──────────────────────────────────────────────────────────────────
+//
+// Stage 4's decision 4 (docs/REWRITE.md): every operation holds the tab it
+// started on, and checks that the screen is still on it before each thing it
+// writes -- the document, the file state, the autosave. The switch lock keeps
+// the screen where it was for the length of an operation; this is the answer if
+// the lock ever fails, so that the wrong document is never written to a file or
+// to the wrong tab's storage. An operation that finds the screen has moved on
+// stops and says so, rather than finishing against a document it no longer
+// holds.
+//
+// Read at the operation's start, never from a default parameter: a toolbar
+// handler is called with the item it was clicked on, and that would bind the
+// item.
+function operationTab() {
+  return typeof activeTabId === "undefined" ? null : activeTabId;
+}
+
+function stillOnTab(tab) {
+  return operationTab() === tab;
+}
+
+function reportTabMoved(verb) {
+  notify(`Nothing was ${verb}: the document changed tab while it was being handled.`, {
+    severity: "error",
+  });
+  return false;
+}
+
 // ── Open / Save ──────────────────────────────────────────────────────────────
 
 async function openFile(filePath) {
-  return duringFileOperation(() => openFileBody(filePath));
+  const tab = operationTab();
+  return duringFileOperation(() => openFileBody(filePath, tab));
 }
 
-async function openFileBody(filePath) {
+async function openFileBody(filePath, tab) {
   let data;
   try {
     const res = await fetch(`/api/file?path=${encodeURIComponent(filePath)}`);
@@ -628,9 +663,11 @@ async function openFileBody(filePath) {
     return false;
   }
 
-  editor.innerHTML = markdownToHtml(data.content);
-  await renderLatex(editor);
-  localStorage.setItem(documentKey("content"), editor.innerHTML);
+  if (!stillOnTab(tab)) return reportTabMoved("opened");
+  // Nothing is awaited from here to the end, so the tab this checked is the
+  // tab the file state lands on. The maths typesets inside the render.
+  loadDocumentMarkdown(data.content);
+  flushAutosave();
   // History does not cross a document boundary. Undo handing back the previous
   // file's text would leave it under this file's path, one Ctrl+S from being
   // written there. Reload comes through here too, which is right: discarding
@@ -646,10 +683,11 @@ async function openFileBody(filePath) {
 // point of it, since this is also the only way to throw local changes away. So
 // it asks when there are edits to lose.
 async function reloadFile() {
-  return duringFileOperation(() => reloadFileBody());
+  const tab = operationTab();
+  return duringFileOperation(() => reloadFileBody(tab));
 }
 
-async function reloadFileBody() {
+async function reloadFileBody(tab) {
   if (!currentFilePath) {
     notify("No file is open to reload.", { severity: "info" });
     return;
@@ -661,6 +699,7 @@ async function reloadFileBody() {
     discardLabel: "Discard and reload",
   });
   if (!proceed) return;
+  if (!stillOnTab(tab)) return reportTabMoved("reloaded");
 
   // A reload of an unchanged file changes nothing on screen, so without this
   // there is no way to tell it happened — and it must be gated on the read
@@ -668,6 +707,8 @@ async function reloadFileBody() {
   // "Reloaded!" over the document it failed to replace. A toast rather than a
   // flash on the button: the button is a menu item now, and the menu has closed
   // behind the click long before any flash on it would be seen.
+  // Nested, so it takes its own turn of the counter. It binds the tab it finds
+  // here, which the check above has just confirmed is the one this reload began on.
   if (!(await openFile(currentFilePath))) return;
   notify(`Reloaded ${name} from disk.`, { severity: "success" });
 }
@@ -739,15 +780,24 @@ async function confirmOverwrite(filePath) {
 }
 
 async function saveFile(filePath) {
-  return duringFileOperation(() => saveFileBody(filePath));
+  const tab = operationTab();
+  return duringFileOperation(() => saveFileBody(filePath, tab));
 }
 
-async function saveFileBody(filePath) {
+async function saveFileBody(filePath, tab) {
+  if (!stillOnTab(tab)) return reportTabMoved("saved");
   const overwrite = await confirmOverwrite(filePath);
   if (overwrite === "cancel") return false;
-  if (overwrite === "save-as") return saveFileAs();
+  // The overwrite question is asked of the user, and the screen can move while
+  // it is up. Checked again before anything is read or written.
+  if (!stillOnTab(tab)) return reportTabMoved("saved");
+  if (overwrite === "save-as") return saveFileAsBody(tab);
 
-  const markdown = htmlToMarkdown(editor.innerHTML);
+  // Null when the document cannot be written as it stands, which has already
+  // been reported; the edits are still unsaved, so this answers false like any
+  // other failed save and whatever was waiting on it does not go ahead.
+  const markdown = documentMarkdownFor("save");
+  if (markdown === null) return false;
 
   let data;
   try {
@@ -763,9 +813,17 @@ async function saveFileBody(filePath) {
     return false;
   }
 
-  markClean();
-  setFileMtime(data.modified);
-  setCurrentFile(data.path);
+  // The file is on disk, and this save belongs to the tab it started on, wherever
+  // the screen is now. On screen, the live state takes it; once that tab has
+  // moved off, its parked record does, so the save lands on the tab that made it
+  // and not on whichever tab is showing.
+  if (stillOnTab(tab)) {
+    markClean();
+    setFileMtime(data.modified);
+    setCurrentFile(data.path);
+  } else if (typeof recordSaveOnTab === "function") {
+    recordSaveOnTab(tab, data.path, data.modified);
+  }
   // Reported here rather than at the two call sites so Save As is as loud as
   // Save. It used to be a flash on the toolbar's Save button, deliberately not
   // on whatever was clicked, because choosing Save from the split menu closed
@@ -779,25 +837,29 @@ async function saveFileBody(filePath) {
 // needs: a Save the user backed out of must not clear the way for the action
 // that was waiting on it.
 async function saveCurrentOrPrompt() {
-  return duringFileOperation(() => saveCurrentOrPromptBody());
+  const tab = operationTab();
+  return duringFileOperation(() => saveCurrentOrPromptBody(tab));
 }
 
-async function saveCurrentOrPromptBody() {
+async function saveCurrentOrPromptBody(tab) {
   const target = currentFilePath || (await showSaveDialog());
   if (!target) return false;
-  return saveFile(target);
+  if (!stillOnTab(tab)) return reportTabMoved("saved");
+  return saveFileBody(target, tab);
 }
 
 // Not named saveAs: FileSaver.js claims that global, and whichever loaded last
 // would silently clobber the other.
 async function saveFileAs() {
-  return duringFileOperation(() => saveFileAsBody());
+  const tab = operationTab();
+  return duringFileOperation(() => saveFileAsBody(tab));
 }
 
-async function saveFileAsBody() {
+async function saveFileAsBody(tab) {
   const target = await showSaveDialog();
   if (!target) return false;
-  return saveFile(target);
+  if (!stillOnTab(tab)) return reportTabMoved("saved");
+  return saveFileBody(target, tab);
 }
 
 // ── Wiring ───────────────────────────────────────────────────────────────────
