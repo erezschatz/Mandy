@@ -799,3 +799,18 @@ rewriting every line of it would be the whole-file diff D1 exists to prevent,
 and that is what this keeps.
 
 Source: [tasks/1.13-crlf-files.md](../tasks/1.13-crlf-files.md)
+
+## D23 · 2026-11-19 · The sniff normalises line endings itself
+
+**Decision** — `sniffMarkdownStyle` turns `\r\n` and a lone `\r` into `\n`
+before it reads, so whatever hands it a file gets the same answer for any
+line ending.
+**Rejected** — Normalising in `adoptMarkdownStyle` in `app.js`, the one caller
+that hands it a file: it would fix today's caller and leave the function
+wrong for the next one. Having `modelParse` hand its LF text to the sniff:
+it ties the style module to the model's door for one `replace`.
+**Why** — The sniff's answer is a fact about the file's conventions, and a
+line ending is not one of them (D22); a pure function that is right for every
+input is the cheapest place to keep that true.
+
+Source: [tasks/1.14-crlf-wrap-width.md](../tasks/1.14-crlf-wrap-width.md)

@@ -10938,7 +10938,7 @@ script's reworked `--pr` mode, which this strict-only copy has never had.
 `deno task hooks:test` passes. Also fills `d339929` into the previous entry's
 header.
 
-## 2026-11-19 — Task 1.13: a CRLF file is edited in CRLF
+## 2026-11-19 — `a5f5a0d` — Task 1.13: a CRLF file is edited in CRLF
 
 Editing a file written with Windows line endings wrote bare `\n` lines into it,
 and editing its last paragraph — or almost any paragraph, an Enter, a merge, a
@@ -10982,3 +10982,26 @@ file's wrap width reads one column wider than its LF twin's (LF 78, CRLF 79 on
 `break-test.md`), and an edited paragraph in one is re-wrapped a column wide;
 that is task 1.14, opened here.
 Also fills `d138818` into the previous entry's header.
+
+## 2026-11-19 — Task 1.14: a CRLF file's conventions are sniffed as an LF file's
+
+`sniffMarkdownStyle` read the file as it arrived, so in a CRLF file every line
+it measured ended in `\r`. The wrap width came out a column wide — 79 for a
+CRLF copy of `break-test.md` whose LF original sniffs 78 — so an edited
+paragraph in a CRLF file, editable since task 1.13, was re-wrapped wider than
+its neighbours. And neither hard-break pattern, both anchored at `$`, ever
+matched, so a CRLF file written with backslash breaks was sniffed as two-space
+and a break typed into it was spelled the other way. An old Mac file, with lone
+`\r` endings, was one line to the sniff and lost its bullet, list-pad and table
+conventions as well.
+
+The sniff now turns `\r\n` and a lone `\r` into `\n` before it reads, once for
+the whole function: the table convention read the raw argument a second time,
+which only the lone-`\r` case showed. A decision in
+tasks/1.14-crlf-wrap-width.md records why the normalisation is in the sniff
+rather than in its caller in `app.js`. `save-fidelity` gains six checks — a CRLF
+and a lone-`\r` copy of `break-test.md` and of `torture.md` each sniffing
+exactly as the original, every field; `crlf.md` sniffing as its LF twin; and a
+CRLF file's backslash breaks — and all six fail against the old sniff.
+`front/sw.js`'s `VERSION` goes to `v1.99`. `npm test` passes. Also fills
+`a5f5a0d` into the previous entry's header.

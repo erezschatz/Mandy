@@ -20,6 +20,7 @@
 // and the restore of the opened file's bytes — moved to legacy-storage.js in
 // stage 4's slice 5, and their checks to the `legacy-storage` suite with them.
 
+import { readFileSync } from "node:fs";
 import { loadApp, loadSource, makeEl, readFront } from "./dom.mjs";
 
 export default function run(check) {
@@ -251,6 +252,27 @@ function styleChecks(check) {
 
   const unwrapped = "a b c d e f g h i j k l m n o p q r s t u v w x y z\n";
   check("an unwrapped file reports no width", sniff(unwrapped).wrapWidth === 0);
+
+  // A line ending is not a convention (TODO 1.14). Until 2026-11-19 the sniff
+  // read a CRLF file's `\r` as the last character of every line, so its wrap
+  // width came out a column wide and neither hard-break pattern, which end in
+  // `$`, ever matched. Each file is checked whole, field by field, against its
+  // LF self — a CRLF copy and an old Mac one of two fixtures, and the CRLF
+  // fixture against its LF twin.
+  const fixture = (name) => readFileSync(new URL(`fixtures/${name}`, import.meta.url), "utf8");
+  for (const name of ["break-test.md", "torture.md"]) {
+    const text = fixture(name);
+    const want = JSON.stringify(sniff(text));
+    for (const [ending, eol] of [["CRLF", "\r\n"], ["lone-CR", "\r"]]) {
+      const got = sniff(text.replace(/\n/g, eol));
+      const moved = Object.keys(got).filter((k) => JSON.stringify(got[k]) !== JSON.stringify(sniff(text)[k]));
+      check(`a ${ending} copy of ${name} sniffs as the original does${moved.length ? ` (moved: ${moved.join(", ")})` : ""}`,
+        JSON.stringify(got) === want);
+    }
+  }
+  const crlf = fixture("crlf.md");
+  check("the CRLF fixture sniffs as its LF twin", crlf.includes("\r\n") && JSON.stringify(sniff(crlf)) === JSON.stringify(sniff(crlf.replace(/\r\n/g, "\n"))));
+  check("a CRLF file written with backslash breaks sniffs as backslash", sniff("one\\\r\ntwo\r\n\r\nthree\\\r\nfour\r\n").hardBreak === "\\");
 
   // The prefixes a wrap puts back are now a parameter, so a caller that knows
   // them does not have to let the wrapper guess a second time — TODO 3.1's
