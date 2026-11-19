@@ -1835,8 +1835,9 @@ function modelEmitLeaf(block, md, doc, width = 0) {
     throw new Error("edited block inside an item with no recorded marker");
   }
 
-  // **An empty paragraph writes nothing**, which `modelJoinBlocks` relies on
-  // and every container but a quote already gave it: composed, one inside a
+  // **An empty paragraph writes nothing**, which `modelJoinBlocks` relies on —
+  // it decides there whether one is a gap to be written as a blank line — and
+  // every container but a quote already gave it: composed, one inside a
   // quote came out as a bare `>`, so Enter in a quote put a quoted blank line
   // into the file for every paragraph nobody had typed into yet. The one
   // exception is an item's first paragraph, whose marker is the item.
@@ -2076,7 +2077,7 @@ function modelEmitBlock(block, emit) {
  * document is its blocks in order, and nothing else.
  */
 function modelSerialise(doc, emit) {
-  return modelJoinBlocks(doc.blocks, emit, doc.prefix);
+  return modelJoinBlocks(doc.blocks, emit, doc.prefix, true);
 }
 
 /**
@@ -2108,33 +2109,66 @@ function modelDocumentMarkdown(doc, md, width = 0) {
  * that is slice 4's, because slice 4 is what first produces one. Markdown has
  * no empty paragraph: the user presses Enter at the end of a line, the model
  * holds a block for the caret to be in, and the file has nothing to say about
- * it. Emitting its separator anyway would put a blank line into the document
- * for every Enter that has not been typed into yet — diff noise in a file
- * nobody edited, which is the thing this whole layer exists to prevent.
- *
- * Handing *its* separator on rather than keeping the one before it is what
+ * it. Handing *its* separator on rather than keeping the one before it is what
  * makes an Enter at the end of a document cost nothing at all: the bytes that
  * followed the block it split are the bytes that still follow it. An empty
  * block at the very start keeps no separator, since there is nothing in front
  * of it for one to sit between.
  *
+ * **Except an empty paragraph between two others at the top level**, which is
+ * a gap the user typed and is written as one more blank line (TODO 1.12, D20).
+ * Until 2026-11-19 it fell under the rule above too, so a song typed with an
+ * extra Enter between verses was drawn with its gaps and saved without them.
+ * `gaps` is true for the document alone: inside a quote or a list a second
+ * blank line means something else, or nothing, and that is undecided.
+ *
+ * The gap is the separator after the last block written, made a blank line if
+ * it was not one, and then each empty paragraph's own separator **less its
+ * first line ending**. What an empty paragraph carries depends on how it was
+ * made: an Enter hands it the split block's old separator, which is a blank
+ * line already, so the first line ending is the one the block before it has
+ * just been given; a parse leaves a single line ending, which is the gap's own
+ * line and is kept whole, whitespace and all. So `A`, one empty paragraph and
+ * `B` are `A\n\n\nB` however the empty one came to be there, and a separator
+ * that already held two blank lines comes out the same whichever side of it the
+ * Enter was pressed. Line endings are the file's: a gap in a CRLF file is
+ * written with `\r\n`.
+ *
  * Nothing the parser produces emits empty — every block spans at least one
  * non-blank line — so this is exactly as it was for a document that was opened
  * and saved.
  */
-function modelJoinBlocks(blocks, emit, leading) {
+function modelJoinBlocks(blocks, emit, leading, gaps = false) {
   let out = leading;
   let separator = "";
   let started = leading !== "";
+  let wrote = false;
+  let before = "";
+  let gap = "";
   for (const block of blocks) {
     const bytes = modelEmitBlock(block, emit);
     if (bytes === "") {
+      if (gaps && wrote && block.kind === "paragraph") {
+        const own = block.separator;
+        const lines = own.split("\n").length - 1;
+        const line = lines > 1 ? own.slice(own.indexOf("\n") + 1) : own;
+        gap += line || (before.includes("\r\n") ? "\r\n" : "\n");
+      }
       if (started) separator = block.separator;
       continue;
     }
+    if (gap) {
+      const crlf = before.includes("\r\n");
+      if (crlf) gap = gap.replace(/\r?\n/g, "\r\n");
+      const blank = /\n[ \t\r]*\n/.test(before);
+      separator = (blank ? before : before + (crlf ? "\r\n" : "\n")) + gap;
+    }
     out += separator + bytes;
     separator = block.separator;
+    before = block.separator;
+    gap = "";
     started = true;
+    wrote = true;
   }
   return out + separator;
 }
@@ -4839,6 +4873,9 @@ function modelSettleLists(doc, block, md) {
   const parsed = modelParse(src, md);
   // An empty paragraph is the model's place for a caret and writes nothing, so
   // the parser cannot see it; it is left out of the comparison on this side.
+  // At the top level between two blocks it writes a blank line (TODO 1.12),
+  // which the parser cannot see either: a second blank line between blocks
+  // changes nothing it builds, until stage 3 reads one back as a block.
   // An empty cell is not one of those: `| |` is in the file and parses to a
   // cell.
   const writes = (b) => b.kind === "cell" || !(!b.children && b.inlines && modelIsEmptyBlock(b));
@@ -4895,7 +4932,9 @@ function modelShiftUnder(block, columns, extras) {
  * shift: everything under a lifted item moves out by the item's content column,
  * since the indent is absolute. A paragraph lifted out of a tight list stops
  * being hidden, unless where it lands is a tight list itself. An empty item
- * becomes an empty paragraph, which emits nothing until something is typed.
+ * becomes an empty paragraph, which emits nothing until something is typed —
+ * except at the top level between two blocks, where it is a gap and writes a
+ * blank line (TODO 1.12).
  */
 function modelUnwrapItems(doc, list, items, md) {
   if (!list || list.kind !== "list" || !items.length) return null;
@@ -5109,7 +5148,9 @@ function modelOuterPrefix(line, ancestors, firsts) {
 
 // A run of sibling blocks as lines, each saying which block of the run wrote
 // it, or -1 for a blank line between two of them. Joined the way
-// `modelJoinBlocks` joins, which is what the file will hold.
+// `modelJoinBlocks` joins a container's children, which is what the file will
+// hold once the run is inside a quote: an empty paragraph there writes
+// nothing, so the top level's gaps (TODO 1.12) are not kept through a wrap.
 function modelRunLines(blocks, emit) {
   const lines = [];
   let separator = "";
@@ -5426,8 +5467,8 @@ function modelBlockState(doc, selection, format) {
  *
  * **Enter on an empty paragraph in a quote leaves the quote**, splitting it
  * when the paragraph was in the middle. **Backspace at the start of a quote's
- * first block takes that block out of it.** An empty paragraph writes nothing,
- * so the parse cannot carry it and it is moved by hand; a block with content
+ * first block takes that block out of it.** An empty paragraph writes nothing
+ * inside a quote, so the parse cannot carry it and it is moved by hand; a block with content
  * goes through `modelUnwrapQuote`. Moving an empty paragraph to the front of a
  * list item would leave the item's marker on nothing, so that one case is left
  * to the ordinary key.

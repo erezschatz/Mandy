@@ -10857,7 +10857,7 @@ happened. Stage 5, the
 fallout, happens on `main`. No code changed in the merge itself. Also fills
 `8d7fb48` into the previous entry's header.
 
-## 2026-11-19 — Task 1.12: a blank line typed between paragraphs is kept
+## 2026-11-19 — `b9c29fd` — Task 1.12: a blank line typed between paragraphs is kept
 
 **A new task, planned and not started.** The user found that a gap typed with
 an extra Enter, between the verses of a song, vanished on save, on reopen and
@@ -10875,4 +10875,45 @@ markdown renderers will still collapse the gap. Until it lands, Shift+Enter
 between a verse's lines is the spelling that survives. No code changed. Also
 fills `9acdafe` into the previous entry's header and into docs/REWRITE.md's
 stage 4 line.
+
+## 2026-11-19 — Task 1.12's stage 1: an empty paragraph is saved as a gap
+
+**An empty paragraph between two others at the top level is written as one
+more blank line**, so a gap typed with an extra Enter now survives Save, the
+autosave, Download and Copy markdown. `modelJoinBlocks` in `front/model.js`
+writes the separator after the block before the gap, then each empty
+paragraph's own separator less its first line ending. An Enter leaves the
+split block's old separator on the empty paragraph and a parse will leave a
+single line ending, so `A`, one empty paragraph and `B` are `A\n\n\nB` either
+way; a file that already had two blank lines comes out the same whichever side
+of them the Enter was pressed; and a CRLF file's gap is written in CRLF.
+**At either end of the document an empty paragraph still costs nothing**, so a
+trailing Enter and the guard paragraph after a trailing table add no line, and
+**inside a quote or a list nothing changes**, since what a second blank line
+means there is still open. `modelRunLines` keeps the container rule, because
+what it composes ends up inside a quote, so a gap in a run wrapped into one is
+dropped. The plan had it change, and had Enter give the separators one shape;
+the task file records both departures.
+
+**Two consequences that follow from the rule and are worth knowing.** Enter on
+an empty paragraph in a quote, and on an empty top-level bullet, leave an
+empty paragraph between the two halves, which is now a blank line in the
+file. And **deleting a table in the middle of a document** leaves an empty
+paragraph for the caret where it was, which the screen draws as a gap and the
+file now holds as one.
+
+Six `model` suite checks and one Playwright case asserted the old rule and are
+flipped, and eight checks are new: Enter at the end of the document costing
+nothing, two empty paragraphs, a gap after a block with no blank line under
+it, the song typed line by line, the typed and parsed shapes writing the same
+bytes, a gap keeping the whitespace of its line, two blank lines entered from
+either side, and a CRLF gap. Every one but the end-of-document check fails
+against the old code, which already held that one. `front/sw.js`'s `VERSION`
+goes to `v1.97`, so an installed copy picks the new `model.js` up. `npm test`
+passes, and the Playwright run is 335 passed in three engines, with the one
+Firefox failure recorded before. **Found on the way, and older than this**:
+editing a CRLF file mixes its line endings, and editing its last paragraph
+throws. **After a reopen the gap is still not on screen** — that is stage 3 —
+and Ctrl/Cmd+C still loses it, which is stage 2. Also fills `b9c29fd` into the
+previous entry's header.
 

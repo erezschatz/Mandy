@@ -3215,7 +3215,7 @@ export default function run(check) {
       ["a bullet splits into a bullet, not two paragraphs in one", "- one two\n- three\n", 3, (d, l) => modelInsertParagraph(d, l[0], 3, md), "- one\n- two\n- three\n"],
       ["a loose list stays loose", "- one two\n\n- three\n", 3, (d, l) => modelInsertParagraph(d, l[0], 3, md), "- one\n\n- two\n\n- three\n"],
       ["a quote is not an item, so it splits the paragraph inside it", "> one two\n", 3, (d, l) => modelInsertParagraph(d, l[0], 3, md), "> one\n>\n> two\n"],
-      ["the end of a heading opens a paragraph", "# Title\n\nbody\n", 5, (d, l) => modelInsertParagraph(d, l[0], 5, md), "# Title\n\nbody\n"],
+      ["the end of a heading opens a paragraph, which is a gap before the next block", "# Title\n\nbody\n", 5, (d, l) => modelInsertParagraph(d, l[0], 5, md), "# Title\n\n\nbody\n"],
       ["the middle of a heading gives two headings of the same level", "## Title here\n", 5, (d, l) => modelInsertParagraph(d, l[0], 5, md), "## Title\n\n## here\n"],
       ["a mark the split landed inside is reopened on the far side", "a **one two** b\n", 6, (d, l) => modelInsertParagraph(d, l[0], 6, md), "a **one**\n\n**two** b\n"],
       ["a nested bullet splits its own list", "- top\n  - one two\n  - next\n", 3, (d, l) => modelInsertParagraph(d, l[1], 3, md), "- top\n  - one\n  - two\n  - next\n"],
@@ -3230,15 +3230,63 @@ export default function run(check) {
   }
 
   {
-    // **An Enter nobody has typed into yet costs nothing at all**, which is the
-    // empty-block fold in `modelJoinBlocks`: markdown has no empty paragraph,
-    // so the block exists for the caret and the file has nothing to say about
-    // it. Both ends, because a block at the very start has no separator in
-    // front of it to hand on.
+    // **An empty paragraph between two others is a gap, and is written as one
+    // more blank line** (TODO 1.12, D20). Until 2026-11-19 every empty block
+    // wrote nothing, so a song typed with an extra Enter between its verses
+    // was drawn with the gaps and saved without them. At either end of the
+    // document it still costs nothing: a block at the very start has nothing
+    // in front of it to be a gap after, and one at the end nothing behind.
     const end = after("one\n\ntwo\n", (d, l) => modelInsertParagraph(d, l[0], 3, md));
     const start = after("one\n\ntwo\n", (d, l) => modelInsertParagraph(d, l[0], 0, md));
-    check(`Enter at the end of a block leaves the file byte-identical (${JSON.stringify(end)})`, end === "one\n\ntwo\n");
-    check(`and so does Enter at the start of one (${JSON.stringify(start)})`, start === "one\n\ntwo\n");
+    const last = after("one\n\ntwo\n", (d, l) => modelInsertParagraph(d, l[1], 3, md));
+    check(`Enter at the end of a block, before another, writes a blank line (${JSON.stringify(end)})`, end === "one\n\n\ntwo\n");
+    check(`Enter at the start of the document costs nothing (${JSON.stringify(start)})`, start === "one\n\ntwo\n");
+    check(`and nor does Enter at the end of it (${JSON.stringify(last)})`, last === "one\n\ntwo\n");
+    const two = after("one\n\ntwo\n", (d, l) => {
+      const at = modelInsertParagraph(d, l[0], 3, md);
+      modelInsertParagraph(d, at.block, 0, md);
+    });
+    check(`two empty paragraphs are two blank lines (${JSON.stringify(two)})`, two === "one\n\n\n\ntwo\n");
+    const tight = after("# H\ntext\n", (d, l) => modelInsertParagraph(d, l[0], 1, md));
+    check(`a gap after a block with no blank line under it still reads as one (${JSON.stringify(tight)})`, tight === "# H\n\n\ntext\n");
+
+    // The song: every line ended with Enter, and an extra Enter between verses.
+    const song = parse("");
+    modelEnsureBlock(song, md);
+    let at = { block: song.blocks[0], offset: 0 };
+    for (const line of ["a", "b", "", "c", "d"]) {
+      if (line) modelInlineSplice(at.block, at.offset, at.offset, line);
+      if (line !== "d") at = modelInsertParagraph(song, at.block, line.length, md);
+    }
+    const sung = emit(song);
+    check(`a song typed with an extra Enter between verses keeps the gap (${JSON.stringify(sung)})`,
+      sung === "a\n\nb\n\n\nc\n\nd");
+
+    // The typed shape and the shape stage 3's parse will build write the same
+    // bytes: an Enter leaves the split block's old separator on the empty
+    // paragraph, a parse will leave a single line end on it, and the gap is
+    // written from the block before it either way. A gap's own line keeps the
+    // whitespace a file gave it.
+    const typed = parse("one\n\ntwo\n");
+    const gapAt = modelInsertParagraph(typed, textLeaves(typed)[0], 3, md);
+    const typedBytes = emit(typed);
+    gapAt.block.separator = "\n";
+    check("an empty paragraph made by Enter and one a parse would make write the same bytes", emit(typed) === typedBytes);
+    gapAt.block.separator = "  \n";
+    check("and a gap's line keeps the whitespace it came with", emit(typed) === "one\n\n  \ntwo\n");
+
+    // A separator that already held two blank lines, from a file written that
+    // way, comes out the same whichever side of it the Enter was pressed.
+    const below = after("one\n\n\ntwo\n", (d, l) => modelInsertParagraph(d, l[0], 3, md));
+    const above = after("one\n\n\ntwo\n", (d, l) => modelInsertParagraph(d, l[1], 0, md));
+    check(`Enter on either side of two blank lines writes the same bytes (${JSON.stringify([below, above])})`,
+      below === above && below === "one\n\n\n\ntwo\n");
+    // And a CRLF file gets its gap in CRLF. Only the gap: the edited block
+    // after it ends in a bare `\n`, which is the split's and predates this —
+    // editing a CRLF file mixes its line endings, and an edited last paragraph
+    // in one throws. That is a task of its own.
+    const crlf = after("# Title\r\n\r\nA.\r\n", (d, l) => modelInsertParagraph(d, l[1], 0, md));
+    check(`a gap in a CRLF file is written with its line endings (${JSON.stringify(crlf)})`, crlf.startsWith("# Title\r\n\r\n\r\nA."));
   }
 
   {
@@ -3297,7 +3345,7 @@ export default function run(check) {
     // have; what changes is that there is no DOM surgery left to watch.
     const cases = [
       ["a nested empty item outdents rather than leaving the list", "- one\n  - two\n  -\n", 2, false, "- one\n  - two\n-\n"],
-      ["a top-level empty item leaves the list, splitting it at the caret", "- one\n-\n- three\n", 1, false, "- one\n\n- three\n"],
+      ["a top-level empty item leaves the list, splitting it at the caret, and the paragraph it leaves is a gap", "- one\n-\n- three\n", 1, false, "- one\n\n\n- three\n"],
       ["Backspace with a bullet above just removes the item", "- one\n-\n", 1, true, "- one\n"],
       ["Backspace on a first item puts the paragraph before the list", "-\n- two\n", 0, true, "- two\n"],
     ];
@@ -4642,8 +4690,8 @@ export default function run(check) {
       check("Enter in a quote writes nothing until something is typed — an empty paragraph in a quote used to write `>`",
         emitOf(doc) === "> a\n>\n> b\n\nafter\n");
       const left = modelQuoteKey(doc, at.block, md, false);
-      check("Enter on an empty paragraph in a quote leaves the quote, splitting it, with the caret in the same block",
-        !!left && left.block === at.block && left.offset === 0 && emitOf(doc) === "> a\n\n> b\n\nafter\n");
+      check("Enter on an empty paragraph in a quote leaves the quote, splitting it, with the caret in the same block — and the paragraph between the halves is a gap",
+        !!left && left.block === at.block && left.offset === 0 && emitOf(doc) === "> a\n\n\n> b\n\nafter\n");
       modelInlineSplice(left.block, 0, 0, "typed");
       check("and what is typed there lands between the two quotes",
         emitOf(doc) === "> a\n\ntyped\n\n> b\n\nafter\n" && modelSettleShape(doc, left.block, md));
@@ -5093,8 +5141,8 @@ export default function run(check) {
       run(SRC, (d, c) => modelTableDeleteColumn(d, c[0], md)).out === "| b |\n| --: |\n| 2 |\n");
     {
       const { out, result } = run("before\n\n|a|\n|-|\n|1|\n\nafter\n", (d, c) => modelTableDeleteColumn(d, c[0], md));
-      check("the last column going takes the table, and an empty paragraph keeps its place",
-        out === "before\n\nafter\n" && result.at.block.kind === "paragraph" && result.at.block.inlines.length === 0);
+      check("the last column going takes the table, and an empty paragraph keeps its place, written as a gap",
+        out === "before\n\n\nafter\n" && result.at.block.kind === "paragraph" && result.at.block.inlines.length === 0);
     }
     check("deleting a table that is an item's only child leaves the item holding an empty paragraph",
       (() => {
@@ -5103,7 +5151,7 @@ export default function run(check) {
         return emitOf(doc) === "-\n- next\n" && modelFlatten(doc).filter((b) => b.kind === "item").length === 2;
       })());
     check("deleting the table does the same",
-      run("before\n\n|a|b|\n|-|-|\n|1|2|\n\nafter\n", (d, c) => modelTableDelete(d, d.blocks[1], md)).out === "before\n\nafter\n");
+      run("before\n\n|a|b|\n|-|-|\n|1|2|\n\nafter\n", (d, c) => modelTableDelete(d, d.blocks[1], md)).out === "before\n\n\nafter\n");
     check("an alignment is set on the column, header and body",
       run("|a|b|\n|-|-|\n|1|2|\n", (d, c) => modelTableAlign(d, c[1], "center", md)).out === "|a|b|\n|-|:-:|\n|1|2|\n");
     check("and chosen again, it is taken off",

@@ -129,12 +129,13 @@ test("alignment is set from the menu, shown by a check, and taken off by choosin
   expect(await markdown(page)).toBe(SOURCE);
 });
 
-test("deleting the table leaves an empty paragraph where it was", async ({ page }) => {
+// The paragraph is drawn as a gap, so it is written as one (TODO 1.12, D20).
+test("deleting the table leaves an empty paragraph where it was, written as a gap", async ({ page }) => {
   await open(page, SOURCE);
   await cell(page, "1").click();
   await control(page, "table-delete");
   await expect(page.locator("#editor table")).toHaveCount(0);
-  expect(await markdown(page)).toBe("Before.\n\nAfter.\n");
+  expect(await markdown(page)).toBe("Before.\n\n\nAfter.\n");
 });
 
 test("one undo takes each structural edit back", async ({ page }) => {

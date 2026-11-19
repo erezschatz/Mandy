@@ -1168,7 +1168,11 @@ cleared everywhere. Seven steps, and the ones worth knowing from outside:
   clause is what makes markdown's lack of an empty paragraph survivable: the
   model holds a block for the caret, the file has nothing to say about it, and
   an Enter nobody has typed into yet costs **zero bytes**. Nothing the parser
-  produces emits empty, so an opened-and-saved file is untouched.
+  produces emits empty, so an opened-and-saved file is untouched. **Since
+  2026-11-19 there is one exception** (TODO 1.12, D20): an empty paragraph
+  between two blocks at the top level is a gap the user can see, so it is
+  written as one more blank line. At either end of the document, and inside
+  any container, the rule above still holds.
 - **The two hand-rolled list clusters are model rules now**, with no engine in
   them — Enter and Backspace on an empty `<li>`, and `outdentListItem`. What
   `app.js`'s handler does is the specification, because it is what users have;
