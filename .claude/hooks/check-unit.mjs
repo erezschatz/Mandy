@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Erez Schatz, https://github.com/erezschatz/unities. SPDX-License-Identifier: MIT
 // A change set is a complete scene or it is not ready to commit. See "The
 // Unities" in CLAUDE.md, tasks/adopt-unities.md and docs/UNITIES.md (whose
 // Appendix A this follows, in Deno and in this repo's staging).
@@ -17,7 +18,7 @@
 const RULES = {
   source: /^(front\/|server\/src\/)/,
   test: /^tests\//,
-  doc: /^(docs\/(?!TODO\.md$)|README\.md$|CLAUDE\.md$|CHANGELOG\.md$)/,
+  doc: /^(docs\/(?!TODO\.md$)|README\.md$|CLAUDE\.md$|AGENTS\.md$|CHANGELOG\.md$)/,
   task: /^tasks\/(?!README\.md$)[^/_][^/]*\.md$/,
   retired: /^docs\/TODO\.md$/,
 };

@@ -19,8 +19,9 @@ A task file has:
   where its stage stands: *done and tested*, *done, untested*, *not started*.
   Two sentences and a pointer is enough, since the CHANGELOG entry for the same
   commit carries the prose. Its last line is `Reviewed by: <who>`: the reader
-  that had not seen the work and read the staged diff against this section
-  before it was committed. The commit gate refuses a section without it;
+  that had not seen the work and read the staged diff against this section,
+  by [docs/reviewer.md](../docs/reviewer.md), before it was committed. The
+  commit gate refuses a section without it;
 - `## Decisions`, when the work chose one thing over another: one entry per
   choice, appended in the same commit, never edited or removed afterwards.
 

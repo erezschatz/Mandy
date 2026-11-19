@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Erez Schatz, https://github.com/erezschatz/unities. SPDX-License-Identifier: MIT
 // deno task hooks:test
 // The check script and the record compiler, driven in throwaway git
 // repositories. docs/UNITIES.md's Appendix J, cut to this repo's staging: the

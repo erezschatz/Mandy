@@ -1,4 +1,5 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write=docs
+// Copyright (c) 2026 Erez Schatz, https://github.com/erezschatz/unities. SPDX-License-Identifier: MIT
 // compile-record [--check]                       (deno task record)
 // The only writer docs/DECISIONS.md and docs/PLAN.md have below their marker
 // line. Both are compiled from the task files: decisions from their

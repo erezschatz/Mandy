@@ -10876,7 +10876,7 @@ between a verse's lines is the spelling that survives. No code changed. Also
 fills `9acdafe` into the previous entry's header and into docs/REWRITE.md's
 stage 4 line.
 
-## 2026-11-19 — Task 1.12's stage 1: an empty paragraph is saved as a gap
+## 2026-11-19 — `d339929` — Task 1.12's stage 1: an empty paragraph is saved as a gap
 
 **An empty paragraph between two others at the top level is written as one
 more blank line**, so a gap typed with an extra Enter now survives Save, the
@@ -10917,3 +10917,23 @@ throws. **After a reopen the gap is still not on screen** — that is stage 3 �
 and Ctrl/Cmd+C still loses it, which is stage 2. Also fills `b9c29fd` into the
 previous entry's header.
 
+## 2026-11-19 — The Unities brought up to 0.5.5: the reader gets a brief
+
+docs/UNITIES.md is replaced with the procedure's 0.5.5 master, dated today,
+over the 0.4.0 copy of 2026-11-11. The one thing it adds that applies here is
+**the cold reader's brief**, `docs/reviewer.md`: the three questions a reader
+that has not seen a change answers before it is committed — does the record
+describe the diff, does each review item it answers hold for the running
+program, and what else did the change do that no decision records — and the
+shape its findings come back in. CLAUDE.md's Unities section now sends every
+reader to it and says the review is part of the unit with the code, the test
+and the doc line rather than something after it, and tasks/README.md points the
+`Reviewed by:` line at it.
+The check script's `doc` role names `AGENTS.md` as the procedure's does, and
+the script, its tests and the record compiler carry the procedure's licence
+line. **The Codex half of 0.5.0 is not installed**: asked once, as the
+procedure says for a repository adopted before it, Claude Code is the only
+agent here, which is a new decision in tasks/adopt-unities.md. Neither is the
+script's reworked `--pr` mode, which this strict-only copy has never had.
+`deno task hooks:test` passes. Also fills `d339929` into the previous entry's
+header.

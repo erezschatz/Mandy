@@ -570,9 +570,13 @@ them refuses:
   missing and never sends the turn back, because stopping mid-change to ask a
   design question or hand over a browser recipe is how work goes here.
 
-Before committing a change, have a reader that has not seen the work — a
-read-only subagent — check that the task record describes the staged diff, and
-name it in the `Reviewed by:` line. The hooks test presence, not truth.
+Code, test, document and review are one unit, and the review is part of the
+commit, not something after it. Before committing, give the staged diff and the
+task file to a reader that has not seen the work — a read-only subagent, never
+yourself — to carry out [docs/reviewer.md](docs/reviewer.md), the brief every
+reader is given in the same words; write what it finds into the task file and
+its name on the record's `Reviewed by:` line. The hooks test presence, not
+truth: they can check that a reader was named, never that the reading happened.
 
 ### Division of labour
 

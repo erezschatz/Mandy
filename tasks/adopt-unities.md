@@ -183,6 +183,20 @@ section does not point to one.
 also wrote the rules. tasks/README.md is the format and CLAUDE.md is the working
 practice. Write the guide the day a second person works here.
 
+### 2026-11-19 · Claude Code is the only agent here
+
+**Decision** — Nobody works in this repository with another agent, so the
+procedure's 4.10 is not installed: the instructions stay in CLAUDE.md, and
+there is no `AGENTS.md`, no `.codex/hooks.json` and no Codex reader. The check
+script's `doc` role names `AGENTS.md` anyway, as the procedure's does, so the
+file counts as a doc line the day it exists.
+**Rejected** — Installing 4.10: moving CLAUDE.md to `AGENTS.md` behind a
+one-line import and adding the Codex bindings, which nobody here would run and
+nobody could verify.
+**Why** — Asked once, as the procedure says for a repository adopted before
+0.5.0, and answered by Erez on 2026-11-19. Revisit the day a second agent
+works here.
+
 ## What was done
 
 2026-11-14: **brought up to the procedure dated 2026-11-11 (0.4.0).** The
@@ -246,3 +260,31 @@ from SPEC, DECISIONS, PLAN, REWRITE and CLAUDE.md.
 
 Status: done
 Reviewed by: a read-only subagent that had not seen the work, against the staged diff. It found the hook changes and the limit recorded above, a "last line" rule the closing sections broke, a test rule in *Division of labour* that contradicted "Making a change", a route count in docs/SPEC.md, and docs/DECISIONS.md's introduction still pointing at the retired TODO.md. All of them were fixed before the commit.
+
+## What was done
+
+2026-11-19: **brought up to the procedure dated 2026-11-19 (0.5.5).** The
+planted docs/UNITIES.md was 0.4.0 of 2026-11-11 and was replaced with the
+master. What the newer version adds, and what of it landed here:
+
+- **The reader's brief**, `docs/reviewer.md`, copied from the procedure's
+  Appendix G: the three questions every cold reader is asked, in the same
+  words. CLAUDE.md's Unities section now says the review is a member of the
+  unit with the code, the test and the doc line, that the reader is a
+  read-only subagent and never the author, that it carries out that brief, and
+  that its findings go into the task file. tasks/README.md points the
+  `Reviewed by:` line at the brief.
+- **`AGENTS.md` in the `doc` role** of `.claude/hooks/check-unit.mjs`, and the
+  procedure's licence line at the head of the check script, its tests and the
+  record compiler, which all three appendices now carry.
+- **Not installed:** 4.10 and its Codex files, by the decision above, and the
+  script's `--codex` flag with them. The `--pr` changes (measuring from the
+  merge base, refusing an unknown target) touch a mode this repo's script does
+  not have, by the 2026-11-14 decision that keeps it strict-only. 4.11 installs
+  nothing.
+
+`deno task hooks:test` passes, the compiled record is current, and a fresh
+reading of CLAUDE.md's Unities section names the brief.
+
+Status: done
+Reviewed by: a read-only subagent that had not seen the work, carrying out docs/reviewer.md against the staged diff. It found the record accurate and two faults in the CHANGELOG entry: it credited tasks/README.md with saying the review is part of the unit, which only CLAUDE.md says, and it opened after two blank lines. Both were fixed before the commit.

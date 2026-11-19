@@ -1,4 +1,4 @@
-<!-- UNITIES.md 2026-11-11 · 0.4.0. Master copy: the unities-project skill folder (plugin `unities`). -->
+<!-- UNITIES.md 2026-11-19 · 0.5.5. Master copy: the unities-project skill folder (plugin `unities`). -->
 
 # UNITIES.md — adopting the Unities in a repository
 
@@ -37,8 +37,14 @@ The work, its record and its location are the same thing at the same time.
   incident, a decision from a meeting) enters through one door: it becomes a file on
   arrival — a task, or a decision.
 - **Time.** The record is written in the same gesture as the change. Code, its test, its
-  doc line and its task record are one unit. A change without its record is not a change
-  with missing paperwork; it is a scene that did not happen.
+  doc line, its task record and the cold reading of that record against the diff are one
+  unit: code, test, document, review. A change without its record is not a change with
+  missing paperwork; it is a scene that did not happen. A pull request arrives with all
+  of them done, the reading included: the review at the merge is a second reading, not
+  the first, and what it sends back is what the scene's own reader should have found.
+  The reading is the one member of the unit that leaves no file, only a name
+  (`Reviewed by:`), so the gate can check that one was named and never that it took
+  place (Appendix G).
 - **Action.** There is one record, and it is the task files. A task file says what was
   asked, what was done, and what was chosen and rejected on the way (`## Decisions`,
   append-only, a decision reversed only by a new entry naming the old one). A task file
@@ -61,7 +67,8 @@ it in its kickoff interview; this file asks it when it is the front door. It is 
 asked twice: Phase 3 only checks the answer against the repository.
 
 **Strict: the commit is the scene.** Every commit that touches source also carries its
-test, its doc line and its task record, and the gates refuse anything less: `git commit`
+test, its doc line and its task record, read cold before it is committed, and the gates
+refuse anything less: `git commit`
 refuses an incomplete scene and the agent cannot end a turn with one. If a scene cannot
 be finished in the sitting, it is reverted, not saved for tomorrow. This is the ideal.
 It holds where commits are already complete units: one developer, or a team that works
@@ -91,7 +98,7 @@ difference is one constant (`SCENE`) and which bindings are installed:
 | --- | --- | --- |
 | The scene | the commit | the pull request |
 | `SCENE` in `check-unit.mjs` | `"commit"` | `"pr"` |
-| `Stop` hook (end of an agent turn) | refuses; on the second pass lets go and tells the person | advises once, through `additionalContext`; never blocks |
+| `Stop` hook (end of an agent turn) | refuses; on the second pass lets go and tells the person | advises once and never refuses (Claude Code: through `additionalContext`; Codex: one continuation of the turn, 4.10) |
 | `PreToolUse` on `git commit` | installed; blocks | not installed |
 | pre-commit hook (where commits happen outside the agent) | refuses | warns |
 | CI gate, `check-unit.mjs --pr` | optional backstop; install if there is CI | required; runs in CI or in the tool that merges (4.7) |
@@ -147,7 +154,7 @@ none for some.
 | --- | --- |
 | source | `src/`, `lib/`, `app/`, `packages/*/src/`, language-specific layouts |
 | test | `test/`, `tests/`, `__tests__/`, `*.test.*`, `*.spec.*`, `e2e/` |
-| doc | `docs/`, `README.md`, `*.md` next to code (including `CLAUDE.md`), ADR folders |
+| doc | `docs/`, `README.md`, `*.md` next to code (including `CLAUDE.md` and `AGENTS.md`), ADR folders |
 | task | `TODO.md`, `TASKS.md`, `ROADMAP.md`, `BACKLOG.md`, `docs/todo*`, issue-like folders |
 | changelog | `CHANGELOG.md`, `HISTORY.md`, `CHANGES.md`, `changes/`, `.changeset/` |
 
@@ -178,6 +185,12 @@ nothing.
 - Who commits. Does every commit go through the agent, or do commits also happen from a
   shell or an editor? This decides whether the git binding (4.3) is installed. The
   Claude Code `Stop` binding (4.2) is installed regardless; this is not a question.
+- Which agents work here. Claude Code only, or does anyone work with another agent
+  (Codex)? Look for `AGENTS.md`, `.codex/`, and ask; the repository rarely shows it. The
+  skill asks it at kickoff. A repository adopted under a version before 0.5.0 has no
+  answer on record: ask once, and record it as a decision in the adoption task. A yes
+  installs 4.10, and with it the git binding (4.3), because a second agent is a second
+  place commits come from.
 - Who merges (adapted). Pull requests are merged by the CI service's merge button, by a
   person, or by a tool that completes them through an API. This decides where the gate
   (4.7) runs, and who the merge man is: where the record compiler runs after a merge
@@ -223,7 +236,9 @@ Send the person, in this order:
    release PR touches besides `CHANGELOG.md`.
 5. The release boundary you will use (last tag / version / first commit).
 6. The runtime you will invoke the scripts with, and whether the git binding will be
-   installed (yes if any commit can happen outside the agent; otherwise ask).
+   installed (yes if any commit can happen outside the agent; otherwise ask). Which
+   agents work here, and so whether 4.10 is installed; where `CLAUDE.md` and `AGENTS.md`
+   both exist with different content, that, as a question.
 7. Adapted: where the gate will run (4.7), the CI service or the merging tool; where the
    record compiler will run after each merge (4.5) and under which identity it commits;
    and the merge strategy in force.
@@ -344,6 +359,13 @@ unless an equivalent paragraph is already there. If CLAUDE.md contains a
 Definition-of-Done checklist that the gates now enforce, replace that checklist with one
 line pointing at the Unities section; keep any items the gates do not cover.
 
+Write `docs/reviewer.md` from Appendix G: the brief the cold reader is given. It is a
+file so that every reader of a scene is asked the same questions in the same words — a
+subagent of whichever agent the developer uses, a colleague, the tool that merges.
+
+Where another agent works here (4.10), the standing instructions live in `AGENTS.md` and
+every "CLAUDE.md" in this document means that file.
+
 ### 4.7 The gate (required in adapted; recommended backstop in strict)
 
 Add a CI job that runs `check-unit.mjs --pr <target>` on every pull request, against the
@@ -355,8 +377,14 @@ adoption — retired TODO files and all — is not held to it.
 If pull requests are merged by a tool through the CI service's API rather than by its
 merge button, run the check in that tool, before it merges, instead of as a CI job. A
 required CI policy applies to the tool's API merges too, so the two gates would collide.
-Run in a checkout, the base is the merge base of source and target, with the source tip
-checked out: `check-unit.mjs --pr $(git merge-base <target> HEAD)`.
+Run in a checkout, with the source tip checked out: `check-unit.mjs --pr <target>`. The
+script measures the scene from the merge base of target and `HEAD`, not from the target's
+tip, so a target that has moved on since the branch forked does not charge the branch
+with the target's commits. The checkout therefore needs the history back to the fork
+point; without it the script stops with an error instead of guessing. It stops the same
+way when the checkout does not know the target's name at all — a typo, or a branch that
+was never fetched — because only a target that exists and has no `check-unit.mjs` counts
+as one that has not adopted yet.
 
 **Shared files.** Three kinds are never edited by hand. `CHANGELOG.md` is *compiled* at
 release: the compiler is its only writer, and deleting it is refused like editing it.
@@ -428,10 +456,13 @@ equivalent) for them, and link it from the README's setup path and from
 1. Receiving a task: where its file is, how it is named, that `## Context` is the brief
    and is not edited, and what to do when something new turns up.
 2. Doing the work: branching, committing (freely in adapted; complete scenes in strict),
-   turning on the git binding, and the role table in plain words (which files count as
-   source, test, doc and task, and which are never edited).
-3. Finishing: the test, the doc line and the `## What was done` section — written last,
-   because its presence marks the task done; read by someone who did not write it;
+   turning on the git binding, with Codex trusting this repository's hooks once (4.10),
+   and the role table in plain words (which files count as source, test, doc and task,
+   and which are never edited).
+3. Finishing: code, test, document and review are one unit, and the pull request is
+   opened with all four done. The test, the doc line and the `## What was done` section — written last,
+   because its presence marks the task done; read by someone who did not write it,
+   against `docs/reviewer.md`, before the pull request is opened and not only at merge;
    appended, never edited once merged; it becomes the changelog entry. And, where the
    work chose something over something else, a `## Decisions` entry in the same task
    file: the developer never opens `docs/DECISIONS.md` or `docs/PLAN.md` to write, only
@@ -495,6 +526,144 @@ mark gaps as gaps.
 compiled files are matched by `RECORD_FILES` and count toward no role. Add
 `docs/DECISIONS.md` to `CLAUDE.md`'s *Read first* list. The adoption task records which
 were created and which were found.
+
+### 4.10 Other agents (when someone works here with an agent that is not Claude Code)
+
+Install if 3.2 found, or the person said, that anyone works in this repository with
+another agent. Everything above this section that is not `.claude/settings.json` already
+holds for them: the record, the script, the git binding, the gate at the pull request
+and the compilers are files and git, and do not know which agent wrote a change. Three
+things do not reach another agent on their own: the standing instructions, the binding
+at the end of a turn, and the reader. This section carries them across. It is written
+for Codex; for any other agent the three are the same and only the file names differ.
+
+**Standing instructions: one file, read by both.** Codex reads `AGENTS.md` and never
+`CLAUDE.md`; Claude Code reads `CLAUDE.md`, which can import another file. So the
+instructions live in `AGENTS.md`, and `CLAUDE.md` is the import. Two copies would be two
+accounts of the work.
+
+- `CLAUDE.md` exists, `AGENTS.md` does not → `git mv CLAUDE.md AGENTS.md`, then write a
+  new `CLAUDE.md` whose only content is the line `@AGENTS.md` (Appendix L). Nothing in
+  the moved file is reworded. If a section of it only makes sense to Claude Code (it
+  names a skill, a slash command, `.claude/rules/`), ask the person whether it moves
+  back under the import line; do not decide it.
+- Both exist and `CLAUDE.md` already imports `AGENTS.md` → nothing to do; Appendix E goes
+  in `AGENTS.md`.
+- Both exist with different content → a question in the report (3.4), not a merge by
+  guesswork.
+- Add `AGENTS.md` to the `doc` role in `RULES` beside `CLAUDE.md`.
+
+Codex stops reading instruction files at a byte limit (`project_doc_max_bytes` in its
+configuration); note the size of `AGENTS.md` in the report.
+
+**The binding at the end of a turn.** Write `.codex/hooks.json` from Appendix L. It
+calls the same script as `.claude/settings.json`, with `--codex` after the mode, and is
+installed by the same table (§1): `Stop` in both stagings, `PreToolUse` on `git commit`
+in strict only. The flag changes one thing. In adapted, Claude Code is advised through
+`additionalContext`; Codex documents no such field for `Stop`, and its one way to tell
+the agent anything at the end of a turn is to continue the turn with the note as the
+prompt (`"decision": "block"`). The script does that once per turn and, on the second
+pass, lets go and tells the person, exactly as strict does. So under Codex the adapted
+advice is one further pass of the agent on every turn that ends with an incomplete
+scene, and the note says the branch is fine to keep. If that proves too loud in
+practice, the remedy is a decision to leave `Stop` out of `.codex/hooks.json`
+in this repository, recorded as one; it is not a change to the script.
+
+The script stays at `.claude/hooks/check-unit.mjs`. The path is where adoption first put
+it and is what `adopted()` looks for on the target branch; it is one script with several
+bindings, not Claude Code's script.
+
+**The reader.** Write `.codex/agents/unities-reader.toml` from Appendix L: a read-only
+agent whose whole instruction is to carry out `docs/reviewer.md`. The standing paragraph
+(Appendix E) tells the agent to give the diff to a reader that has not seen the work;
+under Codex this file is that reader. Codex starts a subagent only when asked or when a
+project instruction says to, which the paragraph in `AGENTS.md` now does.
+
+**What each developer does once.** Codex runs a project's hooks only after the project
+is trusted and its hooks are reviewed (`/hooks` in Codex), and asks again when the file
+changes. Until a developer has done that, nothing in `.codex/hooks.json` runs for them,
+silently. This goes in the developer's guide (4.8, item 2) and the README's setup line.
+
+**What this document has not done.** The Codex files in Appendix L were written from
+Codex's documentation as it stood on 2026-11-15 and were not run under Codex when this
+version was written. Phase 6, step 8, runs them. If no Codex is installed where this
+procedure is carried out, install the files, say in the adoption task that the Codex
+binding is unverified and name the developer who will verify it; do not report it as
+working.
+
+### 4.11 What each binding enforces, and what none of them can
+
+Nothing here is installed. It is what the person adopting should know about the bindings
+above. It was carried over from the essay *The Unities* (14 October 2026) when the
+essay's second part was cut as an older copy of this file; the statements about Claude
+Code's behaviour are as they stood then.
+
+Each binding enforces a different unity (S = strict, A = adapted). The table describes
+the Claude Code bindings; under Codex an adapted `Stop` continues the turn once instead
+(§1, 4.10):
+
+| Binding | Fires when | What it does | Unity |
+| --- | --- | --- | --- |
+| `Stop` hook | the agent finishes a turn | S: refuses to end on a half-recorded change, sends the agent back once, then lets go and tells the person. A: tells the agent once, in its own context, what the PR will still fail on | time |
+| `PreToolUse` on `git commit` (S) | the agent is about to commit | refuses a commit that is not a complete scene | time |
+| `pre-commit` | a person commits | S: refuses. A: warns | time, place |
+| CI check on the PR (A; backstop in S) | a pull request is opened or updated | refuses the merge of an incomplete scene; the one gate with teeth in the adapted staging | time |
+| `shared` rule in the script | any mode | refuses a direct edit to `CHANGELOG.md` or a retired `TODO.md`; a release PR passes only if its changelog equals the compiler's output | action |
+| `onFailure: "block"` (S) | the script is missing or crashes | blocks the commit; a policy that fails open is not a policy | time |
+
+In strict, a clean tree passes at the commit and at the end of a turn, so reverting is
+always a way out. `--pr`, and `--branch` in adapted, read the commits since the fork, so
+there a clean tree says nothing.
+
+`check-unit.mjs` is the rule, in code. The essay said of a repository's own skill, if it
+has one, that it "holds procedure only: how task files are named here, what the 'what was
+done' heading is. The skill says how; the hooks make sure." Here that procedure is
+`tasks/README.md` (4.4, Appendix D), and the sentence holds of it: the instructions say
+how, the hooks make sure.
+
+The fresh-session test is the plainest statement of unity of place; the decisions file is
+unity of action applied to choices rather than changes.
+
+With squash-merge the adapted staging's history reads as strict: one commit per scene,
+each complete, even though the branch was free. The branch is the rehearsal; `main` is
+the performance.
+
+A hook can test presence but not truth, and can gate a change but not build a release.
+The point of the changelog compiler is its shape: it is the compile step from sources to
+blob, it runs once per release, and nobody edits its output. It reads the record out of
+git history, not out of the tree, so archiving or deleting a finished task file cannot
+lose its changelog entries. That holds for the changelog only. The record compiler reads
+the work tree (4.5): deleting a task file drops its step from `docs/PLAN.md`, and if the
+file carries a compiled decision the compiler refuses, and so does the gate (4.7). The
+release tag is the one thing in the system that is not a file, and it is the right thing
+not to be.
+
+**Limits.**
+
+- Presence is not truth. The gate is deliberately a presence test: a file in each role,
+  nothing about whether `tests/parser.test.ts` really exercises `parser.ts`. Presence
+  already catches the failure this discipline exists for, the record not being written
+  at all. The reviewer covers truth; nothing covers it for free.
+- A touched task file is not a recorded scene. The gate asks that a task file changed,
+  and checks the `## What was done` sections a scene adds; it does not require that one
+  be added. The essay named that as a later tightening, and it has not been made.
+- The `Stop` hook judges one session's tree or branch. Two sessions in one repository
+  each see only their own. The commit gate (strict) or the PR gate (adapted) is what
+  holds across sessions.
+- `onFailure: "block"` has no effect on `Stop` hooks, so a missing script silently lets
+  turns end; the next gate catches the change. Keep the script in the repository and the
+  path in `settings.json` correct.
+- Hooks in `.claude/settings.json` run only after the person has trusted the folder, and
+  cloud sessions do not read a machine's user settings. Committing the project settings
+  is what makes the staging travel with the repository.
+- The PR gate's being required lives outside the repository (a branch policy, or the
+  merging tool's step). It is the one part of the staging that `git diff` cannot see, and
+  the first thing to check when the gate seems to have stopped working.
+- The discard is not automated anywhere. The form says an interrupted scene is abandoned;
+  the strict staging says so, loudly, and leaves the `git checkout` to a person.
+- Claude Code can also start the reader of Appendix G from a hook (an agent-type `Stop`
+  hook), but that feature was marked experimental; an explicitly invoked subagent is the
+  stable form.
 
 ---
 
@@ -601,12 +770,21 @@ to adapted, unmarked to both.
 7. (A) Confirm the 4.7 gate exists, and say whether whatever makes it required — a branch
    policy, or the merging tool's step — is in place; it usually lives outside the
    repository. Confirm the release check: on a throwaway branch, run the compiler for a
-   fake version, commit only its output and the version bump, and run `--pr <base>` →
+   fake version, commit only its output and the version bump, and run `--pr <target>` →
    must pass; then hand-edit one changelog line → must fail with a diff. Confirm the
    merge man: name what runs the record compiler after a merge and under which identity
    it commits; if that lives outside the repository and is not in place yet, say so —
    until it is, the compiled files are compiled by a person, through a pull request of
    only those files.
+8. If 4.10 was installed: `.codex/hooks.json` parses, and `claude` started in the repo
+   still has the standing instructions (ask it what its project instructions say about
+   the Unities; it must answer from `AGENTS.md`, through the import). Then, under Codex, in this order: trust the project and its hooks (`/hooks`);
+   ask it what its project instructions say about the Unities (it must answer from
+   `AGENTS.md`); create the probe of step 2 and end a turn — (S) the turn is sent back
+   once naming the missing roles and ends on the second pass with a warning, (A) the
+   turn continues once with the note and ends; ask it to run the reader on a staged
+   diff and confirm a second agent named `unities_reader` did the reading. Remove the
+   probe. Where no Codex is at hand, say so and name who will run this step (4.10).
 
 If any check fails, fix it before Phase 7. If it cannot be fixed, revert the working
 tree and report why.
@@ -626,23 +804,29 @@ sentences as the adoption task's record. Then tell the person:
   before the commit; (A) the merge man named in 4.5, after each merge;
 - what remains manual: the reviewer before the record is committed (Appendix G); (A)
   whatever makes the 4.7 gate required; (S) the decision to revert when the `Stop` hook
-  reports a half-scene twice.
+  reports a half-scene twice;
+- if 4.10 was installed: that each developer on Codex trusts the project's hooks once,
+  and whether step 8 of Phase 6 was run under Codex or is still owed, and by whom.
 
 ---
 
 ## Appendix A — `.claude/hooks/check-unit.mjs`
 
-Fill the per-repo block from Phase 3. Everything else is fixed.
+Fill the per-repo block from Phase 3. Everything else is fixed, the licence line included.
 
 ```js
 #!/usr/bin/env node
+// Copyright (c) 2026 Erez Schatz, https://github.com/erezschatz/unities. SPDX-License-Identifier: MIT
 // A scene is complete or it is nothing. SCENE says how long a scene is:
 //   "commit" (strict)  : every commit; --staged and --branch refuse.
 //   "pr"     (adapted) : the pull request; --pr refuses, --staged and --branch warn.
 //
-//   --pr <base>     : what the PR changes against its target     (gate; always enforces)
+//   --pr <target>   : what the PR changed since it forked from its target (gate; always enforces)
 //   --staged        : what `git commit` is about to record       (pre-commit, PreToolUse)
 //   --branch [base] : the scene so far, committed or not         (Stop)
+//
+//   --codex, after the mode: the caller is Codex's hooks, not Claude Code's (4.10). The
+//   checks are the same; only how an adapted Stop reaches the agent differs.
 import { execSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -652,7 +836,7 @@ const SCENE = process.env.UNITIES_SCENE ?? "pr";   // "commit" for the strict st
 const RULES = {
   source:  /^src\//,                                 // e.g. /^(src|lib)\//
   test:    /^tests?\//,                              // e.g. /(^tests?\/|\.(test|spec)\.[cm]?[jt]sx?$)/
-  doc:     /^(docs\/|(^|\/)(README|CLAUDE)\.md$)/,   // docs also live beside code
+  doc:     /^(docs\/|(^|\/)(README|CLAUDE|AGENTS)\.md$)/,   // docs also live beside code
   task:    /^tasks\/(?!README\.md$)[^/_][^/]*\.md$/, // excludes README.md and _template.md
   shared:  /^CHANGELOG\.md$/,                        // compiled; never edited or deleted by hand
   retired: /^(TODO\.md|TASKS\.md|ROADMAP\.md)$/,     // tombstones of the migration; never edited, may be deleted. New project: /^$/
@@ -679,8 +863,11 @@ const REVIEW_EXEMPT = /^(Done before adoption; no record\.|Migrated from )/m;
 // -----------------------------------------------------------------------
 
 const strict = SCENE === "commit";
-const mode = process.argv[2] ?? "--branch";
-const input = process.stdin.isTTY ? {} : JSON.parse((await readStdin()) || "{}");
+const codex = process.argv.includes("--codex");
+const argv = process.argv.slice(2).filter(a => a !== "--codex");
+const mode = argv[0] ?? "--branch";
+// Only the hook modes are handed JSON on stdin; --pr must not wait on a pipe its caller left open.
+const input = mode === "--pr" || process.stdin.isTTY ? {} : JSON.parse((await readStdin()) || "{}");
 const cwd = input.cwd ?? process.cwd();
 const lines = s => s.split("\n").map(l => l.trim()).filter(Boolean);
 
@@ -690,9 +877,17 @@ if (input.hook_event_name === "PreToolUse" &&
 
 let files, base, deleted;   // deleting a tombstone is not editing it
 if (mode === "--pr") {
-  base = process.argv[3];
-  if (!base) fail("usage: check-unit.mjs --pr <base>");
-  if (!adopted(base)) skip(`${base} has no ${SELF}; the record is not required until the target adopts it.`);
+  const target = argv[1];
+  if (!target) fail("usage: check-unit.mjs --pr <target>");
+  // A name git does not know is not a target that has yet to adopt: refuse, do not skip.
+  if (!gitOk(`cat-file commit ${target}`))
+    fail(`${target} is not a commit this checkout knows; check the name, or fetch the branch (a single-branch or shallow clone may not have it).`);
+  if (!adopted(target)) skip(`${target} has no ${SELF}; the record is not required until the target adopts it.`);
+  // The PR's own change, measured from where it forked. The target's tip may have
+  // moved on since, and its new commits are not this PR's.
+  if (!gitOk(`merge-base ${target} HEAD`))
+    fail(`no merge base between ${target} and HEAD; the checkout needs the history back to where the branch forked (a shallow clone may not have it).`);
+  base = git(`merge-base ${target} HEAD`).trim();
   files = lines(git(`diff --name-only ${base} HEAD`));
   deleted = lines(git(`diff --name-only --diff-filter=D ${base} HEAD`));
 } else if (mode === "--staged") {
@@ -709,7 +904,7 @@ if (mode === "--pr") {
   if (strict) {
     base = "HEAD";
   } else {
-    base = process.argv[3] ?? BASE;
+    base = argv[1] ?? BASE;
     if (!gitOk(`rev-parse -q --verify ${base}`) || !adopted(base)) process.exit(0);
     base = git(`merge-base ${base} HEAD`).trim();
   }
@@ -840,11 +1035,15 @@ if (strict) {
 
 const note = `${reason} ${what} is fine to keep, but the pull request will be refused until it is complete.`;
 if (input.hook_event_name === "Stop") {
-  // Advise the agent once, in its own context, so it can act; never block.
-  if (!input.stop_hook_active)
-    console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "Stop", additionalContext: note } }));
-  else
+  // Advise the agent once, in its own context, so it can act; never refuse the scene.
+  // Claude Code takes the note as additionalContext. Codex has no such field at Stop: its
+  // one channel to the agent is to continue the turn with the note as the prompt.
+  if (input.stop_hook_active)
     console.log(JSON.stringify({ systemMessage: note }));
+  else if (codex)
+    console.log(JSON.stringify({ decision: "block", reason: note }));
+  else
+    console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "Stop", additionalContext: note } }));
 } else {
   console.error(note);
 }
@@ -1067,6 +1266,9 @@ Outside input enters here and nowhere else. If it is not a task file, it did not
 
 ## Appendix E — CLAUDE.md paragraph
 
+Where another agent works here (4.10) the paragraph goes in `AGENTS.md`, unchanged. It
+names no agent: "a Stop hook" and "a reader" are whichever the developer's agent has.
+
 Strict:
 
 ```md
@@ -1074,7 +1276,8 @@ Strict:
 
 The work, its record and its location are the same thing at the same time. Every commit
 that changes source also carries its test, its doc line and a `## What was done` section
-appended to the task file in `tasks/`. This is enforced, not requested: a Stop hook
+appended to the task file in `tasks/`, read cold against the diff by a reader that did not
+write it: code, test, document, review are one unit. This is enforced, not requested: a Stop hook
 refuses to end a turn with a half-recorded change, and `git commit` refuses an incomplete
 scene (`.claude/hooks/check-unit.mjs`). `CHANGELOG.md` is compiled from task records at
 release (`npm run changelog -- <version>`) and is never edited by hand. If a change cannot
@@ -1086,8 +1289,10 @@ they are compiled from the task files (`npm run record`), the commit carries the
 compiler's output, and the gate refuses one where they are out of date. A review item
 (`## Review` in the task file) is done when every *Done when* line holds for the running
 program, not when its wording is satisfied; whatever a fix needs beyond its item is
-recorded as a decision before it is built. Before committing, have a reader that
-has not seen the work check that the task record describes the diff. The agent does not
+recorded as a decision before it is built. Before committing, give the staged diff and
+the task file to a reader that has not seen the work — a read-only subagent, never
+yourself — to carry out `docs/reviewer.md`; write what it finds into the task file and
+its name on the record's `Reviewed by:` line. The agent does not
 claim a build is green or a feature works where it runs; <who> does. The developer's side
 of all this is `docs/working-on-a-task.md`.
 ```
@@ -1099,7 +1304,9 @@ Adapted:
 
 The work, its record and its location are the same thing at the same time. Every pull
 request that changes source also carries its test, its doc line and a `## What was done`
-section appended to the task file in `tasks/`. Commits on the way are free: a stage may be
+section appended to the task file in `tasks/`, read cold against the diff by a reader that
+did not write it: code, test, document, review are one unit, and the pull request is
+opened with all four done. Commits on the way are free: a stage may be
 committed to keep one's place before its record exists. This is enforced at the pull
 request, not at the commit: the gate runs `.claude/hooks/check-unit.mjs --pr` — as a CI
 job, or in the tool that merges — and the PR cannot merge with an incomplete scene.
@@ -1115,8 +1322,12 @@ this branch is in its task file and not yet in `docs/DECISIONS.md`. A review ite
 (`## Review` in the task file) is done when every *Done when* line holds for the running
 program, not when its wording is satisfied; whatever a fix needs beyond its item is
 recorded as a decision before it is built. Before
-committing a record, have a reader that has not seen the work check that it describes the
-diff. The agent does not claim a build is green or a feature works where it runs; <who>
+committing a record, and in any case before the pull request is opened, give the diff
+and the task file to a reader that has not seen the work — a read-only subagent, never
+yourself — to carry out `docs/reviewer.md`; write what it finds into the task file and
+its name on the record's `Reviewed by:` line. Where the tool that merges asks the same
+questions again, what the reader finds here is what does not come back from there. The
+agent does not claim a build is green or a feature works where it runs; <who>
 does. The developer's side of all this is `docs/working-on-a-task.md`.
 ```
 
@@ -1131,6 +1342,7 @@ no timestamps finer than the date, no environment-dependent ordering.
 
 ```js
 #!/usr/bin/env node
+// Copyright (c) 2026 Erez Schatz, https://github.com/erezschatz/unities. SPDX-License-Identifier: MIT
 // compile-changelog <version> [--since <ref>] [--dry-run]
 // The only writer CHANGELOG.md has. Reads "## What was done" sections added to tasks/
 // since the last release and prepends them under a version heading.
@@ -1238,10 +1450,11 @@ every check above. Before committing a record, a reader that has not seen the wo
 the staged diff cold against the task file and answers one question: does the
 `## What was done` section describe this change — nothing claimed that the diff does not
 do, nothing significant left out? In Claude Code that is a subagent with read-only tools,
-invoked explicitly before `git commit`; for a person, a colleague. Its verdict is
+invoked explicitly before `git commit`; in Codex, the read-only agent of
+`.codex/agents/unities-reader.toml` (4.10, Appendix L); for a person, a colleague. Its verdict is
 advisory; its value is that it did not write the record it is checking. In practice it
 earns its place: it routinely finds the decision or the side change the writer forgot to
-mention; a decision it finds goes under `## Decisions` in the same task file. It is also the one step of the form that is an instruction rather than a gate,
+mention; a decision it finds goes under `## Decisions` in the same task file. It is a member of the unit like the test and the doc line (§0), and the one member that is an instruction rather than a gate,
 so the gate asks for its trace: the record's last line, `Reviewed by: <who>`, and a
 record without it is an incomplete scene (4.7). The line says a reading happened, not
 that it was good; that is as far as presence-checking goes.
@@ -1262,8 +1475,55 @@ questions, and the same reader answers all three in one pass:
 Its findings are written as a `## Review` section in the same task file, in the item
 shape of Appendix D, so that a verifier's finding and a person's review are the same
 thing to the developer and to the gate. It ticks the boxes it found to hold and leaves
-the others open. Run by hand in Claude Code today or by the merging tool before it
-merges, it is one procedure: the oars, not the helm.
+the others open. Run by the developer's agent before the pull request, by a colleague,
+or by the merging tool before it merges, it is one procedure: the oars, not the helm.
+
+**The brief.** The three questions and the shape of the answer are a file,
+`docs/reviewer.md`, so that each of those readers is given the same words. A reader run
+twice on one diff, once on the developer's side and once at the merge, is one review at
+two moments and will mostly find the same things; the point of the first is that the
+developer fixes them before the second. Write it as below (4.6):
+
+```md
+# The reader's brief
+
+You are reading a change you did not write and have not watched being written. You are
+given a diff and the task file (or files) in `tasks/` that the diff touches. Change
+nothing. Read the diff cold against the task file and answer three questions.
+
+1. **Does the record describe the diff?** For each `## What was done` section the diff
+   adds: is anything claimed that the diff does not do, and is anything significant in
+   the diff left out of it?
+2. **Does each review item hold?** For each item under `## Review` that this change
+   answers: does every *Done when* line hold, checked against the code path and not
+   against the item's wording or a test's name? A test that asserts the text of a source
+   file, or that a field is filled which nothing reads, does not show that a line holds.
+3. **What else did the change do?** A schema change, a migration, a new direct
+   dependency, a changed caller of something it altered, anything an item's *Not asked*
+   names. Is each of those an entry under `## Decisions` in the task file?
+
+Answer in this shape and nothing else. If all three hold, say so in one line. Otherwise
+one item per finding, in the form `tasks/README.md` gives for a review:
+
+    ### <the finding, in a few words>
+
+    **Found** — <file and place, and what happens now>
+
+    **Done when**
+
+    - [ ] <case> → <outcome>
+    - [ ] <every other case of the same thing, including those that must not change> → <outcome>
+
+    **Not asked** — <what the fix must not add>
+
+A *Done when* line is a state of the running program, never an instruction. Name every
+case of the thing the finding touches. For question 2, also list which existing boxes
+you found to hold and which you did not.
+
+Whoever asked you writes your findings into the task file as a `## Review · <date>`
+section and names you on the record's `Reviewed by:` line. Your verdict is advisory; its
+value is that you did not write what you are checking.
+```
 
 **How the reviewer is run.** The review belongs to the same scene as the record, so the
 agent waits for it. Where the `Agent` tool takes `run_in_background`, run the reviewer
@@ -1308,6 +1568,21 @@ Deno example for `.claude/settings.json`:
 Keep the permission list that narrow; if Deno asks for more, grant that one name, not
 `-A`. A hook with `-A` is a hook nobody reads.
 
+`.codex/hooks.json` (4.10, Appendix L) takes one `command` string and no `args`, and has
+no project-directory variable, so the same invocation is written as one line that finds
+the repository root itself, with `--codex` after the mode:
+
+| Runtime | `command` in `.codex/hooks.json` |
+| --- | --- |
+| Node | `node "$(git rev-parse --show-toplevel)/.claude/hooks/check-unit.mjs" --branch --codex` |
+| Deno | `deno run --allow-run=git,deno --allow-read --allow-env=TF_BUILD,UNITIES_SCENE "$(git rev-parse --show-toplevel)/.claude/hooks/check-unit.mjs" --branch --codex` |
+| Bun | `bun run "$(git rev-parse --show-toplevel)/.claude/hooks/check-unit.mjs" --branch --codex` |
+
+That line needs a POSIX shell. Where a developer runs Codex on Windows outside WSL,
+Codex takes a separate `commandWindows` for the same handler; write it for the shell
+Codex uses there and run step 8 of Phase 6 on that machine, because this document has
+not.
+
 ## Appendix I — the gate in Azure DevOps
 
 Azure Repos ignores `pr:` triggers in YAML. Register this pipeline as a Build Validation
@@ -1324,8 +1599,9 @@ steps:
   # A PR build checks out the merge of the PR into its target: HEAD^1 is the target,
   # so HEAD^1..HEAD is exactly what the PR would change. Depth 2 reaches it.
   # This relies on the policy's default merge-commit checkout. If the policy is ever
-  # switched to a rebase or squash build, HEAD^1 is no longer the target; use the
-  # merge-base form from 4.7 instead.
+  # switched to a rebase or squash build, HEAD^1 is no longer the target; pass the
+  # target branch instead (`--pr origin/<target>`) with `fetchDepth: 0`, so the script
+  # can find where the branch forked (4.7).
   - checkout: self
     fetchDepth: 2
     clean: true
@@ -1388,13 +1664,17 @@ Fill the per-repo paths with one file in each role that `RULES` matches. The tes
 throwaway repositories, so they need git and nothing else. They pin the behaviour the
 practice depended on: the gate at the pull request, free commits in adapted, refused
 commits in strict, merges that do not re-check the other branch's scenes, a target that
-has not adopted yet, tombstones that may be deleted but not edited, the release check,
+has not adopted yet, a target that moved on after the branch forked, tombstones that may
+be deleted but not edited, the release check,
 review rounds whose items must name their cases and be closed before merge,
 and the compiled record: numbers that never change, a pull request that may not touch
 `docs/DECISIONS.md` or `docs/PLAN.md`, the compile that may, and the strict commit that
-must carry them up to date.
+must carry them up to date; and that the same script called from Codex's hooks
+(`--codex`, 4.10) checks the same things and differs only in how an adapted `Stop`
+reaches the agent.
 
 ```js
+// Copyright (c) 2026 Erez Schatz, https://github.com/erezschatz/unities. SPDX-License-Identifier: MIT
 // Run with: node --test .claude/hooks/check-unit.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -1554,6 +1834,23 @@ test("a pull request into a target that has not adopted the hook is not checked"
   write(SHARED, "hand edit\n");
   commit("edit");
   assert.equal(run(dir, ["--pr", "main"]).status, 0);
+});
+
+test("a target the checkout does not know is an error, not a target that has not adopted", () => {
+  const { dir, git, write, commit } = repo();
+  git("checkout -q -b feature");
+  write(SOURCE, "changed\n");
+  commit("wip");
+  const result = run(dir, ["--pr", "origin/mian"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /origin\/mian is not a commit this checkout knows/);
+  // A commit id the checkout never fetched, and a name that is not a commit, are refused too.
+  const unfetched = "1234567890123456789012345678901234567890";
+  for (const name of [unfetched, `main:${SOURCE}`]) {
+    const other = run(dir, ["--pr", name]);
+    assert.equal(other.status, 2, name);
+    assert.match(other.stderr, /is not a commit this checkout knows/);
+  }
 });
 
 test("on a CI merge commit, HEAD^1 is the target and only the PR's changes count", () => {
@@ -1733,6 +2030,57 @@ test("strict: the Stop hook sends the agent back once, then lets go and tells th
   assert.equal(run(dir, ["--branch"], { scene: "commit", stdin: stop(false) }).status, 0);
 });
 
+// ---- the same script, called from Codex's hooks (4.10) ----
+
+test("codex, adapted: the Stop hook continues the turn once with the note, then lets go and tells the person", () => {
+  const { dir, git, write, commit } = repo();
+  git("checkout -q -b feature");
+  write(SOURCE, "stage 1\n");
+  commit("stage-1");
+  const stop = (active) => JSON.stringify({ hook_event_name: "Stop", cwd: dir, turn_id: "t1", stop_hook_active: active });
+  const first = run(dir, ["--branch", "--codex", "main"], { stdin: stop(false) });
+  assert.equal(first.status, 0);
+  const told = JSON.parse(first.stdout);
+  assert.equal(told.decision, "block");
+  assert.match(told.reason, /no \w+ change/);
+  assert.match(told.reason, /fine to keep/);
+  assert.equal(told.hookSpecificOutput, undefined);   // Codex documents no such field at Stop
+  const second = run(dir, ["--branch", "--codex", "main"], { stdin: stop(true) });
+  assert.equal(second.status, 0);
+  assert.match(JSON.parse(second.stdout).systemMessage, /no \w+ change/);
+  complete(write);
+  assert.equal(run(dir, ["--branch", "--codex", "main"], { stdin: stop(false) }).stdout, "");
+});
+
+test("codex: the flag is not read as the base, wherever it stands", () => {
+  const { dir, git, write, commit } = repo();
+  git("checkout -q -b feature");
+  write(SOURCE, "changed\n");
+  commit("wip");
+  const plain = run(dir, ["--pr", "main"]);
+  for (const args of [["--pr", "--codex", "main"], ["--pr", "main", "--codex"]]) {
+    const flagged = run(dir, args);
+    assert.equal(flagged.status, plain.status);
+    assert.equal(flagged.stderr, plain.stderr);
+  }
+});
+
+test("codex, strict: Stop and PreToolUse refuse as they do under Claude Code", () => {
+  const { dir, write, git } = repo();
+  write(SOURCE, "wip\n");
+  const stop = (active) => JSON.stringify({ hook_event_name: "Stop", cwd: dir, turn_id: "t1", stop_hook_active: active });
+  const first = run(dir, ["--branch", "--codex"], { scene: "commit", stdin: stop(false) });
+  assert.equal(first.status, 2);
+  assert.match(first.stderr, /no \w+ change/);
+  const second = run(dir, ["--branch", "--codex"], { scene: "commit", stdin: stop(true) });
+  assert.equal(second.status, 0);
+  assert.match(JSON.parse(second.stdout).systemMessage, /no \w+ change/);
+  git("add -A");
+  const pre = (command) => JSON.stringify({ hook_event_name: "PreToolUse", cwd: dir, tool_name: "Bash", tool_input: { command } });
+  assert.equal(run(dir, ["--staged", "--codex"], { scene: "commit", stdin: pre("npm test") }).status, 0);
+  assert.equal(run(dir, ["--staged", "--codex"], { scene: "commit", stdin: pre("git commit -m wip") }).status, 2);
+});
+
 // ---- the compiled record: docs/DECISIONS.md and docs/PLAN.md ----
 
 const decision = (date, title, extra = "") =>
@@ -1804,6 +2152,39 @@ test("adapted: a pull request that touches the compiled record is refused, by ha
   const result = run(dir, ["--pr", "main"]);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /compiled record edited in this scene: docs\/PLAN\.md/);
+});
+
+test("what the target did after the branch forked is not the pull request's doing", () => {
+  const { dir, git, write, commit, compile } = repo();
+  git("checkout -q -b feature");
+  write(SOURCE, "changed\n");
+  complete(write);
+  commit("feature");
+  git("checkout -q main");
+  write("tasks/2-u.md", taskWith(decision("2026-11-19", "Decided on the target")));
+  compile();   // the merge man recompiled the record on the target; the branch is now behind
+  commit("main");
+  git("checkout -q feature");
+  const ok = run(dir, ["--pr", "main"]);
+  assert.equal(ok.status, 0, ok.stderr);
+  // A caller that still passes the fork point itself gets the same answer.
+  assert.equal(run(dir, ["--pr", git("merge-base main HEAD").trim()]).status, 0);
+  // And the branch's own edit to the compiled record is still refused.
+  write(DECISIONS, "by hand\n");
+  commit("by-hand");
+  const own = run(dir, ["--pr", "main"]);
+  assert.equal(own.status, 1);
+  assert.match(own.stderr, /compiled record edited in this scene: docs\/DECISIONS\.md/);
+});
+
+test("a pull request with no history in common with its target stops with an error", () => {
+  const { dir, git, write, commit } = repo();
+  git("checkout -q --orphan elsewhere");
+  write(SOURCE, "changed\n");
+  commit("elsewhere");
+  const result = run(dir, ["--pr", "main"]);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /no merge base between main and HEAD/);
 });
 
 test("the compiled record does not count as the doc change", () => {
@@ -1952,6 +2333,7 @@ function of the work tree: the gate runs it with `--check` and compares.
 
 ```js
 #!/usr/bin/env node
+// Copyright (c) 2026 Erez Schatz, https://github.com/erezschatz/unities. SPDX-License-Identifier: MIT
 // compile-record [--check]
 // The only writer docs/DECISIONS.md and docs/PLAN.md have. Both are compiled from the
 // task files: decisions from their `## Decisions` sections, the plan's steps from the
@@ -2067,4 +2449,66 @@ for (const [path, out] of outputs) {
 console.log(stale.length
   ? `${stale.join(", ")}: ${decisions.length} decision(s), ${fresh.length} new, from ${tasks.length} task file(s)`
   : "the compiled record is up to date");
+```
+
+## Appendix L — other agents (4.10)
+
+Written from Codex's documentation as of 2026-11-15; not run under Codex when this
+version was written (4.10, and step 8 of Phase 6).
+
+`CLAUDE.md`, once the instructions have moved to `AGENTS.md`. The import line is the
+whole file unless the person keeps something for Claude Code alone, which goes under it:
+
+```md
+@AGENTS.md
+```
+
+`.codex/hooks.json`, both stagings, with the `command` for the repo's runtime from
+Appendix H. Merge into an existing file as 4.2 does for `.claude/settings.json`; skip if
+an entry already references `check-unit.mjs`:
+
+```json
+{
+  "hooks": {
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "node \"$(git rev-parse --show-toplevel)/.claude/hooks/check-unit.mjs\" --branch --codex",
+        "timeout": 60
+      }]
+    }]
+  }
+}
+```
+
+Strict adds the refusal at `git commit`. Codex has no `if` filter; the script checks for
+itself that the command is a commit and lets anything else through:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "^Bash$",
+      "hooks": [{
+        "type": "command",
+        "command": "node \"$(git rev-parse --show-toplevel)/.claude/hooks/check-unit.mjs\" --staged --codex",
+        "timeout": 60
+      }]
+    }]
+  }
+}
+```
+
+`.codex/agents/unities-reader.toml`, the reader of Appendix G. Its instruction is a
+pointer, not a copy: the questions live in `docs/reviewer.md`.
+
+```toml
+name = "unities_reader"
+description = "Reads a change cold against its task file before the record is committed. Read-only; it has not seen the work."
+sandbox_mode = "read-only"
+developer_instructions = """
+You have not seen this work being done and you change nothing.
+Read docs/reviewer.md and carry it out on the diff and the task file you are given.
+Answer in the shape that file gives, and nothing else.
+"""
 ```

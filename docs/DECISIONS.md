@@ -761,3 +761,19 @@ that other markdown renderers collapse the gap, and that existing files with
 stray double blank lines will show them.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D21 · 2026-11-19 · Claude Code is the only agent here
+
+**Decision** — Nobody works in this repository with another agent, so the
+procedure's 4.10 is not installed: the instructions stay in CLAUDE.md, and
+there is no `AGENTS.md`, no `.codex/hooks.json` and no Codex reader. The check
+script's `doc` role names `AGENTS.md` anyway, as the procedure's does, so the
+file counts as a doc line the day it exists.
+**Rejected** — Installing 4.10: moving CLAUDE.md to `AGENTS.md` behind a
+one-line import and adding the Codex bindings, which nobody here would run and
+nobody could verify.
+**Why** — Asked once, as the procedure says for a repository adopted before
+0.5.0, and answered by Erez on 2026-11-19. Revisit the day a second agent
+works here.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
