@@ -888,3 +888,21 @@ line ending is not one of them (D26); a pure function that is right for every
 input is the cheapest place to keep that true.
 
 Source: [tasks/1.14-crlf-wrap-width.md](../tasks/1.14-crlf-wrap-width.md)
+
+## D28 · 2026-11-20 · Only a block that renders bare keeps its edge whitespace
+
+**Decision** — The rendering trim keeps a block's own edge whitespace only for
+a block whose opening token is hidden, a tight item's paragraph, and trims
+every other rendering whole. A block with an inline tree and no opening token
+to ask is treated as bare too, keeping the older and more careful answer; none
+of the oracle's 1,093 inline-bearing leaves takes that branch.
+**Rejected** — Leaving the trim as it was and removing the whitespace text
+nodes beside a block's element after it is built; and asking whether the
+rendering ends in a closing tag.
+**Why** — The first cleans up after a wrong answer rather than giving the right
+one, and would have to tell a paragraph's own text from markdown-it's line end
+again. The second cannot tell `a <strong>b</strong> `, a bare paragraph whose
+trailing space is content, from `<p>a </p>`. Whether the block has a tag of its
+own is the one fact that decides it, and the token says so.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)

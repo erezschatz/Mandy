@@ -85,7 +85,7 @@ export default function run(check) {
     modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice,
     modelSourceText, modelEnsureBlock, modelFlatten, modelIsEmptyBlock,
     modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource,
-    modelInlineLeaves, modelTrimRendering,
+    modelInlineLeaves, modelTrimRendering, modelRendersBare,
     modelInsertBlocks, modelTextBlocks, modelAdoptBlocks,
     modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection, modelBlockById,
     modelMathCandidates, modelMathConvert, modelMathReveal, modelHoldSpaces, modelVerifyRender,
@@ -120,7 +120,7 @@ export default function run(check) {
       " modelIndentItem, modelOutdentItem, modelEmptyItemKey, modelSourceSplice," +
       " modelSourceText, modelEnsureBlock, modelFlatten, modelIsEmptyBlock," +
       " modelPruneBlock, modelFillItem, modelItemAncestor, modelBearsSource," +
-      " modelInlineLeaves, modelTrimRendering," +
+      " modelInlineLeaves, modelTrimRendering, modelRendersBare," +
       " modelInsertBlocks, modelTextBlocks, modelAdoptBlocks," +
       " modelForkDocument, modelUnshare, modelRecordSelection, modelResolveSelection," +
       " modelBlockById, modelMathCandidates, modelMathConvert, modelMathReveal," +
@@ -3691,6 +3691,19 @@ export default function run(check) {
       const got = modelTrimRendering(html, keep);
       check(`${label} (${JSON.stringify(got)})`, got === want);
     }
+
+    // **Only a block that renders bare passes its text.** A paragraph being
+    // typed ends in a space after every word, and passed as `keep` that space
+    // held markdown-it's newline back outside the `</p>`: a text node beside
+    // the paragraph that no block owns, one per word, which Firefox copies as
+    // blank lines. Found 2026-11-20 by task 1.12's song spec. The comment is
+    // a paragraph, since the parser has HTML off; it only parts the lists.
+    const typed = modelTrimRendering("<p>Over </p>\n", null);
+    check(`a paragraph being typed keeps no newline beside its tags (${JSON.stringify(typed)})`, typed === "<p>Over </p>");
+    const doc = parse("Top\n\n# Head\n\n- tight\n- item\n\n<!-- -->\n\n- loose\n\n- one\n\n| a |\n| - |\n| b |\n");
+    const bare = Object.fromEntries(textLeaves(doc).map((leaf) => [modelInlineText(leaf.inlines), modelRendersBare(leaf)]));
+    check(`only a tight item's paragraph renders bare (${JSON.stringify(bare)})`,
+      JSON.stringify(bare) === JSON.stringify({ Top: false, Head: false, tight: true, item: true, "<!-- -->": false, loose: false, one: false, a: false, b: false }));
   }
 
   {

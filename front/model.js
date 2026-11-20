@@ -2522,16 +2522,34 @@ function modelOwnedElement(parent, from) {
  * heuristic: it is the invariant `modelVerifyRender` checks, applied where the
  * markup is built instead of being asserted about afterwards.
  */
+// Whether a block with an inline tree renders as bare text, with no tag of its
+// own around it: markdown-it's hidden paragraph in a tight list item. Every
+// other such block opens with a token that renders a tag. A block with no
+// opener to ask is treated as bare, which is the trim's older and more careful
+// answer.
+function modelRendersBare(block) {
+  if (!block.inlines) return false;
+  const open = block.tokens && block.tokens[0];
+  return !open || open.nesting !== 1 || !!open.hidden;
+}
+
 /**
  * Strip markdown-it's own edge whitespace from a rendering, and not a character
  * more.
  *
- * `keep` is the block's text as the model holds it. Whatever whitespace that
- * text carries at an edge is content and stays; the rest is the parser's
- * pretty-printing and goes. For a block whose rendering is tags at both ends
- * — which is most of them — `keep` has no edge whitespace and this is exactly
- * a `trim()`. For a hidden tight-item paragraph, whose rendering is bare text,
- * it is exactly a no-op. The two cases need no telling apart.
+ * `keep` is the block's text as the model holds it, or null for a block whose
+ * rendering is its own tags at both ends. Whatever whitespace that text carries
+ * at an edge is content and stays; the rest is the parser's pretty-printing and
+ * goes. For a hidden tight-item paragraph, whose rendering is bare text, it is
+ * exactly a no-op.
+ *
+ * **The two cases do need telling apart**, which `modelRendersBare` does. Until
+ * 2026-11-20 every block with an inline tree passed its text, on the belief
+ * that a block wrapped in tags has no edge whitespace — and a paragraph being
+ * typed has one after every word. `<p>Over </p>\n` kept its trailing `\n`
+ * against the space, outside the `</p>`, as a text node beside the paragraph
+ * that no block owns; one more for every word, until the next whole render
+ * cleared them. Firefox writes them into a copy's plain text as blank lines.
  *
  * It also settles a second one nobody had hit: a hidden paragraph ending in a
  * hard break renders `a<br>\n`, and that final newline **is** the break's one
@@ -2539,8 +2557,9 @@ function modelOwnedElement(parent, from) {
  * the same way.
  */
 function modelTrimRendering(html, keep) {
-  const keepLead = keep === null ? 0 : /^\s*/.exec(keep)[0].length;
-  const keepTail = keep === null ? 0 : /\s*$/.exec(keep)[0].length;
+  if (keep === null) return html.trim();
+  const keepLead = /^\s*/.exec(keep)[0].length;
+  const keepTail = /\s*$/.exec(keep)[0].length;
   const lead = /^\s*/.exec(html)[0].length;
   let out = html.slice(Math.max(0, lead - keepLead));
   const tail = /\s*$/.exec(out)[0].length;
@@ -2565,7 +2584,7 @@ function modelBuildBlock(parent, block, md, env) {
   } else {
     parent.insertAdjacentHTML(
       "beforeend",
-      modelTrimRendering(modelRenderBlock(block, md, env), block.inlines ? modelInlineText(block.inlines) : null),
+      modelTrimRendering(modelRenderBlock(block, md, env), modelRendersBare(block) ? modelInlineText(block.inlines) : null),
     );
   }
 

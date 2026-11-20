@@ -1242,7 +1242,12 @@ cleared everywhere. Seven steps, and the ones worth knowing from outside:
   in a hard break, whose final newline *is* the break's one character. The
   **file** still gains no trailing whitespace, since markdown strips it on the
   next parse: the last composed line is trimmed on the way out, and only ever
-  the last, because a hard break's two spaces are never on it.
+  the last, because a hard break's two spaces are never on it. **Only a block
+  that renders bare keeps its edge whitespace** (`modelRendersBare`), and that
+  is 2026-11-20's fix: every block with text kept it until then, so a paragraph
+  being typed, which ends in a space after every word, held markdown-it's line
+  end back outside its `</p>` — a text node beside it that no block owns, which
+  Firefox copied as a blank line.
 - **Two engines out of three put a caret inside the table anyway** — history
   since stage 3's slice 4, which took the refusal away. The
   refusal's signal was meant to be the rendering — an engine will not put a

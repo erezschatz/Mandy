@@ -11089,7 +11089,7 @@ cover both decisions, the reopened song, untouched round trips, what
 is and is not read, seven edits around a gap, a fork, the quote unwrap, and the
 quote exit. Also fills `9f223f5` into the previous entry's header.
 
-## 2026-11-19 — Tasks 1.13 and 1.14 merge into `main`, beside task 1.12
+## 2026-11-19 — `931502b` — Tasks 1.13 and 1.14 merge into `main`, beside task 1.12
 
 The CRLF branch, `claude/brave-hugle-8bca3a`, merges into `main`: task 1.13,
 which holds a CRLF file as LF and writes its ending back, and task 1.14, which
@@ -11117,3 +11117,38 @@ since both sides had bumped it to `v1.99`. `npm test` passes, 2174 checks:
 `main`'s 2140, the branch's 27 and the seven new ones. Playwright is 365 passed
 with the one recorded Firefox failure. Also fills `d0487ba` and `27ea5e3` into
 the two headers that were waiting for them.
+
+## 2026-11-20 — Task 1.12's stage 4: a song keeps its gaps the whole way round
+
+`tests/browser/song-round-trip.spec.mjs` types a short song with Enter after
+every line and an extra Enter between its verses, saves it to a scratch file
+through the file API, reloads the page so it comes back through the autosave,
+and opens the file again, checking the screen and the bytes after each. It
+then types a word into the first gap and saves, and the word comes back as a
+line of its own with one blank line on each side. Copy markdown, with its
+clipboard replaced so the text it was handed can be read, and the editor's
+copy handler, reached by a constructed `copy` event after Ctrl/Cmd+A, are
+checked against the same bytes. It passes in Chromium, Firefox and WebKit.
+
+It found a bug that predates task 1.12. Every word typed into a paragraph left
+a line end beside it in the editor, outside any block, one per space typed,
+until the next Enter redrew the whole document. They were invisible, and
+Firefox copied them as blank lines at the end of a Ctrl/Cmd+C. The cause was
+the rendering trim from 2026-09-21, which keeps back a block's own edge
+whitespace so a tight list item's bare paragraph keeps a trailing space. Every
+block with text was handed that rule, and a paragraph being typed ends in a
+space after every word, so its trailing space held markdown-it's line end back
+outside the `</p>`. Now only a block that renders as bare text keeps its edge
+whitespace (`modelRendersBare` in `front/model.js`), and every other one is
+trimmed whole. The song spec checks no text is left beside the paragraphs
+after typing, and fails in all three engines without the fix; two model-suite
+checks pin the trim and which blocks render bare.
+
+A document typed from empty is still saved with no final line end, as it was
+before; the spec expects that. `front/sw.js`'s `VERSION` goes to `v1.101`.
+`npm test` passes, 2176 checks; Playwright is 368 passed with the one recorded
+Firefox failure. The user's hand runs of tasks 1.13 and 1.14 on 2026-11-20 are
+recorded in their task files: a CRLF file edited in Firefox stays CRLF, a new
+break in a backslash-break file is a backslash, and a lengthened paragraph
+wraps at the file's 60 columns. Also fills `931502b` into the previous entry's
+header.
