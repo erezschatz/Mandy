@@ -999,3 +999,18 @@ tall where a gap at the top level is one; one Word paragraph per child gives
 both the same spacing as the rest of the document.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D36 · 2026-11-21 · A pasted gap is marked with a NUL on its way through Turndown
+
+**Decision** — The `mandyGap` Turndown rule writes a marked gap as a line
+holding `\u0000G`, which `htmlFragmentToMarkdown` then removes, leaving the
+extra blank line.
+**Rejected** — A private-use character such as U+E000, chosen to be absent from
+the fragment; and a bare blank line.
+**Why** — Measured 2026-11-21: Turndown drops U+E000 from a rule's output, so the
+mark vanished before it could be removed, and it collapses blank lines between
+blocks to one, so a bare blank line would be lost the same way. A NUL survives
+Turndown, as the table rules' marks already rely on, and parsed HTML cannot hold
+one, so it can only ever be the mark.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)

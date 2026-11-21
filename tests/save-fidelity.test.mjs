@@ -363,6 +363,12 @@ function ghostChecks(check, isGhostElement) {
   check("an empty <b> is a ghost", isGhostElement(el("b")));
 
   check("a <p> with text is not", !isGhostElement(el("p", "hello")));
+  // A gap a copy out of Mandy marked is kept, where the same paragraph from
+  // another application is the ghost it always was (TODO 1.12's stage 5).
+  const marked = nest("p", el("br"));
+  marked.setAttribute("data-mandy-gap", "");
+  check("a <p> holding a <br> that a copy out of Mandy marked as a gap is not", !isGhostElement(marked));
+  check("and the same <p> unmarked still is", isGhostElement(nest("p", el("br"))));
   check("a <span> with text is not", !isGhostElement(el("span", "hello")));
 
   // The asymmetry, which is the only interesting rule in the function. Word and

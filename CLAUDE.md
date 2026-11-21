@@ -1986,7 +1986,10 @@ blocks a paste brings in. It is targeted rather than a round-trip through
 markdown, so a pasted page keeps its bold, links and tables; and
 `isGhostElement` treats `<br>` asymmetrically on purpose — a `<p>` or `<div>`
 holding only one *is* the ghost line Word and Docs emit, while inside an inline
-element it is a real break. The predicate is a pure function because the test
+element it is a real break. **Except a gap copied out of Mandy** (TODO 1.12):
+the copy marks one `data-mandy-gap`, the predicate keeps it, and the `mandyGap`
+Turndown rule writes it as a line `htmlFragmentToMarkdown` then takes out,
+leaving the extra blank line the parse reads back as a gap. The predicate is a pure function because the test
 stub has no HTML parser, so the decision is testable and the walk is not.
 
 **Turndown converts what arrives as HTML**, and nothing else: a paste, a drop,

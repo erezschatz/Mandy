@@ -133,6 +133,28 @@ turndownService.addRule("modelFiller", {
   },
 });
 
+// A gap copied out of Mandy (TODO 1.12's stage 5, part c): the copy marks it
+// with `data-mandy-gap`, and here it becomes a line holding nothing but
+// `PASTE_GAP_MARK`, which `htmlFragmentToMarkdown` then takes out, leaving the
+// blank line a gap is. A line rather than a bare blank line because Turndown
+// collapses blank lines between blocks to one. Marked with a NUL, as the table
+// rules mark their pieces: Turndown keeps it, and parsed HTML cannot hold one,
+// so it cannot be the document's own text (a private-use character was tried
+// first, and Turndown drops U+E000).
+const PASTE_GAP_MARK = "\u0000G";
+turndownService.addRule("mandyGap", {
+  // Only an empty one: a marked paragraph somebody has since typed into is an
+  // ordinary paragraph, and its text goes in as one.
+  filter: function (node) {
+    return node.nodeName === "P" && node.hasAttribute("data-mandy-gap") &&
+      (node.textContent || "").trim() === "" &&
+      Array.from(node.childNodes).every((child) => child.nodeType !== 1 || child.nodeName === "BR");
+  },
+  replacement: function () {
+    return "\n\n" + PASTE_GAP_MARK + "\n\n";
+  },
+});
+
 // Turndown ships no strikethrough rule either -- that one lives in
 // turndown-plugin-gfm too -- so an <s> or <del> fell through to the default and
 // the markup round-tripped as plain text, silently, with the document still
@@ -400,7 +422,14 @@ function shieldCodeEdgeSpaces(html) {
 // to convert this browser's old autosave once.
 function htmlFragmentToMarkdown(html) {
   return turndownService.turndown(shieldCodeEdgeSpaces(normaliseNbsp(html)))
-    .replace(new RegExp(CODE_EDGE_SPACE, "g"), " ");
+    .replace(new RegExp(CODE_EDGE_SPACE, "g"), " ")
+    // Each gap's line goes, quote chain and all, and the blank lines either
+    // side of it stay: one more than between two blocks, which is a gap. A
+    // gap last in the fragment has no line end after it, since Turndown trims
+    // the end; and one that landed anywhere else — a cell, which flattens its
+    // paragraphs — is taken out where it stands, so no mark reaches a file.
+    .replace(/^[ \t>]*\u0000G[ \t]*(?:\n|$)/gm, "")
+    .replace(/[ \t]*\u0000G/g, "");
 }
 
 // The open document as the markdown a save writes — the one question Save,
@@ -890,6 +919,9 @@ const BR_TAG = new Set(["BR"]);
  */
 function isGhostElement(node) {
   if (!node || node.nodeType !== 1) return false;
+  // A gap a copy out of Mandy marked is the one blank line kept (TODO 1.12's
+  // stage 5, part c); Word's and Docs' carry no such mark.
+  if (node.hasAttribute && node.hasAttribute("data-mandy-gap")) return false;
   const inline = GHOST_INLINE_TAGS.has(node.tagName);
   if (!inline && !GHOST_BLOCK_TAGS.has(node.tagName)) return false;
   if ((node.textContent || "").trim() !== "") return false;

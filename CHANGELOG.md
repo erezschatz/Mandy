@@ -11229,7 +11229,7 @@ list, which already held. `front/sw.js`'s `VERSION` goes to `v1.102`. `npm test`
 passes, 2241 checks; Playwright is 374 passed with the one recorded Firefox
 failure. Also fills `459b680` into the previous entry's header.
 
-## 2026-11-21 — Task 1.12's stage 5, part b: the exports show a gap
+## 2026-11-21 — `01cd2ad` — Task 1.12's stage 5, part b: the exports show a gap
 
 The HTML, PDF and Word exports drew no gap where Mandy showed one: the export
 clone stripped the renderer's filler `<br>`, and an empty paragraph has no
@@ -11280,3 +11280,40 @@ holding a heading and a nested quote. The static-export suite is handed the
 app's parser global. `front/sw.js`'s `VERSION` goes to `v1.103`. `npm test`
 passes, 2257 checks; Playwright is 380 passed with the one recorded Firefox
 failure. Also fills `d065d86` into the previous entry's header.
+
+## 2026-11-21 — Task 1.12's stage 5, part c: a paste keeps the gaps copied out of Mandy
+
+Copying a song out of Mandy and pasting it back into Mandy lost its gaps: the
+copy writes a gap into its HTML as a paragraph holding a `<br>`, which is also
+the blank line Word and Google Docs leave, and the paste's `sanitisePastedHtml`
+removes those. Now the copy marks each gap `data-mandy-gap`, `isGhostElement`
+keeps a marked paragraph where it still drops an unmarked one, and a `mandyGap`
+Turndown rule in `front/app.js` writes it as a line holding a NUL mark, which
+`htmlFragmentToMarkdown` takes out, quote chain and all, leaving the extra blank
+line the parse reads back as a gap. A line rather than a blank one because
+Turndown collapses blank lines between blocks to one; a NUL because Turndown
+drops U+E000 from a rule's output, and parsed HTML cannot hold one. A paste from
+anywhere else is unchanged, and a gap pasted into a list item is left out, as
+part a decided. The review found three ways HTML another source built or edited
+could carry the mark into a file, none reachable from Mandy's own copy, all
+fixed: a marked gap last in a fragment, which has no line end after it; one
+inside a table cell, which flattens its paragraphs; and a marked paragraph
+somebody had typed into, whose text the rule threw away and now pastes as an
+ordinary paragraph.
+
+Found on the way and older than this task: a quote pasted anywhere outside a
+quote loses the `>` on every line, gap or no gap — `> q\n> r` pasted into a
+paragraph is written `q\nr` — on the committed model before stage 5 as well.
+The spec copies from inside one quote and pastes into another, which keeps it.
+
+`copy-gap.spec.mjs` copies a song and pastes it into a fresh document, copies a
+quote's gap and pastes it into another quote, pastes another application's
+blank paragraph, pastes a gap into a bullet, and pastes the review's three
+shapes, checking no mark reaches the markdown; the first two fail without the
+change. The paste goes through `modelPasteInto`, the pipeline Ctrl/Cmd+V and
+Edit → Paste reach, since Gecko hands a constructed paste event an empty
+DataTransfer of its own. The save-fidelity suite checks the predicate keeps a
+marked paragraph and still drops an unmarked one. `front/sw.js`'s `VERSION`
+goes to `v1.104`. `npm test` passes, 2259 checks; Playwright is 392 passed with
+the one recorded Firefox failure, and the copy spec 48 passed after the
+review's fixes. Also fills `01cd2ad` into the previous entry's header.

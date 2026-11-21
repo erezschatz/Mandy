@@ -155,3 +155,78 @@ test("a private-use character in the text survives the copy", async ({ page }) =
   await typeLines(page, "x", ["\n", "\n", "y"]);
   expect((await copyAll(page)).text).toBe("x\n\n\ny");
 });
+
+// A paste back into Mandy keeps the gaps a copy out of it marked (TODO 1.12's
+// stage 5, part c), and still drops the blank paragraphs other applications
+// leave. The copy is read off its event; the paste is `modelPasteInto`, the
+// pipeline the editor's own paste event and Edit → Paste both reach, since
+// Gecko hands a constructed paste event an empty DataTransfer of its own.
+async function pasteHtml(page, html, text = "") {
+  await page.evaluate(({ html, text }) => modelPasteInto(html, text), { html, text });
+}
+
+async function intoFresh(page, html, text, start = "x\n") {
+  await open(page, start);
+  await paragraph(page).click();
+  await page.keyboard.press(LINE_END);
+  await pasteHtml(page, html, text);
+  return markdown(page);
+}
+
+test("a song copied out of Mandy and pasted back keeps its gaps", async ({ page }) => {
+  await typeLines(page, "a", ["\n", "b", "\n", "\n", "c", "\n", "d"]);
+  const copied = await copyAll(page);
+  expect(copied.html).toContain("data-mandy-gap");
+  expect(await intoFresh(page, copied.html, copied.text)).toBe("xa\n\nb\n\n\nc\n\nd\n");
+});
+
+// Copied from inside one quote and pasted into another, which keeps the
+// quote: a quote pasted outside any loses its `>` on every line, gap or no gap,
+// which is older than this part and recorded in the task file.
+test("a quote's gap copied out of Mandy and pasted into a quote is kept", async ({ page }) => {
+  await open(page, "> q\n>\n>\n> r\n");
+  const copied = await page.evaluate(() => {
+    const [first, , last] = editor.querySelectorAll("blockquote > p");
+    getSelection().setBaseAndExtent(first.firstChild, 0, last.firstChild, 1);
+    const event = new ClipboardEvent("copy", { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
+    editor.dispatchEvent(event);
+    return { html: event.clipboardData.getData("text/html"), text: event.clipboardData.getData("text/plain") };
+  });
+  expect(copied.html).toContain("data-mandy-gap");
+  await open(page, "> a\n>\n> b\n");
+  await page.locator("#editor blockquote p").first().click();
+  await page.keyboard.press(LINE_END);
+  await pasteHtml(page, copied.html, copied.text);
+  expect(await markdown(page)).toBe("> aq\n>\n>\n> r\n>\n> b\n");
+});
+
+test("blank paragraphs from another application are still dropped", async ({ page }) => {
+  const foreign = "<p>one</p><p><br></p><p>two</p>";
+  expect(await intoFresh(page, foreign, "one\n\ntwo")).toBe("xone\n\ntwo\n");
+});
+
+test("a gap pasted into a list item is left out, as a list holds none", async ({ page }) => {
+  await typeLines(page, "a", ["\n", "\n", "b"]);
+  const copied = await copyAll(page);
+  await open(page, "- x\n- y\n");
+  await page.locator("#editor li").first().click();
+  await page.keyboard.press(LINE_END);
+  await pasteHtml(page, copied.html, copied.text);
+  expect(await markdown(page)).toBe("- xa\n\n  b\n- y\n");
+});
+
+// HTML another source built or edited with Mandy's mark in it: nothing of the
+// mark reaches the file, and a marked paragraph holding text keeps its text.
+test("a marked gap at the end, in a cell, or holding text writes no mark", async ({ page }) => {
+  const clean = (md) => !/[\u0000�]/.test(md);
+  const atEnd = await intoFresh(page, '<p>a</p><p data-mandy-gap=""><br></p>', "a");
+  expect(clean(atEnd), JSON.stringify(atEnd)).toBe(true);
+  expect(atEnd).toBe("xa\n");
+  const alone = await intoFresh(page, '<p data-mandy-gap=""><br></p>', "");
+  expect(clean(alone), JSON.stringify(alone)).toBe(true);
+  const typedInto = await intoFresh(page, '<p>a</p><p data-mandy-gap="">edited text</p><p>b</p>', "");
+  expect(typedInto).toBe("xa\n\nedited text\n\nb\n");
+  const cell = await page.evaluate(() =>
+    htmlFragmentToMarkdown(sanitisePastedHtml('<table><tr><th>h</th></tr><tr><td><p>x</p><p data-mandy-gap=""><br></p><p>y</p></td></tr></table>')));
+  expect(clean(cell), JSON.stringify(cell)).toBe(true);
+});

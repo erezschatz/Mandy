@@ -2085,6 +2085,10 @@ function modelInputClipboard(event, cut) {
       if ((block.parent ? block.parent.kind : null) !== parentKind) return;
       if (!written.slice(0, i).includes(true) || !written.slice(i + 1).includes(true)) return;
       el.replaceChildren(document.createElement("br"));
+      // Marked, so a paste back into Mandy keeps it where it drops the blank
+      // lines other applications leave (part c); the attribute means nothing
+      // to anyone else.
+      el.setAttribute("data-mandy-gap", "");
       gaps.push(el);
     });
   };
