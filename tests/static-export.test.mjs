@@ -134,6 +134,9 @@ export default async function run(check) {
       body: { appendChild() {}, removeChild() {} },
     },
     editor: editorStub,
+    // app.js's parser, which the export hands `modelGapIds` with the open
+    // document; there is none here, so it is never read.
+    md: null,
     // Stubbed rather than loaded: this suite checks the wiring — whether the
     // nav is emitted at all, and where it lands — while outline.test.mjs
     // checks that the entries and the nesting are right.

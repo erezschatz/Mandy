@@ -1622,8 +1622,10 @@ function modelReadQuoteGaps(block, md, mint) {
         const kin = chain[chain.length - 1].children;
         chain.push(kin[kin.length - 1]);
       }
+      // The last node down: a blank-line block in the last item, or the item
+      // itself when it is empty, `-` and then the blank lines.
       const tail = chain[chain.length - 1];
-      if (tail.kind !== "gap" || tail.source === null || chain.some((node) => node.source === null)) continue;
+      if (tail.source === null || chain.some((node) => node.source === null)) continue;
       const lines = tail.source.split("\n");
       let first = lines.length;
       while (first > 0 && blank(lines[first - 1])) first--;
@@ -1643,6 +1645,12 @@ function modelReadQuoteGaps(block, md, mint) {
     // ordinary blank line and reads the rest as gaps, which split the run.
     if (run.kind !== "gap" || run.source === null) continue;
     const lines = run.source.split("\n");
+    // A block before the run that ends in a blank `>` line — an empty item the
+    // tiler gave the blank line after its list to — has written the ordinary
+    // blank line already, so every line of a run opening the gap is extra.
+    const previous = kids[i - 1];
+    const ledIn = !!previous && previous.kind === "list" && previous.source !== null &&
+      blank(previous.source.slice(previous.source.lastIndexOf("\n") + 1));
     const out = [];
     let held = [];
     for (let k = 0; k < lines.length;) {
@@ -1651,7 +1659,9 @@ function modelReadQuoteGaps(block, md, mint) {
       while (end < lines.length && blank(lines[end])) end++;
       const before = k > 0 || i > 0;
       const after = end < lines.length || i < kids.length - 1;
-      if (end - k >= 2 && before && after) {
+      if (k === 0 && ledIn && after) {
+        for (const line of lines.slice(0, end)) out.push({ line });
+      } else if (end - k >= 2 && before && after) {
         held.push(lines[k]);
         out.push({ lines: held });
         for (const line of lines.slice(k + 1, end)) out.push({ line });
@@ -1662,7 +1672,7 @@ function modelReadQuoteGaps(block, md, mint) {
       k = end;
     }
     if (held.length) out.push({ lines: held });
-    if (out.length === 1) continue;
+    if (out.length === 1 && out[0].lines) continue;
     const near = like(i);
     const pieces = out.map((piece, k) => {
       const last = k === out.length - 1;
@@ -2355,8 +2365,10 @@ function modelDocumentMarkdown(doc, md, width = 0) {
  * makes of an extra blank line, and that is written back as the same blank
  * line, so a document opened and saved is still byte for byte the file.
  */
-function modelJoinBlocks(blocks, emit, leading, gaps = false) {
+function modelJoinBlocks(blocks, emit, leading, gaps = false, found = null) {
   const quote = gaps === "quote";
+  let waiting = [];
+  let carried = [];
   let out = leading;
   let separator = "";
   let started = leading !== "";
@@ -2381,15 +2393,28 @@ function modelJoinBlocks(blocks, emit, leading, gaps = false) {
         gap += quote ? line : line || "\n";
         if (quote && lines <= 1) loose = true;
         pending = true;
+        waiting.push(block);
       }
       if (started) separator = block.separator;
       continue;
+    }
+    // Inside a quote a blank `>` line written after a gap is not yet something
+    // for the gap to stand before: if the quote ends there, a parse reads no
+    // gap, so the gap is counted only when a block that is not blank follows.
+    const blankHere = quote && block.kind === "gap" && blankLines(bytes);
+    if (pending || carried.length) {
+      if (found && !blankHere) for (const gapBlock of [...carried, ...waiting]) found.add(gapBlock.id);
     }
     if (pending) {
       // Inside a quote the blank line is a `>` line, in a separator or as a
       // block of its own just written.
       const blank = quote ? blankBlock || /\n[ \t]*>[ \t>]*\n/.test(before) : /\n[ \t]*\n/.test(before);
-      const chain = quote ? (/^[ \t]*(?:>[ \t]?)+/.exec(bytes) || [""])[0].replace(/[ \t]+$/, "") : "";
+      // The chain is the gap's own, off the empty paragraph it stands for, and
+      // only failing that the next block's: a nested quote's `> >` would put
+      // the blank line inside the inner quote.
+      const own = waiting.find((gapBlock) => gapBlock.quotePrefixes && gapBlock.quotePrefixes[0]);
+      const chain = !quote ? "" : own ? own.quotePrefixes[0].replace(/[ \t]+$/, "")
+        : (/^[ \t]*(?:>[ \t]?)+/.exec(bytes) || [""])[0].replace(/[ \t]+$/, "");
       // An Enter's empty paragraph before a block that had no blank line above
       // it — a fence, a heading, a list a paragraph ran straight into — needs
       // the blank line after it made, as the one before it was.
@@ -2405,6 +2430,8 @@ function modelJoinBlocks(blocks, emit, leading, gaps = false) {
     blankBlock = quote && MODEL_QUOTE_BLANK.test(bytes.slice(bytes.lastIndexOf("\n") + 1));
     pending = false;
     loose = false;
+    carried = blankHere ? [...carried, ...waiting] : [];
+    waiting = [];
     gap = "";
     started = true;
     // Blank `>` lines at the very start of a quote are not something written
@@ -2412,6 +2439,37 @@ function modelJoinBlocks(blocks, emit, leading, gaps = false) {
     if (!(quote && !wrote && block.kind === "gap" && blankLines(bytes))) wrote = true;
   }
   return out + separator;
+}
+
+/**
+ * The ids of the empty paragraphs the file writes as gaps (TODO 1.12's stage
+ * 5, part b): at the top level and in every quote, at any depth.
+ *
+ * **Asked of the joiner itself**, which is what writes them: each container's
+ * children are joined with a set to collect into, whether or not the container
+ * still holds its bytes, since a gap in an untouched quote is written all the
+ * same. So it says what the save writes; that the save writes what reopens as
+ * the screen shows is the joiner's own business, and the model suite's. The exports and
+ * the copy ask it; what they draw for a gap is theirs.
+ */
+function modelGapIds(doc, md) {
+  const found = new Set();
+  if (!doc) return found;
+  // A block the emitter refuses counts as written, as it is on screen, so one
+  // refusal elsewhere does not take every gap with it; the save that would
+  // refuse it says so where it matters.
+  const emit = (block) => {
+    try { return modelEmitLeaf(block, md, doc); } catch (error) { return "\uFFFD"; }
+  };
+  modelJoinBlocks(doc.blocks, emit, "", true, found);
+  (function walk(blocks) {
+    for (const block of blocks) {
+      if (!block.children || block.kind === "table") continue;
+      if (block.kind === "quote") modelJoinBlocks(block.children, emit, "", "quote", found);
+      walk(block.children);
+    }
+  })(doc.blocks);
+  return found;
 }
 
 /**
@@ -2943,9 +3001,21 @@ function modelStripView(root) {
 // The editor as an export should see it: a deep clone, with the root's own
 // editing attributes and the view above removed. The static export, PDF and
 // Word all start here, so nothing the renderer added for editing reaches a file.
-function modelExportClone(editorRoot) {
+//
+// **A gap keeps a `<br>`** (TODO 1.12's stage 5, part b): `gaps` is
+// `modelGapIds`'s answer, and each paragraph in it is given a plain break in
+// place of its filler, so the HTML and the PDF draw it a line tall. Only a gap:
+// an empty paragraph the file writes nothing for loses its filler and draws as
+// nothing, as before.
+function modelExportClone(editorRoot, gaps = null) {
   const clone = editorRoot.cloneNode(true);
   for (const name of ["contenteditable", "spellcheck", "data-exported"]) clone.removeAttribute(name);
+  if (gaps) {
+    for (const id of gaps) {
+      const el = clone.querySelector(`[${MODEL_BLOCK_ATTR}="${id}"]`);
+      if (el) el.replaceChildren(el.ownerDocument.createElement("br"));
+    }
+  }
   return modelStripView(clone);
 }
 
@@ -6345,7 +6415,30 @@ function modelRemoveBlock(doc, block) {
 function modelPruneBlock(doc, block) {
   const parent = block.parent;
   if (!modelRemoveBlock(doc, block)) return false;
-  if (parent && parent.children && parent.children.length === 0) modelPruneBlock(doc, parent);
+  // A container left holding only blank `>` lines is empty too: inside a quote
+  // the tiler hands a list's trailing blank line to its last item, so the item
+  // whose content has gone keeps that line, which would then stand beside the
+  // quote's own (TODO 1.12's stage 5).
+  const blankOnly = (node) => node.kind === "gap" && node.source !== null &&
+    node.source.split("\n").every((line) => MODEL_QUOTE_BLANK.test(line));
+  if (parent && parent.children && parent.children.length === 0) {
+    modelPruneBlock(doc, parent);
+  } else if (parent && parent.children && parent.children.every(blankOnly)) {
+    // That line is the blank one between the list and what follows it, so it
+    // moves to the item before, which now ends the list; with no item before,
+    // the list goes and the quote's blank line before it is the one left.
+    const kin = modelSiblings(doc, parent);
+    const before = parent.kind === "item" ? kin[kin.indexOf(parent) - 1] : null;
+    if (before && before.children && before.children.length) {
+      const moved = parent.children.splice(0);
+      before.children[before.children.length - 1].separator = "\n";
+      for (const node of moved) { node.parent = before; before.children.push(node); }
+      modelTouch(before);
+    } else {
+      parent.children.splice(0);
+    }
+    modelPruneBlock(doc, parent);
+  }
   return true;
 }
 
@@ -6553,6 +6646,9 @@ function modelInsertParagraph(doc, block, offset, md) {
   let fresh;
   if (block.kind === "heading" && offset >= modelInlineText(block.inlines).length) {
     fresh = modelParagraphBlock(doc, md);
+    // A heading in a quote opens its paragraph behind the same `>`, or what is
+    // typed there is written outside the quote.
+    fresh.quotePrefixes = block.quotePrefixes ? block.quotePrefixes.slice(0, 1) : null;
     modelInsertBlockAfter(doc, block, fresh);
     if (block.parent) modelTouch(block.parent);
   } else {

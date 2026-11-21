@@ -23,6 +23,41 @@ function generateDocxFilename() {
 /**
  * Parse inline text with formatting (bold, italic, code, links)
  */
+// A quote, one Word paragraph per child, with the quote's indent and border,
+// so its paragraphs do not run together and a gap among them is an empty one
+// (TODO 1.12's stage 5, part b). A nested quote is the same one level in; any
+// other child — a heading, code, a list — is drawn as a paragraph of its text,
+// as the whole quote used to be.
+function pushQuote(element, paragraphs, depth = 1) {
+  const quoteStyle = {
+    indent: { left: 720 * depth },
+    border: {
+      left: {
+        style: docx.BorderStyle.SINGLE,
+        size: 24,
+        color: "3498DB",
+      },
+    },
+    spacing: { after: 200 },
+  };
+  for (const child of Array.from(element.children)) {
+    if (child.tagName === "BLOCKQUOTE") {
+      pushQuote(child, paragraphs, depth + 1);
+      continue;
+    }
+    if (!child.childNodes.length) continue;
+    paragraphs.push(new docx.Paragraph({
+      children: isGapOnly(child) ? [] : parseInlineContent(child),
+      ...quoteStyle,
+    }));
+  }
+}
+
+// A paragraph holding nothing but one <br>: the export clone's gap.
+function isGapOnly(element) {
+  return element.childNodes.length === 1 && element.firstChild.nodeName === "BR";
+}
+
 function parseInlineContent(element) {
   const children = [];
 
@@ -163,9 +198,15 @@ function htmlElementToDocx(element) {
       break;
 
     case "p":
+      // An empty paragraph the file writes nothing for — an Enter at the end
+      // of the document — is not drawn either; a gap carries its <br>.
+      if (!element.childNodes.length) break;
       paragraphs.push(
         new docx.Paragraph({
-          children: parseInlineContent(element),
+          // A gap the export clone kept as a lone <br> is one empty paragraph,
+          // not a paragraph holding a break, which Word draws two lines tall
+          // (TODO 1.12's stage 5, part b).
+          children: isGapOnly(element) ? [] : parseInlineContent(element),
           spacing: { after: 200 },
           ...(isDisplayEquationOnly(element) ? { alignment: docx.AlignmentType.CENTER } : {}),
         })
@@ -197,20 +238,7 @@ function htmlElementToDocx(element) {
       break;
 
     case "blockquote":
-      paragraphs.push(
-        new docx.Paragraph({
-          children: parseInlineContent(element),
-          indent: { left: 720 },
-          border: {
-            left: {
-              style: docx.BorderStyle.SINGLE,
-              size: 24,
-              color: "3498DB",
-            },
-          },
-          spacing: { after: 200 },
-        })
-      );
+      pushQuote(element, paragraphs);
       break;
 
     case "pre":
@@ -342,7 +370,7 @@ async function generateDOCX() {
   const title = extractDocxTitle();
   // Equations as pictures, or as their TeX when there is no way to draw one:
   // the container's own text is MathJax's assistive copy, bare letters.
-  const root = modelExportClone(editor);
+  const root = modelExportClone(editor, modelGapIds(modelCurrentDocument(), md));
   await exportEquationImages(root, { fallback: "source" });
   const docxElements = convertHtmlToDocxElements(root);
 

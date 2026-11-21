@@ -983,3 +983,19 @@ either. A hard break opening one is a blank line the reader sees, and a
 paragraph may open with one, so dropping it would delete what is on screen.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D35 · 2026-11-21 · Word writes a quote of paragraphs as one paragraph each
+
+**Decision** — The Word export writes a quote as one Word paragraph per child,
+each with the quote's indent and border, a gap among them as an empty one and a
+nested quote the same way one indent further in; a child that is not a
+paragraph — a heading, code, a list — is a paragraph of its text, as the whole
+quote used to be.
+**Rejected** — Keeping a quote as one Word paragraph and drawing its gap as a
+line break inside it.
+**Why** — A quote drawn as one paragraph runs its paragraphs together, which
+was already wrong before a gap was kept, and a break inside it is two lines
+tall where a gap at the top level is one; one Word paragraph per child gives
+both the same spacing as the rest of the document.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)

@@ -191,3 +191,88 @@ test("the editable export carries markdown, and opens and re-exports", async ({ 
   expect(embedded(second)).toBe(markdown);
   expect(bundle(second) === bundle(first), "the bundle reproduces itself").toBe(true);
 });
+
+// A gap in the exports (TODO 1.12's stage 5, part b): a song with a gap
+// between its verses, and a quote with one, each drawn a line tall in the
+// HTML and the PDF, and in Word as one empty paragraph rather than a break. An
+// empty paragraph at the end of the document is not a gap, and stays nothing.
+test("the exports draw a gap where the file has one", async ({ page }) => {
+  await open(page, "Over the ford\n\nand up the hill,\n\n\ndown to the mill.\n\n> one\n>\n>\n> two\n\nlast\n");
+  await page.locator("#editor > p").last().click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("ControlOrMeta+ArrowDown");
+  await page.keyboard.press("Enter");
+  const GAP = /<p[^>]*><br[^>]*><\/p>/g;
+
+  const html = await download(page, "export-html");
+  const body = html.slice(html.indexOf('<div id="editor">'));
+  expect(body.match(GAP)?.length, "HTML: one per gap, at the top level and in the quote").toBe(2);
+  expectNoView(body, "static export");
+
+  const pdf = await page.evaluate(async () => {
+    let captured = null;
+    window.html2pdf = () => {
+      const chain = { set: () => chain, from: (el) => { captured = el.innerHTML; return chain; }, save: async () => {} };
+      return chain;
+    };
+    await generatePDF();
+    return captured;
+  });
+  expect(pdf.match(GAP)?.length, "PDF: one per gap").toBe(2);
+
+  const word = await page.evaluate(async () => {
+    await ensureDocx();
+    window.saveAs = () => {};
+    const convert = convertHtmlToDocxElements;
+    let breaks = 0;
+    let empties = 0;
+    const count = (node) => {
+      if (!node || typeof node !== "object") return;
+      if (node.rootKey === "w:br") breaks++;
+      if (Array.isArray(node.root)) node.root.forEach(count);
+    };
+    window.convertHtmlToDocxElements = (root) => {
+      const made = convert(root);
+      for (const paragraph of made) {
+        count(paragraph);
+        if (Array.isArray(paragraph.root) && paragraph.root.every((child) => child.rootKey === "w:pPr")) empties++;
+      }
+      return made;
+    };
+    try { await generateDOCX(); } finally { window.convertHtmlToDocxElements = convert; }
+    return { breaks, empties };
+  });
+  expect(word.breaks, "Word: no paragraph holds a break").toBe(0);
+  expect(word.empties, "Word: an empty paragraph per gap").toBe(2);
+});
+
+// And in Word a quote holding more than paragraphs: a heading, code and a
+// nested quote, each with a gap beside it, every gap one empty paragraph and
+// never a break.
+test("Word draws a gap in a quote holding more than paragraphs as an empty paragraph", async ({ page }) => {
+  await open(page, "> # h\n>\n> a\n>\n>\n> b\n>\n> > c\n> >\n> >\n> > d\n\nend\n");
+  const word = await page.evaluate(async () => {
+    await ensureDocx();
+    window.saveAs = () => {};
+    const convert = convertHtmlToDocxElements;
+    let breaks = 0;
+    let empties = 0;
+    const count = (node) => {
+      if (!node || typeof node !== "object") return;
+      if (node.rootKey === "w:br") breaks++;
+      if (Array.isArray(node.root)) node.root.forEach(count);
+    };
+    window.convertHtmlToDocxElements = (root) => {
+      const made = convert(root);
+      for (const paragraph of made) {
+        count(paragraph);
+        if (Array.isArray(paragraph.root) && paragraph.root.every((child) => child.rootKey === "w:pPr")) empties++;
+      }
+      return made;
+    };
+    try { await generateDOCX(); } finally { window.convertHtmlToDocxElements = convert; }
+    return { breaks, empties };
+  });
+  expect(word.breaks, "Word: no paragraph holds a break").toBe(0);
+  expect(word.empties, "Word: an empty paragraph per gap, the nested one too").toBe(2);
+});

@@ -2061,8 +2061,11 @@ function modelInputClipboard(event, cut) {
   // short, so they count only if what was cut still holds something. **A
   // quote's gaps go too** (stage 5's part a), since a quote writes them: the
   // same rule over each quote's children, and over the copy itself when it
-  // reaches across the blocks of one quote.
+  // reaches across the blocks of one quote. **Which paragraphs the file writes
+  // as gaps is the model's answer** (`modelGapIds`, part b), the one the
+  // exports ask; what is left here is the copy's own edges.
   const gaps = [];
+  const fileGaps = modelGapIds(doc, md);
   const emit = (block) => modelEmitLeaf(block, md, doc);
   const modelOf = (el) => {
     const id = el.getAttribute(MODEL_BLOCK_ATTR);
@@ -2078,7 +2081,7 @@ function modelInputClipboard(event, cut) {
     });
     blocks.forEach((el, i) => {
       const block = modelOf(el);
-      if (!block || block.kind !== "paragraph" || written[i]) return;
+      if (!block || !fileGaps.has(block.id) || written[i]) return;
       if ((block.parent ? block.parent.kind : null) !== parentKind) return;
       if (!written.slice(0, i).includes(true) || !written.slice(i + 1).includes(true)) return;
       el.replaceChildren(document.createElement("br"));

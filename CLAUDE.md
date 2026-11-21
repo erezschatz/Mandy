@@ -2052,7 +2052,12 @@ There are two, and they are different deliverables:
 The static export, PDF and Word all start from `modelExportClone` in
 `model.js`, which strips the model renderer's block ids, fillers, caret stops
 and `contenteditable` from a copy of the editor. A new document export starts
-there too, or the zero-width stop beside an equation reaches the file.
+there too, or the zero-width stop beside an equation reaches the file. **It
+is handed `modelGapIds`**, the joiner's own answer to which empty paragraphs
+the file writes as gaps (TODO 1.12), and keeps a plain `<br>` in each, so the
+HTML and the PDF draw a gap a line tall; Word makes it one empty paragraph and
+draws an empty paragraph that is not a gap as nothing. The copy handler asks
+the same function.
 
 **Exported documents are self-reproducing.** They carry the export set a
 document can travel on in — markdown, HTML and Editable — so the collaboration

@@ -11153,7 +11153,7 @@ break in a backslash-break file is a backslash, and a lengthened paragraph
 wraps at the file's 60 columns. Also fills `931502b` into the previous entry's
 header.
 
-## 2026-11-21 — Task 1.12's stage 5, part a: a gap inside a quote is kept
+## 2026-11-21 — `d065d86` — Task 1.12's stage 5, part a: a gap inside a quote is kept
 
 Stage 5 began with four decisions the user made on 2026-11-20, written into the
 task file with the three parts they set: a quote keeps a gap, a list holds none,
@@ -11228,3 +11228,55 @@ review and the search, every one failing without its fix but Enter before a
 list, which already held. `front/sw.js`'s `VERSION` goes to `v1.102`. `npm test`
 passes, 2241 checks; Playwright is 374 passed with the one recorded Firefox
 failure. Also fills `459b680` into the previous entry's header.
+
+## 2026-11-21 — Task 1.12's stage 5, part b: the exports show a gap
+
+The HTML, PDF and Word exports drew no gap where Mandy showed one: the export
+clone stripped the renderer's filler `<br>`, and an empty paragraph has no
+height on a page. Now `modelExportClone` keeps a plain `<br>` in every gap, so
+the HTML export and the PDF draw it a line tall, and the Word export makes it
+one empty paragraph rather than a paragraph holding a break, which Word draws
+two lines tall. Only a gap: an empty paragraph the file writes nothing for, such
+as an Enter at the end of the document, is still drawn as nothing, and Word now
+leaves it out where it used to draw a blank paragraph.
+
+Which empty paragraphs are gaps is a model function now, `modelGapIds` in
+`front/model.js`, which the plan for part a promised and did not build. It asks
+the joiner itself: each container's children are joined with a set to collect
+the empty paragraphs it writes as gaps, at the top level and in every quote,
+untouched quotes included, so it says what the save writes. A block the emitter
+refuses counts as written rather than emptying the answer. The three exports
+ask it, and so does the copy handler, which kept only its own rule about the
+copy's edges.
+
+A quote is now one Word paragraph per child, with the quote's indent and
+border, and a nested quote the same one indent further in; a heading, code or a
+list inside it is a paragraph of its text. The Word export used to draw a whole
+quote as one paragraph, so its paragraphs ran together, and inside that a gap
+could only have been a break.
+
+The review found that what the save writes inside a quote still disagreed with
+a reopen in three shapes part a left, which the exports made visible, and the
+reviewer's own search of 4,000 edit sequences found 39 such runs; all are fixed
+and the search now finds none. Enter at the end of a heading in a quote opened a
+paragraph with no `>` chain, so what was typed there, or a second Enter, left
+the quote. A gap before a nested quote took the nested quote's `> >` and fell
+inside it; a gap's blank line now takes the chain of the empty paragraph it
+stands for. A list's items merged away left the blank line the tiler gives a
+list's last item, which doubled the quote's own: a container left holding only
+blank `>` lines is pruned, its line moving to the item before when there is
+one. An empty paragraph followed by nothing but blank `>` lines at a quote's end
+is not counted as a gap, and an empty bullet's trailing blank line is read as
+the ordinary one before a gap after the list.
+
+The model suite checks `modelGapIds` at the top level, in an untouched quote,
+two deep, for an Enter's gap, for two, and for the three empty paragraphs that
+are not gaps; each of the review's shapes, failing without its fix; and a
+bounded version of the reviewer's search, 480 sequences, comparing the gaps it
+reports with the reopened file's. `exports.spec.mjs` exports a song and a quote, each with a gap, and
+checks that the HTML and the PDF carry one break per gap and that Word makes an
+empty paragraph per gap and no break, and does the same for Word with a quote
+holding a heading and a nested quote. The static-export suite is handed the
+app's parser global. `front/sw.js`'s `VERSION` goes to `v1.103`. `npm test`
+passes, 2257 checks; Playwright is 380 passed with the one recorded Firefox
+failure. Also fills `d065d86` into the previous entry's header.

@@ -99,7 +99,7 @@ export default function run(check) {
     sniffTableConvention, formatMarkdownTable, modelCellBlocks,
     modelInsertTable, modelTableInsertRow, modelTableDeleteRow, modelTableInsertColumn, modelTableDeleteColumn,
     modelTableAlign, modelTableAlignment, modelTableDelete, modelTableRows, modelTableCellBeside, modelTableCellBelow,
-    modelDocumentMarkdown,
+    modelDocumentMarkdown, modelGapIds,
   } = loadSource(
     // markdown-style.js comes first because model.js calls into it: slice 3's
     // step 5 re-wraps an edited block with `wrapMarkdownLine` and reads
@@ -135,7 +135,7 @@ export default function run(check) {
       " sniffTableConvention, formatMarkdownTable, modelCellBlocks," +
       " modelInsertTable, modelTableInsertRow, modelTableDeleteRow, modelTableInsertColumn, modelTableDeleteColumn," +
       " modelTableAlign, modelTableAlignment, modelTableDelete, modelTableRows, modelTableCellBeside, modelTableCellBelow," +
-      " modelDocumentMarkdown };",
+      " modelDocumentMarkdown, modelGapIds };",
   );
 
   // The app's own parser configuration, not a bare one: `math` and
@@ -3614,6 +3614,89 @@ export default function run(check) {
       const d = parse(src);
       modelInsertParagraph(d, modelFlatten(d).find((b) => b.kind === "paragraph"), at, md);
       check(`${label} writes ${JSON.stringify(want)} (${JSON.stringify(emit(d))})`, emit(d) === want);
+    }
+
+    // **Which empty paragraphs are gaps is the joiner's answer** (part b):
+    // `modelGapIds` collects what it writes, so the exports and the copy draw
+    // a gap exactly where the file has one.
+    const gapTexts = (src, edit) => {
+      const d = parse(src);
+      if (edit) edit(d);
+      const ids = modelGapIds(d, md);
+      return modelFlatten(d).filter((b) => b.kind === "paragraph" && modelInlineText(b.inlines) === "")
+        .map((b) => (ids.has(b.id) ? "gap" : "none")).join(",");
+    };
+    check("a gap read from a file at the top level is one", gapTexts("a\n\n\nb\n") === "gap");
+    check("and one in an untouched quote, which the joiner is asked about anyway", gapTexts("> a\n>\n>\n> b\n") === "gap");
+    check("and one in a quote two deep", gapTexts("> > a\n> >\n> >\n> > b\n") === "gap");
+    check("an empty paragraph at the end of the document is not",
+      gapTexts("a\n", (d) => modelInsertParagraph(d, d.blocks[0], 1, md)) === "none");
+    check("nor one at the start of a quote's end", gapTexts("> a\n\nb\n", (d) => modelInsertParagraph(d, ps(d)[0], 1, md)) === "none");
+    check("nor one in a list item, which holds none",
+      gapTexts("- a\n\n  b\n", (d) => modelInsertParagraph(d, ps(d)[0], 1, md)).split(",").every((x) => x === "none"));
+    check("an Enter's gap between two blocks is one", gapTexts("a\n\nb\n", (d) => modelInsertParagraph(d, d.blocks[0], 1, md)) === "gap");
+    check("two gaps are two", gapTexts("a\n\n\n\nb\n") === "gap,gap");
+    check("a document with no model has none", modelGapIds(null, md).size === 0);
+
+    // Part b's review (2026-11-21): the gaps `modelGapIds` reports are the
+    // gaps a reopen of the written file finds.
+    const gapCount = (d) => modelGapIds(d, md).size;
+    const agrees = (label, src, steps, want) => {
+      const d = parse(src);
+      for (const step of steps) step(d);
+      const out = emit(d);
+      check(`${label}: reports ${gapCount(d)} gap(s) and the reopened file holds ${gapCount(parse(out))} (${JSON.stringify(out)})`,
+        gapCount(d) === gapCount(parse(out)) && (want === undefined || out === want));
+    };
+    agrees("Enter at the end of a heading in a quote, then Enter in the paragraph it opened", "> # h\n>\n> p\n",
+      [(d) => modelInsertParagraph(d, modelFlatten(d).find((b) => b.kind === "heading"), 1, md),
+        (d) => modelInsertParagraph(d, ps(d)[0], 0, md)]);
+    agrees("Enter at the end of a paragraph just before a nested quote", "> a\n> > b\n",
+      [(d) => modelInsertParagraph(d, ps(d)[0], 1, md)], "> a\n>\n>\n> > b\n");
+    agrees("a quote's list merged up into the paragraph above it", "> a\n>\n> - l\n> - m\n>\n> b\n",
+      [(d) => modelMergeBlocks(d, ps(d)[0], ps(d)[1]), (d) => modelMergeBlocks(d, ps(d)[0], ps(d)[1])], "> alm\n>\n> b\n");
+    agrees("two items of a quote's list merged", "> a\n>\n> - l\n> - m\n>\n> b\n",
+      [(d) => modelMergeBlocks(d, ps(d)[1], ps(d)[2])], "> a\n>\n> - lm\n>\n> b\n");
+    const heading = parse("> # h\n>\n> p\n");
+    modelInsertParagraph(heading, modelFlatten(heading).find((b) => b.kind === "heading"), 1, md);
+    modelInlineSplice(ps(heading)[0], 0, 0, "z");
+    check(`and what is typed after a heading in a quote is written inside it (${JSON.stringify(emit(heading))})`,
+      emit(heading) === "> # h\n>\n> z\n>\n> p\n");
+    const refused = parse("a\n\n\nb\n\nc\n");
+    refused.blocks[refused.blocks.length - 1].leadingAffix = null;
+    modelTouch(refused.blocks[refused.blocks.length - 1]);
+    check("a block the emitter refuses elsewhere does not take the gaps with it", gapCount(refused) === 1);
+    {
+      // The review's search, bounded: on documents built to put gaps beside
+      // headings, lists, nested quotes and definitions inside quotes, every
+      // sequence of Enters and merges reports the gaps its file reopens with.
+      const sources = ["a\n\n\nb\n", "> a\n>\n>\n> b\n", "> > a\n> >\n> >\n> > b\n", "- x\n\n  > a\n  >\n  >\n  > b\n",
+        "> a\n>\n> - l\n> - m\n>\n> b\n\n> c\n", "> a\n> > b\n> >\n> > c\n>\n> d\n", "> # h\n>\n> p\n>\n> ```\n> code\n> ```\n",
+        "> one\n>\n> [r]: http://x\n>\n>\n> two\n"];
+      let seed = 11;
+      const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+      let runs = 0;
+      const wrong = [];
+      for (const src of sources) {
+        for (let t = 0; t < 60; t++) {
+          const d = parse(src);
+          const log = [];
+          for (let step = 1 + rnd(4); step > 0; step--) {
+            const leaves = modelFlatten(d).filter((b) => !b.children && b.inlines && b.kind !== "cell");
+            const b = leaves[rnd(leaves.length)];
+            const len = modelInlineText(b.inlines).length;
+            const i = leaves.indexOf(b);
+            if (rnd(3) < 2) { const at = rnd(2) ? len : rnd(len + 1); modelInsertParagraph(d, b, at, md); log.push(`E${i}@${at}`); }
+            else if (i > 0) { modelMergeBlocks(d, leaves[i - 1], b); log.push(`M${i}`); }
+          }
+          runs++;
+          let out;
+          try { out = emit(d); } catch (error) { continue; }
+          if (gapCount(d) !== gapCount(parse(out))) wrong.push(`${JSON.stringify(src)} ${log.join(" ")}`);
+        }
+      }
+      check(`every one of ${runs} random edit sequences in quotes reports the gaps its file reopens with` +
+        (wrong.length ? ` — ${wrong.length} did not: ${wrong.slice(0, 2).join(" | ")}` : ""), wrong.length === 0);
     }
 
     const spaced = "> one\n>  \n>\t\n> two\n";

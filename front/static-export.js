@@ -90,7 +90,7 @@ function mathJaxStyles() {
 // inside the editor — the root's attributes and the model's view, which
 // modelExportClone in model.js removes for all three document exports.
 function documentBody() {
-  const clone = modelExportClone(editor);
+  const clone = modelExportClone(editor, modelGapIds(modelCurrentDocument(), md));
 
   // The editor resolves #anchors live on click, but this file ships no JS at
   // all, so a table of contents only works here if the ids are real. Stamped on
