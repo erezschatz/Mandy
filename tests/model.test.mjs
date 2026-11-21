@@ -351,7 +351,10 @@ export default function run(check) {
   // every other claim in this section is only interesting if it holds.
   const mistiled = (block, path) => {
     if (!tiles(block)) return [];
-    const rebuilt = block.leading + block.children.map((c) => c.source + c.separator).join("");
+    // A gap inside a quote holds one line end more than the file, as one at
+    // the top level does (TODO 1.12's stage 5): an Enter's separator.
+    const gapped = (c) => c.kind === "paragraph" && c.source === "";
+    const rebuilt = block.leading + block.children.map((c) => c.source + (gapped(c) ? c.separator.slice(1) : c.separator)).join("");
     const here = rebuilt === block.source ? [] : [`${path} (${block.kind})`];
     return here.concat(block.children.flatMap((c, i) => mistiled(c, `${path}/${i}`)));
   };
@@ -769,7 +772,9 @@ export default function run(check) {
     const quotedLeaves = [];
     const walk = (block, inQuote) => {
       if (tiles(block)) return block.children.forEach((c) => walk(c, inQuote || block.kind === "quote"));
-      if (inQuote) quotedLeaves.push(block);
+      // A gap read back from an extra `>` line has no line of its own: it is
+      // the one before it, in its separator.
+      if (inQuote && block.source !== "") quotedLeaves.push(block);
     };
     for (const path of ORACLE_FILES) parse(repoFile(path)).blocks.forEach((b) => walk(b, false));
 
@@ -3168,6 +3173,11 @@ export default function run(check) {
       // rewrite — they are its separator — and editing one is checked on its
       // own, beside the parse that makes it (TODO 1.12).
       if (leaf.source === "") continue;
+      // Nor does the blank `>` line before a gap inside a quote, which no edit
+      // reaches — it renders nothing — and whose being blank is what the
+      // joiner reads to write the gap after it.
+      const after = leaf.parent && leaf.parent.children[leaf.parent.children.indexOf(leaf) + 1];
+      if (leaf.kind === "gap" && after && after.kind === "paragraph" && after.source === "") continue;
       // Since stage 3's slice 4 an edit inside a table hands the emitter the
       // whole table, because a cell has no bytes of its own; whether the
       // emitter then writes back only the row is the table sweep's question,
@@ -3403,9 +3413,10 @@ export default function run(check) {
     check("a line of spaces is a blank line, and is one of them", count("one\n\n\n  \ntwo\n") === 2);
     check("blank lines before the first block and after the last stay bytes",
       count("\n\n\none\n\n\n") === 0 && parse("\n\n\none\n\n\n").blocks.length === 1);
-    check("and so do blank lines inside a list or a quote, where the file's rule writes no gap",
-      count("- a\n\n\n- b\n") === 0 && count("> a\n>\n>\n> b\n") === 0 &&
-        modelFlatten(parse("- a\n\n\n- b\n")).every((b) => !(b.kind === "paragraph" && b.source === "")));
+    check("and so do blank lines inside a list, where the file's rule writes no gap (TODO 1.12's list decision)",
+      count("- a\n\n\n- b\n") === 0 &&
+        modelFlatten(parse("- a\n\n\n- b\n")).every((b) => !(b.kind === "paragraph" && b.source === "")) &&
+        modelFlatten(parse("- a\n\n\n  b\n")).every((b) => !(b.kind === "paragraph" && b.source === "")));
 
     // Every edit around one: each written as the screen shows it, and read
     // back as that. The gap's separator is an Enter's, so typing into it does
@@ -3441,6 +3452,184 @@ export default function run(check) {
       check(`${label}, in a CRLF file, writes ${JSON.stringify(crlf)} and reads back as it shows (${JSON.stringify(got)})`,
         got === crlf && shape(got) === reads);
     }
+    // **A gap inside a quote is kept too** (stage 5's part a). Its blank line
+    // is a `>` line, which the tiler hands back as a block of its own, so the
+    // quote reads its extra ones back as empty paragraphs and writes an empty
+    // paragraph between two of its blocks as one more. The same seven edits,
+    // in a quote, a quote two deep and a quote inside a bullet, each written
+    // as it shows and read back as that.
+    const quoteTexts = (doc) => modelFlatten(doc).filter((b) => b.kind === "paragraph").map((b) => modelInlineText(b.inlines)).join("|");
+    const quotes = [
+      ["a quote", "> ", "> ", ">"],
+      ["a quote two deep", "> > ", "> > ", "> >"],
+      ["a quote inside a bullet", "- > ", "  > ", "  >"],
+    ];
+    // An Enter in a quote inside a bullet already writes a broken file without
+    // any gap, on `main` before this part — `- > one\n\n- > x` for Enter and
+    // a letter after `one` — so the edits that press Enter there are not this
+    // part's to check. Found 2026-11-21, and recorded in the task file.
+    const enterBreaks = new Set(["Enter in it", "Enter at the end of the block before it", "Enter at the start of the block after it"]);
+    for (const [where, first, rest, blank] of quotes) {
+      // Lines, each a paragraph's text or null for a blank `>` line.
+      const file = (...lines) => lines.map((line, i) => (line === null ? blank : (i ? rest : first) + line)).join("\n") + "\n";
+      const src = file("one", null, null, "two");
+      const paras = (d) => modelFlatten(d).filter((b) => b.kind === "paragraph");
+      let untouched;
+      try { untouched = modelSerialise(parse(src), unused); } catch (error) { untouched = error.message; }
+      check(`in ${where}, a file with an extra blank line comes back byte for byte without the emitter (${JSON.stringify(untouched)})`,
+        untouched === src);
+      check(`in ${where}, the extra blank line reads back as an empty paragraph (${quoteTexts(parse(src))})`,
+        quoteTexts(parse(src)) === "one||two");
+      const quoteEdits = [
+        ["typing into it", (d) => modelInlineSplice(paras(d)[1], 0, 0, "x"), file("one", null, "x", null, "two"), "one|x|two"],
+        ["Enter in it", (d) => modelInsertParagraph(d, paras(d)[1], 0, md), file("one", null, null, null, "two"), "one|||two"],
+        ["Enter at the end of the block before it", (d) => modelInsertParagraph(d, paras(d)[0], 3, md), file("one", null, null, null, "two"), "one|||two"],
+        ["Enter at the start of the block after it", (d) => modelInsertParagraph(d, paras(d)[2], 0, md), file("one", null, null, null, "two"), "one|||two"],
+        ["Backspace in it", (d) => modelPruneBlock(d, paras(d)[1]), file("one", null, "two"), "one|two"],
+        ["Backspace at the start of the block after it", (d) => modelMergeBlocks(d, paras(d)[1], paras(d)[2]), file("one", null, "two"), "one|two"],
+        ["Delete at the end of the block before it", (d) => modelMergeBlocks(d, paras(d)[0], paras(d)[1]), file("one", null, "two"), "one|two"],
+      ];
+      for (const [label, act, want, reads] of quoteEdits) {
+        if (where === "a quote inside a bullet" && enterBreaks.has(label)) continue;
+        const d = parse(src);
+        let got;
+        try { act(d); got = emit(d); } catch (error) { got = error.message; }
+        check(`in ${where}, ${label} writes ${JSON.stringify(want)} and reads back as it shows (${JSON.stringify(got)})`,
+          got === want && quoteTexts(parse(got)) === reads);
+      }
+      // A gap typed with Enter, from a quote with none.
+      if (where === "a quote inside a bullet") continue;
+      const typed = parse(file("one", null, "two"));
+      modelInsertParagraph(typed, paras(typed)[0], 3, md);
+      check(`in ${where}, an Enter at the end of a paragraph writes the gap (${JSON.stringify(emit(typed))})`,
+        emit(typed) === src && quoteTexts(parse(emit(typed))) === "one||two");
+    }
+    // In the app Enter on an empty paragraph in a quote leaves the quote (the
+    // empty-item rules' twin), so it does that to a gap read from a file too.
+    const leave = parse("> one\n>\n>\n> two\n\nafter\n");
+    const gapIn = modelFlatten(leave).filter((b) => b.kind === "paragraph")[1];
+    const left = modelQuoteKey(leave, gapIn, md, false);
+    check(`Enter in a quote's gap read from a file leaves the quote, as in one Enter made (${JSON.stringify(emit(leave))})`,
+      !!left && emit(leave) === "> one\n\n\n> two\n\nafter\n");
+
+    // A paste carrying a gap: kept where it lands in a quote or at the top
+    // level, and left out where it lands in a list item, which holds none.
+    const pasteInto = (src) => {
+      const d = parse(src);
+      const into = modelFlatten(d).find((b) => b.kind === "paragraph");
+      modelInsertBlocks(d, into, 1, parse("x\n\n\ny\n").blocks);
+      return { out: emit(d), shown: quoteTexts(d), reopened: quoteTexts(parse(emit(d))) };
+    };
+    for (const [where, src, want] of [
+      ["a quote", "> a\n>\n> b\n", "> ax\n>\n>\n> y\n>\n> b\n"],
+      ["the top level", "a\n\nb\n", "ax\n\n\ny\n\nb\n"],
+      ["a list item, which drops it", "- a\n- b\n", "- ax\n\n  y\n- b\n"],
+    ]) {
+      const got = pasteInto(src);
+      check(`a pasted gap landing in ${where} writes ${JSON.stringify(want)}, and reopens as it shows (${JSON.stringify(got.out)})`,
+        got.out === want && got.shown === got.reopened);
+    }
+
+    // The review's cases (2026-11-21), each an edit whose file did not reopen
+    // as the screen showed it, or that threw. `holds` runs a sequence and
+    // checks the file it writes reopens as the paragraphs on screen.
+    const holds = (label, src, steps, want) => {
+      const d = parse(src);
+      let out;
+      try { for (const step of steps) step(d); out = emit(d); } catch (error) { out = error.message; }
+      const shown = quoteTexts(d);
+      check(`${label}: writes ${JSON.stringify(want ?? "what it shows")}, and reopens as it shows (${JSON.stringify(out)}, shown ${shown})`,
+        (want === undefined || out === want) && quoteTexts(parse(out)) === shown);
+    };
+    const ps = (d) => modelFlatten(d).filter((b) => b.kind === "paragraph");
+    const wrapAll = (d) => modelToggleQuote(d, d.blocks.slice(0, 3), md);
+    holds("Blockquote over a gap, then Backspace in it", "one\n\n\ntwo\n", [wrapAll, (d) => modelPruneBlock(d, ps(d)[1])], "> one\n>\n> two\n");
+    holds("Blockquote over a gap, then Backspace at the start of the block after it", "one\n\n\ntwo\n",
+      [wrapAll, (d) => modelMergeBlocks(d, ps(d)[1], ps(d)[2])], "> one\n>\n> two\n");
+    holds("Blockquote over a gap, then Delete at the end of the block before it", "one\n\n\ntwo\n",
+      [wrapAll, (d) => modelMergeBlocks(d, ps(d)[0], ps(d)[1])], "> one\n>\n> two\n");
+    holds("a quote's first paragraph lifted out beside a gap, then Backspace in the gap", "> one\n>\n>\n> two\n",
+      [(d) => modelQuoteKey(d, ps(d)[0], md, true), (d) => modelPruneBlock(d, ps(d)[1])]);
+    holds("the same, then Delete at the end of the lifted paragraph", "> one\n>\n>\n> two\n",
+      [(d) => modelQuoteKey(d, ps(d)[0], md, true), (d) => modelMergeBlocks(d, ps(d)[0], ps(d)[1])]);
+    const lazyEnd = (d) => modelInsertParagraph(d, ps(d)[0], modelInlineText(ps(d)[0].inlines).length, md);
+    holds("Enter after a lazy line in a quote", "> one\nlazy\n>\n> two\n", [lazyEnd]);
+    holds("Enter and typing after a lazy line in a quote", "> one\nlazy\n>\n> two\n",
+      [lazyEnd, (d) => modelInlineSplice(ps(d)[1], 0, 0, "x")], "> one\nlazy\n>\n> x\n>\n> two\n");
+    holds("Enter at the start of a paragraph after a list in a quote", "> - a\n>\n> two\n",
+      [(d) => modelInsertParagraph(d, ps(d)[1], 0, md)], "> - a\n>\n>\n> two\n");
+    holds("Enter at the end of a paragraph before a list in a quote", "> one\n>\n> - a\n",
+      [(d) => modelInsertParagraph(d, ps(d)[0], 3, md)], "> one\n>\n>\n> - a\n");
+    holds("Enter at the end of a paragraph before a definition in a quote", "> one\n>\n> [r]: http://x\n>\n> two\n",
+      [(d) => modelInsertParagraph(d, ps(d)[0], 3, md)], "> one\n>\n>\n> [r]: http://x\n>\n> two\n");
+    holds("Enter at the start of a paragraph after a definition in a quote", "> one\n>\n> [r]: http://x\n>\n> two\n",
+      [(d) => modelInsertParagraph(d, ps(d)[1], 0, md)], "> one\n>\n> [r]: http://x\n>\n>\n> two\n");
+    for (const src of ["> - a\n>\n>\n> two\n", "> one\n>\n>\n> - a\n", "> one\n>\n> [r]: http://x\n>\n>\n> two\n",
+      "> one\n>\n>\n> [r]: http://x\n>\n> two\n", "> - a\n>   - b\n>\n>\n> two\n", "> ```\n> x\n> ```\n>\n>\n> two\n"]) {
+      let out;
+      try { out = modelSerialise(parse(src), unused); } catch (error) { out = error.message; }
+      const shown = quoteTexts(parse(src));
+      check(`${JSON.stringify(src)} comes back byte for byte, and shows its gap (${shown})`, out === src && shown.split("|").includes(""));
+    }
+
+    // Enter just after a line break used to leave the first half ending in
+    // it, which writes an empty last line: a blank line too many, reopening as
+    // a gap. Found by the review's search on 2026-11-21, at the top level too.
+    for (const [src, want] of [["start\nq\n", "start\n\nq\n"], ["> start\n> q\n", "> start\n>\n> q\n"], ["start  \nq\n", "start\n\nq\n"]]) {
+      const d = parse(src);
+      modelInsertParagraph(d, modelFlatten(d).find((b) => b.kind === "paragraph"), 6, md);
+      check(`Enter just after a line break in ${JSON.stringify(src)} writes ${JSON.stringify(want)} (${JSON.stringify(emit(d))})`, emit(d) === want);
+    }
+    holds("taking out a paragraph between two blank lines of a quote", "> one\n>\n> two\n>\n> three\n",
+      [(d) => modelMergeBlocks(d, ps(d)[0], ps(d)[1])], "> onetwo\n>\n> three\n");
+
+    // The second review's cases (2026-11-21). A gap with no paragraph beside
+    // it takes its chain from its own blank line, so typing into it stays in
+    // the quote; a nested quote's trailing blank lines are its own, not a gap
+    // of the quote around it.
+    for (const [src, want] of [
+      ["> [r]: http://x\n>\n>\n> ---\n", "> [r]: http://x\n>\n> z\n>\n> ---\n"],
+      ["> ---\n>\n>\n> ---\n", "> ---\n>\n> z\n>\n> ---\n"],
+      ["> # H\n>\n>\n> # J\n", "> # H\n>\n> z\n>\n> # J\n"],
+      ["> > q\n>\n>\n> - a\n", "> > q\n>\n> z\n>\n> - a\n"],
+      ["  > ---\n  >\n  >\n  > ---\n", "  > ---\n  >\n  > z\n  >\n  > ---\n"],
+    ]) {
+      const d = parse(src);
+      const gapAt = ps(d).find((b) => modelInlineText(b.inlines) === "");
+      if (gapAt) modelInlineSplice(gapAt, 0, 0, "z");
+      check(`typing into a gap between two blocks of ${JSON.stringify(src)} stays in the quote (${JSON.stringify(gapAt ? emit(d) : "no gap read")})`,
+        !!gapAt && emit(d) === want);
+    }
+    const nested = parse("> > q\n> >\n> >\n> ---\n");
+    check("a nested quote's trailing blank lines are not read as a gap of the quote around it",
+      ps(nested).every((b) => modelInlineText(b.inlines) !== ""));
+    // The break at a split's cut: a soft break goes from either half, a hard
+    // break from the end of the first and never from the start of the second.
+    for (const [label, src, at, want] of [
+      ["Enter just before a soft break", "start\nq\n", 5, "start\n\nq\n"],
+      ["Enter at the start of a paragraph opening with a hard break", "\\\nb\n", 0, "\\\nb\n"],
+      ["Enter between two hard breaks", "a\\\n\\\nb\n", 2, "a\n\n\\\nb\n"],
+      ["Enter just after the soft break in a bullet", "- a\n  b\n", 2, "- a\n- b\n"],
+    ]) {
+      const d = parse(src);
+      modelInsertParagraph(d, modelFlatten(d).find((b) => b.kind === "paragraph"), at, md);
+      check(`${label} writes ${JSON.stringify(want)} (${JSON.stringify(emit(d))})`, emit(d) === want);
+    }
+
+    const spaced = "> one\n>  \n>\t\n> two\n";
+    let spacedOut;
+    try { spacedOut = modelSerialise(parse(spaced), unused); } catch (error) { spacedOut = error.message; }
+    check(`a quote's blank lines keep their own spelling (${JSON.stringify(spacedOut)})`, spacedOut === spaced);
+    const spacedTyped = parse(spaced);
+    modelInlineSplice(modelFlatten(spacedTyped).filter((b) => b.kind === "paragraph")[1], 0, 0, "x");
+    check(`and typing into the gap keeps the first one's (${JSON.stringify(emit(spacedTyped))})`,
+      emit(spacedTyped) === "> one\n>  \n> x\n>\t\n> two\n");
+    check("a quote's blank lines at its very end are not read as gaps, having nothing after them",
+      quoteTexts(parse("> one\n>\n>\n\nafter\n")) === "one|after");
+    check("nor are a quote's in a CRLF file read any differently",
+      quoteTexts(parse("> one\r\n>\r\n>\r\n> two\r\n")) === "one||two" &&
+        modelSerialise(parse("> one\r\n>\r\n>\r\n> two\r\n"), unused) === "> one\r\n>\r\n>\r\n> two\r\n");
+
     const kept = parse("one\n\n\n  \ntwo\n");
     modelInlineSplice(kept.blocks[1], 0, 0, "x");
     check(`typing into the first of two keeps the second's line as written (${JSON.stringify(emit(kept))})`,
@@ -3474,7 +3663,7 @@ export default function run(check) {
     const formats = [
       ["a bullet list over one, a gap and two", "one\n\n\ntwo\n", (d) => modelWrapList(d, d.blocks.slice(0, 3), false, md), "- one\n- two\n"],
       ["a numbered list over the same", "one\n\n\ntwo\n", (d) => modelWrapList(d, d.blocks.slice(0, 3), true, md), "1. one\n2. two\n"],
-      ["a blockquote over the same", "one\n\n\ntwo\n", (d) => modelToggleQuote(d, d.blocks.slice(0, 3), md), "> one\n>\n> two\n"],
+      ["a blockquote over the same, which keeps the gap since stage 5", "one\n\n\ntwo\n", (d) => modelToggleQuote(d, d.blocks.slice(0, 3), md), "> one\n>\n>\n> two\n"],
       ["a blockquote over one and the gap after it, which stays", "one\n\n\ntwo\n", (d) => modelToggleQuote(d, d.blocks.slice(0, 2), md), "> one\n\n\ntwo\n"],
       ["a bullet over a paragraph a gap below a bullet list", "- a\n\n\nb\n", (d) => modelWrapList(d, [d.blocks[2]], false, md), "- a\n- b\n"],
       ["a number over a paragraph a gap below a numbered list", "1. a\n2. x\n\n\nb\n", (d) => modelWrapList(d, [d.blocks[2]], true, md), "1. a\n2. x\n3. b\n"],
@@ -4919,8 +5108,8 @@ export default function run(check) {
     {
       const doc = parse("> a\n>\n> b\n\nafter\n");
       const at = modelInsertParagraph(doc, live(doc)[0], 1, md);
-      check("Enter in a quote writes nothing until something is typed — an empty paragraph in a quote used to write `>`",
-        emitOf(doc) === "> a\n>\n> b\n\nafter\n");
+      check("Enter in a quote writes the gap it shows, one more `>` line (TODO 1.12's stage 5; until then it wrote nothing)",
+        emitOf(doc) === "> a\n>\n>\n> b\n\nafter\n");
       const left = modelQuoteKey(doc, at.block, md, false);
       check("Enter on an empty paragraph in a quote leaves the quote, splitting it, with the caret in the same block — and the paragraph between the halves is a gap",
         !!left && left.block === at.block && left.offset === 0 && emitOf(doc) === "> a\n\n\n> b\n\nafter\n");

@@ -1182,9 +1182,13 @@ cleared everywhere. Seven steps, and the ones worth knowing from outside:
   makes each extra blank line between two top-level blocks an empty
   paragraph, whose `source` is `""` and whose separator is an Enter's shape, a
   line end and then that line. **That one byte is the only place the top level
-  does not tile its file**; nothing reads the top level but the joiner. At
-  either end of the document, and inside any container, the rule above still
-  holds.
+  does not tile its file**; nothing reads the top level but the joiner. **Since
+  2026-11-21 a quote keeps a gap too** (TODO 1.12's stage 5): there the blank
+  line is a `>` line and a block of its own, kind `gap`, so `modelReadQuoteGaps`
+  reads a run of them back and the joiner writes an empty paragraph between two
+  of a quote's blocks as one more, and a quote's children stop tiling it at a
+  gap by the same byte. At either end of the document or of a quote, and inside
+  a list, which holds no gap, the rule above still holds.
 - **The two hand-rolled list clusters are model rules now**, with no engine in
   them — Enter and Backspace on an empty `<li>`, and `outdentListItem`. What
   `app.js`'s handler does is the specification, because it is what users have;

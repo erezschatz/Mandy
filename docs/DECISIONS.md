@@ -906,3 +906,80 @@ trailing space is content, from `<p>a </p>`. Whether the block has a tag of its
 own is the one fact that decides it, and the token says so.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D29 · 2026-11-20 · A gap inside a quote is kept
+
+**Decision** — An empty paragraph between two blocks of a quote is saved as one
+more `>` line, and a run of extra `>` lines in a file is read back as that many
+empty paragraphs, as at the top level.
+**Rejected** — Leaving a quote's gap drawn and not saved, recorded as a limit.
+**Why** — The user chose it on 2026-11-20. It is the promise D20 made, kept one
+level in; and unlike a list, a quote is where a verse is quoted.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D30 · 2026-11-20 · A list holds no gap
+
+**Decision** — A list item holds no gap: Enter in one starts a new item as
+before, an extra blank line inside an item reads as nothing, and a gap pasted
+or dropped into an item is dropped.
+**Rejected** — Showing and saving an extra blank line inside an item.
+**Why** — The user chose it on 2026-11-20. A gap cannot be typed in an item,
+since Enter there starts a new one, and an extra blank line in a list means
+nothing to any other markdown reader, so it would be a gap only Mandy sees.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D31 · 2026-11-20 · The exports show a gap
+
+**Decision** — The HTML, PDF and Word exports draw a gap as a blank line,
+wherever the file writes one; an empty paragraph the file does not write is
+not drawn.
+**Rejected** — Drawing the document as any markdown viewer would, with no gap.
+**Why** — The user chose it on 2026-11-20. An export is the document as Mandy
+shows it, and a song exported to PDF without its verse gaps is the bug this
+task began with, one step further on.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D32 · 2026-11-20 · A paste keeps the gaps copied out of Mandy
+
+**Decision** — A paste keeps a gap that a copy out of Mandy marked as one, and
+goes on dropping the empty paragraphs any other application leaves.
+**Rejected** — Keeping every empty paragraph a paste brings, Word's and Google
+Docs' blank lines included; and keeping none, with Paste markdown the way to
+bring gaps in.
+**Why** — The user chose it on 2026-11-20. A copy and a paste within Mandy
+should give back what was copied, while the blank lines another application
+puts in its HTML are the ghost lines `sanitisePastedHtml` exists to remove.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D33 · 2026-11-21 · Blockquote keeps the gaps inside a selection
+
+Supersedes: D25
+
+**Decision** — Blockquote over a selection keeps the gaps between the blocks it
+wraps or unwraps, and leaves the ones at the selection's edges out of it. The
+two lists go on dropping the gaps between, as D25 decided for them.
+**Rejected** — Dropping them, as D25 did for all three.
+**Why** — The user chose it on 2026-11-21. D25 dropped a quote's gaps because
+one inside a quote was not written; since a quote's gap is kept (the decision
+above), that reason is gone for a quote and stands for a list.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D34 · 2026-11-21 · A split drops a line break at its cut, but not one opening the second half
+
+**Decision** — Enter drops a soft break at the cut from either half, and a hard
+break from the end of the first half, and keeps a hard break that opens the
+second half.
+**Rejected** — Keeping every break at the cut, as before; and dropping every
+one, hard breaks opening the second half included.
+**Why** — A paragraph cannot end in a break anyone sees: kept, the half ending
+in one writes an empty last line, which is a blank line in the file and reopens
+as a gap the screen never showed. A soft break opening a paragraph is nothing
+either. A hard break opening one is a blank line the reader sees, and a
+paragraph may open with one, so dropping it would delete what is on screen.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)

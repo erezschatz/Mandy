@@ -2058,16 +2058,19 @@ function modelInputClipboard(event, cut) {
   // file's rule — and **the model says what is empty**, as it does for the
   // file: a block is written when it emits bytes, so a rule counts and a
   // paragraph of spaces is not a gap. The first and last blocks may be cut
-  // short, so they count only if what was cut still holds something.
+  // short, so they count only if what was cut still holds something. **A
+  // quote's gaps go too** (stage 5's part a), since a quote writes them: the
+  // same rule over each quote's children, and over the copy itself when it
+  // reaches across the blocks of one quote.
   const gaps = [];
-  if (range.commonAncestorContainer === editor) {
-    const blocks = [...holder.children];
-    const emit = (block) => modelEmitLeaf(block, md, doc);
-    const modelOf = (el) => {
-      const id = el.getAttribute(MODEL_BLOCK_ATTR);
-      return id === null ? null : doc.blocks.find((block) => String(block.id) === id) ?? null;
-    };
-    const holds = (el) => el.textContent !== "" || el.matches("hr, img, br") || !!el.querySelector("hr, img, br, [data-math]");
+  const emit = (block) => modelEmitLeaf(block, md, doc);
+  const modelOf = (el) => {
+    const id = el.getAttribute(MODEL_BLOCK_ATTR);
+    return id === null ? null : modelBlockById(doc, Number(id)) ?? null;
+  };
+  const holds = (el) => el.textContent !== "" || el.matches("hr, img, br") || !!el.querySelector("hr, img, br, [data-math]");
+  const keepGaps = (container, parentKind) => {
+    const blocks = [...container.children];
     const written = blocks.map((el, i) => {
       const block = modelOf(el);
       const emits = block ? modelEmitBlock(block, emit) !== "" : holds(el);
@@ -2076,10 +2079,18 @@ function modelInputClipboard(event, cut) {
     blocks.forEach((el, i) => {
       const block = modelOf(el);
       if (!block || block.kind !== "paragraph" || written[i]) return;
+      if ((block.parent ? block.parent.kind : null) !== parentKind) return;
       if (!written.slice(0, i).includes(true) || !written.slice(i + 1).includes(true)) return;
       el.replaceChildren(document.createElement("br"));
       gaps.push(el);
     });
+  };
+  let common = range.commonAncestorContainer;
+  if (common.nodeType !== 1) common = common.parentNode;
+  if (common === editor) keepGaps(holder, null);
+  else if (common.tagName === "BLOCKQUOTE" && modelOf(common) && modelOf(common).kind === "quote") keepGaps(holder, "quote");
+  for (const quote of holder.querySelectorAll("blockquote")) {
+    if (modelOf(quote) && modelOf(quote).kind === "quote") keepGaps(quote, "quote");
   }
   const html = holder.innerHTML;
   for (const equation of holder.querySelectorAll("[data-math]")) {

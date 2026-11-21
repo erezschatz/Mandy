@@ -20,7 +20,7 @@ import { test, expect } from "@playwright/test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { useModelPage, open, markdown } from "./model-page.mjs";
+import { useModelPage, open, markdown, LINE_END } from "./model-page.mjs";
 
 useModelPage(test);
 
@@ -126,4 +126,35 @@ test("a song typed with gaps between its verses keeps them through a save, a rel
   await page.keyboard.type("refrain");
   const filled = SONG.replace("hill,\n\n\n", "hill,\n\nrefrain\n\n");
   expect(await save(page, path), "the filled gap saved").toBe(filled);
+});
+
+// The same verse quoted (stage 5's part a): inside a quote the gap is one more
+// `>` line, and it comes back from the autosave and from the file.
+test("a quoted verse keeps its gap through a save, a reload and a reopen", async ({ page, browserName }) => {
+  const QUOTED = "> Over the ford\n>\n> and up the hill,\n>\n>\n> down to the mill\n";
+  const QUOTED_SCREEN = ["Over the ford", "and up the hill,", "", "down to the mill"];
+  const quoted = () => page.evaluate(() =>
+    [...editor.querySelectorAll("blockquote > p")].map((p) => p.textContent));
+  await open(page, "> Over the ford\n>\n> and up the hill,\n>\n> down to the mill\n");
+  await page.locator("#editor blockquote p").nth(1).click();
+  await page.keyboard.press(LINE_END);
+  await page.keyboard.press("Enter");
+  expect(await quoted(page), "typed").toEqual(QUOTED_SCREEN);
+  const path = join(scratch, `${browserName}-quoted.md`);
+  expect(await save(page, path), "saved").toBe(QUOTED);
+
+  await page.reload();
+  await ready(page);
+  expect(await quoted(page), "after a reload").toEqual(QUOTED_SCREEN);
+
+  await open(page, "a\n");
+  expect(await page.evaluate((path) => openFile(path), path)).not.toBe(false);
+  await page.waitForFunction(() => editor.textContent.includes("Over the ford"));
+  expect(await quoted(page), "after a reopen").toEqual(QUOTED_SCREEN);
+  expect(await markdown(page), "reopened untouched").toBe(QUOTED);
+
+  await page.locator("#editor blockquote p").nth(2).click();
+  await page.keyboard.type("refrain");
+  expect(await save(page, path), "the filled gap saved")
+    .toBe("> Over the ford\n>\n> and up the hill,\n>\n> refrain\n>\n> down to the mill\n");
 });

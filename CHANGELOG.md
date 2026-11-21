@@ -11118,7 +11118,7 @@ since both sides had bumped it to `v1.99`. `npm test` passes, 2174 checks:
 with the one recorded Firefox failure. Also fills `d0487ba` and `27ea5e3` into
 the two headers that were waiting for them.
 
-## 2026-11-20 — Task 1.12's stage 4: a song keeps its gaps the whole way round
+## 2026-11-20 — `459b680` — Task 1.12's stage 4: a song keeps its gaps the whole way round
 
 `tests/browser/song-round-trip.spec.mjs` types a short song with Enter after
 every line and an extra Enter between its verses, saves it to a scratch file
@@ -11152,3 +11152,79 @@ recorded in their task files: a CRLF file edited in Firefox stays CRLF, a new
 break in a backslash-break file is a backslash, and a lengthened paragraph
 wraps at the file's 60 columns. Also fills `931502b` into the previous entry's
 header.
+
+## 2026-11-21 — Task 1.12's stage 5, part a: a gap inside a quote is kept
+
+Stage 5 began with four decisions the user made on 2026-11-20, written into the
+task file with the three parts they set: a quote keeps a gap, a list holds none,
+the exports show one, and a paste keeps the gaps a copy out of Mandy marked.
+This is the first part.
+
+Inside a quote, an extra Enter between two quoted paragraphs drew a gap that a
+save dropped and a reopen closed up. Now it is saved as one more `>` line, read
+back from the file, and copied. A quote's blank lines are blocks of their own
+in the model rather than part of the separators between blocks, as they are at
+the top level, so the quote has its own half of each rule:
+`modelReadQuoteGaps` in `front/model.js` reads a run of extra `>` lines back as
+empty paragraphs, the joiner writes one between two of a quote's blocks as one
+more `>` line in the file's own spelling, and removing one keeps the plainer of
+the two separators either side. It works at any depth and in a quote inside a
+bullet. The copy handler in `front/model-input.js` keeps a quote's gaps too.
+
+Blockquote over a selection now keeps the gaps inside it, by the user's choice
+on 2026-11-21: D25 dropped them because a quote's gap was not written, and the
+new decision supersedes it for a quote, while the lists still drop them. That
+needed two fixes in the quote commands: a gap read from a file now goes through
+their placeholder emitter, and their re-parse no longer leaves out a parsed
+empty paragraph on one side only, which had made a paragraph beside a quote
+holding a gap refuse Blockquote. A paste or a drop carrying a gap keeps it in a
+quote and at the top level, and leaves it out of a list item, which holds none.
+
+The first review found four ways the file could still disagree with the
+screen, and a random search of 4,000 edit sequences over quotes found three
+more; all are fixed. Blockquote over a gap built it between two blank `>` lines,
+so deleting it left one behind, and it is now put into the shape a file gives.
+A blank `>` line handed a removed paragraph's affix was emptied, so the next
+save threw; a fence or a rule handed one is refused by the save, as it was
+before. A lazy line's blank separator ended the quote; it now takes the
+`>` of the last line that has one. A gap beside a list or a reference
+definition inside a quote was written and never read back, because the tiler
+hands those blank lines to the list's last item or to the definition's block;
+both are read now. Taking out a paragraph between two blank `>` lines left both,
+which reopened as a gap. Blank lines at the very start of a quote counted as
+something written before a gap. And Enter just after a line break left the first
+half ending in it, which wrote a blank line too many and reopened as a gap; that
+one is older than this task, at the top level too, and is fixed with it: a split
+now drops a soft break at its cut from either half and a hard break from the end
+of the first, and keeps a hard break opening the second, which is a blank line
+the reader sees. So Enter between two backslash breaks gives `a` and a paragraph
+opening with one, and Enter after the soft break in a bullet gives two bullets
+where it gave a loose list. A second reading found two more, both fixed: a gap
+with no paragraph beside it, between two rules or headings or a definition and
+a fence, took no `>` chain, so text typed into it left the quote, and it now
+takes the chain off its own blank line; and a nested quote's trailing blank
+lines were lifted into the quote around it as a gap. On the
+same search the committed model disagreed with itself 201 times and this one 50,
+none of them a document the committed model got right; what is left is lazy
+lines, an empty paragraph at a quote's very edge, which is written as nothing
+the way one at the end of the document is, and a setext heading an Enter at the
+start of a list item can make.
+
+Three bugs found on the way are older than this and not fixed here. A hard
+break at the very end of a paragraph, Shift+Enter there, writes an empty last
+line that reopens as a gap, at the top level too. In a quote inside a bullet, Enter then typing writes `- > one\n\n- > x`, breaking the
+quote into a second bullet, and a paste there loses the quote's `>` on its
+lines; all three reproduce on the committed model before this part.
+
+The model suite gains the seven edits around a gap in a quote, a quote two deep
+and a quote inside a bullet (less the Enter cases there), read-back, spelling,
+CRLF, a paste landing in each kind of container, and Enter leaving the quote
+from a parsed gap, and `tests/fixtures/torture.md` gains a quoted verse with
+gaps. Two checks flip on purpose: that Enter in a quote writes nothing, and that
+a Blockquote over a gap drops it; and `copy-gap.spec.mjs`'s case that a quote's
+empty paragraph is not a gap. `song-round-trip.spec.mjs` saves, reloads and
+reopens a quoted verse, and the model suite has a check for each finding of the
+review and the search, every one failing without its fix but Enter before a
+list, which already held. `front/sw.js`'s `VERSION` goes to `v1.102`. `npm test`
+passes, 2241 checks; Playwright is 374 passed with the one recorded Firefox
+failure. Also fills `459b680` into the previous entry's header.

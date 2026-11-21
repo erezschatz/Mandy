@@ -1529,14 +1529,16 @@ function modelParse(markdown, md, env = null) {
  * insertion after it — would have to be taught the difference first. **So the
  * top level does not tile its file at a gap**: the extra line end is the one
  * byte the model holds that the file does not, and nothing reads the top level
- * as a concatenation, only through the joiner. A container's children still
- * tile it exactly, and a gap is never inside one.
+ * as a concatenation, only through the joiner. A list's children still tile
+ * it exactly, and a gap is never inside one; a quote's do not at a gap, by
+ * the same one byte (`modelReadQuoteGaps`).
  *
  * **Not the prefix and not the last block's separator**: blank lines at the
  * start or the end of a file have no block on one side, the joiner writes no
- * gap there, and they stay bytes. **Not inside a container either**, which
- * keeps the joiner's rule: inside a list a second blank line means nothing the
- * reader sees, and a quote's blank lines carry its `>`.
+ * gap there, and they stay bytes. **Not inside a list either**, which keeps
+ * the joiner's rule: inside a list a second blank line means nothing the reader
+ * sees (TODO 1.12's list decision). A quote's blank lines carry its `>` and are
+ * blocks of their own, so they are read by `modelReadQuoteGaps` instead.
  *
  * Tokens from the parser, as for every block the editor makes —
  * `modelEmptyParagraph`. The line end is a bare `\n`, as everything the model
@@ -1547,6 +1549,7 @@ function modelReadGaps(blocks, md, mint) {
   const out = [];
   blocks.forEach((block, i) => {
     out.push(block);
+    modelReadQuoteGaps(block, md, mint);
     if (i === blocks.length - 1) return;
     const lines = block.separator.split(/(?<=\n)/);
     if (lines.length < 3) return;
@@ -1559,6 +1562,120 @@ function modelReadGaps(blocks, md, mint) {
     }
   });
   return out;
+}
+
+// A blank line inside a quote: nothing but the quote chain and whitespace.
+const MODEL_QUOTE_BLANK = /^[ \t]*(?:>[ \t]*)+$/;
+
+/**
+ * The quote half of `modelReadGaps` (TODO 1.12's stage 5, part a): every quote
+ * in the tree, at any depth and inside an item too, has its extra `>` lines
+ * read back as empty paragraphs.
+ *
+ * **Inside a quote a blank line is a block**, not part of a separator: the
+ * tiler hands each run of blank `>` lines back as one block of kind `gap`,
+ * since markdown-it makes no token for one. So a run of two or more between two
+ * of the quote's blocks keeps its first line as the ordinary blank line, and
+ * each line after it becomes an empty paragraph standing after it, with an
+ * Enter's shape for its separator — a line end, then the line, then the line
+ * end that closed it — exactly as at the top level, so typing into it gives
+ * a paragraph with a blank `>` line on each side. The quote's children stop
+ * tiling it at a gap by the same one byte, and the joiner writes it back.
+ *
+ * The paragraph's quote chain is its neighbour's, the way Enter gives a new
+ * block its neighbour's, so typed into it is written behind the same `>`.
+ */
+function modelReadQuoteGaps(block, md, mint) {
+  if (!block.children) return;
+  for (const child of block.children) modelReadQuoteGaps(child, md, mint);
+  if (block.kind !== "quote") return;
+  const kids = block.children;
+  const blank = (line) => MODEL_QUOTE_BLANK.test(line);
+  const like = (i) => {
+    for (const k of [i + 1, i - 1]) if (kids[k] && kids[k].kind === "paragraph" && kids[k].quotePrefixes) return kids[k];
+    return null;
+  };
+  const gapParagraph = (line, separator, near) => {
+    const gap = modelEmptyParagraph(md, mint());
+    gap.source = "";
+    gap.parent = block;
+    gap.separator = "\n" + line + separator;
+    // Its chain is a neighbouring paragraph's, the way Enter gives one; with
+    // none beside it — a rule, a heading, a fence, a definition — it is read
+    // off the blank line itself, which is the chain with nothing after it.
+    gap.quotePrefixes = near && near.quotePrefixes ? near.quotePrefixes.slice(0, 1) : [line.replace(/[ \t]+$/, "") + " "];
+    gap.leadingAffix = near && near.leadingAffix !== null ? near.leadingAffix : "";
+    return gap;
+  };
+  for (let i = kids.length - 1; i >= 0; i--) {
+    const run = kids[i];
+    // **A container ends with the blank lines after it**, since the tiler
+    // hands a list's trailing `>` lines to its last item: when there is
+    // something after it in the quote, the extra ones are lifted out of every
+    // container they sit in and read as gaps after it.
+    if (run.kind === "list" && i < kids.length - 1) {
+      const chain = [run];
+      // Down through the list's last item and any list inside it, but never
+      // into a quote, whose own blank lines carry its own `>`.
+      while (chain[chain.length - 1].children && chain[chain.length - 1].children.length &&
+        chain[chain.length - 1].kind !== "quote") {
+        const kin = chain[chain.length - 1].children;
+        chain.push(kin[kin.length - 1]);
+      }
+      const tail = chain[chain.length - 1];
+      if (tail.kind !== "gap" || tail.source === null || chain.some((node) => node.source === null)) continue;
+      const lines = tail.source.split("\n");
+      let first = lines.length;
+      while (first > 0 && blank(lines[first - 1])) first--;
+      const extra = lines.slice(Math.max(first + 1, 1));
+      if (!extra.length) continue;
+      const cut = extra.reduce((n, line) => n + 1 + line.length, 0);
+      for (const node of chain) node.source = node.source.slice(0, node.source.length - cut);
+      const near = like(i);
+      const papers = extra.map((line, k) => gapParagraph(line, k === extra.length - 1 ? run.separator : "\n", near));
+      run.separator = "\n";
+      kids.splice(i + 1, 0, ...papers);
+      continue;
+    }
+    // **A run of blank `>` lines is a block of its own**, of kind `gap`, and
+    // may hold a reference definition among them: each group of two or more
+    // blank lines with something written either side keeps its first as the
+    // ordinary blank line and reads the rest as gaps, which split the run.
+    if (run.kind !== "gap" || run.source === null) continue;
+    const lines = run.source.split("\n");
+    const out = [];
+    let held = [];
+    for (let k = 0; k < lines.length;) {
+      if (!blank(lines[k])) { held.push(lines[k++]); continue; }
+      let end = k;
+      while (end < lines.length && blank(lines[end])) end++;
+      const before = k > 0 || i > 0;
+      const after = end < lines.length || i < kids.length - 1;
+      if (end - k >= 2 && before && after) {
+        held.push(lines[k]);
+        out.push({ lines: held });
+        for (const line of lines.slice(k + 1, end)) out.push({ line });
+        held = [];
+      } else {
+        held.push(...lines.slice(k, end));
+      }
+      k = end;
+    }
+    if (held.length) out.push({ lines: held });
+    if (out.length === 1) continue;
+    const near = like(i);
+    const pieces = out.map((piece, k) => {
+      const last = k === out.length - 1;
+      if (piece.lines) {
+        const gap = k === 0 ? run : Object.assign(modelBlockShape(mint(), "gap"), { parent: block, tokens: run.tokens });
+        gap.source = piece.lines.join("\n");
+        gap.separator = last ? run.separator : "\n";
+        return gap;
+      }
+      return gapParagraph(piece.line, last ? run.separator : "\n", near);
+    });
+    kids.splice(i, 1, ...pieces);
+  }
 }
 
 /**
@@ -2145,7 +2262,9 @@ function modelEmitBlock(block, emit) {
   // cell has no bytes of its own, so its row cannot be joined from its
   // children, and a table padded to width moves every row when one column
   // widens. `modelEmitTable` decides how much of it actually changes.
-  if (block.children && block.kind !== "table") return modelJoinBlocks(block.children, emit, block.leading);
+  if (block.children && block.kind !== "table") {
+    return modelJoinBlocks(block.children, emit, block.leading, block.kind === "quote" ? "quote" : false);
+  }
   if (typeof emit !== "function") {
     throw new Error(`edited ${block.kind} block with no serialiser`);
   }
@@ -2207,8 +2326,16 @@ function modelDocumentMarkdown(doc, md, width = 0) {
  * a gap the user typed and is written as one more blank line (TODO 1.12, D20).
  * Until 2026-11-19 it fell under the rule above too, so a song typed with an
  * extra Enter between verses was drawn with its gaps and saved without them.
- * `gaps` is true for the document alone: inside a quote or a list a second
- * blank line means something else, or nothing, and that is undecided.
+ * `gaps` is true for the document, and `"quote"` for a quote since stage 5's
+ * part a; a list holds no gap, since a second blank line inside one means
+ * nothing to the reader. **Inside a quote the blank line is a `>` line**, and
+ * a blank line between two of its blocks is a block of its own (kind `gap`)
+ * rather than part of a separator. So there the joiner counts a blank `>` line
+ * just written as the blank line a gap needs; an Enter's empty paragraph, whose
+ * separator is the single line end it was handed while the block before it was
+ * given a blank `>` line, adds nothing to that; a parsed one adds its own line;
+ * and where no blank line was written at all one is made in the quote's chain,
+ * read off the block that follows.
  *
  * The gap is the separator after the last block written, made a blank line if
  * it was not one, and then each empty paragraph's own separator **less its
@@ -2229,34 +2356,60 @@ function modelDocumentMarkdown(doc, md, width = 0) {
  * line, so a document opened and saved is still byte for byte the file.
  */
 function modelJoinBlocks(blocks, emit, leading, gaps = false) {
+  const quote = gaps === "quote";
   let out = leading;
   let separator = "";
   let started = leading !== "";
   let wrote = false;
   let before = "";
+  let blankBlock = false;
+  let pending = false;
+  let loose = false;
   let gap = "";
+  const blankLines = (bytes) => bytes.split("\n").every((line) => MODEL_QUOTE_BLANK.test(line));
   for (const block of blocks) {
     const bytes = modelEmitBlock(block, emit);
     if (bytes === "") {
       if (gaps && wrote && block.kind === "paragraph") {
         const own = block.separator;
         const lines = own.split("\n").length - 1;
-        const line = lines > 1 ? own.slice(own.indexOf("\n") + 1) : own;
-        gap += line || "\n";
+        // Inside a quote a separator of one line end is an Enter's handing-on
+        // of the block before's own, which `modelBlankSeparator` has already
+        // made a blank `>` line: that is the gap, unless what follows is not
+        // a blank line either, and then one more is made below.
+        const line = lines > 1 ? own.slice(own.indexOf("\n") + 1) : quote ? "" : own;
+        gap += quote ? line : line || "\n";
+        if (quote && lines <= 1) loose = true;
+        pending = true;
       }
       if (started) separator = block.separator;
       continue;
     }
-    if (gap) {
-      const blank = /\n[ \t]*\n/.test(before);
-      separator = (blank ? before : before + "\n") + gap;
+    if (pending) {
+      // Inside a quote the blank line is a `>` line, in a separator or as a
+      // block of its own just written.
+      const blank = quote ? blankBlock || /\n[ \t]*>[ \t>]*\n/.test(before) : /\n[ \t]*\n/.test(before);
+      const chain = quote ? (/^[ \t]*(?:>[ \t]?)+/.exec(bytes) || [""])[0].replace(/[ \t]+$/, "") : "";
+      // An Enter's empty paragraph before a block that had no blank line above
+      // it — a fence, a heading, a list a paragraph ran straight into — needs
+      // the blank line after it made, as the one before it was.
+      const after = loose && !(block.kind === "gap" && MODEL_QUOTE_BLANK.test(bytes.split("\n")[0])) ? chain + "\n" : "";
+      separator = (blank ? before : before + chain + "\n") + gap + after;
     }
     out += separator + bytes;
     separator = block.separator;
     before = block.separator;
+    // A block whose last line is a blank `>` line has written the blank line
+    // a gap after it needs: a run of them, a definition ending in one, or a
+    // list the tiler handed the blank line after it to.
+    blankBlock = quote && MODEL_QUOTE_BLANK.test(bytes.slice(bytes.lastIndexOf("\n") + 1));
+    pending = false;
+    loose = false;
     gap = "";
     started = true;
-    wrote = true;
+    // Blank `>` lines at the very start of a quote are not something written
+    // for a gap to follow: a parse reads no gap there either.
+    if (!(quote && !wrote && block.kind === "gap" && blankLines(bytes))) wrote = true;
   }
   return out + separator;
 }
@@ -4814,18 +4967,21 @@ function modelSetParagraphHidden(block, hidden) {
  * The blocks a list or a quote is made of, out of a selection that covers
  * gaps (TODO 1.12, decided by the user on 2026-11-19): **the empty paragraphs
  * between two filled ones are taken out of the document, and the ones at
- * either edge are left where they are.** A gap cannot be a list item, and
- * one inside a list or a quote is not written to the file, so formatting
- * around it would draw what the file cannot keep; and a selection is a
- * request to format what it covers. A selection holding nothing but empty
- * paragraphs is handed back as it is, for the command to refuse.
+ * either edge are left where they are.** A gap cannot be a list item, and one
+ * inside a list is not written to the file, so formatting around it would draw
+ * what the file cannot keep; and a selection is a request to format what it
+ * covers. A selection holding nothing but empty paragraphs is handed back as
+ * it is, for the command to refuse. **`keep` is a quote's**: since stage 5 a
+ * quote writes a gap, so the ones between are kept and only the edges are left
+ * out.
  */
-function modelFormatBlocks(doc, blocks) {
+function modelFormatBlocks(doc, blocks, keep = false) {
   const filled = (block) => !(block.kind === "paragraph" && !block.children && block.inlines && modelIsEmptyBlock(block));
   const first = blocks.findIndex(filled);
   if (first < 0) return blocks;
   let last = blocks.length - 1;
   while (!filled(blocks[last])) last--;
+  if (keep) return blocks.slice(first, last + 1);
   for (const block of blocks.slice(first, last + 1)) if (!filled(block)) modelPruneBlock(doc, block);
   return blocks.filter(filled);
 }
@@ -5301,15 +5457,18 @@ function modelOuterPrefix(line, ancestors, firsts) {
 
 // A run of sibling blocks as lines, each saying which block of the run wrote
 // it, or -1 for a blank line between two of them. Joined the way
-// `modelJoinBlocks` joins a container's children, which is what the file will
-// hold once the run is inside a quote: an empty paragraph there writes
-// nothing, so the top level's gaps (TODO 1.12) are not kept through a wrap.
+// `modelJoinBlocks` joins a container's children. The quote commands hand it an
+// emitter that writes an empty paragraph as a placeholder, so a gap goes
+// through a wrap or an unwrap as a block (TODO 1.12's stage 5).
 function modelRunLines(blocks, emit) {
   const lines = [];
   let separator = "";
   let started = false;
   blocks.forEach((block, i) => {
-    const bytes = modelEmitBlock(block, emit);
+    // A gap read from a file holds `""` as its source, which would answer for
+    // it without the emitter, and the quote commands' emitter is what gives an
+    // empty paragraph the placeholder the parse needs to see it.
+    const bytes = block.source === "" && block.kind === "paragraph" ? emit(block) : modelEmitBlock(block, emit);
     if (bytes === "") {
       if (started) separator = block.separator;
       return;
@@ -5370,9 +5529,10 @@ function modelQuoteReplace(doc, parent, from, to, bytes, md) {
   if (parsed.prefix !== "" || !parsed.blocks.length) return null;
   const leaves = (blocks) => modelFlatten({ blocks }).filter((block) => !block.children && block.kind !== "gap");
   const before = leaves(old);
-  // A blank line too many reads back as an empty paragraph (TODO 1.12), which
-  // the run going in did not hold as a block: it is new, and left out here.
-  const after = leaves(parsed.blocks).filter((block) => block.source !== "");
+  // A gap goes in as a block and comes back as one (TODO 1.12's stage 5): the
+  // quote commands write an empty paragraph as a placeholder, and a quote's own
+  // gaps are blocks since the parse reads them.
+  const after = leaves(parsed.blocks);
   if (before.length !== after.length || before.some((block, i) => block.kind !== after[i].kind)) return null;
 
   for (const block of modelFlatten(parsed)) block.id = modelMintId(doc);
@@ -5389,6 +5549,22 @@ function modelQuoteReplace(doc, parent, from, to, bytes, md) {
       modelTouch(fresh);
     }
   });
+  // **A gap that went in as a placeholder comes back between two blank `>`
+  // lines**, where one read from a file stands after one with the other in
+  // its separator: it is put into that shape, so removing it later takes its
+  // blank line with it.
+  for (const fresh of after) {
+    const quote = fresh.parent;
+    if (!quote || quote.kind !== "quote" || fresh.kind !== "paragraph" || !modelIsEmptyBlock(fresh)) continue;
+    const kids = quote.children;
+    const at = kids.indexOf(fresh);
+    const next = kids[at + 1];
+    const prev = kids[at - 1];
+    if (!next || !prev || next.kind !== "gap" || prev.kind !== "gap" || next.source === null) continue;
+    if (!next.source.split("\n").every((line) => MODEL_QUOTE_BLANK.test(line)) || next.source.includes("\n")) continue;
+    fresh.separator = "\n" + next.source + next.separator;
+    kids.splice(at + 1, 1);
+  }
   // The top-level container keeps its id too, when one was parsed again; at
   // the top level `old` is the run itself and its leaves already have theirs.
   if (parent && parsed.blocks.length === 1) parsed.blocks[0].id = old[0].id;
@@ -5528,7 +5704,11 @@ function modelUnwrapQuote(doc, quote, from, to, md) {
 function modelToggleQuote(doc, leaves, md) {
   leaves = leaves.filter((leaf) => leaf.kind !== "gap");
   if (!leaves.length) return null;
-  leaves = modelFormatBlocks(doc, leaves);
+  // **A quote keeps the gaps inside the selection** (TODO 1.12's stage 5,
+  // superseding D25 for a quote): a gap is written inside one now, so wrapping
+  // or unwrapping keeps it. The ones at the selection's edges are still left
+  // out of it, as a list leaves them.
+  leaves = modelFormatBlocks(doc, leaves, true);
   const ids = leaves.map((leaf) => leaf.id);
   const find = (group) => group.map((id) => modelBlockById(doc, id)).filter(Boolean);
   let made = null;
@@ -5840,7 +6020,10 @@ function modelSiblings(doc, block) {
  */
 function modelBlankSeparator(block) {
   const chain = block.quotePrefixes;
-  const last = chain && chain.length ? chain[chain.length - 1] : "";
+  // A lazy line carries no `>` of its own, so a blank line after it takes the
+  // chain of the last line that does, or it would end the quote.
+  const quoted = chain ? [...chain].reverse().find((prefix) => prefix.includes(">")) : null;
+  const last = quoted ?? (chain && chain.length ? chain[chain.length - 1] : "");
   return "\n" + last.replace(/[ \t]+$/, "") + "\n";
 }
 
@@ -6108,14 +6291,38 @@ function modelRemoveBlock(doc, block) {
   const heir = at === 0 && list.length > 1 ? list[1] : null;
   const extra = heir ? modelBlockExtra(heir) : "";
   list.splice(at, 1);
-  if (at > 0) list[at - 1].separator = block.separator;
+  if (at > 0) {
+    // **A gap inside a quote leaves the plainer of the two separators** (TODO
+    // 1.12's stage 5). Its blank `>` line is in its own separator when it was
+    // read from a file and in the one before when Enter made it, so handing
+    // its own on is right for the second and one blank line too many for the
+    // first; the one of the two holding fewer line ends is right for both.
+    const lines = (separator) => separator.split("\n").length;
+    const keep = block.kind === "paragraph" && block.parent && block.parent.kind === "quote" &&
+      modelInlineText(block.inlines || []) === "" && lines(list[at - 1].separator) < lines(block.separator);
+    if (!keep) list[at - 1].separator = block.separator;
+  }
   // **A container's last child always has an empty separator**, which is the
   // tiler's own shape — a container's `map` runs into the blank line after it,
   // so the trailing blanks were handed back to the container's separator at
   // parse. A removal that left a stale one behind would emit that blank line
   // twice: once inside the container and once after it.
   if (block.parent && list.length) list[list.length - 1].separator = "";
-  if (heir) {
+  // **Two blank `>` lines left side by side are one too many.** Inside a
+  // quote the blank line between two blocks is a block of its own, so taking
+  // out the block between two of them leaves both, which reopens as a gap the
+  // screen never had (TODO 1.12's stage 5). At the top level the blank line is
+  // in a separator and goes with it.
+  const blankLine = (node) => node && node.kind === "gap" && node.source !== null && !node.source.includes("\n") &&
+    MODEL_QUOTE_BLANK.test(node.source);
+  if (block.parent && block.parent.kind === "quote" && at > 0 && blankLine(list[at - 1]) && blankLine(list[at])) {
+    list[at - 1].separator = list[at].separator;
+    list.splice(at, 1);
+  }
+  // A blank `>` line inherits nothing: it has no inline tree to take an
+  // affix, and touching one leaves a block the emitter cannot write. (A fence
+  // or a rule taking an item's marker is refused by the emitter, as before.)
+  if (heir && heir.kind !== "gap") {
     modelSetLeadingAffix(heir, extra);
     modelTouch(heir);
   }
@@ -6206,13 +6413,25 @@ function modelInlineSplit(nodes, offset) {
  * Only `text` leaves are trimmed. A code span's own spaces are content that
  * survives a round trip, and an atom and a break have no whitespace to lose.
  */
-function modelInlineTrimEdge(nodes, side) {
+function modelInlineTrimEdge(nodes, side, breaks = false) {
   while (nodes && nodes.length) {
     const index = side < 0 ? 0 : nodes.length - 1;
     const node = nodes[index];
     if (node.children) {
-      modelInlineTrimEdge(node.children, side);
+      modelInlineTrimEdge(node.children, side, breaks);
       if (node.children.length) return nodes;
+      nodes.splice(index, 1);
+      continue;
+    }
+    // A line break at the cut is whitespace a block cannot carry at its edge
+    // either: kept, the half ending in one writes an empty last line, which is
+    // a blank line in the file and reopens as a gap (found 2026-11-21, older
+    // than the gap read-back that made it show). Only for a split, which
+    // `breaks` says: a break typed beside another is the break's own business.
+    // **A hard break opening the second half stays**: a paragraph may open with
+    // one, and it is a blank line the reader sees, where a soft break there or
+    // a hard break ending the first half writes nothing anyone can see.
+    if (breaks && (node.kind === "softbreak" || (node.kind === "hardbreak" && side > 0))) {
       nodes.splice(index, 1);
       continue;
     }
@@ -6250,9 +6469,9 @@ function modelSplitLeaf(doc, block, offset, trim = true) {
   if (!block.inlines) return null;
   const extra = modelBlockExtra(block);
   const cut = modelInlineSplit(block.inlines, offset);
-  block.inlines = trim ? modelInlineTrimEdge(cut.head, 1) : cut.head;
+  block.inlines = trim ? modelInlineTrimEdge(cut.head, 1, true) : cut.head;
   if (block.inline) block.inline.children = modelInlineTokens(block.inlines);
-  const fresh = modelLeafLike(doc, block, trim ? modelInlineTrimEdge(cut.tail, -1) : cut.tail);
+  const fresh = modelLeafLike(doc, block, trim ? modelInlineTrimEdge(cut.tail, -1, true) : cut.tail);
   modelInsertBlockAfter(doc, block, fresh, extra);
   modelTouch(block);
   modelTouch(fresh);
@@ -7099,6 +7318,14 @@ function modelAdoptBlocks(doc, blocks, like) {
  */
 function modelInsertBlocks(doc, block, offset, blocks) {
   modelUnshare(block);
+  // **A list holds no gap** (TODO 1.12's stage 5): a gap pasted or dropped
+  // into an item would be drawn and never written, so it is left out. A quote
+  // keeps one, and the top level does; only the container the blocks land in
+  // decides, so a quote inside an item keeps its gaps.
+  if (block.parent && block.parent.kind === "item") {
+    blocks = blocks.filter((pasted, i) => i === 0 || i === blocks.length - 1 ||
+      !(pasted.kind === "paragraph" && pasted.inlines && modelInlineText(pasted.inlines) === ""));
+  }
   if (!blocks.length) return { block, offset };
   if (!block.inlines) return null;
   modelAdoptBlocks(doc, blocks, block);

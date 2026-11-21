@@ -98,13 +98,16 @@ test("a paragraph of spaces copies as the file writes it", async ({ page }) => {
   expect(copied.text).toBe("a\n\n\nb");
 });
 
-test("an empty paragraph inside a quote is not a gap", async ({ page }) => {
+// Since stage 5 a quote writes a gap, so a copy keeps one: inside the quote
+// alone, and across it from the paragraph after. Until then this case said the
+// opposite, when the file had nothing to say about a quote's gap.
+test("an empty paragraph between two of a quote's is a gap", async ({ page }) => {
   await open(page, "> q\n>\n> r\n\nafter\n");
   await page.locator("#editor blockquote p").first().click();
   await page.keyboard.press(LINE_END);
   await page.keyboard.press("Enter");
   await expect(page.locator("#editor blockquote p")).toHaveCount(3);
-  // Inside the quote alone, and across it from the paragraph after.
+  expect(await markdown(page)).toBe("> q\n>\n>\n> r\n\nafter\n");
   await page.evaluate(() => {
     const quote = editor.querySelector("blockquote");
     getSelection().setBaseAndExtent(quote, 0, quote, quote.childNodes.length);
@@ -112,9 +115,21 @@ test("an empty paragraph inside a quote is not a gap", async ({ page }) => {
   const inside = await page.evaluate(() => {
     const event = new ClipboardEvent("copy", { clipboardData: new DataTransfer(), bubbles: true, cancelable: true });
     editor.dispatchEvent(event);
-    return event.clipboardData.getData("text/html");
+    return { text: event.clipboardData.getData("text/plain"), html: event.clipboardData.getData("text/html") };
   });
-  expect(inside).not.toMatch(GAP);
+  expect(inside.html.match(GAP)).toHaveLength(1);
+  expect(inside.text).toBe("q\n\n\nr");
+  const all = await copyAll(page);
+  expect(all.html.match(GAP)).toHaveLength(1);
+  expect(all.text).toBe("q\n\n\nr\n\nafter");
+});
+
+test("an empty paragraph at the end of a quote is not a gap", async ({ page }) => {
+  await open(page, "> q\n\nafter\n");
+  await page.locator("#editor blockquote p").first().click();
+  await page.keyboard.press(LINE_END);
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#editor blockquote p")).toHaveCount(2);
   expect((await copyAll(page)).html).not.toMatch(GAP);
 });
 

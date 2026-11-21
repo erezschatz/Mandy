@@ -296,6 +296,21 @@ down to the mill.
 
 
   
+And the same verse quoted, where the blank lines are `>` lines and an extra one
+is a gap inside the quote:
+
+> Over the ford
+>
+> and up the hill,
+>
+>  
+> down to the mill.
+>
+> > A quote inside it, with a gap of its own:
+> >
+> >
+> > the wheel turns still.
+
 Three rules, three spellings:
 
 ---
