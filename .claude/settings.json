@@ -6,7 +6,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "deno run --quiet --allow-run=git,deno --allow-read \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-unit.mjs\" --staged"
+            "if": "Bash(git commit *)",
+            "command": "deno",
+            "args": ["run", "--quiet", "--allow-run=git,deno,/bin/sh", "--allow-read", "--allow-env",
+                     "${CLAUDE_PROJECT_DIR}/.claude/hooks/check-unit.mjs", "--staged"],
+            "onFailure": "block"
           }
         ]
       }
@@ -16,7 +20,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "deno run --quiet --allow-run=git,deno --allow-read \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-unit.mjs\" --tree"
+            "command": "deno",
+            "args": ["run", "--quiet", "--allow-run=git,deno,/bin/sh", "--allow-read", "--allow-env",
+                     "${CLAUDE_PROJECT_DIR}/.claude/hooks/check-unit.mjs", "--branch"]
           }
         ]
       }

@@ -80,5 +80,5 @@ is flagged before it is added (CLAUDE.md, Commands).
 | MathJax 3 | CDN, loaded on first use | a TeX typesetter | typesetting TeX is its own field |
 | html2pdf.js 0.10.1, docx 7.1.0, FileSaver.js 2.0.5 | CDN, loaded on first use | PDF, Word and file-download writers | file formats with nothing project-specific in them |
 | Hono 4 | `server/deno.json` | an HTTP router | a handful of routes and a static handler |
-| Deno | runtime | Node and npm | runs the server, the suites and the hooks with no `node_modules` at the root |
+| Deno | runtime | Node and npm | runs the server, the suites and the hooks with no `node_modules` at the root; the hooks' own tests run under Node, which the plugin's tests spawn (D22) |
 | Playwright 1.64.1 | `tests/browser/` only | a person at a keyboard in three browsers | the one `node_modules` in the tree, agreed in TODO 6.8 |

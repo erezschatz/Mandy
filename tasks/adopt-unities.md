@@ -197,6 +197,82 @@ nobody could verify.
 0.5.0, and answered by Erez on 2026-11-19. Revisit the day a second agent
 works here.
 
+### 2026-11-23 · The planted scripts are the plugin's, unchanged
+
+**Decision** — From 0.6.8 the gate, its tests and both compilers are the
+plugin's files, copied byte for byte and checked against
+`.claude/hooks/unities.manifest.json`. Mandy's own values are in
+`.claude/hooks/unities.json`. A change Mandy needs from a script is asked of
+the plugin as a task. The gate's tests run under Node (`deno task hooks:test`
+is `node --test`), because every case spawns `node` whatever runs the suite.
+**Rejected** — Keeping Mandy's own Deno-native copy with the new checks cut in
+by hand, as D14 did. 0.6.8's gate refuses a planted copy that differs from the
+manifest. The plugin's scripts do run under Deno, through the `run` value, but
+not with the procedure's Deno line: measured here, it fails every `git` call, so
+the hooks grant `--allow-run=git,deno,/bin/sh` and full `--allow-env` (the third
+ask in tasks/unities-plugin-asks.md). That is the `--allow-env` failure D14 was
+written against, met again and fixed in the invocation, not in the script.
+**Why** — One copy of the rules, kept where they are tested. The D-number
+change D12 made is no longer needed: D10 onwards are compiled, so the
+compiler numbers from them and never has to read D0–D9.
+Supersedes: D12, D14
+
+### 2026-11-23 · The end-of-turn check sends a turn back once
+
+**Decision** — Strict's `Stop` binding is the plugin's `--branch`: a turn that
+ends with the uncommitted tree missing something is sent back once, and the
+second pass ends with a note to Erez. A turn that stops mid-change on purpose
+says so and ends on that second pass. Asking the plugin for a strict `Stop` that
+only reports is tasks/unities-plugin-asks.md. The rest of D10 stands:
+the commit is the scene, and the commit refuses.
+**Rejected** — Pointing `Stop` at the adapted mode with `UNITIES_SCENE=pr` so
+that it only advises. In adapted, `--branch` measures from the merge base with
+`main`, and this repo works on `main`, so it would most likely report nothing.
+Also rejected: leaving `Stop` out, which loses the check entirely.
+**Why** — Chosen by Erez on 2026-11-23 from three options. Of the two that
+are available now, one extra pass on a deliberate stop costs less than an
+end-of-turn check that never fires.
+Supersedes: D10
+
+### 2026-11-23 · Work a task still owes is an open box
+
+**Decision** — The plugin's done rule holds: a task with a `## What was done`
+section and no open box is done, and one with an open box is
+`recorded, N boxes open`. The four tasks with records that are not finished —
+1.1, 1.12, 3.1 and 6.8 — each gained a dated **Acceptance** block at the end of
+their Context, with a box for each piece still owed. The `Status: done` lines
+already written stay where they are and no longer decide anything.
+**Rejected** — Asking the plugin for a configurable done marker and leaving the
+plan wrong until it ships. Under 0.6.8 the plan would read the four as done,
+the rewrite among them.
+**Why** — Chosen by Erez on 2026-11-23. A box names what is left. A hidden
+line names only that someone thought it was finished.
+Supersedes: D13
+
+### 2026-11-23 · CHANGELOG.md stays hand-written, through the configuration
+
+**Decision** — D11 stands under 0.6.8. In `.claude/hooks/unities.json`, `shared`
+matches nothing, `CHANGELOG.md` is in the `doc` role and `releaseFiles` matches
+nothing. `scripts/compile-changelog.mjs` is copied in because the manifest lists
+it, but no task runs it and nothing calls it.
+**Rejected** — Leaving it out. The gate would report it missing on the first
+commit that touches a planted script.
+**Why** — D11's reasons have not changed: one developer, no tags, no releases.
+
+### 2026-11-23 · No note for source changed without a test
+
+**Decision** — The old gate's note when source changed with no test change is
+gone, and nothing replaces it. `required` stays doc and task, so a missing test
+is neither refused nor mentioned. CLAUDE.md's rule that a change no suite can
+reach gives its browser recipe in the CHANGELOG entry still stands. It is now
+held by the reader rather than by a note.
+**Rejected** — Adding `test` to `required`. Many changes here have no suite
+that can reach them, and a refusal would be answered with an empty test.
+**Rejected** — Asking the plugin for a "notes" role. The cold reader already
+asks what a change did that nothing records.
+**Why** — The plugin's gate has no advisory output, and the note never refused
+anything.
+
 ## What was done
 
 2026-11-14: **brought up to the procedure dated 2026-11-11 (0.4.0).** The
@@ -288,3 +364,58 @@ reading of CLAUDE.md's Unities section names the brief.
 
 Status: done
 Reviewed by: a read-only subagent that had not seen the work, carrying out docs/reviewer.md against the staged diff. It found the record accurate and two faults in the CHANGELOG entry: it credited tasks/README.md with saying the review is part of the unit, which only CLAUDE.md says, and it opened after two blank lines. Both were fixed before the commit.
+
+## What was done
+
+2026-11-23: **brought up to the procedure dated 2026-11-22 (0.6.8).** The
+planted docs/UNITIES.md was 0.5.5 of 2026-11-19 and was replaced with the
+master. 5.5 applied, since the scripts here were cut from the listings, along
+with 0.6.8's done rule and its record check.
+
+- **The values**, from the old gate's per-repo block, are now in
+  `.claude/hooks/unities.json`: `scene` `commit`, the same five roles, `shared`
+  matching nothing, `required` doc and task, `base` `main`, `releaseFiles`
+  matching nothing, and `run` for Deno. The old compiler had no closing-line
+  change and still compiled a plan, so `changelog.recorded` and `plan` are left
+  out.
+- **The local changes**, compared against the 0.5.5 copy's appendices, and
+  what became of each: D11, the hand-written changelog, is kept through the
+  configuration. D12, the `D9.` search, is no longer needed. D13, `Status:
+  done`, is superseded by open boxes in 1.1, 1.12, 3.1 and 6.8. D14, the
+  Deno-native copy, and D10's reporting-only `Stop` are superseded. The old
+  gate's "no test change" note is dropped, since `required`
+  holds no test and the plugin's gate has no notes; the decision above
+  records it.
+  tasks/unities-plugin-asks.md carries what is asked of the plugin.
+- **The files**: the four scripts and the manifest were copied from the
+  plugin unchanged. `.claude/settings.json` moved to the `command`/`args` form
+  with the `git commit` filter and `onFailure: "block"`, with `Stop` on
+  `--branch`. `.githooks/pre-commit` got the same invocation. `deno task
+  hooks:test` is `node --test`. CLAUDE.md's Unities section, tasks/README.md
+  and tasks/_template.md now state the done rule, the planted files and the
+  end-of-turn behaviour. docs/PLAN.md's hand-written head still states the
+  `Status: done` rule, because the gate refuses an edit to it.
+- **Measured, not as the procedure says**: Appendix H's Deno line fails every
+  `git` call under Deno 2.9.8. The hooks run with
+  `--allow-run=git,deno,/bin/sh --allow-env`, written up as the third ask.
+
+**Verification.** `deno task hooks:test` gives 90 passed and 1 skipped. The
+old and new gates were run with `--staged` on the same index sets, each built
+in a temporary index:
+
+- a lone file in `front/`: both refuse, naming no doc, no task and the record
+  unstaged;
+- that file with a CHANGELOG line, a new reviewed task record and the compiled
+  files: both pass;
+- that file with a CHANGELOG line and a touched task file but no new record:
+  both refuse on the unstaged record, and the new gate also on "no record";
+- a CHANGELOG line alone, while this change's compiled files were unstaged:
+  both refuse on those.
+
+The manifest probe (6.6) is refused as `scripts/compile-record.mjs` edited.
+`Stop` on a tree holding a source probe sends the turn back on the first pass
+and ends it with a `systemMessage` on the second. A `PreToolUse` on a command
+that is not `git commit` exits 0. `compile-record.mjs --check` exits 0.
+
+Status: done
+Reviewed by: a read-only subagent that had not seen the work, carrying out docs/reviewer.md against the staged diff. It confirmed the planted files equal the 0.6.8 masters, the configuration's values, the backfill and the compiled record. It found five things. D22 claimed the procedure's Deno line works, contradicting this record. docs/SPEC.md still said the hooks need no Node. The dropped test note had no decision. 1.12's stage 2 and stage 5 boxes were narrower than its plan. 6.8's box left out item 1 and the `input-check` half of item 3. All were fixed before the commit. It did not rerun the hooks suite.

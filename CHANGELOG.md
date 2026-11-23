@@ -10917,7 +10917,7 @@ throws. **After a reopen the gap is still not on screen** — that is stage 3 �
 and Ctrl/Cmd+C still loses it, which is stage 2. Also fills `b9c29fd` into the
 previous entry's header.
 
-## 2026-11-19 — The Unities brought up to 0.5.5: the reader gets a brief
+## 2026-11-19 — `d138818` — The Unities brought up to 0.5.5: the reader gets a brief
 
 docs/UNITIES.md is replaced with the procedure's 0.5.5 master, dated today,
 over the 0.4.0 copy of 2026-11-11. The one thing it adds that applies here is
@@ -10937,3 +10937,44 @@ agent here, which is a new decision in tasks/adopt-unities.md. Neither is the
 script's reworked `--pr` mode, which this strict-only copy has never had.
 `deno task hooks:test` passes. Also fills `d339929` into the previous entry's
 header.
+
+## 2026-11-23 — The Unities brought up to 0.6.8: the scripts are the plugin's
+
+docs/UNITIES.md is replaced with the procedure's 0.6.8 master over the 0.5.5
+copy. What 0.6.x changes is where the rules live. **The gate, its tests and both
+compilers are now the plugin's files**, copied in unchanged and checked against
+`.claude/hooks/unities.manifest.json`. Mandy's own values (roles, staging,
+base, the retired TODO) moved into `.claude/hooks/unities.json`, and the gate
+refuses a commit carrying an edited copy. So the local changes Mandy's copies
+held were each kept through the configuration, dropped, or asked of the plugin.
+Five decisions in tasks/adopt-unities.md record which.
+
+- **Kept:** CHANGELOG.md stays hand-written and counts as a doc line
+  (`shared` matches nothing). `scripts/compile-changelog.mjs` is copied in
+  because the manifest lists it, and nothing runs it.
+- **No longer needed:** the compiler's search for the `D9.` spelling. D10
+  onwards are compiled, so it numbers from those, and docs/DECISIONS.md
+  compiles to the same text.
+- **Changed:** the end-of-turn check now sends a turn back once and lets the
+  second pass end with a note, where it used to report and never send back.
+  **A task with a record is done once no box in its file is open**, where it
+  used to take a `Status: done` line. The new rule would have read 1.1, 1.12,
+  3.1 and 6.8 as done, so each gained a dated **Acceptance** block with a box
+  for each piece still owed.
+- **Asked of the plugin**, in tasks/unities-plugin-asks.md: a strict end-of-turn
+  check that only reports; a way to fix a compiled file's hand-written head,
+  since docs/PLAN.md's still describes the `Status: done` rule and the gate
+  refuses any edit to it; and a fix for the procedure's Deno invocation. As
+  written it does not run: Deno's `child_process` needs the whole environment
+  and runs `git` through `/bin/sh`. So the hooks here run with
+  `--allow-run=git,deno,/bin/sh --allow-env`, which is close to unscoped.
+
+The gate also refuses a commit that changes source and touches a task file
+without adding a `## What was done` section, and it no longer prints a note
+when source changes without a test, a drop recorded as a decision.
+`deno task hooks:test` now runs under Node, because the plugin's tests spawn
+`node` for every case: 90 pass, 1 skipped. docs/SPEC.md's Deno row says so. The
+old and new gates were run on the same staged sets and agree: a lone source
+file and a CHANGELOG edit with the record unstaged are refused, and a complete
+change passes. A probe edit to a planted script is refused as edited. Also fills
+`d138818` into the previous entry's header.

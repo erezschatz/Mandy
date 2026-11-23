@@ -11,7 +11,8 @@ trivial, the plan: what is about to change, the stages, what each one entails.>
          assigns it and the commit carries its output;
      `## What was done`, one section per landing, ending with
          `Reviewed by: <reader that had not seen the work>`; the one that closes
-         the task also carries `Status: done`;
+         the task also carries `Status: done`. Work still owed is an open
+         `- [ ]` box: the plan reads a record with none as done;
      `## Review · <date>`, written by a reviewer: per finding `### title`,
          **Found**, **Done when** (a box per case, `case → outcome`), **Not asked**.
      Never write in docs/DECISIONS.md or docs/PLAN.md below their marker. -->

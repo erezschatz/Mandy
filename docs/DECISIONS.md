@@ -777,3 +777,89 @@ nobody could verify.
 works here.
 
 Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D22 · 2026-11-23 · The planted scripts are the plugin's, unchanged
+
+**Decision** — From 0.6.8 the gate, its tests and both compilers are the
+plugin's files, copied byte for byte and checked against
+`.claude/hooks/unities.manifest.json`. Mandy's own values are in
+`.claude/hooks/unities.json`. A change Mandy needs from a script is asked of
+the plugin as a task. The gate's tests run under Node (`deno task hooks:test`
+is `node --test`), because every case spawns `node` whatever runs the suite.
+**Rejected** — Keeping Mandy's own Deno-native copy with the new checks cut in
+by hand, as D14 did. 0.6.8's gate refuses a planted copy that differs from the
+manifest. The plugin's scripts do run under Deno, through the `run` value, but
+not with the procedure's Deno line: measured here, it fails every `git` call, so
+the hooks grant `--allow-run=git,deno,/bin/sh` and full `--allow-env` (the third
+ask in tasks/unities-plugin-asks.md). That is the `--allow-env` failure D14 was
+written against, met again and fixed in the invocation, not in the script.
+**Why** — One copy of the rules, kept where they are tested. The D-number
+change D12 made is no longer needed: D10 onwards are compiled, so the
+compiler numbers from them and never has to read D0–D9.
+Supersedes: D12, D14
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D23 · 2026-11-23 · The end-of-turn check sends a turn back once
+
+**Decision** — Strict's `Stop` binding is the plugin's `--branch`: a turn that
+ends with the uncommitted tree missing something is sent back once, and the
+second pass ends with a note to Erez. A turn that stops mid-change on purpose
+says so and ends on that second pass. Asking the plugin for a strict `Stop` that
+only reports is tasks/unities-plugin-asks.md. The rest of D10 stands:
+the commit is the scene, and the commit refuses.
+**Rejected** — Pointing `Stop` at the adapted mode with `UNITIES_SCENE=pr` so
+that it only advises. In adapted, `--branch` measures from the merge base with
+`main`, and this repo works on `main`, so it would most likely report nothing.
+Also rejected: leaving `Stop` out, which loses the check entirely.
+**Why** — Chosen by Erez on 2026-11-23 from three options. Of the two that
+are available now, one extra pass on a deliberate stop costs less than an
+end-of-turn check that never fires.
+Supersedes: D10
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D24 · 2026-11-23 · Work a task still owes is an open box
+
+**Decision** — The plugin's done rule holds: a task with a `## What was done`
+section and no open box is done, and one with an open box is
+`recorded, N boxes open`. The four tasks with records that are not finished —
+1.1, 1.12, 3.1 and 6.8 — each gained a dated **Acceptance** block at the end of
+their Context, with a box for each piece still owed. The `Status: done` lines
+already written stay where they are and no longer decide anything.
+**Rejected** — Asking the plugin for a configurable done marker and leaving the
+plan wrong until it ships. Under 0.6.8 the plan would read the four as done,
+the rewrite among them.
+**Why** — Chosen by Erez on 2026-11-23. A box names what is left. A hidden
+line names only that someone thought it was finished.
+Supersedes: D13
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D25 · 2026-11-23 · CHANGELOG.md stays hand-written, through the configuration
+
+**Decision** — D11 stands under 0.6.8. In `.claude/hooks/unities.json`, `shared`
+matches nothing, `CHANGELOG.md` is in the `doc` role and `releaseFiles` matches
+nothing. `scripts/compile-changelog.mjs` is copied in because the manifest lists
+it, but no task runs it and nothing calls it.
+**Rejected** — Leaving it out. The gate would report it missing on the first
+commit that touches a planted script.
+**Why** — D11's reasons have not changed: one developer, no tags, no releases.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D26 · 2026-11-23 · No note for source changed without a test
+
+**Decision** — The old gate's note when source changed with no test change is
+gone, and nothing replaces it. `required` stays doc and task, so a missing test
+is neither refused nor mentioned. CLAUDE.md's rule that a change no suite can
+reach gives its browser recipe in the CHANGELOG entry still stands. It is now
+held by the reader rather than by a note.
+**Rejected** — Adding `test` to `required`. Many changes here have no suite
+that can reach them, and a refusal would be answered with an empty test.
+**Rejected** — Asking the plugin for a "notes" role. The cold reader already
+asks what a change did that nothing records.
+**Why** — The plugin's gate has no advisory output, and the note never refused
+anything.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
