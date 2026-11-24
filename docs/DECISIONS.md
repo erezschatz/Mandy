@@ -863,3 +863,19 @@ asks what a change did that nothing records.
 anything.
 
 Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D27 · 2026-11-24 · Reload all is Reload, once per tab, on screen
+
+**Decision** — `reloadAllTabs()` switches to each tab with a file and calls the
+existing `reloadFile()`, then switches back to the tab it started on. Cancel on
+an edited tab keeps that tab and the run goes on.
+**Rejected** — reading each background tab's file straight into its parked
+bundle or storage without switching to it, and stopping the whole run on the
+first Cancel.
+**Why** — tabs do not act on each other's state. `reloadFile` and its guard only
+ever ask about the document on screen, so switching first is the only way to
+reuse them unchanged. This is the same reason `requestCloseTab` switches before
+it asks. Cancel in that dialog means "keep this document", and when one tab of
+five is edited, keeping it is no reason to leave the other four stale.
+
+Source: [tasks/4.14-reload-all.md](../tasks/4.14-reload-all.md)

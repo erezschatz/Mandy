@@ -41,6 +41,7 @@ up yet rather than tasks.
 - [4.11-outline-width](../tasks/4.11-outline-width.md) — 4.11 — The outline sidebar's width
 - [4.12-newtab](../tasks/4.12-newtab.md) — 4.12 — newTab() is the only path
 - [4.13-tab-switch-position](../tasks/4.13-tab-switch-position.md) — 4.13 — A tab switch always comes back to the top of the document
+- [4.14-reload-all](../tasks/4.14-reload-all.md) — 4.14 — Reload all from disk · done
 - [6.1-readme-rewrite](../tasks/6.1-readme-rewrite.md) — 6.1 — Rewrite the README
 - [6.3-single-executable](../tasks/6.3-single-executable.md) — 6.3 — Ship Mandy as a single executable
 - [6.4-open-html](../tasks/6.4-open-html.md) — 6.4 — Open HTML, save markdown

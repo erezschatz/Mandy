@@ -213,10 +213,10 @@ export default async function run(check) {
     .map((i) => i.attrs["data-action"]);
 
   check("the app talks to the file server",
-    ["open-file", "reload-file", "save-file", "save-as-file"]
+    ["open-file", "reload-file", "reload-all-files", "save-file", "save-as-file"]
       .every((a) => appActions.includes(a)));
   check("and an exported document does not",
-    !exportActions.some((a) => a.endsWith("-file")));
+    !exportActions.some((a) => a.endsWith("-file") || a.endsWith("-files")));
   check("falling back to upload/download",
     exportActions.includes("upload-md") && exportActions.includes("download-md"));
   check("both get undo and redo",

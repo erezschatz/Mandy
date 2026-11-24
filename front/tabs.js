@@ -613,6 +613,31 @@ async function requestCloseTab(id) {
   return closeTab(id);
 }
 
+// Reload from disk, once per tab that has a file, done the way a person would
+// do it by hand: switch to the tab, reload it. Nothing here reads or writes
+// another tab's document. reloadFile only ever acts on the document on screen,
+// so an edited tab gets Reload's own question about a document you can see,
+// which is the same reason requestCloseTab switches before it asks. Cancel on
+// one tab keeps that tab as it is and goes on to the next. Each reload is
+// awaited before the next switch, so the switch lock has been released by then.
+// A switch that is still refused means something else is in flight, and the
+// run stops there instead of reloading a tab that is not on screen. It still
+// tries to go back to where it started, which the same lock may refuse too.
+async function reloadAllTabs() {
+  if (activeTabId === null) return reloadFile();
+
+  const start = activeTabId;
+  for (const id of openTabs.map((tab) => tab.id)) {
+    const tab = findTab(id);
+    if (!tab || !tabDescriptor(tab).path) continue;
+    if (!switchToTab(id)) break;
+    await reloadFile();
+  }
+  if (findTab(start)) switchToTab(start);
+}
+
+onToolbarAction("reload-all-files", reloadAllTabs);
+
 // One listener for the whole strip rather than one per tab, so a redraw does
 // not have to rebind anything. Deliberately not routed through
 // onToolbarAction: a tab is not an action, and that dispatcher's contract is

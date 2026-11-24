@@ -10938,7 +10938,7 @@ script's reworked `--pr` mode, which this strict-only copy has never had.
 `deno task hooks:test` passes. Also fills `d339929` into the previous entry's
 header.
 
-## 2026-11-23 — The Unities brought up to 0.6.8: the scripts are the plugin's
+## 2026-11-23 — `44baa8f` — The Unities brought up to 0.6.8: the scripts are the plugin's
 
 docs/UNITIES.md is replaced with the procedure's 0.6.8 master over the 0.5.5
 copy. What 0.6.x changes is where the rules live. **The gate, its tests and both
@@ -10978,3 +10978,21 @@ old and new gates were run on the same staged sets and agree: a lone source
 file and a CHANGELOG edit with the record unstaged are refused, and a complete
 change passes. A probe edit to a planted script is refused as edited. Also fills
 `d138818` into the previous entry's header.
+
+## 2026-11-24 — Reload all from disk
+
+File → **Reload all from disk** reloads every open tab that has a file (task
+4.14). It is the existing *Reload from disk* run once per tab, the way you would
+do it by hand: `reloadAllTabs()` in `tabs.js` switches to each tab in bar order,
+calls `reloadFile()`, and at the end switches back to the tab it started on.
+Nothing in it reads or writes another tab's document. A tab with no file is
+skipped. An edited tab gets Reload's usual question, on screen and by name, and
+Cancel keeps that document and moves on to the next tab. A switch the lock
+refuses ends the run, which then still tries to switch back to where it
+started. If the run starts on a tab with a file that is first in the bar, that
+tab is reloaded even under the lock, as a plain Reload would be, because
+switching to the tab already on screen does not ask the lock. Each reloaded tab shows its own "Reloaded … from disk."
+toast. The item is app-only and is disabled with the other file items when the
+server is unavailable. sw.js VERSION v1.98. The `tabs` suite gains fourteen
+checks, and the `toolbar` suite covers the new action. Also fills `44baa8f` into the
+previous entry's header.

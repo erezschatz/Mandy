@@ -46,7 +46,7 @@ const DIALOG_IDS = [
 function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   quiet = false, hold = null, disk = new Map(), fakeTimers = false,
   failLoad = null, answers = [], entries = [], flatUnconverted = false,
-  holdWrite = null, modifiedAt = new Map() } = {}) {
+  holdWrite = null, modifiedAt = new Map(), onAsk = null } = {}) {
   const store = new Map();
   for (const [key, value] of Object.entries(seed)) store.set(key, value);
   // Every localStorage write, in order. Park and adopt must add none of their
@@ -61,8 +61,9 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
 
   const timers = new Map();
   let timerId = 0;
-  // Every question put to the user, in order.
+  // Every question put to the user, in order, and every notice.
   const asked = [];
+  const notices = [];
 
   // .container, not .toolbar, is what getElementById walks below: the tab
   // bar toolbar.js builds is a sibling of .toolbar since stage 3 of the
@@ -204,12 +205,13 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
           return h;
         }
       },
-      notify: () => {},
+      notify: (message) => { notices.push(message); },
       // A queue rather than a fixed answer: closing a dirty tab asks
       // confirmDiscard's three-way question, and what the close does next turns
       // on which of the three came back.
       ask: (message, options) => {
         asked.push({ message, title: options && options.title });
+        if (onAsk) onAsk();
         return Promise.resolve(answers.length ? answers.shift() : "cancel");
       },
       // The deliberate-failure cases warn on purpose. Left unmuted they print
@@ -264,7 +266,7 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
           " tabIds: () => openTabs.map((tab) => tab.id)," +
           " activeTab: () => activeTabId," +
           " tabRecord: (id) => openTabs.find((tab) => tab.id === id)," +
-          " tabsSwitchAllowed, newTab, switchToTab, closeTab, tabsBackgroundDirty," +
+          " tabsSwitchAllowed, newTab, switchToTab, closeTab, tabsBackgroundDirty, reloadAllTabs," +
           " checkBackgroundDiskChanged"
         : "") +
       " }; return out;",
@@ -295,6 +297,7 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
       for (const fn of listeners[event] || []) fn(arg);
     },
     asked,
+    notices,
     // A click on a file in the open dialog. The name is in a child span, and
     // the stub's innerHTML = "" does not empty `children`, so rows pile up
     // across showings -- hence the last match.
@@ -1252,6 +1255,116 @@ export default async function run(check) {
     check("discarding closes it", same(app.tabIds(), [2]) && app.activeTab() === 2);
     check("and takes its storage with it",
       [...app.store.keys()].every((k) => !k.startsWith("mandy-tab-1-")));
+  }
+
+  // --- 4.14: Reload all from disk ----------------------------------------
+  //
+  // Reload from disk, once per tab with a file: switch to it, reload it. What
+  // is under test is that every tab with a file ends up with its file's current
+  // bytes, that a tab with none is left alone, and that the run ends where it
+  // began.
+
+  {
+    const disk = new Map([["/home/x/a.md", "a one\n"], ["/home/x/b.md", "b one\n"]]);
+    const app = boot({ withTabs: true, fakeTimers: true, disk });
+    await app.openFile("/home/x/a.md");
+    app.newTab();
+    app.newTab();
+    await app.openFile("/home/x/b.md");
+    app.switchToTab(2);
+    disk.set("/home/x/a.md", "a two\n");
+    disk.set("/home/x/b.md", "b two\n");
+
+    app.notices.length = 0;
+    await app.runToolbarAction("reload-all-files");
+    check("reload all ends on the tab it started on",
+      app.activeTab() === 2 && app.editor.innerHTML === "");
+    check("a starting tab with no file is not reloaded, so says nothing about it",
+      !app.notices.some((n) => n.startsWith("No file is open")));
+    check("each tab with a file reports its own reload",
+      app.notices.length === 2 && app.notices.every((n) => n.startsWith("Reloaded ")));
+    check("and asks nothing when nothing is edited", app.asked.length === 0);
+    app.switchToTab(1);
+    check("the first tab with a file has its file's new bytes",
+      app.editor.innerHTML === "a two\n" && app.fileState().currentFilePath === "/home/x/a.md");
+    app.switchToTab(3);
+    check("and so does the last",
+      app.editor.innerHTML === "b two\n" && app.fileState().currentFilePath === "/home/x/b.md");
+  }
+
+  // An edited tab gets Reload's own question, about a document on screen. Cancel
+  // keeps it and the run goes on.
+  {
+    const disk = new Map([["/home/x/a.md", "a one\n"], ["/home/x/b.md", "b one\n"]]);
+    const app = boot({ withTabs: true, fakeTimers: true, disk });
+    await app.openFile("/home/x/a.md");
+    app.editor.innerHTML = "<p>work</p>";
+    app.type("A");
+    app.newTab();
+    await app.openFile("/home/x/b.md");
+    disk.set("/home/x/a.md", "a two\n");
+    disk.set("/home/x/b.md", "b two\n");
+
+    await app.reloadAllTabs();
+    check("an edited tab is asked about, by name",
+      app.asked.length === 1 && app.asked[0].message.includes("a.md"));
+    check("the clean tab is reloaded anyway, and the run ends where it began",
+      app.activeTab() === 2 && app.editor.innerHTML === "b two\n");
+    app.switchToTab(1);
+    check("cancelling keeps the edited document as it was",
+      app.editor.innerHTML.includes("workA") && app.fileState().isDirty === true);
+  }
+
+  // A tab with no file that is not the starting tab is never switched to.
+  {
+    const disk = new Map([["/home/x/a.md", "a one\n"]]);
+    const app = boot({ withTabs: true, fakeTimers: true, disk });
+    app.newTab();
+    await app.openFile("/home/x/a.md");
+    app.notices.length = 0;
+    await app.reloadAllTabs();
+    check("a background tab with no file is skipped, with no notice",
+      app.notices.length === 1 && app.notices[0].startsWith("Reloaded a.md") &&
+      app.activeTab() === 2 && app.model.renders === 0);
+  }
+
+  // The lock taken partway through: the run stops after the tab it was on and
+  // reloads nothing further, and its try to switch back is refused as well.
+  {
+    const disk = new Map([["/home/x/a.md", "a one\n"], ["/home/x/b.md", "b one\n"]]);
+    let app;
+    app = boot({ withTabs: true, fakeTimers: true, disk,
+      onAsk: () => app.setOperations(app.operationCount() + 1) });
+    await app.openFile("/home/x/a.md");
+    app.editor.innerHTML = "<p>work</p>";
+    app.type("A");
+    app.newTab();
+    await app.openFile("/home/x/b.md");
+    app.newTab();
+    disk.set("/home/x/b.md", "b two\n");
+
+    await app.reloadAllTabs();
+    check("a lock taken mid-run stops it on the tab it last reloaded",
+      app.asked.length === 1 && app.activeTab() === 1);
+    app.setOperations(0);
+    app.switchToTab(2);
+    check("and no later tab is reloaded", app.editor.innerHTML === "b one\n");
+  }
+
+  // A switch the lock refuses ends the run rather than reloading a tab that is
+  // not on screen.
+  {
+    const disk = new Map([["/home/x/a.md", "a one\n"]]);
+    const app = boot({ withTabs: true, fakeTimers: true, disk });
+    await app.openFile("/home/x/a.md");
+    app.newTab();
+    disk.set("/home/x/a.md", "a two\n");
+    app.setOperations(1);
+    await app.reloadAllTabs();
+    app.setOperations(0);
+    check("a refused switch stops the run where it was", app.activeTab() === 2);
+    app.switchToTab(1);
+    check("and reloads nothing", app.editor.innerHTML === "a one\n");
   }
 
   // --- stage 5: the keyboard ----------------------------------------------
