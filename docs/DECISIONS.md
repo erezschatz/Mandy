@@ -879,3 +879,17 @@ it asks. Cancel in that dialog means "keep this document", and when one tab of
 five is edited, keeping it is no reason to leave the other four stale.
 
 Source: [tasks/4.14-reload-all.md](../tasks/4.14-reload-all.md)
+
+## D28 · 2026-11-24 · An edited tab lifts the cover for its question
+
+**Decision** — Reload all runs under an opaque `busy()` cover, and an edited tab
+takes the cover down for Reload's question and puts it back up after the
+answer.
+**Rejected** — asking every edited tab's question up front, in a pass over the
+tabs before the cover goes up; and a see-through cover over the switching.
+**Why** — the question is about a document you have to be able to see, and
+lifting the cover is how most apps handle it (Erez's call). Asking up front
+would mean a second pass over the tabs before the real one. A see-through cover
+would still show the switching it is there to hide.
+
+Source: [tasks/4.14-reload-all.md](../tasks/4.14-reload-all.md)

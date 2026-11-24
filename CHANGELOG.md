@@ -10979,7 +10979,7 @@ file and a CHANGELOG edit with the record unstaged are refused, and a complete
 change passes. A probe edit to a planted script is refused as edited. Also fills
 `d138818` into the previous entry's header.
 
-## 2026-11-24 — Reload all from disk
+## 2026-11-24 — `38ad4ce` — Reload all from disk
 
 File → **Reload all from disk** reloads every open tab that has a file (task
 4.14). It is the existing *Reload from disk* run once per tab, the way you would
@@ -10996,3 +10996,26 @@ toast. The item is app-only and is disabled with the other file items when the
 server is unavailable. sw.js VERSION v1.98. The `tabs` suite gains fourteen
 checks, and the `toolbar` suite covers the new action. Also fills `44baa8f` into the
 previous entry's header.
+
+## 2026-11-24 — Reload all runs under a cover
+
+Reload all from disk no longer shows itself switching through every tab (task
+4.14, stage 2). With five tabs that looked odd, and with ten it would look like
+the computer had gone wrong. **`busy(message)` in `notify.js`** puts an opaque
+cover over the whole window, with a spinner and a message, and returns
+`{ update, done }`. It sits above the file dialog and below `ask()`'s dialogs
+and the toasts, so each "Reloaded … from disk." toast still shows over it.
+`done()` removes it at once, with no fade, and is harmless to call twice.
+**While it is up it takes the keyboard too**: every keydown is swallowed at the
+window in the capture phase, before any shortcut or the editor sees it. Without
+that, Ctrl+O opened the file dialog hidden under the cover and typing went into
+the hidden editor.
+
+`reloadAllTabs()` puts the cover up before the first switch, counts "Reloading
+*n* of *m*…", and takes it down in a `finally`, so a reload that throws cannot
+leave the app covered. **An edited tab lifts it**: once the switch lands, if
+the document is edited the cover comes down so its question is asked about a
+tab you can see, and goes back up for the next tab. With no tab holding a file,
+no cover goes up. The run underneath is unchanged. sw.js VERSION v1.99. The
+`notify` suite gains eight checks and the `tabs` suite six. Also fills `38ad4ce`
+into the previous entry's header.

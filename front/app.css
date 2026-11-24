@@ -1698,10 +1698,55 @@
         border-color: #5c3530;
       }
 
+      /* ── Busy cover ──
+         Opaque on purpose: it exists to hide what is happening behind it.
+         Between .file-dialog's 1000 and .notify-backdrop's 1100, so a
+         question asked during the run, and every toast, is above it. */
+      .notify-busy {
+        position: fixed;
+        inset: 0;
+        z-index: 1050;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--paper);
+      }
+
+      .notify-busy-panel {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--ink-soft);
+        font-size: 14px;
+      }
+
+      .notify-busy-message {
+        margin: 0;
+      }
+
+      .notify-spinner {
+        width: 18px;
+        height: 18px;
+        border: 2px solid var(--rule);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: notify-spin 0.8s linear infinite;
+      }
+
+      @keyframes notify-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         .notify-toast,
         .notify-backdrop {
           transition: none;
+        }
+
+        .notify-spinner {
+          animation-duration: 2.4s;
         }
       }
 
@@ -1709,6 +1754,7 @@
         .file-dialog,
         .notify-stack,
         .notify-backdrop,
+        .notify-busy,
         .tab-bar {
           display: none !important;
         }

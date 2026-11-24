@@ -60,16 +60,27 @@ function makeDoc() {
 
 function load(doc) {
   const timers = [];
+  // Capture-phase window listeners, which is where busy() takes the keyboard.
+  const captured = new Set();
   return {
     timers,
+    captured,
     api: loadSource("notify.js", {
       document: doc,
+      window: {
+        addEventListener: (type, fn, capture) => {
+          if (type === "keydown" && capture === true) captured.add(fn);
+        },
+        removeEventListener: (type, fn, capture) => {
+          if (type === "keydown" && capture === true) captured.delete(fn);
+        },
+      },
       setTimeout: (fn, ms) => timers.push({ fn, ms }) && timers.length,
       clearTimeout: (id) => {
         if (timers[id - 1]) timers[id - 1].cleared = true;
       },
       console,
-    }, "; return { notify, ask, askForInput };"),
+    }, "; return { notify, ask, askForInput, busy };"),
   };
 }
 
@@ -161,6 +172,38 @@ export default async function run(check) {
   dismiss();
   timers.at(-1).fn();
   check("the returned handle takes it back", stack.children.length === 1);
+
+  // --- the busy cover --------------------------------------------------------
+
+  {
+    const coverDoc = makeDoc();
+    const { api: coverApi, captured } = load(coverDoc);
+    const cover = coverApi.busy("Reloading 1 of 3\u2026");
+    // What a Ctrl+O looks like to the listener that would otherwise open the
+    // file dialog under the cover.
+    const key = { key: "o", ctrlKey: true, prevented: false, stopped: false,
+      preventDefault() { this.prevented = true; },
+      stopImmediatePropagation() { this.stopped = true; } };
+    for (const fn of captured) fn(key);
+    check("while it is up, a keydown is taken at the window before anything else",
+      captured.size === 1 && key.prevented && key.stopped);
+    check("busy puts a cover up", !!find(coverDoc, "notify-busy"));
+    check("carrying its message", textOf(coverDoc, "notify-busy-message") === "Reloading 1 of 3\u2026");
+    check("and announces itself politely",
+      find(coverDoc, "notify-busy").getAttribute("role") === "status");
+    cover.update("Reloading 2 of 3\u2026");
+    check("update changes the message", textOf(coverDoc, "notify-busy-message") === "Reloading 2 of 3\u2026");
+    cover.done();
+    check("done takes the cover away at once, with no timer", !find(coverDoc, "notify-busy"));
+    check("and gives the keyboard back", captured.size === 0);
+    let threw = false;
+    try {
+      cover.done();
+    } catch {
+      threw = true;
+    }
+    check("and calling it twice is harmless", threw === false);
+  }
 
   // --- dialogs --------------------------------------------------------------
 

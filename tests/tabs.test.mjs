@@ -46,7 +46,7 @@ const DIALOG_IDS = [
 function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   quiet = false, hold = null, disk = new Map(), fakeTimers = false,
   failLoad = null, answers = [], entries = [], flatUnconverted = false,
-  holdWrite = null, modifiedAt = new Map(), onAsk = null } = {}) {
+  holdWrite = null, modifiedAt = new Map(), onAsk = null, onRead = null } = {}) {
   const store = new Map();
   for (const [key, value] of Object.entries(seed)) store.set(key, value);
   // Every localStorage write, in order. Park and adopt must add none of their
@@ -64,6 +64,9 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
   // Every question put to the user, in order, and every notice.
   const asked = [];
   const notices = [];
+  // The busy cover, stood in for: whether one is up, and every message it was
+  // given, so a check can ask whether it was up when something happened.
+  const cover = { up: 0, messages: [] };
 
   // .container, not .toolbar, is what getElementById walks below: the tab
   // bar toolbar.js builds is a sibling of .toolbar since stage 3 of the
@@ -181,6 +184,7 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
         if (url.startsWith("/api/file")) {
           if (hold) await hold.promise;
           const filePath = decodeURIComponent(url.match(/path=([^&]*)/)[1]);
+          if (onRead) onRead(filePath, cover);
           if (!disk.has(filePath)) {
             return { ok: false, json: async () => ({ error: "File not found" }) };
           }
@@ -206,12 +210,24 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
         }
       },
       notify: (message) => { notices.push(message); },
+      busy: (message) => {
+        cover.up += 1;
+        cover.messages.push(message);
+        let open = true;
+        return {
+          update: (next) => cover.messages.push(next),
+          done: () => {
+            if (open) cover.up -= 1;
+            open = false;
+          },
+        };
+      },
       // A queue rather than a fixed answer: closing a dirty tab asks
       // confirmDiscard's three-way question, and what the close does next turns
       // on which of the three came back.
       ask: (message, options) => {
         asked.push({ message, title: options && options.title });
-        if (onAsk) onAsk();
+        if (onAsk) onAsk(cover);
         return Promise.resolve(answers.length ? answers.shift() : "cancel");
       },
       // The deliberate-failure cases warn on purpose. Left unmuted they print
@@ -298,6 +314,7 @@ function boot({ withTabs = false, seed = {}, refuse = [], swallow = [],
     },
     asked,
     notices,
+    cover,
     // A click on a file in the open dialog. The name is in a child span, and
     // the stub's innerHTML = "" does not empty `children`, so rows pile up
     // across showings -- hence the last match.
@@ -1349,6 +1366,58 @@ export default async function run(check) {
     app.setOperations(0);
     app.switchToTab(2);
     check("and no later tab is reloaded", app.editor.innerHTML === "b one\n");
+  }
+
+  // The cover: up for every read, down for an edited tab's question, back up
+  // after it, and down at the end.
+  {
+    const disk = new Map([["/home/x/a.md", "a one\n"], ["/home/x/b.md", "b one\n"]]);
+    const reads = [];
+    const asks = [];
+    const app = boot({ withTabs: true, fakeTimers: true, disk, answers: ["discard"],
+      onRead: (path, cover) => reads.push([path, cover.up]),
+      onAsk: (cover) => asks.push(cover.up) });
+    await app.openFile("/home/x/a.md");
+    app.editor.innerHTML = "<p>work</p>";
+    app.type("A");
+    app.newTab();
+    await app.openFile("/home/x/b.md");
+    app.newTab();
+    reads.length = 0;
+
+    await app.reloadAllTabs();
+    check("the cover is down while an edited tab asks its question",
+      same(asks, [0]));
+    check("and up for every reload after it",
+      same(reads, [["/home/x/a.md", 0], ["/home/x/b.md", 1]]));
+    check("and down when the run is over", app.cover.up === 0 && app.activeTab() === 3);
+    check("it counts through the tabs with a file",
+      app.cover.messages.includes("Reloading 1 of 2\u2026") &&
+      app.cover.messages.includes("Reloading 2 of 2\u2026"));
+  }
+
+  {
+    const app = boot({ withTabs: true, fakeTimers: true });
+    app.newTab();
+    await app.reloadAllTabs();
+    check("with no tab holding a file, no cover goes up", app.cover.messages.length === 0);
+  }
+
+  // A reload that throws must not leave the app covered.
+  {
+    const disk = new Map([["/home/x/a.md", "a one\n"]]);
+    const app = boot({ withTabs: true, fakeTimers: true, disk, failLoad: "boom\n", quiet: true });
+    await app.openFile("/home/x/a.md");
+    app.newTab();
+    disk.set("/home/x/a.md", "boom\n");
+    let threw = false;
+    try {
+      await app.reloadAllTabs();
+    } catch {
+      threw = true;
+    }
+    check("a reload that throws takes the cover down with it",
+      threw === true && app.cover.up === 0 && app.cover.messages.length > 0);
   }
 
   // A switch the lock refuses ends the run rather than reloading a tab that is

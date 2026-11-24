@@ -623,17 +623,38 @@ async function requestCloseTab(id) {
 // A switch that is still refused means something else is in flight, and the
 // run stops there instead of reloading a tab that is not on screen. It still
 // tries to go back to where it started, which the same lock may refuse too.
+//
+// The switching is real, and watching it go round every tab looks like the app
+// has lost its mind, so a busy() cover hides it. It goes up before the first
+// switch, so the first paint already has it. It comes down for an edited tab's
+// question, because the question is about the tab behind it, and goes back up
+// after the answer. The finally is what keeps a throw from leaving the app
+// covered.
 async function reloadAllTabs() {
   if (activeTabId === null) return reloadFile();
 
   const start = activeTabId;
-  for (const id of openTabs.map((tab) => tab.id)) {
-    const tab = findTab(id);
-    if (!tab || !tabDescriptor(tab).path) continue;
-    if (!switchToTab(id)) break;
-    await reloadFile();
+  const targets = openTabs.filter((tab) => tabDescriptor(tab).path).map((tab) => tab.id);
+  if (!targets.length) return;
+
+  const label = (n) => `Reloading ${n} of ${targets.length}\u2026`;
+  let cover = busy(label(1));
+  try {
+    for (const [index, id] of targets.entries()) {
+      if (!findTab(id)) continue;
+      if (!cover) cover = busy(label(index + 1));
+      cover.update(label(index + 1));
+      if (!switchToTab(id)) break;
+      if (documentIsDirty()) {
+        cover.done();
+        cover = null;
+      }
+      await reloadFile();
+    }
+    if (findTab(start)) switchToTab(start);
+  } finally {
+    if (cover) cover.done();
   }
-  if (findTab(start)) switchToTab(start);
 }
 
 onToolbarAction("reload-all-files", reloadAllTabs);
