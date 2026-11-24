@@ -5775,7 +5775,7 @@ function modelToggleQuote(doc, leaves, md) {
   leaves = leaves.filter((leaf) => leaf.kind !== "gap");
   if (!leaves.length) return null;
   // **A quote keeps the gaps inside the selection** (TODO 1.12's stage 5,
-  // superseding D25 for a quote): a gap is written inside one now, so wrapping
+  // superseding D32 for a quote): a gap is written inside one now, so wrapping
   // or unwrapping keeps it. The ones at the selection's edges are still left
   // out of it, as a list leaves them.
   leaves = modelFormatBlocks(doc, leaves, true);

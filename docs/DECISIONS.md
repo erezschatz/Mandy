@@ -778,7 +778,123 @@ works here.
 
 Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
 
-## D22 · 2026-11-19 · A copy keeps the gap as text the reader sees, not as markdown
+## D22 · 2026-11-23 · The planted scripts are the plugin's, unchanged
+
+**Decision** — From 0.6.8 the gate, its tests and both compilers are the
+plugin's files, copied byte for byte and checked against
+`.claude/hooks/unities.manifest.json`. Mandy's own values are in
+`.claude/hooks/unities.json`. A change Mandy needs from a script is asked of
+the plugin as a task. The gate's tests run under Node (`deno task hooks:test`
+is `node --test`), because every case spawns `node` whatever runs the suite.
+**Rejected** — Keeping Mandy's own Deno-native copy with the new checks cut in
+by hand, as D14 did. 0.6.8's gate refuses a planted copy that differs from the
+manifest. The plugin's scripts do run under Deno, through the `run` value, but
+not with the procedure's Deno line: measured here, it fails every `git` call, so
+the hooks grant `--allow-run=git,deno,/bin/sh` and full `--allow-env` (the third
+ask in tasks/unities-plugin-asks.md). That is the `--allow-env` failure D14 was
+written against, met again and fixed in the invocation, not in the script.
+**Why** — One copy of the rules, kept where they are tested. The D-number
+change D12 made is no longer needed: D10 onwards are compiled, so the
+compiler numbers from them and never has to read D0–D9.
+Supersedes: D12, D14
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D23 · 2026-11-23 · The end-of-turn check sends a turn back once
+
+**Decision** — Strict's `Stop` binding is the plugin's `--branch`: a turn that
+ends with the uncommitted tree missing something is sent back once, and the
+second pass ends with a note to Erez. A turn that stops mid-change on purpose
+says so and ends on that second pass. Asking the plugin for a strict `Stop` that
+only reports is tasks/unities-plugin-asks.md. The rest of D10 stands:
+the commit is the scene, and the commit refuses.
+**Rejected** — Pointing `Stop` at the adapted mode with `UNITIES_SCENE=pr` so
+that it only advises. In adapted, `--branch` measures from the merge base with
+`main`, and this repo works on `main`, so it would most likely report nothing.
+Also rejected: leaving `Stop` out, which loses the check entirely.
+**Why** — Chosen by Erez on 2026-11-23 from three options. Of the two that
+are available now, one extra pass on a deliberate stop costs less than an
+end-of-turn check that never fires.
+Supersedes: D10
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D24 · 2026-11-23 · Work a task still owes is an open box
+
+**Decision** — The plugin's done rule holds: a task with a `## What was done`
+section and no open box is done, and one with an open box is
+`recorded, N boxes open`. The four tasks with records that are not finished —
+1.1, 1.12, 3.1 and 6.8 — each gained a dated **Acceptance** block at the end of
+their Context, with a box for each piece still owed. The `Status: done` lines
+already written stay where they are and no longer decide anything.
+**Rejected** — Asking the plugin for a configurable done marker and leaving the
+plan wrong until it ships. Under 0.6.8 the plan would read the four as done,
+the rewrite among them.
+**Why** — Chosen by Erez on 2026-11-23. A box names what is left. A hidden
+line names only that someone thought it was finished.
+Supersedes: D13
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D25 · 2026-11-23 · CHANGELOG.md stays hand-written, through the configuration
+
+**Decision** — D11 stands under 0.6.8. In `.claude/hooks/unities.json`, `shared`
+matches nothing, `CHANGELOG.md` is in the `doc` role and `releaseFiles` matches
+nothing. `scripts/compile-changelog.mjs` is copied in because the manifest lists
+it, but no task runs it and nothing calls it.
+**Rejected** — Leaving it out. The gate would report it missing on the first
+commit that touches a planted script.
+**Why** — D11's reasons have not changed: one developer, no tags, no releases.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D26 · 2026-11-23 · No note for source changed without a test
+
+**Decision** — The old gate's note when source changed with no test change is
+gone, and nothing replaces it. `required` stays doc and task, so a missing test
+is neither refused nor mentioned. CLAUDE.md's rule that a change no suite can
+reach gives its browser recipe in the CHANGELOG entry still stands. It is now
+held by the reader rather than by a note.
+**Rejected** — Adding `test` to `required`. Many changes here have no suite
+that can reach them, and a refusal would be answered with an empty test.
+**Rejected** — Asking the plugin for a "notes" role. The cold reader already
+asks what a change did that nothing records.
+**Why** — The plugin's gate has no advisory output, and the note never refused
+anything.
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D27 · 2026-11-24 · Reload all is Reload, once per tab, on screen
+
+**Decision** — `reloadAllTabs()` switches to each tab with a file and calls the
+existing `reloadFile()`, then switches back to the tab it started on. Cancel on
+an edited tab keeps that tab and the run goes on.
+**Rejected** — reading each background tab's file straight into its parked
+bundle or storage without switching to it, and stopping the whole run on the
+first Cancel.
+**Why** — tabs do not act on each other's state. `reloadFile` and its guard only
+ever ask about the document on screen, so switching first is the only way to
+reuse them unchanged. This is the same reason `requestCloseTab` switches before
+it asks. Cancel in that dialog means "keep this document", and when one tab of
+five is edited, keeping it is no reason to leave the other four stale.
+
+Source: [tasks/4.14-reload-all.md](../tasks/4.14-reload-all.md)
+
+## D28 · 2026-11-24 · An edited tab lifts the cover for its question
+
+**Decision** — Reload all runs under an opaque `busy()` cover, and an edited tab
+takes the cover down for Reload's question and puts it back up after the
+answer.
+**Rejected** — asking every edited tab's question up front, in a pass over the
+tabs before the cover goes up; and a see-through cover over the switching.
+**Why** — the question is about a document you have to be able to see, and
+lifting the cover is how most apps handle it (Erez's call). Asking up front
+would mean a second pass over the tabs before the real one. A see-through cover
+would still show the switching it is there to hide.
+
+Source: [tasks/4.14-reload-all.md](../tasks/4.14-reload-all.md)
+
+## D29 · 2026-11-19 · A copy keeps the gap as text the reader sees, not as markdown
 
 **Decision** — Ctrl/Cmd+C and Edit → Copy go on writing the plain text a
 reader sees, and an empty paragraph between two others at the top level is one
@@ -805,7 +921,7 @@ the answer the same in all three engines.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
 
-## D23 · 2026-11-19 · A gap read back from a file holds an Enter's separator
+## D30 · 2026-11-19 · A gap read back from a file holds an Enter's separator
 
 **Decision** — An empty paragraph `modelParse` makes of an extra blank line
 carries a line end and then that line as its separator, the shape an Enter's
@@ -824,7 +940,7 @@ and a container's children, where a gap never is, still tile it exactly.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
 
-## D24 · 2026-11-19 · A list beside a gap joins across it
+## D31 · 2026-11-19 · A list beside a gap joins across it
 
 **Decision** — Making a paragraph a list item beside a list of the same kind,
 with only gaps between them, joins the two lists and takes the gaps out.
@@ -838,7 +954,7 @@ what the command did before a file's gaps were read back.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
 
-## D25 · 2026-11-19 · A list or a quote over a selection drops the gaps inside it
+## D32 · 2026-11-19 · A list or a quote over a selection drops the gaps inside it
 
 **Decision** — Bulleted list, Numbered list and Blockquote over a selection
 covering gaps take the empty paragraphs between two of the formatted blocks
@@ -852,7 +968,7 @@ formatted, because the file's gap was not a block to be in the way.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
 
-## D26 · 2026-11-19 · A file's line ending is the document's, sniffed once
+## D33 · 2026-11-19 · A file's line ending is the document's, sniffed once
 
 **Decision** — `modelParse` records the commonest line ending in the file as
 the document's and holds the text as LF; `modelSerialise` writes every line
@@ -874,7 +990,7 @@ and that is what this keeps.
 
 Source: [tasks/1.13-crlf-files.md](../tasks/1.13-crlf-files.md)
 
-## D27 · 2026-11-19 · The sniff normalises line endings itself
+## D34 · 2026-11-19 · The sniff normalises line endings itself
 
 **Decision** — `sniffMarkdownStyle` turns `\r\n` and a lone `\r` into `\n`
 before it reads, so whatever hands it a file gets the same answer for any
@@ -884,12 +1000,60 @@ that hands it a file: it would fix today's caller and leave the function
 wrong for the next one. Having `modelParse` hand its LF text to the sniff:
 it ties the style module to the model's door for one `replace`.
 **Why** — The sniff's answer is a fact about the file's conventions, and a
-line ending is not one of them (D26); a pure function that is right for every
+line ending is not one of them (D33); a pure function that is right for every
 input is the cheapest place to keep that true.
 
 Source: [tasks/1.14-crlf-wrap-width.md](../tasks/1.14-crlf-wrap-width.md)
 
-## D28 · 2026-11-20 · Only a block that renders bare keeps its edge whitespace
+## D35 · 2026-11-20 · A gap inside a quote is kept
+
+**Decision** — An empty paragraph between two blocks of a quote is saved as one
+more `>` line, and a run of extra `>` lines in a file is read back as that many
+empty paragraphs, as at the top level.
+**Rejected** — Leaving a quote's gap drawn and not saved, recorded as a limit.
+**Why** — The user chose it on 2026-11-20. It is the promise D20 made, kept one
+level in; and unlike a list, a quote is where a verse is quoted.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D36 · 2026-11-20 · A list holds no gap
+
+**Decision** — A list item holds no gap: Enter in one starts a new item as
+before, an extra blank line inside an item reads as nothing, and a gap pasted
+or dropped into an item is dropped.
+**Rejected** — Showing and saving an extra blank line inside an item.
+**Why** — The user chose it on 2026-11-20. A gap cannot be typed in an item,
+since Enter there starts a new one, and an extra blank line in a list means
+nothing to any other markdown reader, so it would be a gap only Mandy sees.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D37 · 2026-11-20 · The exports show a gap
+
+**Decision** — The HTML, PDF and Word exports draw a gap as a blank line,
+wherever the file writes one; an empty paragraph the file does not write is
+not drawn.
+**Rejected** — Drawing the document as any markdown viewer would, with no gap.
+**Why** — The user chose it on 2026-11-20. An export is the document as Mandy
+shows it, and a song exported to PDF without its verse gaps is the bug this
+task began with, one step further on.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D38 · 2026-11-20 · A paste keeps the gaps copied out of Mandy
+
+**Decision** — A paste keeps a gap that a copy out of Mandy marked as one, and
+goes on dropping the empty paragraphs any other application leaves.
+**Rejected** — Keeping every empty paragraph a paste brings, Word's and Google
+Docs' blank lines included; and keeping none, with Paste markdown the way to
+bring gaps in.
+**Why** — The user chose it on 2026-11-20. A copy and a paste within Mandy
+should give back what was copied, while the blank lines another application
+puts in its HTML are the ghost lines `sanitisePastedHtml` exists to remove.
+
+Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D39 · 2026-11-20 · Only a block that renders bare keeps its edge whitespace
 
 **Decision** — The rendering trim keeps a block's own edge whitespace only for
 a block whose opening token is hidden, a tight item's paragraph, and trims
@@ -907,69 +1071,21 @@ own is the one fact that decides it, and the token says so.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
 
-## D29 · 2026-11-20 · A gap inside a quote is kept
+## D40 · 2026-11-21 · Blockquote keeps the gaps inside a selection
 
-**Decision** — An empty paragraph between two blocks of a quote is saved as one
-more `>` line, and a run of extra `>` lines in a file is read back as that many
-empty paragraphs, as at the top level.
-**Rejected** — Leaving a quote's gap drawn and not saved, recorded as a limit.
-**Why** — The user chose it on 2026-11-20. It is the promise D20 made, kept one
-level in; and unlike a list, a quote is where a verse is quoted.
-
-Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
-
-## D30 · 2026-11-20 · A list holds no gap
-
-**Decision** — A list item holds no gap: Enter in one starts a new item as
-before, an extra blank line inside an item reads as nothing, and a gap pasted
-or dropped into an item is dropped.
-**Rejected** — Showing and saving an extra blank line inside an item.
-**Why** — The user chose it on 2026-11-20. A gap cannot be typed in an item,
-since Enter there starts a new one, and an extra blank line in a list means
-nothing to any other markdown reader, so it would be a gap only Mandy sees.
-
-Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
-
-## D31 · 2026-11-20 · The exports show a gap
-
-**Decision** — The HTML, PDF and Word exports draw a gap as a blank line,
-wherever the file writes one; an empty paragraph the file does not write is
-not drawn.
-**Rejected** — Drawing the document as any markdown viewer would, with no gap.
-**Why** — The user chose it on 2026-11-20. An export is the document as Mandy
-shows it, and a song exported to PDF without its verse gaps is the bug this
-task began with, one step further on.
-
-Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
-
-## D32 · 2026-11-20 · A paste keeps the gaps copied out of Mandy
-
-**Decision** — A paste keeps a gap that a copy out of Mandy marked as one, and
-goes on dropping the empty paragraphs any other application leaves.
-**Rejected** — Keeping every empty paragraph a paste brings, Word's and Google
-Docs' blank lines included; and keeping none, with Paste markdown the way to
-bring gaps in.
-**Why** — The user chose it on 2026-11-20. A copy and a paste within Mandy
-should give back what was copied, while the blank lines another application
-puts in its HTML are the ghost lines `sanitisePastedHtml` exists to remove.
-
-Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
-
-## D33 · 2026-11-21 · Blockquote keeps the gaps inside a selection
-
-Supersedes: D25
+Supersedes: D32
 
 **Decision** — Blockquote over a selection keeps the gaps between the blocks it
 wraps or unwraps, and leaves the ones at the selection's edges out of it. The
-two lists go on dropping the gaps between, as D25 decided for them.
-**Rejected** — Dropping them, as D25 did for all three.
-**Why** — The user chose it on 2026-11-21. D25 dropped a quote's gaps because
+two lists go on dropping the gaps between, as D32 decided for them.
+**Rejected** — Dropping them, as D32 did for all three.
+**Why** — The user chose it on 2026-11-21. D32 dropped a quote's gaps because
 one inside a quote was not written; since a quote's gap is kept (the decision
 above), that reason is gone for a quote and stands for a list.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
 
-## D34 · 2026-11-21 · A split drops a line break at its cut, but not one opening the second half
+## D41 · 2026-11-21 · A split drops a line break at its cut, but not one opening the second half
 
 **Decision** — Enter drops a soft break at the cut from either half, and a hard
 break from the end of the first half, and keeps a hard break that opens the
@@ -984,7 +1100,7 @@ paragraph may open with one, so dropping it would delete what is on screen.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
 
-## D35 · 2026-11-21 · Word writes a quote of paragraphs as one paragraph each
+## D42 · 2026-11-21 · Word writes a quote of paragraphs as one paragraph each
 
 **Decision** — The Word export writes a quote as one Word paragraph per child,
 each with the quote's indent and border, a gap among them as an empty one and a
@@ -1000,7 +1116,7 @@ both the same spacing as the rest of the document.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
 
-## D36 · 2026-11-21 · A pasted gap is marked with a NUL on its way through Turndown
+## D43 · 2026-11-21 · A pasted gap is marked with a NUL on its way through Turndown
 
 **Decision** — The `mandyGap` Turndown rule writes a marked gap as a line
 holding `\u0000G`, which `htmlFragmentToMarkdown` then removes, leaving the

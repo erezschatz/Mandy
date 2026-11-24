@@ -536,9 +536,11 @@ line — the CHANGELOG entry counts, and is still written by hand as above — a
 small fix that never had a task gets one created in the same commit; see
 [tasks/README.md](tasks/README.md) for the format. The task's section can be two
 sentences and a pointer, since the CHANGELOG entry carries the prose, and it
-ends with a `Reviewed by:` line naming the reader below. The section that
-closes a task carries a `Status: done` line; a task gathers one section per
-landing, so having sections does not make it done.
+ends with a `Reviewed by:` line naming the reader below. A task gathers one
+section per landing, so having sections does not make it done: what it still
+owes is an open acceptance box, and the plan reads a task with a record and no
+open box as done. The `Status: done` line the closing section carries is kept,
+but no longer decides anything.
 [docs/TODO.md](docs/TODO.md) is retired: its items are task files now, and "TODO
 3.1" names `tasks/3.1-*.md`.
 
@@ -554,21 +556,27 @@ done when every *Done when* line holds for the running program, not when its
 wording is satisfied; whatever a fix needs beyond its item is recorded as a
 decision before it is built.
 
-`.claude/hooks/check-unit.mjs` checks all of this in two places, and only one of
-them refuses:
+`.claude/hooks/check-unit.mjs` checks all of this in two places. It and the
+two compilers are the plugin's files, copied in unchanged and checked against
+`.claude/hooks/unities.manifest.json`; what is Mandy's is
+`.claude/hooks/unities.json`. A change to a script is made in the plugin.
 
 - **At commit** — a `PreToolUse` hook on `git commit` and `.githooks/pre-commit`
   (`deno task hooks` once per clone) refuse a staged set with source but no doc
   line or no task record, a record with no `Reviewed by:` line, a compiled
   record that is stale or unstaged or whose hand-written head was edited, an
   acceptance box naming an outcome rather than a check, a review item missing
-  its parts, and an edit to the retired TODO. A missing test is a note, never a
-  refusal. **Stage in a separate call from the commit**: the hook reads the
+  its parts, a task file touched without a new `## What was done`, an edited
+  planted script, and an edit to the retired TODO. A missing test is not
+  checked. **Stage in a separate call from the commit**: the hook reads the
   index before the command runs, so `git add … && git commit` is judged on what
-  was staged before the `add`. `deno task hooks:test` is its own suite.
-- **At the end of a turn** — the `Stop` hook reports what the uncommitted tree is
-  missing and never sends the turn back, because stopping mid-change to ask a
-  design question or hand over a browser recipe is how work goes here.
+  was staged before the `add`. `deno task hooks:test` is its own suite, and runs under Node.
+- **At the end of a turn** — the `Stop` hook sends a turn back once when the
+  uncommitted tree is missing something, then lets the second pass end with a
+  note. A turn that stops mid-change on purpose, to ask a design question or
+  hand over a browser recipe, says so and ends on that second pass. Reporting
+  without sending back is what this repo wants and the plugin does not offer
+  yet ([tasks/unities-plugin-asks.md](tasks/unities-plugin-asks.md)).
 
 Code, test, document and review are one unit, and the review is part of the
 commit, not something after it. Before committing, give the staged diff and the

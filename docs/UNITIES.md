@@ -1,4 +1,4 @@
-<!-- UNITIES.md 2026-11-19 · 0.5.5. Master copy: the unities-project skill folder (plugin `unities`). -->
+<!-- UNITIES.md 2026-11-22 · 0.6.8. Master copy: the unities-project skill folder (plugin `unities`). -->
 
 # UNITIES.md — adopting the Unities in a repository
 
@@ -13,6 +13,11 @@ so a second run on an adopted repo should change nothing. The one exception is t
 itself: the master copy lives in the `unities-project` skill folder and carries a date
 and a version on its first line; if the repo's `docs/UNITIES.md` is older than the skill's, the skill
 replaces it first, and the run then installs whatever the newer procedure adds.
+
+The scripts this procedure plants are files in the same skill folder, under `files/`, at
+the same version: the gate, its tests, the two compilers and a manifest of their hashes.
+They are copied, never retyped or edited; what differs between repositories is one
+configuration file (Appendix A).
 
 Do **not** import this file into CLAUDE.md. It is a migration, not a standing rule. The
 standing rule is one paragraph (Appendix E), and this procedure installs it.
@@ -29,6 +34,25 @@ here; Phase 4.9 creates those files from what the code already is.
 ## 0. The form
 
 The work, its record and its location are the same thing at the same time.
+
+**The form, version 1.0** (since plugin 0.6.3, 2026-11-19, when it was first numbered;
+nothing in it changed then). It is that sentence and one statement for each unity,
+quoted from the essay *The Unities*
+(<https://github.com/erezschatz/Unities/blob/main/docs/the-unities.md>):
+
+- Place: "Everything the work consists of lives in the repository as files."
+- Time: "The record of the work and the work itself happen in the same moment." A change
+  without its record is a scene that did not happen.
+- Action: "there is one record, and anything else is derived from it, never kept in
+  parallel", and "the check belongs in the same gesture as the writing."
+
+The form has its own number. The version on this file's first line is the plugin's, and
+it moves whenever the gate, the compilers, the bindings or this procedure change. When
+the plugin version named beside the form's is not this file's, the form did not change
+in this version. A staging (§1) is not part of the form: it says how much of the form a
+repository holds to, and the adapted one gives up part of the unity of time. Everything
+else in this file, the three paragraphs below included, is tooling: how the form is
+applied with git and an agent.
 
 - **Place.** Everything the work consists of is a file in this repository. If `git diff`
   cannot see it, it is not on stage. The test that makes the files appear: a fresh
@@ -92,12 +116,12 @@ the answer and its reason as the first decision of the adoption, in the adoption
 `docs/DECISIONS.md` is compiled.
 
 **What follows from it.** Both stagings use the same script and the same record. The
-difference is one constant (`SCENE`) and which bindings are installed:
+difference is one value (`scene` in the configuration, Appendix A) and which bindings are installed:
 
 | | Strict | Adapted |
 | --- | --- | --- |
 | The scene | the commit | the pull request |
-| `SCENE` in `check-unit.mjs` | `"commit"` | `"pr"` |
+| `scene` in `.claude/hooks/unities.json` | `"commit"` | `"pr"` |
 | `Stop` hook (end of an agent turn) | refuses; on the second pass lets go and tells the person | advises once and never refuses (Claude Code: through `additionalContext`; Codex: one continuation of the turn, 4.10) |
 | `PreToolUse` on `git commit` | installed; blocks | not installed |
 | pre-commit hook (where commits happen outside the agent) | refuses | warns |
@@ -108,7 +132,7 @@ difference is one constant (`SCENE`) and which bindings are installed:
 | Merge strategy | — | squash recommended: one commit per scene lands on `main`, so its history reads as strict; the gate does not depend on it |
 | The adoption itself (Phase 7) | one commit | one pull request |
 
-Where a repo later moves from adapted to strict, that is one constant, one settings entry
+Where a repo later moves from adapted to strict, that is one value, one settings entry
 and a new decision naming the old one.
 
 ---
@@ -130,7 +154,7 @@ and a new decision naming the old one.
 5. **Idempotent.** Before each write, check whether the target already carries the
    change (look for `check-unit.mjs` in hook config, for the `tasks/` folder, for the
    Unities paragraph in CLAUDE.md). Skip what is already done.
-6. **Do not invent rules.** The role regexes in the check script come from what Phase 3
+6. **Do not invent rules.** The role regexes in the configuration come from what Phase 3
    finds, not from this document's examples.
 7. **Do not guess at task content.** When converting TODO items, carry the text as
    written. Status, owner and history you cannot find are left absent, not fabricated.
@@ -158,9 +182,9 @@ none for some.
 | task | `TODO.md`, `TASKS.md`, `ROADMAP.md`, `BACKLOG.md`, `docs/todo*`, issue-like folders |
 | changelog | `CHANGELOG.md`, `HISTORY.md`, `CHANGES.md`, `changes/`, `.changeset/` |
 
-Record the glob for each role as it actually is in this repo. These become `RULES` in
-the check script. The task-role files found here are what Phase 5 converts and retires;
-their names become `RULES.retired`. A new project has none, and `RULES.retired` matches
+Record a regular expression for each role as it actually is in this repo. These become `rules` in
+the gate's configuration (Appendix A). The task-role files found here are what Phase 5 converts and retires;
+their names become `rules.retired`. A new project has none, and `rules.retired` matches
 nothing.
 
 ### 3.2 Existing enforcement and conventions
@@ -176,7 +200,7 @@ nothing.
   boundary, and the gate needs to know which files a release PR may touch.
 - Runtime. Use the one the repo already runs, not the one this document's examples use:
   `deno.json` → Deno; `bun.lockb` / `bunfig.toml` → Bun; otherwise Node (18+). The
-  scripts in the appendices use only `node:` built-ins, which all three run; what
+  scripts in the skill folder's `files/` use only `node:` built-ins, which all three run; what
   changes is the invocation (see Appendix H) and where the git hook path is configured.
 - **The staging, checked.** §1 chose it. Look for what contradicts the choice: strict
   with several authors in `git shortlog -sn`, or with a PR policy already on the main
@@ -229,7 +253,7 @@ body, not as separate tasks, unless the person says otherwise.
 Send the person, in this order:
 
 1. The staging chosen in §1, and anything in the repo that contradicts it (3.2).
-2. The role table with the globs you found and the `RULES` you intend to write,
+2. The role table with the paths you found and the `rules` you intend to write,
    including `retired`.
 3. What enforcement already exists and how you will merge into it.
 4. The changelog convention you found and how the compiler will match it; which files a
@@ -260,12 +284,22 @@ say how.
 
 ### 4.1 The check script and its tests
 
-Write `.claude/hooks/check-unit.mjs` from Appendix A, with `SCENE`, `RULES` (including
-`retired`), `REQUIRED`, `BASE` and `RELEASE_FILES` filled from the approved report, and
-its tests, `.claude/hooks/check-unit.test.mjs`, from Appendix J, with one path per role
-that matches those rules. If a role has several locations, join them in one regex. If a
-role does not exist in this repo (no docs folder at all), leave it out of `REQUIRED` and
-say so in the report; do not invent a folder to satisfy the rule.
+Copy from the skill folder's `files/`, byte for byte:
+
+- `check-unit.mjs` → `.claude/hooks/check-unit.mjs`;
+- `check-unit.test.mjs` → `.claude/hooks/check-unit.test.mjs`;
+- `manifest.json` → `.claude/hooks/unities.manifest.json`.
+
+Then write `.claude/hooks/unities.json` (Appendix A) from the approved report: `scene`,
+`rules` (including `retired`), `required`, `base` and `releaseFiles`. If a role has
+several locations, join them in one regular expression. If a role does not exist in this
+repo (no docs folder at all), leave it out of `required` and say so in the report; do not
+invent a folder to satisfy the rule.
+
+Edit none of the copied files. Something the script does not do for this repository is a
+change to the plugin, proposed as a task here and made there; the gate refuses a planted
+copy that differs from the manifest (Appendix A). The tests carry their own
+configuration, so nothing in them is filled in either.
 
 ### 4.2 Claude Code wiring (always)
 
@@ -319,12 +353,14 @@ Create `tasks/` with:
 
 ### 4.5 The compilers
 
-Write `scripts/compile-changelog.mjs` from Appendix F, adjusted to the changelog
-convention found in 3.2 (heading level, hash or link format). Register it as the repo's
+Copy `scripts/compile-changelog.mjs` from the skill folder's `files/` (Appendix F). The
+changelog convention found in 3.2 is matched through `changelog.recorded` in the
+configuration, the one per-repo value the compiler reads; a convention that needs more is
+a change to the plugin. Register it as the repo's
 task runner knows: `"changelog": "node scripts/compile-changelog.mjs"` in `package.json`
 scripts, or the Deno/Bun equivalent from Appendix H. It runs at release.
 
-Write `scripts/compile-record.mjs` from Appendix K and register it the same way
+Copy `scripts/compile-record.mjs` from `files/` (Appendix K) and register it the same way
 (`"record": "node scripts/compile-record.mjs"`). It produces `docs/DECISIONS.md` and
 `docs/PLAN.md` from the task files and runs **at every merge**, not at release: a fresh
 session needs yesterday's decision today. It reads only the work tree — no git, no
@@ -339,7 +375,7 @@ what is committed.
 - **The merge man.** Strict: the commit is the merge. Run `npm run record` before
   committing; the compiled files ride in the same commit and the gate refuses a commit
   where they are out of date. Adapted: nobody's pull request touches the compiled files.
-  After each merge into the branch in `BASE`, the compiler runs on that branch and its
+  After each merge into the branch in `base`, the compiler runs on that branch and its
   output is committed there, by whichever of these the repo has, in this order of
   preference: the tool that merges, as its next step after the merge; a CI job triggered
   by a push to that branch, committing under an identity allowed to push to it (Appendix
@@ -369,7 +405,7 @@ every "CLAUDE.md" in this document means that file.
 ### 4.7 The gate (required in adapted; recommended backstop in strict)
 
 Add a CI job that runs `check-unit.mjs --pr <target>` on every pull request, against the
-commit the PR targets, and make it required for merging into the branch in `BASE`. Use
+commit the PR targets, and make it required for merging into the branch in `base`. Use
 whatever the repo's CI already is; Appendix I is an Azure DevOps example. The check
 passes while the target has no `check-unit.mjs`, so the pull request that carries this
 adoption — retired TODO files and all — is not held to it.
@@ -396,7 +432,7 @@ retitles a decision already compiled is refused, and so is a change to the hand-
 head. A file becomes compiled when the version at the scene's base carries the marker,
 so the scene that installs this — a new project's first, an adoption, an upgrade — is not
 held to it. The compiled files do not count as a scene's doc change. The files the
-migration retired in place (`RULES.retired`: a `TODO.md`, a `ROADMAP.md`) are
+migration retired in place (`rules.retired`: a `TODO.md`, a `ROADMAP.md`) are
 *tombstones*: editing one is refused, deleting one is not, so a repo may remove them once
 the version that retired them has shipped. A new project has no tombstones; if a
 `TODO.md` appears there it matches no role and is an ordinary file, which is to say the
@@ -404,12 +440,12 @@ record lives in `tasks/` and nowhere else.
 
 **Release pull requests.** The gate refuses any change to `CHANGELOG.md`, and there is no
 exemption mechanism; instead the gate verifies the blob against its sources. For a PR
-whose changes are confined to `RELEASE_FILES` (`CHANGELOG.md` plus the repo's version
+whose changes are confined to `releaseFiles` (`CHANGELOG.md` plus the repo's version
 files), the script runs the compiler in dry-run against the target's history and checks
 that the lines the PR adds to `CHANGELOG.md` equal the compiler's output. Equal → it is a
 release by construction and passes. Not equal → it is a hand edit and fails, with a diff.
 This is unity of action enforced literally: the compiled file must equal
-compile(record). Phase 3 fills `RELEASE_FILES`; a release PR that touches anything else
+compile(record). Phase 3 fills `releaseFiles`; a release PR that touches anything else
 is an ordinary PR and is judged as one.
 
 **Acceptance boxes.** A task file's checkboxes are its acceptance. Each must name an
@@ -420,6 +456,26 @@ old by active users" — is an outcome, not a check: it is the promise or a mile
 `docs/PLAN.md`, and the gate refuses it (`ACCEPTANCE_FORBIDDEN` in the script) in every
 mode, so it is caught at the commit or the turn, not only at merge. Move the sentence up
 to the promise or out to the plan and replace it with the checks it decomposes into.
+
+A box, here or in a review round, is ticked by whoever performed its check, and that
+includes the agent: a scene's developer is one person with the agents that act for them
+(Appendix D). The agent ticks a box it checked by reading the code or by a command whose
+output it reports, and a review box the reader found to hold (Appendix G). It does not
+ask a person to tick what it has checked. A *Done when* line describes the running
+program and is still checked by reading the code path, as the reader checks it; that it
+is about the program does not make it a person's. A box that can only be checked by
+running the program where it runs belongs to the person who says it works (3.2): the
+agent leaves it open and hands over those boxes alone, each with what to do and what
+should be seen.
+
+**The record.** A change in a role that the configuration holds to a task change
+(source, by default; Appendix A) must add a `## What was done` section to a task file. A
+task file that was only touched, a line added to its Context or a box ticked, is not a
+record, and the gate refuses it as "no record": at the commit and at the end of the turn
+in strict, at the pull request in adapted, where a commit on the way is told and not
+refused, as with everything else. A section the base already held is not the scene's. A
+scene that changes nothing held to a task change, one that only opens a task, owes no
+record.
 
 **The reader.** Every `## What was done` section a scene adds ends with a line
 `Reviewed by: <who>` naming the reader that read the diff cold against it (Appendix G: a
@@ -439,8 +495,9 @@ the failed rows importable" names one case, and the rows that were never sent fa
 of the preview with every box ticked and every test green. The gate cannot judge whether
 the cases are complete. It refuses, in every mode, an item added by the scene that lacks
 one of the three parts or has a *Done when* line without `→`; and at the pull request it
-refuses an item with an open box. Who ticks a box is not part of the form; that the
-verifier read the diff against each line is (Appendix G). Review sections that predate
+refuses an item with an open box. Who ticks a box is not part of the form (who does is
+under *Acceptance boxes*, above); that the verifier read the diff against each line is
+(Appendix G). Review sections that predate
 this rule are left alone.
 
 In strict the gate is not required (every commit is already complete) but is cheap, and
@@ -466,7 +523,9 @@ equivalent) for them, and link it from the README's setup path and from
    appended, never edited once merged; it becomes the changelog entry. And, where the
    work chose something over something else, a `## Decisions` entry in the same task
    file: the developer never opens `docs/DECISIONS.md` or `docs/PLAN.md` to write, only
-   to read; both are compiled from the task files after the merge.
+   to read; both are compiled from the task files after the merge. And who ticks a box
+   (4.7): whoever performed its check, the developer's agent included, so the developer
+   is handed only the boxes that can only be checked by running the program.
 4. What happens at merge (adapted) or at commit (strict): the gate, how to run it
    locally, and who sets the work item's state.
 5. A review round: where it appears (a `## Review` section in the task's own file, on
@@ -515,14 +574,15 @@ mark gaps as gaps.
 - `docs/PLAN.md` — compiled (4.5). *Steps*: one line per task file, in file-name order,
   linking to it; adding a step is adding a task file, and nobody edits a list. The order
   is the file names' unless a decision says otherwise. Each line carries the status
-  derived from its task file (a `## What was done` section → done); what the discipline
+  derived from its task file: a `## What was done` section and no open box anywhere in the
+  file → done; a section and a box still open → `recorded, N boxes open`; what the discipline
   removes is the hand-kept status field, and this one has no hand. *Milestones* and
   *Not in scope* are set by decisions: a decision carries `Milestone: After NN: …` or
   `Not in scope: …` lines, the plan lists them with the decision's number, and they
   leave the plan when a later decision supersedes that one (restating the lines that
   still hold).
 
-`docs/SPEC.md` goes in the `doc` role in `RULES` if not already matched; the two
+`docs/SPEC.md` goes in the `doc` role in `rules` if not already matched; the two
 compiled files are matched by `RECORD_FILES` and count toward no role. Add
 `docs/DECISIONS.md` to `CLAUDE.md`'s *Read first* list. The adoption task records which
 were created and which were found.
@@ -551,7 +611,7 @@ accounts of the work.
   in `AGENTS.md`.
 - Both exist with different content → a question in the report (3.4), not a merge by
   guesswork.
-- Add `AGENTS.md` to the `doc` role in `RULES` beside `CLAUDE.md`.
+- Add `AGENTS.md` to the `doc` role in `rules` beside `CLAUDE.md`.
 
 Codex stops reading instruction files at a byte limit (`project_doc_max_bytes` in its
 configuration); note the size of `AGENTS.md` in the report.
@@ -610,6 +670,7 @@ the Claude Code bindings; under Codex an adapted `Stop` continues the turn once 
 | CI check on the PR (A; backstop in S) | a pull request is opened or updated | refuses the merge of an incomplete scene; the one gate with teeth in the adapted staging | time |
 | `shared` rule in the script | any mode | refuses a direct edit to `CHANGELOG.md` or a retired `TODO.md`; a release PR passes only if its changelog equals the compiler's output | action |
 | `onFailure: "block"` (S) | the script is missing or crashes | blocks the commit; a policy that fails open is not a policy | time |
+| manifest check in the script | a scene touches a planted script or the manifest | refuses a planted copy that differs from the plugin's, or is missing | action |
 
 In strict, a clean tree passes at the commit and at the end of a turn, so reverting is
 always a way out. `--pr`, and `--branch` in adapted, read the commits since the fork, so
@@ -638,21 +699,28 @@ file carries a compiled decision the compiler refuses, and so does the gate (4.7
 release tag is the one thing in the system that is not a file, and it is the right thing
 not to be.
 
-**Limits.**
+**Limits.** This list is what a person adopting should know, not every case the gate
+has been read against. A case a reader constructed, which has not happened in a
+repository and was not built against, is recorded in the plugin's repository as a
+decision titled `Not admitted: …` (`docs/DECISIONS.md` there).
 
 - Presence is not truth. The gate is deliberately a presence test: a file in each role,
   nothing about whether `tests/parser.test.ts` really exercises `parser.ts`. Presence
   already catches the failure this discipline exists for, the record not being written
   at all. The reviewer covers truth; nothing covers it for free.
-- A touched task file is not a recorded scene. The gate asks that a task file changed,
-  and checks the `## What was done` sections a scene adds; it does not require that one
-  be added. The essay named that as a later tightening, and it has not been made.
+- A touched task file is not a recorded scene, and since 0.6.8 the gate says so: a
+  change in a role held to a task change must add a `## What was done` section, and a
+  line added elsewhere in a task file is refused as "no record" (4.7). What stays a
+  presence test is the section's content: the gate sees that one was added and that a
+  reader is named, not that it describes the change.
 - The `Stop` hook judges one session's tree or branch. Two sessions in one repository
   each see only their own. The commit gate (strict) or the PR gate (adapted) is what
   holds across sessions.
 - `onFailure: "block"` has no effect on `Stop` hooks, so a missing script silently lets
   turns end; the next gate catches the change. Keep the script in the repository and the
-  path in `settings.json` correct.
+  path in `settings.json` correct. A missing or broken configuration is not silent: the
+  gate refuses a commit and sends a turn back once, naming the file, and lets the second
+  pass end with a message, as for an incomplete scene.
 - Hooks in `.claude/settings.json` run only after the person has trusted the folder, and
   cloud sessions do not read a machine's user settings. Committing the project settings
   is what makes the staging travel with the repository.
@@ -664,6 +732,8 @@ not to be.
 - Claude Code can also start the reader of Appendix G from a hook (an agent-type `Stop`
   hook), but that feature was marked experimental; an explicitly invoked subagent is the
   stable form.
+- A planted script edited together with its manifest passes. The manifest makes a local
+  edit visible and deliberate, not impossible; the diff shows both.
 
 ---
 
@@ -687,7 +757,7 @@ For each item in the approved mapping, write `tasks/<slug>.md` from the template
 Then retire the source file in place: replace its body with a short note —
 `Tasks now live in tasks/, one file each. This file is kept for history; see git log.` —
 and keep the original content below a horizontal rule so nothing is lost. The file is now
-a tombstone (`RULES.retired`): the gate refuses edits to it and allows its deletion, so
+a tombstone (`rules.retired`): the gate refuses edits to it and allows its deletion, so
 the repo may remove it in a later unit once this one has shipped. If the person prefers
 it deleted now, they will say so; default is retirement.
 
@@ -739,6 +809,34 @@ scene, and run the record compiler as its last step:
   its entry into its own task file. Say so in the final report, with the list of open
   PRs that touch them if the host can be asked.
 
+### 5.5 A repository whose scripts were cut from the listings
+
+Every repository adopted under a version before 0.6.0 holds its gate, tests and compilers
+as copies of this document's old listings, with its per-repo values written into them.
+Convert them once, in this scene:
+
+1. Read the per-repo block of the repository's `.claude/hooks/check-unit.mjs` (`SCENE`,
+   `RULES`, `REQUIRED`, `BASE`, `RELEASE_FILES`) and write the same values into
+   `.claude/hooks/unities.json` (Appendix A), each regular expression as a string. The
+   closing line of `formatEntry` in `scripts/compile-changelog.mjs`, if it differs from
+   ``Recorded in `<hash>`.``, goes into `changelog.recorded`. A repository whose copy of
+   `scripts/compile-record.mjs` was changed to compile no plan gets `"plan": false`.
+2. Compare the rest of each old copy with the listing it was cut from: the appendices of
+   the repository's previous `docs/UNITIES.md` (`git show HEAD:docs/UNITIES.md`, since the
+   skill has just replaced the file). A difference outside the per-repo blocks is a local
+   change. Neither drop it silently nor carry it into the copy: list each in the report,
+   and the person decides for each whether it becomes a task in the plugin's repository,
+   to arrive in a later version, or is dropped. Either is a decision in the adoption
+   task. Where its loss would reopen a defect the repository has met, say so in the
+   report before anything is copied.
+3. Copy the files and the manifest (4.1, 4.5) over the old copies.
+4. Run the old gate and the new one on the same scenes: at least the probe of Phase 6
+   step 2, a complete scene, and a hand edit of the changelog, each in the repository's
+   staging. Write both results into the adoption task's further `## What was done`
+   (5.3), with the configuration's values and each local change and what was decided.
+   The results must agree, except where a local change was dropped or this version
+   changes behaviour on purpose; say which.
+
 ---
 
 ## 6. Verify
@@ -766,7 +864,22 @@ to adapted, unmarked to both.
 5. Confirm `.claude/settings.json` parses and `/hooks` (or the settings file) lists the
    `Stop` entry, and (S) the `PreToolUse` entry.
 6. `node --test .claude/hooks/check-unit.test.mjs` → the Appendix J tests pass against
-   the script with this repo's `RULES`, in the chosen staging.
+   the planted script. Then probe the manifest check, at the repository's root, in a
+   temporary index, so that the adoption's own index and work tree are left as they were
+   (`<files>` is the skill folder's `files/`):
+
+       idx=$(git rev-parse --git-path index); tmp="$idx.unities-probe"
+       cp "$idx" "$tmp" 2>/dev/null || rm -f "$tmp"
+       echo "// probe" >> scripts/compile-record.mjs
+       GIT_INDEX_FILE="$tmp" git add .claude/hooks scripts
+       GIT_INDEX_FILE="$tmp" node .claude/hooks/check-unit.mjs --staged
+       cp <files>/compile-record.mjs scripts/; rm -f "$tmp"
+
+   → (S) exit 2, (A) exit 0 with a warning, both naming `scripts/compile-record.mjs` as
+   edited. The planted files are added to the temporary index because at a first
+   adoption they are not yet staged, and the check judges only a scene that touches
+   them; `--staged`, because in adapted `--branch` says nothing while the target has not
+   adopted.
 7. (A) Confirm the 4.7 gate exists, and say whether whatever makes it required — a branch
    policy, or the merging tool's step — is in place; it usually lives outside the
    repository. Confirm the release check: on a throwaway branch, run the compiler for a
@@ -810,293 +923,64 @@ sentences as the adoption task's record. Then tell the person:
 
 ---
 
-## Appendix A — `.claude/hooks/check-unit.mjs`
+## Appendix A — the gate, its configuration and the manifest
 
-Fill the per-repo block from Phase 3. Everything else is fixed, the licence line included.
+**The gate** is `files/check-unit.mjs` in the skill folder, planted at
+`.claude/hooks/check-unit.mjs` byte for byte, the licence line included. Nothing in it is
+per-repo, and it says what it does in its own comments: the three modes, the roles, the
+compiled record, acceptance boxes, the reader, review rounds and the manifest check.
+The gate and both compilers read the files of a repository (task files, the compiled
+files, the changelog, the configuration and the manifest, in the work tree and from
+git) with CRLF line endings as LF and without a leading byte-order mark, so a Windows
+checkout gets the answer a Linux one gets.
 
-```js
-#!/usr/bin/env node
-// Copyright (c) 2026 Erez Schatz, https://github.com/erezschatz/unities. SPDX-License-Identifier: MIT
-// A scene is complete or it is nothing. SCENE says how long a scene is:
-//   "commit" (strict)  : every commit; --staged and --branch refuse.
-//   "pr"     (adapted) : the pull request; --pr refuses, --staged and --branch warn.
-//
-//   --pr <target>   : what the PR changed since it forked from its target (gate; always enforces)
-//   --staged        : what `git commit` is about to record       (pre-commit, PreToolUse)
-//   --branch [base] : the scene so far, committed or not         (Stop)
-//
-//   --codex, after the mode: the caller is Codex's hooks, not Claude Code's (4.10). The
-//   checks are the same; only how an adapted Stop reaches the agent differs.
-import { execSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+**The configuration** is `.claude/hooks/unities.json`, written by the adoption from
+Phase 3. The gate reads it from the repository it runs in, and stops with an error naming
+the file when it is missing, is not JSON, or lacks a key. The values below are examples,
+not defaults:
 
-// ---- per-repo: written by the adoption procedure from what it found ----
-const SCENE = process.env.UNITIES_SCENE ?? "pr";   // "commit" for the strict staging
-const RULES = {
-  source:  /^src\//,                                 // e.g. /^(src|lib)\//
-  test:    /^tests?\//,                              // e.g. /(^tests?\/|\.(test|spec)\.[cm]?[jt]sx?$)/
-  doc:     /^(docs\/|(^|\/)(README|CLAUDE|AGENTS)\.md$)/,   // docs also live beside code
-  task:    /^tasks\/(?!README\.md$)[^/_][^/]*\.md$/, // excludes README.md and _template.md
-  shared:  /^CHANGELOG\.md$/,                        // compiled; never edited or deleted by hand
-  retired: /^(TODO\.md|TASKS\.md|ROADMAP\.md)$/,     // tombstones of the migration; never edited, may be deleted. New project: /^$/
-};
-const REQUIRED = ["test", "doc", "task"];           // roles a source change must be accompanied by
-const BASE = "origin/main";                         // the branch pull requests target
-const RELEASE_FILES = /^(CHANGELOG\.md|package\.json|deno\.json)$/;   // what a release PR may touch
-const COMPILER = "scripts/compile-changelog.mjs";
-// docs/DECISIONS.md and docs/PLAN.md are compiled from the task files (Appendix K). Nobody
-// writes them by hand: a decision is written in the task file of the work that made it.
-const RECORD_FILES = /^docs\/(DECISIONS|PLAN)\.md$/;
-const RECORD_COMPILER = "scripts/compile-record.mjs";
-const RECORD_MARKER = "<!-- Compiled from tasks/ by scripts/compile-record.mjs.";
-const SELF = ".claude/hooks/check-unit.mjs";
-// An acceptance box names the assignee's check, before the task closes. One whose subject
-// is the user, customers, adoption or production, or whose verb is a continuing state, is
-// an outcome: a promise or a plan milestone, never a gate. Fixed; not per-repo.
-const ACCEPTANCE_FORBIDDEN = /^(the |an? |all |active |end[- ])*(user|users|customer|customers|production|prod)\b|\b(is|are|was|were) (running|live|in use|using|deployed)\b|\b(has|have) (replaced|adopted|switched|migrated)\b|\b(started?|starts) (to use|using)\b|\bin production\b|\b(by|from) (active |real |the )?(users?|customers?)\b|\bactive users\b|\buninstall(ed|s)? the old\b/i;
-// A record is read cold before it is committed (Appendix G). The gate cannot judge the
-// reading; it checks that one is named. Records the migration carried over are exempt.
-const REVIEW = /^Reviewed by:\s*\S/m;
-const REVIEW_SECTION = /^## Review\b/;   // a review round, written into the task file of the scene it reviews
-const REVIEW_EXEMPT = /^(Done before adoption; no record\.|Migrated from )/m;
-// -----------------------------------------------------------------------
-
-const strict = SCENE === "commit";
-const codex = process.argv.includes("--codex");
-const argv = process.argv.slice(2).filter(a => a !== "--codex");
-const mode = argv[0] ?? "--branch";
-// Only the hook modes are handed JSON on stdin; --pr must not wait on a pipe its caller left open.
-const input = mode === "--pr" || process.stdin.isTTY ? {} : JSON.parse((await readStdin()) || "{}");
-const cwd = input.cwd ?? process.cwd();
-const lines = s => s.split("\n").map(l => l.trim()).filter(Boolean);
-
-// PreToolUse's `if` filter is best-effort; make sure this really is a commit.
-if (input.hook_event_name === "PreToolUse" &&
-    !/(^|[;&|]\s*)git\s+commit\b/.test(input.tool_input?.command ?? "")) process.exit(0);
-
-let files, base, deleted;   // deleting a tombstone is not editing it
-if (mode === "--pr") {
-  const target = argv[1];
-  if (!target) fail("usage: check-unit.mjs --pr <target>");
-  // A name git does not know is not a target that has yet to adopt: refuse, do not skip.
-  if (!gitOk(`cat-file commit ${target}`))
-    fail(`${target} is not a commit this checkout knows; check the name, or fetch the branch (a single-branch or shallow clone may not have it).`);
-  if (!adopted(target)) skip(`${target} has no ${SELF}; the record is not required until the target adopts it.`);
-  // The PR's own change, measured from where it forked. The target's tip may have
-  // moved on since, and its new commits are not this PR's.
-  if (!gitOk(`merge-base ${target} HEAD`))
-    fail(`no merge base between ${target} and HEAD; the checkout needs the history back to where the branch forked (a shallow clone may not have it).`);
-  base = git(`merge-base ${target} HEAD`).trim();
-  files = lines(git(`diff --name-only ${base} HEAD`));
-  deleted = lines(git(`diff --name-only --diff-filter=D ${base} HEAD`));
-} else if (mode === "--staged") {
-  files = lines(git("diff --cached --name-only"));
-  deleted = lines(git("diff --cached --name-only --diff-filter=D"));
-  // A merge carries scenes recorded on the other branch. Only what the merge
-  // commit itself writes — a file that differs from both parents — is new.
-  if (gitOk("rev-parse -q --verify MERGE_HEAD")) {
-    const fromTheirs = new Set(lines(git("diff --cached --name-only MERGE_HEAD")));
-    files = files.filter(f => fromTheirs.has(f));
-  }
-} else if (mode === "--branch") {
-  // Strict: the scene is what is not yet committed. Adapted: the branch since it forked.
-  if (strict) {
-    base = "HEAD";
-  } else {
-    base = argv[1] ?? BASE;
-    if (!gitOk(`rev-parse -q --verify ${base}`) || !adopted(base)) process.exit(0);
-    base = git(`merge-base ${base} HEAD`).trim();
-  }
-  files = [...new Set([
-    ...lines(git(`diff --name-only ${base}`)),              // committed since base, plus the work tree
-    ...lines(git("ls-files --others --exclude-standard")),
-  ])];
-  deleted = lines(git(`diff --name-only --diff-filter=D ${base}`));
-} else {
-  fail(`unknown mode ${mode}`);
-}
-
-// The compiled record is nobody's doc line: it does not count toward any role.
-const has = re => files.some(f => re.test(f) && !RECORD_FILES.test(f));
-const missing = [];
-if (has(RULES.source)) {
-  for (const part of REQUIRED)
-    if (!has(RULES[part])) missing.push(`no ${part} change`);
-}
-let shared = files.filter(f => RULES.shared.test(f) || (RULES.retired.test(f) && !deleted.includes(f)));
-
-// A release PR: only RELEASE_FILES changed, and the changelog it adds is exactly
-// what the compiler produces from the record. The blob must equal compile(sources).
-if (mode === "--pr" && shared.length && files.every(f => RELEASE_FILES.test(f))) {
-  const added = lines(git(`diff ${base} HEAD -- CHANGELOG.md`))
-    .filter(l => l.startsWith("+") && !l.startsWith("+++")).map(l => l.slice(1).trim()).filter(Boolean);
-  let compiled, why;
-  try {
-    const since = sh(`git describe --tags --abbrev=0 ${base}`) || git("rev-list --max-parents=0 HEAD").trim();
-    const out = sh(`node ${COMPILER} --dry-run --since ${since}`);
-    if (/^\(no task records/.test(out)) why = " (no task records to release)";
-    else compiled = lines(out).slice(1);                       // drop the version heading
-  } catch { why = " (compiler failed)"; }
-  if (compiled && /^## /.test(added[0] ?? "") && same(added.slice(1), compiled)) shared = [];
-  else missing.push(`CHANGELOG.md does not equal the compiler's output${why ?? firstDifference(added.slice(1), compiled)}`);
-}
-if (shared.length) missing.push(`shared file edited directly: ${shared.join(", ")}`);
-
-// The compiled record. A file is compiled once its version at the scene's base carries the
-// marker; until then (a new project, the adoption itself) it is an ordinary file.
-//   strict : the commit is also the merge, so the scene carries the compiler's output.
-//   adapted: a scene does not touch the compiled files; they are compiled on the target
-//            after the merge. The one scene that may is the compile itself (nothing but
-//            those files), and then they must equal the compiler's output.
-const from = base ?? "HEAD";
-const record = files.filter(f => RECORD_FILES.test(f) && head(show(from, f)) !== null);
-const compileOnly = files.length > 0 && files.every(f => RECORD_FILES.test(f));
-if (files.length && existsSync(join(cwd, RECORD_COMPILER))) {
-  // The compiler reads the work tree; in --pr that is the checkout of the PR's tip.
-  const run = spawnSync(`node ${RECORD_COMPILER} --check`, { cwd, shell: true, encoding: "utf8" });
-  if (run.status === 3) missing.push(run.stderr.trim());
-  if (strict || compileOnly) {
-    if (run.status === 1) missing.push(`compiled record is out of date: ${run.stderr.trim()}`);
-    for (const f of record)
-      if (!deleted.includes(f) && head(show(from, f)) !== head(contents(f)))
-        missing.push(`the hand-written head of ${f} was edited; everything in it is changed by a new decision in a task file`);
-    if (mode === "--staged" && !run.status) {
-      const unstaged = lines(git("diff --name-only")).filter(f => RECORD_FILES.test(f));
-      if (unstaged.length) missing.push(`compiled record not staged: ${unstaged.join(", ")}`);
-    }
-  } else if (record.length) {
-    missing.push(`compiled record edited in this scene: ${record.join(", ")} (write the decision in your task file under "## Decisions"; it is compiled after the merge)`);
-  }
-  const gone = record.filter(f => deleted.includes(f));
-  if (gone.length) missing.push(`compiled record deleted: ${gone.join(", ")}`);
-} else if (record.length) {
-  missing.push(`compiled record edited directly: ${record.join(", ")}`);
-}
-
-// Acceptance boxes in the task files this scene touches.
-for (const f of files.filter(f => RULES.task.test(f) && !deleted.includes(f))) {
-  let heading = "";
-  for (const line of contents(f).split("\n")) {
-    if (/^## /.test(line)) heading = line;
-    const m = /^\s*[-*] \[[ xX]\]\s+(.+)$/.exec(line);
-    // "Done when" boxes of a review describe behaviour and may well start with "the user".
-    if (m && !REVIEW_SECTION.test(heading) && ACCEPTANCE_FORBIDDEN.test(m[1].trim()))
-      missing.push(`acceptance box in ${f} names an outcome, not a check: "${m[1].trim()}" (make it the promise or a PLAN.md milestone)`);
-  }
-  // Every record this scene adds names its cold reader.
-  const added = addedLines(f);
-  for (const section of contents(f).split(/^(?=## )/m)) {
-    if (!/^## What was done/.test(section) || !added.has(section.split("\n")[0].trim())) continue;
-    if (!REVIEW.test(section) && !REVIEW_EXEMPT.test(section))
-      missing.push(`record in ${f} has no "Reviewed by:" line (a reader that has not seen the work; see Appendix G)`);
-  }
-  // Every review round this scene adds: each item says what was found, when it is done
-  // (one box per case, as "case → outcome") and what was not asked. An item with an open
-  // box does not merge. Who ticks is not the gate's business; that every case is named is.
-  for (const section of contents(f).split(/^(?=## )/m)) {
-    if (!REVIEW_SECTION.test(section) || !added.has(section.split("\n")[0].trim())) continue;
-    for (const item of section.split(/^(?=### )/m).slice(1)) {
-      const name = item.split("\n")[0].replace(/^### /, "").trim();
-      const doneWhen = item.split(/^\*\*Done when\*\*/m)[1]?.split(/^\*\*/m)[0] ?? "";
-      const boxes = [...doneWhen.matchAll(/^\s*[-*] \[([ xX])\]\s+(.+)$/gm)];
-      if (!/^\*\*Found\*\*/m.test(item) || !boxes.length || !/^\*\*Not asked\*\*/m.test(item))
-        missing.push(`review item "${name}" in ${f} needs **Found**, **Done when** with a box per case, and **Not asked**`);
-      for (const [, , text] of boxes)
-        if (!text.includes("→")) missing.push(`review item "${name}" in ${f}: "${text.trim()}" is not "case → outcome"`);
-      if (mode === "--pr" && boxes.some(b => b[1] === " ")) missing.push(`review item "${name}" in ${f} is still open`);
-    }
-  }
-}
-
-if (missing.length === 0) process.exit(0);
-
-const what = { "--pr": "This pull request", "--staged": "This commit", "--branch": strict ? "This change" : "This branch" }[mode];
-const reason = `Incomplete scene: ${missing.join("; ")}.`;
-
-if (mode === "--pr") {
-  const prefix = process.env.TF_BUILD ? "##vso[task.logissue type=error]" : "";
-  console.error(`${prefix}${reason}`);
-  console.error(`${what} cannot merge until its change carries its record (see tasks/README.md).`);
-  process.exit(1);
-}
-
-if (strict) {
-  const note = `${reason} Complete the record in this same change, or revert it. Do not leave it for later.`;
-  // Stop, second pass: the agent was already sent back once. Let the turn end,
-  // but make the half-scene visible to the person; the revert is theirs to decide.
-  if (input.hook_event_name === "Stop" && input.stop_hook_active) {
-    console.log(JSON.stringify({ systemMessage: note }));
-    process.exit(0);
-  }
-  console.error(note);
-  process.exit(2);   // PreToolUse: deny the commit. Stop: send the agent back. pre-commit: refuse.
-}
-
-const note = `${reason} ${what} is fine to keep, but the pull request will be refused until it is complete.`;
-if (input.hook_event_name === "Stop") {
-  // Advise the agent once, in its own context, so it can act; never refuse the scene.
-  // Claude Code takes the note as additionalContext. Codex has no such field at Stop: its
-  // one channel to the agent is to continue the turn with the note as the prompt.
-  if (input.stop_hook_active)
-    console.log(JSON.stringify({ systemMessage: note }));
-  else if (codex)
-    console.log(JSON.stringify({ decision: "block", reason: note }));
-  else
-    console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "Stop", additionalContext: note } }));
-} else {
-  console.error(note);
-}
-process.exit(0);
-
-function adopted(ref) { return gitOk(`cat-file -e ${ref}:${SELF}`); }
-function addedLines(file) {  // lines this scene adds to the file
-  let diff;
-  if (mode === "--pr") diff = git(`diff ${base} HEAD -- ${file}`);
-  else if (mode === "--staged") diff = git("diff --cached -- " + file);
-  else if (gitOk(`ls-files --error-unmatch ${file}`)) diff = git(`diff ${base} -- ${file}`);
-  else return new Set(lines(contents(file)));            // untracked: all of it is new
-  return new Set(lines(diff).filter(l => l.startsWith("+") && !l.startsWith("+++")).map(l => l.slice(1).trim()));
-}
-function contents(file) {   // the file as this scene has it
-  try {
-    if (mode === "--pr") return git(`show HEAD:${file}`);
-    if (mode === "--staged") return git(`show :${file}`);
-    return readFileSync(join(cwd, file), "utf8");
-  } catch { return ""; }
-}
-function show(ref, file) {   // the file as the scene's base has it; "" if absent
-  try { return git(`show ${ref}:${file}`); } catch { return ""; }
-}
-function head(text) {        // the part above the compile marker; null if the file is not compiled
-  const i = text.indexOf(RECORD_MARKER);
-  return i < 0 ? null : text.slice(0, i).trimEnd();
-}
-function skip(message) { console.log(message); process.exit(0); }
-function fail(message) { console.error(message); process.exit(2); }
-function same(a, b) { return a.length === b.length && a.every((l, i) => l === b[i]); }
-function firstDifference(a, b) {
-  const i = a.findIndex((l, i) => l !== b[i]);
-  const at = i < 0 ? a.length : i;
-  return `\n  PR line ${at + 1}: ${JSON.stringify(a[at] ?? "(end)")}\n  compiled: ${JSON.stringify(b[at] ?? "(end)")}`;
-}
-function git(args) {
-  return execSync(`git ${args}`, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-}
-function sh(cmd) {
-  return execSync(cmd, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-}
-function gitOk(args) {
-  try { execSync(`git ${args}`, { cwd, stdio: "ignore" }); return true; }
-  catch { return false; }
-}
-function readStdin() {
-  return new Promise(r => {
-    let s = "";
-    process.stdin.on("data", d => s += d).on("end", () => r(s));
-  });
+```json
+{
+  "scene": "pr",
+  "rules": {
+    "source":  "^src/",
+    "test":    "^tests?/",
+    "doc":     "^(docs/|(^|/)(README|CLAUDE|AGENTS)\\.md$)",
+    "task":    "^tasks/(?!README\\.md$)[^/_][^/]*\\.md$",
+    "shared":  "^CHANGELOG\\.md$",
+    "retired": "^(TODO\\.md|TASKS\\.md|ROADMAP\\.md)$"
+  },
+  "required": ["test", "doc", "task"],
+  "base": "origin/main",
+  "releaseFiles": "^(CHANGELOG\\.md|package\\.json|deno\\.json)$",
+  "changelog": { "recorded": "Recorded in `{hash}`." }
 }
 ```
+
+| Key | What it holds |
+| --- | --- |
+| `scene` | `"commit"` (strict) or `"pr"` (adapted), §1. The environment variable `UNITIES_SCENE` overrides it; the tests use that. |
+| `rules` | one regular expression per role, as a JSON string (a backslash is written twice). All six are present, and a repository may add its own for `required` to name; a role the repository lacks matches nothing (`"^$"`). `task` excludes `tasks/README.md` and `_`-prefixed files; `shared` is the compiled changelog; `retired` the tombstones of 5.1, `"^$"` in a new project. |
+| `required` | the roles a source change must be accompanied by. A role the repository does not have is left out (4.1). It may instead map roles to lists, where some files are held to less than source: `{"source": ["test", "doc", "task"], "procedure": ["doc", "task"]}`, with `procedure` a seventh role in `rules`. Every role it names must be in `rules`, and `source` must be held to at least one role. |
+| `base` | the branch pull requests target. |
+| `releaseFiles` | what a release pull request may touch: `CHANGELOG.md` and the version files (4.7). |
+| `changelog.recorded` | optional: the line that closes each changelog entry, `{hash}` standing for the commit's short hash (Appendix F). |
+| `run` | optional: how the gate invokes the two compilers, `"node"` when absent (Appendix H). |
+| `plan` | optional: `false` in a repository that keeps no compiled plan. The record compiler then writes and checks `docs/DECISIONS.md` alone, the gate does not ask for `docs/PLAN.md`, and a file of that name, if there is one, is an ordinary doc. Absent or `true`, the plan is compiled (4.9, Appendix K). `Milestone:` and `Not in scope:` lines in decisions then go nowhere. Where it is `false`, whatever this runbook, the standing paragraph (Appendix E) and the gate's messages say of `docs/PLAN.md` as a compiled file does not apply: the adoption writes the paragraph with `docs/DECISIONS.md` alone, and an outcome box is moved to the promise. |
+| `plugin` | only in the plugin's own repository: the folder of the master files. A scene there that touches a master, a planted copy or the manifest is refused unless every planted copy and the manifest equal the masters. |
+
+**The manifest** is `files/manifest.json`: the plugin's version and the sha256 of each
+shipped script, under the path it is planted at. It is planted as
+`.claude/hooks/unities.manifest.json`, unchanged. When a scene touches a planted script
+or the manifest, the gate compares every planted script with its hash and refuses the
+scene if one differs ("planted file edited") or is missing; line endings are left out of
+the hash, so a checkout that writes CRLF has edited nothing. A scene that deletes the
+manifest is refused, and its scripts are judged against the manifest it deleted. A clean
+tree still passes.
+So a planted copy is never fixed in place: the fix is made in the plugin, gets a version,
+and arrives by the re-run as a copy of the scripts and the manifest together. In the
+plugin, `files/make-manifest.mjs` rewrites `manifest.json` after a script changes, and
+the plugin's own tests fail until it has; it is not planted.
 
 ## Appendix B — `.claude/settings.json` (merge)
 
@@ -1136,7 +1020,7 @@ Strict adds:
 ```
 
 In adapted the `Stop` hook compares the branch so far — commits and uncommitted work —
-with `BASE`, and if the pull request would fail, tells the agent what is missing, once
+with `base`, and if the pull request would fail, tells the agent what is missing, once
 per turn, without blocking. In strict it compares the work tree with `HEAD` and refuses
 to let the turn end on an incomplete scene; on the second refusal it lets go and tells
 the person.
@@ -1233,8 +1117,10 @@ A task file has:
 
 The plan's steps are the task files themselves: adding a step is adding a file here.
 
-Status is derived: no "what was done" → open; present → done; included in a compiled
-release → shipped. There is no status field to keep in sync.
+Status is derived: no "what was done" → open; present, with a box in the file still
+open → recorded, and the plan says how many boxes are open; present and every box
+ticked → done; included in a compiled release → shipped. There is no status field to
+keep in sync.
 
 Outside input enters here and nowhere else. If it is not a task file, it did not arrive.
 ```
@@ -1293,8 +1179,12 @@ recorded as a decision before it is built. Before committing, give the staged di
 the task file to a reader that has not seen the work — a read-only subagent, never
 yourself — to carry out `docs/reviewer.md`; write what it finds into the task file and
 its name on the record's `Reviewed by:` line. The agent does not
-claim a build is green or a feature works where it runs; <who> does. The developer's side
-of all this is `docs/working-on-a-task.md`.
+claim a build is green or a feature works where it runs; <who> does. A box you checked by
+reading the code or by a command whose output you report, or a review box the reader
+found to hold, you tick; do not ask anyone to tick it for you. A box that can only be
+checked by running the program you leave open and hand to <who>, those boxes alone, each
+with what to do and what should be seen. The developer's side of all this is
+`docs/working-on-a-task.md`.
 ```
 
 Adapted:
@@ -1328,115 +1218,28 @@ yourself — to carry out `docs/reviewer.md`; write what it finds into the task 
 its name on the record's `Reviewed by:` line. Where the tool that merges asks the same
 questions again, what the reader finds here is what does not come back from there. The
 agent does not claim a build is green or a feature works where it runs; <who>
-does. The developer's side of all this is `docs/working-on-a-task.md`.
+does. A box you checked by reading the code or by a command whose output you report, or
+a review box the reader found to hold, you tick; do not ask anyone to tick it for you. A
+box that can only be checked by running the program you leave open and hand to <who>,
+those boxes alone, each with what to do and what should be seen. The developer's side of
+all this is `docs/working-on-a-task.md`.
 ```
 
 ## Appendix F — `scripts/compile-changelog.mjs`
 
-Adjust `formatEntry` to the repo's existing changelog convention. Keep blank lines inside a
-record — they are its paragraph and list breaks — and keep the rename-following: task
-files are renamed when they get a work item id, and a record written under the old name
-must compile under the new one. The gate (4.7) compares a release PR against this
-script's `--dry-run` output, so its output must be deterministic for a given `--since`:
-no timestamps finer than the date, no environment-dependent ordering.
+`files/compile-changelog.mjs` in the skill folder, planted at
+`scripts/compile-changelog.mjs` byte for byte. It reads the record out of git history:
+every `## What was done` section added to `tasks/` since the last tag (or `--since`),
+grouped by task file, blank lines inside a record kept as its paragraph and list breaks,
+and records written under an earlier name of a renamed task file compiled under its
+current one. The `Reviewed by:` line is left out. The gate (4.7) compares a release PR
+against its `--dry-run` output, so the output is deterministic for a given `--since`:
+nothing finer than the date, no environment-dependent ordering.
 
-```js
-#!/usr/bin/env node
-// Copyright (c) 2026 Erez Schatz, https://github.com/erezschatz/unities. SPDX-License-Identifier: MIT
-// compile-changelog <version> [--since <ref>] [--dry-run]
-// The only writer CHANGELOG.md has. Reads "## What was done" sections added to tasks/
-// since the last release and prepends them under a version heading.
-import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-
-const argv = process.argv.slice(2);
-const dry = argv.includes("--dry-run");
-const sinceIdx = argv.indexOf("--since");
-const version = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--since");
-if (!version && !dry) { console.error("usage: compile-changelog <version> [--since <ref>] [--dry-run]"); process.exit(1); }
-
-const sh = c => execSync(c, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-const since = sinceIdx >= 0 ? argv[sinceIdx + 1]
-  : (sh("git describe --tags --abbrev=0 2>/dev/null || true") || sh("git rev-list --max-parents=0 HEAD"));
-
-const raw = sh(`git log --no-merges --reverse --format=%x1e%h%x1f%as -p ${since}..HEAD -- tasks/`);
-const entries = [];                       // { file, hash, date, lines[] }
-
-for (const chunk of raw.split("\x1e").filter(Boolean)) {
-  const [head, ...rest] = chunk.split("\n");
-  const [hash, date] = head.split("\x1f");
-  let file = null, inSection = false, current = null;
-  for (const line of rest) {
-    if (line.startsWith("+++ b/")) { file = line.slice(6); inSection = false; current = null; continue; }
-    if (!file || !file.startsWith("tasks/") || file.startsWith("tasks/_")) continue;
-    if (!line.startsWith("+") || line.startsWith("+++")) { if (line.startsWith("@@")) { inSection = false; current = null; } continue; }
-    const text = line.slice(1);
-    if (/^## What was done/.test(text)) { inSection = true; current = { file, hash, date, lines: [] }; entries.push(current); continue; }
-    if (/^## /.test(text)) { inSection = false; current = null; continue; }
-    if (inSection && current) current.lines.push(text);
-  }
-}
-
-// Task files get renamed (e.g. when a work item id is assigned). Records written
-// under an earlier name must land under the file's current name.
-const renamed = new Map();
-for (const line of sh(`git log --reverse --format= --name-status -M --diff-filter=R ${since}..HEAD -- tasks/`).split("\n")) {
-  const [, from, to] = line.split("\t");
-  if (from && to) renamed.set(from, to);
-}
-const current = f => {
-  const seen = new Set();
-  while (renamed.has(f) && !seen.has(f)) { seen.add(f); f = renamed.get(f); }
-  return f;
-};
-
-const byTask = new Map();
-for (const e of entries) {
-  const file = current(e.file);
-  if (!byTask.has(file)) byTask.set(file, []);
-  byTask.get(file).push(e);
-}
-
-const title = f => {
-  if (!existsSync(f)) return f.replace(/^tasks\//, "").replace(/\.md$/, "");
-  const m = readFileSync(f, "utf8").match(/^#\s+(.+)$/m);
-  return m ? m[1].trim() : f;
-};
-
-// ---- per-repo: match the existing changelog convention ----
-// Blank lines inside a record are its paragraph and list breaks: keep them, trim the
-// ends. The hash goes once per record. Ordering is by task path, then by commit order,
-// so the output is deterministic for the gate.
-const trimBlank = lines => {
-  let a = 0, b = lines.length;
-  while (a < b && !lines[a].trim()) a++;
-  while (b > a && !lines[b - 1].trim()) b--;
-  return lines.slice(a, b);
-};
-const formatEntry = (e) => `${trimBlank(e.lines.filter(l => !/^Reviewed by:/.test(l))).join("\n")}\n\nRecorded in \`${e.hash}\`.`;
-const today = new Date().toISOString().slice(0, 10);
-let out = `## ${version ?? "<version>"} — ${today}\n\n`;
-for (const file of [...byTask.keys()].sort()) {
-  out += `### ${title(file)}\n\n${byTask.get(file).map(formatEntry).join("\n\n")}\n\n`;
-}
-// -----------------------------------------------------------
-
-if (dry || entries.length === 0) {
-  process.stdout.write(entries.length ? out : `(no task records since ${since})\n`);
-  process.exit(0);
-}
-
-const path = "CHANGELOG.md";
-const marker = /<!-- Compiled from tasks\/.*?-->\n?/;
-let existing = existsSync(path) ? readFileSync(path, "utf8") : "# Changelog\n\n";
-if (marker.test(existing)) existing = existing.replace(marker, m => m + "\n" + out);
-else {
-  const i = existing.indexOf("\n", existing.indexOf("# ")) + 1;
-  existing = existing.slice(0, i) + "\n" + out + existing.slice(i);
-}
-writeFileSync(path, existing);
-console.log(`CHANGELOG.md: ${entries.length} record(s) from ${byTask.size} task(s) since ${since}`);
-```
+Its one per-repo value is `changelog.recorded` in the gate's configuration (Appendix A),
+the line that closes each entry; without it the line is ``Recorded in `<hash>`.``. A
+convention that needs more than that line (another heading level, links instead of
+hashes) is a change to the plugin, for every repository, and not to the copy.
 
 The compiler writes `CHANGELOG.md`, which the `shared` rule forbids editing by hand. In
 strict the release commit is made from a shell with `--no-verify`, the one documented
@@ -1474,8 +1277,8 @@ questions, and the same reader answers all three in one pass:
 
 Its findings are written as a `## Review` section in the same task file, in the item
 shape of Appendix D, so that a verifier's finding and a person's review are the same
-thing to the developer and to the gate. It ticks the boxes it found to hold and leaves
-the others open. Run by the developer's agent before the pull request, by a colleague,
+thing to the developer and to the gate. It says which boxes it found to hold; whoever
+asked for the reading ticks those and leaves the others open (4.7). Run by the developer's agent before the pull request, by a colleague,
 or by the merging tool before it merges, it is one procedure: the oars, not the helm.
 
 **The brief.** The three questions and the shape of the answer are a file,
@@ -1538,12 +1341,14 @@ the report in both.
 
 ## Appendix H — runtimes
 
-The scripts use only `node:child_process` and `node:fs`, which Node, Deno and Bun all
-provide. Only the invocation differs. Use the same form everywhere a script is called:
+The scripts use only `node:` built-ins (`child_process`, `crypto`, `fs`, `path`, `url`;
+the tests add `test`, `assert`, `os`), which Node, Deno and Bun all provide. Only the invocation differs. Use the same form everywhere a script is called:
 `.claude/settings.json` (`command` + `args`), the pre-commit line, the gate, and the task
 runner. The check script shells out to `node scripts/compile-changelog.mjs` for the
 release verification and to `node scripts/compile-record.mjs --check` for the compiled
-record; on Deno or Bun change `node` in those two calls to the matching invocation. The
+record; on Deno or Bun set `run` in the configuration (Appendix A) to the invocation that
+replaces `node` in those two calls, for example
+`"run": "deno run --allow-run=git --allow-read"`. The script itself is not edited. The
 record compiler needs no `--allow-run`; it reads `tasks/` and writes the two files in
 `docs/` (`deno run --allow-read --allow-write=docs scripts/compile-record.mjs`), and
 gets a `record` entry in the task runner beside `changelog`.
@@ -1645,10 +1450,14 @@ steps:
   - bash: |
       set -euo pipefail
       node scripts/compile-record.mjs
-      if git diff --quiet -- docs/DECISIONS.md docs/PLAN.md; then exit 0; fi
+      # docs/PLAN.md is named only while it carries the compiler's marker. With
+      # "plan": false (Appendix A) the compiler leaves it alone, or it is not there.
+      compiled="docs/DECISIONS.md"
+      if grep -q "Compiled from tasks/" docs/PLAN.md 2>/dev/null; then compiled="$compiled docs/PLAN.md"; fi
+      if git diff --quiet -- $compiled; then exit 0; fi
       git config user.name "merge man"
       git config user.email "merge-man@localhost"
-      git add docs/DECISIONS.md docs/PLAN.md
+      git add $compiled
       git commit -m "Compile the record [skip ci]"
       git push origin HEAD:$(Build.SourceBranchName)
     displayName: Compile decisions and plan from the task files
@@ -1660,796 +1469,39 @@ again, or to let the next merge's run pick both up.
 
 ## Appendix J — `.claude/hooks/check-unit.test.mjs`
 
-Fill the per-repo paths with one file in each role that `RULES` matches. The tests build
-throwaway repositories, so they need git and nothing else. They pin the behaviour the
-practice depended on: the gate at the pull request, free commits in adapted, refused
-commits in strict, merges that do not re-check the other branch's scenes, a target that
-has not adopted yet, a target that moved on after the branch forked, tombstones that may
-be deleted but not edited, the release check,
-review rounds whose items must name their cases and be closed before merge,
-and the compiled record: numbers that never change, a pull request that may not touch
-`docs/DECISIONS.md` or `docs/PLAN.md`, the compile that may, and the strict commit that
-must carry them up to date; and that the same script called from Codex's hooks
-(`--codex`, 4.10) checks the same things and differs only in how an adapted `Stop`
-reaches the agent.
+`files/check-unit.test.mjs` in the skill folder, planted at
+`.claude/hooks/check-unit.test.mjs` byte for byte. The tests build throwaway
+repositories, so they need git and nothing else, and each carries its own configuration
+(`FIXTURE` in the file): the tests pin the behaviour of the script, not the roles of the
+repository they run in, which is why nothing in the file is filled in. They pin the
+behaviour the practice depended on: the gate at the pull request, free commits in
+adapted, refused commits in strict, merges that do not re-check the other branch's
+scenes, a target that has not adopted yet, a target that moved on after the branch
+forked, tombstones that may be deleted but not edited, the release check, review rounds
+whose items must name their cases and be closed before merge, a touched task file that
+is not a record, and the compiled record:
+numbers that never change, a pull request that may not touch `docs/DECISIONS.md` or
+`docs/PLAN.md`, the compile that may, and the strict commit that must carry them up to
+date; that the same script called from Codex's hooks (`--codex`, 4.10) checks the same
+things and differs only in how an adapted `Stop` reaches the agent; and that the roles
+come from the configuration and a planted script edited in place is refused.
 
-```js
-// Copyright (c) 2026 Erez Schatz, https://github.com/erezschatz/unities. SPDX-License-Identifier: MIT
-// Run with: node --test .claude/hooks/check-unit.test.mjs
-import test from "node:test";
-import assert from "node:assert/strict";
-import { execSync, spawnSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-// ---- per-repo: one path in each role, matching RULES in check-unit.mjs ----
-const SOURCE = "src/x.ts";
-const TEST = "tests/x.test.ts";
-const DOC = "docs/a.md";
-const TASK = "tasks/1-t.md";
-const SHARED = "CHANGELOG.md";
-const RETIRED = "TODO.md";     // leave the retired tests out in a new project, which has none
-// ---------------------------------------------------------------------------
-
-const here = dirname(fileURLToPath(import.meta.url));
-const hook = join(here, "check-unit.mjs");
-const compiler = resolve(here, "../../scripts/compile-changelog.mjs");
-const recordCompiler = resolve(here, "../../scripts/compile-record.mjs");
-const DECISIONS = "docs/DECISIONS.md";
-const PLAN = "docs/PLAN.md";
-
-// A repo whose main branch has adopted the hook, unless told otherwise.
-function repo({ adopted = true } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "check-unit-"));
-  const git = (args) => execSync(`git ${args}`, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-  const write = (file, text) => { mkdirSync(dirname(join(dir, file)), { recursive: true }); writeFileSync(join(dir, file), text); };
-  git("init -q -b main");
-  git("config user.email t@example.com");
-  git("config user.name t");
-  git("config commit.gpgsign false");
-  write(SHARED, "# Changelog\n\n<!-- Compiled from tasks/ by scripts/compile-changelog.mjs. Do not edit below this line by hand. -->\n");
-  write(RETIRED, "Tasks now live in tasks/, one file each.\n");
-  write(SOURCE, "base\n");
-  write(DOC, "base\n");
-  if (adopted) {
-    mkdirSync(join(dir, ".claude/hooks"), { recursive: true });
-    copyFileSync(hook, join(dir, ".claude/hooks/check-unit.mjs"));
-    mkdirSync(join(dir, "scripts"), { recursive: true });
-    copyFileSync(compiler, join(dir, "scripts/compile-changelog.mjs"));
-    copyFileSync(recordCompiler, join(dir, "scripts/compile-record.mjs"));
-  }
-  // The merge man: compiles docs/DECISIONS.md and docs/PLAN.md from the task files.
-  const compile = () => execSync("node scripts/compile-record.mjs", { cwd: dir, stdio: "ignore" });
-  const read = (file) => readFileSync(join(dir, file), "utf8");
-  if (adopted) compile();
-  git("add -A");
-  git("commit -q -m base");
-  git("tag v0");
-  const commit = (message) => { git("add -A"); git(`commit -q -m ${message}`); };
-  return { dir, git, write, commit, compile, read };
-}
-
-function run(dir, args, { scene = "pr", stdin = "" } = {}) {
-  return spawnSync("node", [hook, ...args], {
-    cwd: dir, input: stdin, encoding: "utf8", env: { ...process.env, UNITIES_SCENE: scene },
-  });
-}
-
-const complete = (write) => {
-  write(TEST, "test\n");
-  write(DOC, "documented\n");
-  write(TASK, "# t\n\n## What was done\n\ndone\n\nReviewed by: a reader\n");
-};
-
-// ---- the gate (both stagings) ----
-
-test("a pull request that changes source without its record is refused", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  commit("wip");
-  const result = run(dir, ["--pr", "main"]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /no \w+ change/);
-});
-
-test("work-in-progress commits are fine once the pull request as a whole carries its record", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "stage 1\n");
-  commit("stage-1");
-  write(SOURCE, "stage 2\n");
-  commit("stage-2");
-  complete(write);
-  commit("record");
-  assert.equal(run(dir, ["--pr", "main"]).status, 0);
-});
-
-test("a pull request editing the compiled changelog by hand is refused", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SHARED, "hand edit\n");
-  commit("edit");
-  assert.match(run(dir, ["--pr", "main"]).stderr, /CHANGELOG\.md does not equal/);
-});
-
-test("a pull request deleting the compiled changelog is refused", () => {
-  const { dir, git, commit } = repo();
-  git("checkout -q -b feature");
-  git(`rm -q ${SHARED}`);
-  commit("delete");
-  const result = run(dir, ["--pr", "main"]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /CHANGELOG\.md/);
-});
-
-test("a pull request editing a retired file is refused", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(RETIRED, "- [ ] a new item, in the old place\n");
-  commit("edit");
-  const result = run(dir, ["--pr", "main"]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /shared file edited directly: TODO\.md/);
-});
-
-test("a pull request deleting a retired file is not refused", () => {
-  const { dir, git, commit } = repo();
-  git("checkout -q -b feature");
-  git(`rm -q ${RETIRED}`);
-  commit("retire");
-  const result = run(dir, ["--pr", "main"]);
-  assert.equal(result.status, 0);
-  assert.doesNotMatch(result.stderr, /shared file/);
-});
-
-test("a release pull request whose changelog equals the compiler's output passes", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  complete(write);
-  commit("feature");
-  git("checkout -q main");
-  git("merge -q --no-ff -m merge feature");
-  git("checkout -q -b release");
-  execSync("node scripts/compile-changelog.mjs 1.0.0 --since v0", { cwd: dir, stdio: "ignore" });
-  commit("release");
-  const ok = run(dir, ["--pr", "main"]);
-  assert.equal(ok.status, 0, ok.stderr);
-  // then a hand edit to the compiled section
-  const path = join(dir, SHARED);
-  writeFileSync(path, execSync(`cat ${path}`, { encoding: "utf8" }).replace("done", "done, and more"));
-  commit("tamper");
-  const bad = run(dir, ["--pr", "main"]);
-  assert.equal(bad.status, 1);
-  assert.match(bad.stderr, /does not equal the compiler's output/);
-});
-
-test("a pull request into a target that has not adopted the hook is not checked", () => {
-  const { dir, git, write, commit } = repo({ adopted: false });
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  write(SHARED, "hand edit\n");
-  commit("edit");
-  assert.equal(run(dir, ["--pr", "main"]).status, 0);
-});
-
-test("a target the checkout does not know is an error, not a target that has not adopted", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  commit("wip");
-  const result = run(dir, ["--pr", "origin/mian"]);
-  assert.equal(result.status, 2);
-  assert.match(result.stderr, /origin\/mian is not a commit this checkout knows/);
-  // A commit id the checkout never fetched, and a name that is not a commit, are refused too.
-  const unfetched = "1234567890123456789012345678901234567890";
-  for (const name of [unfetched, `main:${SOURCE}`]) {
-    const other = run(dir, ["--pr", name]);
-    assert.equal(other.status, 2, name);
-    assert.match(other.stderr, /is not a commit this checkout knows/);
-  }
-});
-
-test("on a CI merge commit, HEAD^1 is the target and only the PR's changes count", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  commit("feature");
-  git("checkout -q main");
-  write(DOC, "changed on main\n");   // on the target only; not the PR's doing
-  commit("main");
-  git("merge -q --no-ff -m merge feature");
-  const result = run(dir, ["--pr", "HEAD^1"]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /no \w+ change/);
-});
-
-// ---- acceptance boxes (both stagings, every mode) ----
-
-test("a task file whose acceptance box names an outcome is refused", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  complete(write);
-  write(TASK, "# t\n\n## Context\n\n**Acceptance**\n\n- [ ] the user uninstalled the old app and started to use the new one\n- [ ] new schema is running in production\n\n## What was done\n\ndone\n\nReviewed by: a reader\n");
-  commit("record");
-  const result = run(dir, ["--pr", "main"]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /acceptance box in tasks\/1-t\.md names an outcome/);
-  assert.match(result.stderr, /running in production/);
-});
-
-test("a task file whose acceptance boxes name the assignee's checks passes, in every mode", () => {
-  const { dir, git, write, commit, compile } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  complete(write);
-  write(TASK, "# t\n\n## Context\n\n**Promise** — you no longer need the old app.\n\n**Acceptance**\n\n- [ ] every record from the old app exported and verified in the new one by the programmer\n- [ ] each ported workflow run end to end on the phone, logged\n- [x] `npm test` green\n\n## What was done\n\ndone\n\nReviewed by: a reader\n");
-  git("add -A");
-  assert.equal(run(dir, ["--staged"]).status, 0);
-  commit("record");
-  assert.equal(run(dir, ["--pr", "main"]).status, 0);
-  compile();   // strict: the commit is also the merge, so it carries the compiled record
-  git("add -A");
-  assert.equal(run(dir, ["--staged"], { scene: "commit" }).status, 0);
-  assert.equal(run(dir, ["--branch"], { scene: "commit" }).status, 0);
-});
-
-test("strict: an outcome acceptance box is refused at the commit, not only at merge", () => {
-  const { dir, write, git } = repo();
-  write(TASK, "# t\n\n- [ ] feature replaced old by active users\n");
-  git("add -A");
-  const result = run(dir, ["--staged"], { scene: "commit" });
-  assert.equal(result.status, 2);
-  assert.match(result.stderr, /names an outcome/);
-});
-
-// ---- the reader (both stagings, every mode) ----
-
-test("a record without a Reviewed by line is refused; the one with it passes", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  complete(write);
-  write(TASK, "# t\n\n## What was done\n\ndone, nobody read it\n");
-  git("add -A");
-  const staged = run(dir, ["--staged"], { scene: "commit" });
-  assert.equal(staged.status, 2);
-  assert.match(staged.stderr, /no "Reviewed by:" line/);
-  commit("record");
-  assert.match(run(dir, ["--pr", "main"]).stderr, /no "Reviewed by:" line/);
-  write(TASK, "# t\n\n## What was done\n\ndone, nobody read it\n\nReviewed by: colleague\n");
-  commit("reviewed");
-  assert.equal(run(dir, ["--pr", "main"]).status, 0);
-});
-
-test("only records this scene adds are asked for a reader; earlier and migrated ones are not", () => {
-  const { dir, git, write, commit } = repo();
-  write(TASK, "# t\n\n## Context\n\nMigrated from TODO.md on 2026-01-01\n\n## What was done\n\nDone before adoption; no record.\n");
-  commit("migrated");
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  write(TEST, "test\n");
-  write(DOC, "documented\n");
-  write(TASK, "# t\n\n## Context\n\nMigrated from TODO.md on 2026-01-01\n\n## What was done\n\nDone before adoption; no record.\n\n## What was done\n\nnew work\n\nReviewed by: a reader\n");
-  commit("new");
-  const ok = run(dir, ["--pr", "main"]);
-  assert.equal(ok.status, 0, ok.stderr);
-});
-
-test("the compiler leaves the Reviewed by line out of the changelog", () => {
-  const { dir, git, write, commit } = repo();
-  write(SOURCE, "changed\n");
-  complete(write);
-  commit("feature");
-  const out = execSync("node scripts/compile-changelog.mjs --dry-run --since v0", { cwd: dir, encoding: "utf8" });
-  assert.match(out, /done/);
-  assert.doesNotMatch(out, /Reviewed by/);
-});
-
-// ---- adapted staging: commits and turns warn ----
-
-test("adapted: a commit with an incomplete scene warns but is not refused", () => {
-  const { dir, write, git } = repo();
-  write(SOURCE, "wip\n");
-  git("add -A");
-  const result = run(dir, ["--staged"]);
-  assert.equal(result.status, 0);
-  assert.match(result.stderr, /no \w+ change.*pull request will be refused/);
-});
-
-test("a clean merge commit does not warn about what the other branch recorded", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b other");
-  write(SOURCE, "base\nmore\n");
-  complete(write);
-  commit("other");
-  git("checkout -q main");
-  write("docs/b.md", "ours\n");
-  commit("ours");
-  git("merge --no-commit --no-ff other");
-  assert.equal(run(dir, ["--staged"]).stderr, "");
-});
-
-test("adapted: the Stop hook advises the agent once, in its context, and never blocks", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "stage 1\n");
-  commit("stage-1");
-  const stop = (active) => JSON.stringify({ hook_event_name: "Stop", cwd: dir, stop_hook_active: active });
-  const first = run(dir, ["--branch", "main"], { stdin: stop(false) });
-  assert.equal(first.status, 0);
-  assert.match(JSON.parse(first.stdout).hookSpecificOutput.additionalContext, /no \w+ change/);
-  const second = run(dir, ["--branch", "main"], { stdin: stop(true) });
-  assert.equal(second.status, 0);
-  assert.match(JSON.parse(second.stdout).systemMessage, /no \w+ change/);
-  complete(write);   // uncommitted and untracked still count
-  assert.equal(run(dir, ["--branch", "main"], { stdin: stop(false) }).stdout, "");
-});
-
-// ---- strict staging: commits and turns refuse ----
-
-test("strict: a commit with an incomplete scene is refused", () => {
-  const { dir, write, git } = repo();
-  write(SOURCE, "wip\n");
-  git("add -A");
-  const result = run(dir, ["--staged"], { scene: "commit" });
-  assert.equal(result.status, 2);
-  assert.match(result.stderr, /revert it/);
-});
-
-test("strict: deleting a retired file is a complete scene on its own", () => {
-  const { dir, git } = repo();
-  git(`rm -q ${RETIRED}`);
-  assert.equal(run(dir, ["--staged"], { scene: "commit" }).status, 0);
-});
-
-test("strict: PreToolUse ignores shell commands that are not a git commit", () => {
-  const { dir, write, git } = repo();
-  write(SOURCE, "wip\n");
-  git("add -A");
-  const pre = (command) => JSON.stringify({ hook_event_name: "PreToolUse", cwd: dir, tool_input: { command } });
-  assert.equal(run(dir, ["--staged"], { scene: "commit", stdin: pre("npm test && echo $(date)") }).status, 0);
-  assert.equal(run(dir, ["--staged"], { scene: "commit", stdin: pre("git commit -m \"$(cat <<'EOF'\nwip\nEOF\n)\"") }).status, 2);
-});
-
-test("strict: the Stop hook sends the agent back once, then lets go and tells the person", () => {
-  const { dir, write, compile } = repo();
-  write(SOURCE, "wip\n");
-  const stop = (active) => JSON.stringify({ hook_event_name: "Stop", cwd: dir, stop_hook_active: active });
-  const first = run(dir, ["--branch"], { scene: "commit", stdin: stop(false) });
-  assert.equal(first.status, 2);
-  const second = run(dir, ["--branch"], { scene: "commit", stdin: stop(true) });
-  assert.equal(second.status, 0);
-  assert.match(JSON.parse(second.stdout).systemMessage, /no \w+ change/);
-  complete(write);
-  compile();
-  assert.equal(run(dir, ["--branch"], { scene: "commit", stdin: stop(false) }).status, 0);
-});
-
-// ---- the same script, called from Codex's hooks (4.10) ----
-
-test("codex, adapted: the Stop hook continues the turn once with the note, then lets go and tells the person", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "stage 1\n");
-  commit("stage-1");
-  const stop = (active) => JSON.stringify({ hook_event_name: "Stop", cwd: dir, turn_id: "t1", stop_hook_active: active });
-  const first = run(dir, ["--branch", "--codex", "main"], { stdin: stop(false) });
-  assert.equal(first.status, 0);
-  const told = JSON.parse(first.stdout);
-  assert.equal(told.decision, "block");
-  assert.match(told.reason, /no \w+ change/);
-  assert.match(told.reason, /fine to keep/);
-  assert.equal(told.hookSpecificOutput, undefined);   // Codex documents no such field at Stop
-  const second = run(dir, ["--branch", "--codex", "main"], { stdin: stop(true) });
-  assert.equal(second.status, 0);
-  assert.match(JSON.parse(second.stdout).systemMessage, /no \w+ change/);
-  complete(write);
-  assert.equal(run(dir, ["--branch", "--codex", "main"], { stdin: stop(false) }).stdout, "");
-});
-
-test("codex: the flag is not read as the base, wherever it stands", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  commit("wip");
-  const plain = run(dir, ["--pr", "main"]);
-  for (const args of [["--pr", "--codex", "main"], ["--pr", "main", "--codex"]]) {
-    const flagged = run(dir, args);
-    assert.equal(flagged.status, plain.status);
-    assert.equal(flagged.stderr, plain.stderr);
-  }
-});
-
-test("codex, strict: Stop and PreToolUse refuse as they do under Claude Code", () => {
-  const { dir, write, git } = repo();
-  write(SOURCE, "wip\n");
-  const stop = (active) => JSON.stringify({ hook_event_name: "Stop", cwd: dir, turn_id: "t1", stop_hook_active: active });
-  const first = run(dir, ["--branch", "--codex"], { scene: "commit", stdin: stop(false) });
-  assert.equal(first.status, 2);
-  assert.match(first.stderr, /no \w+ change/);
-  const second = run(dir, ["--branch", "--codex"], { scene: "commit", stdin: stop(true) });
-  assert.equal(second.status, 0);
-  assert.match(JSON.parse(second.stdout).systemMessage, /no \w+ change/);
-  git("add -A");
-  const pre = (command) => JSON.stringify({ hook_event_name: "PreToolUse", cwd: dir, tool_name: "Bash", tool_input: { command } });
-  assert.equal(run(dir, ["--staged", "--codex"], { scene: "commit", stdin: pre("npm test") }).status, 0);
-  assert.equal(run(dir, ["--staged", "--codex"], { scene: "commit", stdin: pre("git commit -m wip") }).status, 2);
-});
-
-// ---- the compiled record: docs/DECISIONS.md and docs/PLAN.md ----
-
-const decision = (date, title, extra = "") =>
-  `### ${date} · ${title}\n\n**Decision** — yes.\n**Rejected** — no.\n**Why** — because.\n${extra}`;
-const taskWith = (...decisions) =>
-  `# t\n\n## Context\n\nasked\n\n## Decisions\n\n${decisions.join("\n")}\n## What was done\n\ndone\n\nReviewed by: a reader\n`;
-
-test("a decision written in a task file is compiled with the next number, and the plan lists the task", () => {
-  const { write, compile, read } = repo();
-  write(DECISIONS, "# Decisions\n\n## D1 · 2026-01-01 · written by hand before\n\nkept\n");
-  write(TASK, taskWith(decision("2026-11-11", "One file per unit", "Milestone: After 03: sync proven\nNot in scope: tablets\n")));
-  compile();
-  assert.match(read(DECISIONS), /written by hand before\n\nkept\n\n<!-- Compiled from tasks\//);
-  assert.match(read(DECISIONS), /## D2 · 2026-11-11 · One file per unit\n\n\*\*Decision\*\* — yes\./);
-  assert.match(read(DECISIONS), /Source: \[tasks\/1-t\.md\]/);
-  assert.match(read(PLAN), /- \[1-t\]\(\.\.\/tasks\/1-t\.md\) — t · done/);
-  assert.match(read(PLAN), /## Milestones\n\n- After 03: sync proven \(D2\)/);
-  assert.match(read(PLAN), /## Not in scope\n\n- tablets \(D2\)/);
-  const before = read(DECISIONS) + read(PLAN);
-  compile();
-  assert.equal(read(DECISIONS) + read(PLAN), before);
-});
-
-test("a compiled decision keeps its number whatever is compiled after it", () => {
-  const { write, compile, read } = repo();
-  write(TASK, taskWith(decision("2026-11-11", "Second by date")));
-  compile();
-  write("tasks/0-earlier.md", taskWith(decision("2026-10-01", "First by date")));
-  compile();
-  assert.match(read(DECISIONS), /## D1 · 2026-11-11 · Second by date[^]*## D2 · 2026-10-01 · First by date/);
-});
-
-test("a decision that supersedes another takes that one's lines out of the plan", () => {
-  const { write, compile, read } = repo();
-  write(TASK, taskWith(decision("2026-11-01", "No tablets", "Not in scope: tablets\n")));
-  compile();
-  assert.match(read(PLAN), /- tablets \(D1\)/);
-  write("tasks/2-u.md", taskWith(decision("2026-11-11", "Tablets after all", "Supersedes: D1\n")));
-  compile();
-  assert.doesNotMatch(read(PLAN), /tablets \(D1\)/);
-  assert.match(read(DECISIONS), /## D1 · 2026-11-01 · No tablets/);   // the old entry stays
-});
-
-test("adapted: a pull request that writes its decision in its task file passes", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  complete(write);
-  write(TASK, taskWith(decision("2026-11-11", "One file per unit")));
-  commit("feature");
-  const ok = run(dir, ["--pr", "main"]);
-  assert.equal(ok.status, 0, ok.stderr);
-});
-
-test("adapted: a pull request that touches the compiled record is refused, by hand or by compiler", () => {
-  const { dir, git, write, commit, compile, read } = repo();
-  git("checkout -q -b by-hand");
-  write(SOURCE, "changed\n");
-  complete(write);
-  write(DECISIONS, read(DECISIONS) + "\n## D1 · 2026-11-11 · appended by hand\n");
-  commit("by-hand");
-  assert.match(run(dir, ["--pr", "main"]).stderr, /compiled record edited in this scene: docs\/DECISIONS\.md/);
-  git("checkout -q main");
-  git("checkout -q -b by-compiler");
-  write(SOURCE, "changed\n");
-  complete(write);
-  compile();
-  commit("by-compiler");
-  const result = run(dir, ["--pr", "main"]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /compiled record edited in this scene: docs\/PLAN\.md/);
-});
-
-test("what the target did after the branch forked is not the pull request's doing", () => {
-  const { dir, git, write, commit, compile } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  complete(write);
-  commit("feature");
-  git("checkout -q main");
-  write("tasks/2-u.md", taskWith(decision("2026-11-19", "Decided on the target")));
-  compile();   // the merge man recompiled the record on the target; the branch is now behind
-  commit("main");
-  git("checkout -q feature");
-  const ok = run(dir, ["--pr", "main"]);
-  assert.equal(ok.status, 0, ok.stderr);
-  // A caller that still passes the fork point itself gets the same answer.
-  assert.equal(run(dir, ["--pr", git("merge-base main HEAD").trim()]).status, 0);
-  // And the branch's own edit to the compiled record is still refused.
-  write(DECISIONS, "by hand\n");
-  commit("by-hand");
-  const own = run(dir, ["--pr", "main"]);
-  assert.equal(own.status, 1);
-  assert.match(own.stderr, /compiled record edited in this scene: docs\/DECISIONS\.md/);
-});
-
-test("a pull request with no history in common with its target stops with an error", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q --orphan elsewhere");
-  write(SOURCE, "changed\n");
-  commit("elsewhere");
-  const result = run(dir, ["--pr", "main"]);
-  assert.equal(result.status, 2);
-  assert.match(result.stderr, /no merge base between main and HEAD/);
-});
-
-test("the compiled record does not count as the doc change", () => {
-  const { dir, git, write, commit, compile } = repo();
-  write(SOURCE, "changed\n");
-  write(TEST, "test\n");
-  write(TASK, taskWith(decision("2026-11-11", "One file per unit")));
-  compile();
-  git("add -A");
-  const result = run(dir, ["--staged"], { scene: "commit" });
-  assert.equal(result.status, 2);
-  assert.match(result.stderr, /no doc change/);
-});
-
-test("the compile after a merge: only the compiled files, equal to the compiler's output", () => {
-  const { dir, git, write, commit, compile, read } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  complete(write);
-  write(TASK, taskWith(decision("2026-11-11", "One file per unit")));
-  commit("feature");
-  git("checkout -q main");
-  git("merge -q --no-ff -m merge feature");
-  git("checkout -q -b record");
-  compile();
-  commit("compile");
-  const ok = run(dir, ["--pr", "main"]);
-  assert.equal(ok.status, 0, ok.stderr);
-  write(DECISIONS, read(DECISIONS).replace("because", "because I say so"));
-  commit("tamper");
-  assert.match(run(dir, ["--pr", "main"]).stderr, /compiled record is out of date/);
-  compile();
-  write(PLAN, "# Plan\n\nA milestone added by hand above the line.\n" + read(PLAN).slice(read(PLAN).indexOf("\n<!-- Compiled")));
-  commit("head");
-  assert.match(run(dir, ["--pr", "main"]).stderr, /hand-written head of docs\/PLAN\.md was edited/);
-});
-
-test("removing or retitling a compiled decision is refused in every staging", () => {
-  const { dir, git, write, commit, compile } = repo();
-  write(SOURCE, "changed\n");
-  complete(write);
-  write(TASK, taskWith(decision("2026-11-11", "One file per unit")));
-  compile();
-  commit("compiled");
-  git("checkout -q -b feature");
-  write(TASK, taskWith(decision("2026-11-11", "One file per unit, on second thought")));
-  commit("retitle");
-  const result = run(dir, ["--pr", "main"]);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /D1 .* is compiled .* never removed or retitled/);
-  git("add -A");
-  assert.equal(run(dir, ["--branch"], { scene: "commit" }).status, 0);   // nothing uncommitted
-  write(TASK, taskWith(decision("2026-11-11", "Retitled again")));
-  assert.equal(run(dir, ["--branch"], { scene: "commit" }).status, 2);
-});
-
-test("strict: a commit whose compiled record is out of date is refused; compiled and staged, it passes", () => {
-  const { dir, git, write, compile } = repo();
-  write(SOURCE, "changed\n");
-  complete(write);
-  write(TASK, taskWith(decision("2026-11-11", "One file per unit")));
-  git("add -A");
-  const stale = run(dir, ["--staged"], { scene: "commit" });
-  assert.equal(stale.status, 2);
-  assert.match(stale.stderr, /compiled record is out of date/);
-  compile();
-  assert.match(run(dir, ["--staged"], { scene: "commit" }).stderr, /compiled record not staged/);
-  git("add -A");
-  assert.equal(run(dir, ["--staged"], { scene: "commit" }).status, 0);
-});
-
-test("a file that is not compiled yet at the base is an ordinary file", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b old");
-  write(DECISIONS, "# Decisions\n\n## D1 · 2026-01-01 · by hand\n");   // main as it was before this version
-  write(PLAN, "# Plan\n\n| 01 | by hand |\n");
-  commit("old");
-  git("checkout -q -b upgrade");
-  write(DECISIONS, "# Decisions\n\n## D1 · 2026-01-01 · by hand\n\ntidied during the upgrade\n");
-  write(SOURCE, "changed\n");
-  complete(write);
-  commit("upgrade");
-  const result = run(dir, ["--pr", "old"]);
-  assert.equal(result.status, 0, result.stderr);
-});
-
-// ---- review rounds (both stagings) ----
-
-const review = (...items) => `# t\n\n## What was done\n\ndone\n\nReviewed by: a reader\n\n## Review · 2026-11-11\n\n${items.join("\n")}`;
-const item = (boxes, { found = "**Found** — created rows stay in the preview after a partial import.\n\n", notAsked = "**Not asked** — no schema change.\n" } = {}) =>
-  `### Rows after a partial import\n\n${found}**Done when**\n\n${boxes.join("\n")}\n\n${notAsked}`;
-
-test("a review item names every case as case → outcome, and what was not asked", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  complete(write);
-  write(TASK, review(item(["- [x] keep only the failed rows importable"])));
-  commit("review");
-  assert.match(run(dir, ["--pr", "main"]).stderr, /"keep only the failed rows importable" is not "case → outcome"/);
-  write(TASK, review(item(["- [x] rows created → removed"], { notAsked: "" })));
-  commit("no-not-asked");
-  assert.match(run(dir, ["--pr", "main"]).stderr, /needs \*\*Found\*\*, \*\*Done when\*\* with a box per case, and \*\*Not asked\*\*/);
-});
-
-test("a pull request with an open review item does not merge; a commit on the way is not held to it", () => {
-  const { dir, git, write, commit } = repo();
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  complete(write);
-  const boxes = (tick) => [`- [x] rows created → removed`, `- [${tick}] rows never sent → stay, with their error, not importable`, `- [x] the user edits the default → it is no longer refreshed`];
-  write(TASK, review(item(boxes(" "))));
-  git("add -A");
-  assert.equal(run(dir, ["--staged"]).stderr, "");
-  commit("review");
-  const open = run(dir, ["--pr", "main"]);
-  assert.equal(open.status, 1);
-  assert.match(open.stderr, /review item "Rows after a partial import" in tasks\/1-t\.md is still open/);
-  write(TASK, review(item(boxes("x"))));
-  commit("closed");
-  const ok = run(dir, ["--pr", "main"]);
-  assert.equal(ok.status, 0, ok.stderr);
-});
-
-test("a review round from before this rule is left alone", () => {
-  const { dir, git, write, commit } = repo();
-  write(TASK, "# t\n\n## Review\n\n### Barrages\n\n- [ ] keep only the failed rows importable\n");
-  commit("old");
-  git("checkout -q -b feature");
-  write(SOURCE, "changed\n");
-  write(TEST, "test\n");
-  write(DOC, "documented\n");
-  write(TASK, "# t\n\n## Review\n\n### Barrages\n\n- [ ] keep only the failed rows importable\n\n## What was done\n\ndone\n\nReviewed by: a reader\n");
-  commit("new");
-  const ok = run(dir, ["--pr", "main"]);
-  assert.equal(ok.status, 0, ok.stderr);
-});
-```
+Run them with `node --test .claude/hooks/check-unit.test.mjs` in a repository, or
+`node --test` at the plugin's root, where they run against the master files and one more
+test checks that `manifest.json` holds the hash of every shipped file.
 
 ## Appendix K — `scripts/compile-record.mjs`
 
-The record compiler: `docs/DECISIONS.md` and `docs/PLAN.md` from the task files (4.5).
-Adjust the three paths if the repo keeps these files elsewhere, and the heading level of
-a compiled entry if the existing `docs/DECISIONS.md` uses another. Keep it a pure
-function of the work tree: the gate runs it with `--check` and compares.
-
-```js
-#!/usr/bin/env node
-// Copyright (c) 2026 Erez Schatz, https://github.com/erezschatz/unities. SPDX-License-Identifier: MIT
-// compile-record [--check]
-// The only writer docs/DECISIONS.md and docs/PLAN.md have. Both are compiled from the
-// task files: decisions from their `## Decisions` sections, the plan's steps from the
-// task files that exist, its milestones and not-in-scope lines from the decisions.
-// A pure function of the files in the work tree: no git, no clock, so the gate can
-// compare its output with what is committed.
-//   (no flag) : write both files
-//   --check   : exit 0 if both equal the compiler's output, 1 if not, 3 if the record
-//               itself is invalid (a compiled decision removed or retitled, a duplicate)
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-
-// ---- per-repo ----
-const TASKS = "tasks";
-const DECISIONS = "docs/DECISIONS.md";
-const PLAN = "docs/PLAN.md";
-// ------------------
-const MARKER = "<!-- Compiled from tasks/ by scripts/compile-record.mjs. Do not edit below this line by hand. -->";
-const check = process.argv.includes("--check");
-const invalid = message => { console.error(`Invalid record: ${message}`); process.exit(3); };
-const natural = (a, b) => a.localeCompare(b, "en", { numeric: true });
-const trimBlank = lines => {
-  let a = 0, b = lines.length;
-  while (a < b && !lines[a].trim()) a++;
-  while (b > a && !lines[b - 1].trim()) b--;
-  return lines.slice(a, b);
-};
-
-// ---- read the task files ----
-const tasks = [];       // { file, stem, title, done }
-const decisions = [];   // { key, date, title, file, order, body[] }
-const names = existsSync(TASKS)
-  ? readdirSync(TASKS).filter(f => /^[^_].*\.md$/.test(f) && f !== "README.md").sort(natural) : [];
-for (const name of names) {
-  const file = `${TASKS}/${name}`;
-  const text = readFileSync(file, "utf8");
-  const title = (text.match(/^#\s+(.+)$/m)?.[1] ?? name).trim();
-  tasks.push({ file, stem: name.replace(/\.md$/, ""), title, done: /^## What was done/m.test(text) });
-  let inDecisions = false, current = null;
-  for (const line of text.split("\n")) {
-    if (/^## /.test(line)) { inDecisions = /^## Decisions\s*$/.test(line); current = null; continue; }
-    if (!inDecisions) continue;
-    const head = /^### (\d{4}-\d{2}-\d{2}) · (.+)$/.exec(line);
-    if (head) {
-      current = { key: `${head[1]} · ${head[2].trim()}`, date: head[1], title: head[2].trim(), file, order: decisions.length, body: [] };
-      decisions.push(current);
-    } else if (/^### /.test(line)) invalid(`${file}: a decision heading is "### YYYY-MM-DD · title", got "${line}"`);
-    else if (current) current.body.push(line);
-  }
-}
-const byKey = new Map();
-for (const d of decisions) {
-  if (byKey.has(d.key)) invalid(`two decisions are both "${d.key}" (${byKey.get(d.key).file}, ${d.file}); retitle the one not yet compiled`);
-  byKey.set(d.key, d);
-}
-
-// ---- numbers: a compiled decision keeps its number for ever; new ones take the next ----
-const split = (path, fallback) => {
-  const text = existsSync(path) ? readFileSync(path, "utf8") : fallback;
-  const i = text.indexOf(MARKER);
-  return i < 0 ? [text, ""] : [text.slice(0, i), text.slice(i + MARKER.length)];
-};
-const [decisionsHead, compiled] = split(DECISIONS,
-  "# Decisions\n\nDated, append-only. A decision is reversed only by a new entry naming the one it supersedes.\nWritten in the task file of the work that made it (`## Decisions`); compiled here after each merge.\n");
-let last = 0;
-for (const m of (decisionsHead + compiled).matchAll(/^[#*\s]*D(\d+)\s*·/gm)) last = Math.max(last, Number(m[1]));
-for (const m of compiled.matchAll(/^## D(\d+) · (\d{4}-\d{2}-\d{2} · .+)$/gm)) {
-  const d = byKey.get(m[2].trim());
-  if (!d) invalid(`D${m[1]} "${m[2].trim()}" is compiled in ${DECISIONS} but no task file carries it any more; a decision is reversed by a new entry, never removed or retitled`);
-  d.n = Number(m[1]);
-}
-const fresh = decisions.filter(d => !d.n)
-  .sort((a, b) => a.date.localeCompare(b.date) || natural(a.file, b.file) || a.order - b.order);
-for (const d of fresh) d.n = ++last;
-decisions.sort((a, b) => a.n - b.n);
-
-// ---- docs/DECISIONS.md ----
-const link = file => `[${file}](../${file})`;
-let decisionsOut = `${decisionsHead.trimEnd()}\n\n${MARKER}\n`;
-for (const d of decisions)
-  decisionsOut += `\n## D${d.n} · ${d.key}\n\n${trimBlank(d.body).join("\n")}\n\nSource: ${link(d.file)}\n`;
-
-// ---- docs/PLAN.md ----
-// A decision may carry plan lines: `Milestone: …` and `Not in scope: …`. They stay in the
-// plan until a later decision names that one in a `Supersedes: D<n>` line.
-const superseded = new Set();
-for (const d of decisions)
-  for (const line of d.body)
-    if (/^Supersedes:/.test(line)) for (const m of line.matchAll(/D(\d+)/g)) superseded.add(Number(m[1]));
-const planLines = label => decisions.filter(d => !superseded.has(d.n)).flatMap(d =>
-  d.body.filter(l => l.startsWith(`${label}:`)).map(l => `- ${l.slice(label.length + 1).trim()} (D${d.n})`));
-const [planHead] = split(PLAN,
-  "# Plan\n\nThe steps are the task files, in file-name order unless a decision says otherwise. Milestones and\nwhat is not in scope are set by decisions. All of it is compiled from `tasks/` after each merge.\n");
-let planOut = `${planHead.trimEnd()}\n\n${MARKER}\n\n## Steps\n\n`;
-planOut += tasks.map(t => `- [${t.stem}](../${t.file}) — ${t.title}${t.done ? " · done" : ""}`).join("\n") || "(no task files yet)";
-planOut += "\n";
-for (const [heading, label] of [["Milestones", "Milestone"], ["Not in scope", "Not in scope"]]) {
-  const found = planLines(label);
-  if (found.length) planOut += `\n## ${heading}\n\n${found.join("\n")}\n`;
-}
-
-// ---- write, or compare ----
-const outputs = [[DECISIONS, decisionsOut], [PLAN, planOut]];
-const stale = outputs.filter(([path, out]) => !existsSync(path) || readFileSync(path, "utf8") !== out).map(([path]) => path);
-if (check) {
-  if (stale.length) { console.error(`${stale.join(" and ")} not equal to the compiler's output; run scripts/compile-record.mjs`); process.exit(1); }
-  process.exit(0);
-}
-for (const [path, out] of outputs) {
-  if (!stale.includes(path)) continue;
-  mkdirSync(path.slice(0, path.lastIndexOf("/")), { recursive: true });
-  writeFileSync(path, out);
-}
-console.log(stale.length
-  ? `${stale.join(", ")}: ${decisions.length} decision(s), ${fresh.length} new, from ${tasks.length} task file(s)`
-  : "the compiled record is up to date");
-```
+`files/compile-record.mjs` in the skill folder, planted at `scripts/compile-record.mjs`
+byte for byte: `docs/DECISIONS.md` and `docs/PLAN.md` from the task files (4.5). The
+paths are fixed, because the gate looks for the compiled files there. Its one per-repo
+value is `plan` in the gate's configuration (Appendix A): `false`, and it compiles the
+decisions alone. It is a pure
+function of the work tree, no git and no clock, so the gate can run it with `--check`
+and compare: exit 0 when the compiled files equal its output, 1 when they do not, 3 when
+the record itself is invalid (a compiled decision removed or retitled, a duplicate) or
+the configuration cannot be read for `plan` (not JSON, or a value that is not true or
+false).
 
 ## Appendix L — other agents (4.10)
 

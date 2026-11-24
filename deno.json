@@ -15,11 +15,12 @@
   // change that arrives without its record (CLAUDE.md, The Unities); run once per
   // clone. `record` compiles docs/DECISIONS.md and docs/PLAN.md from tasks/, and
   // a commit that changes a task file carries its output. `hooks:test` is the
-  // check script's own suite.
+  // check script's own suite, run under Node because the plugin's tests spawn
+  // `node` for every case whatever runs them.
   "tasks": {
     "hooks": "git config core.hooksPath .githooks",
     "record": "deno run --allow-read --allow-write=docs scripts/compile-record.mjs",
-    "hooks:test": "deno test --allow-run=git,deno --allow-read --allow-write --allow-env .claude/hooks/check-unit.test.mjs"
+    "hooks:test": "node --test .claude/hooks/check-unit.test.mjs"
   },
   "imports": {
     "markdown-it": "npm:markdown-it@13.0.1"

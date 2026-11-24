@@ -20,19 +20,19 @@ up yet rather than tasks.
 
 ## Steps
 
-- [1.1-formats](../tasks/1.1-formats.md) — 1.1 — Formats the UI does not offer yet · in progress
+- [1.1-formats](../tasks/1.1-formats.md) — 1.1 — Formats the UI does not offer yet · recorded, 2 boxes open
 - [1.2-links-loose-ends](../tasks/1.2-links-loose-ends.md) — 1.2 — Links: two loose ends
 - [1.4-invisible-whitespace](../tasks/1.4-invisible-whitespace.md) — 1.4 — Invisible whitespace the cleanup does not reach
 - [1.5-search-and-replace](../tasks/1.5-search-and-replace.md) — 1.5 — No search-and-replace
 - [1.6-undo-not-clean](../tasks/1.6-undo-not-clean.md) — 1.6 — Undo does not always come back clean · done
 - [1.7-format-shortcuts](../tasks/1.7-format-shortcuts.md) — 1.7 — Format keyboard shortcuts
 - [1.8-insert-line-break](../tasks/1.8-insert-line-break.md) — 1.8 — Nothing in Mandy inserts a line break
-- [1.12-blank-lines-kept](../tasks/1.12-blank-lines-kept.md) — 1.12 — A blank line typed between paragraphs is lost on save · in progress
+- [1.12-blank-lines-kept](../tasks/1.12-blank-lines-kept.md) — 1.12 — A blank line typed between paragraphs is lost on save · recorded, 1 box open
 - [1.13-crlf-files](../tasks/1.13-crlf-files.md) — 1.13 — Editing a CRLF file mixes its line endings, and can throw · done
 - [1.14-crlf-wrap-width](../tasks/1.14-crlf-wrap-width.md) — 1.14 — A CRLF file's wrap width is sniffed a column wide · done
 - [2.1-table-reemission](../tasks/2.1-table-reemission.md) — 2.1 — An edited table is re-emitted in house style · done
 - [2.3-minority-spellings](../tasks/2.3-minority-spellings.md) — 2.3 — Minority break and emphasis spellings · done
-- [3.1-editing-core-rewrite](../tasks/3.1-editing-core-rewrite.md) — 3.1 — Replace the editing core · in progress
+- [3.1-editing-core-rewrite](../tasks/3.1-editing-core-rewrite.md) — 3.1 — Replace the editing core · recorded, 3 boxes open
 - [4.2-tab-bar-bindings](../tasks/4.2-tab-bar-bindings.md) — 4.2 — Tab bar keyboard bindings are unmeasured
 - [4.3-tab-naming](../tasks/4.3-tab-naming.md) — 4.3 — A tab is named by its file's basename
 - [4.4-rtl-documents](../tasks/4.4-rtl-documents.md) — 4.4 — Right-to-left documents
@@ -43,12 +43,14 @@ up yet rather than tasks.
 - [4.11-outline-width](../tasks/4.11-outline-width.md) — 4.11 — The outline sidebar's width
 - [4.12-newtab](../tasks/4.12-newtab.md) — 4.12 — newTab() is the only path
 - [4.13-tab-switch-position](../tasks/4.13-tab-switch-position.md) — 4.13 — A tab switch always comes back to the top of the document
+- [4.14-reload-all](../tasks/4.14-reload-all.md) — 4.14 — Reload all from disk · done
 - [6.1-readme-rewrite](../tasks/6.1-readme-rewrite.md) — 6.1 — Rewrite the README
 - [6.3-single-executable](../tasks/6.3-single-executable.md) — 6.3 — Ship Mandy as a single executable
 - [6.4-open-html](../tasks/6.4-open-html.md) — 6.4 — Open HTML, save markdown
 - [6.5-sw-navigations](../tasks/6.5-sw-navigations.md) — 6.5 — The service worker intercepts navigations
 - [6.6-test-routes](../tasks/6.6-test-routes.md) — 6.6 — /tests/:name and /report exist in every deployment · done
 - [6.7-file-handler](../tasks/6.7-file-handler.md) — 6.7 — Register Mandy as a file handler
-- [6.8-check-pages-under-machine](../tasks/6.8-check-pages-under-machine.md) — 6.8 — The check pages run under a machine · in progress
+- [6.8-check-pages-under-machine](../tasks/6.8-check-pages-under-machine.md) — 6.8 — The check pages run under a machine · recorded, 3 boxes open
 - [adopt-unities](../tasks/adopt-unities.md) — Adopt the Unities · done
 - [export-equations](../tasks/export-equations.md) — Equations in the PDF and Word exports · done
+- [unities-plugin-asks](../tasks/unities-plugin-asks.md) — Unities plugin: three asks from Mandy's 0.6.8 upgrade

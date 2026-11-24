@@ -1,0 +1,15 @@
+{
+  "scene": "commit",
+  "rules": {
+    "source": "^(front/|server/src/)",
+    "test": "^tests/",
+    "doc": "^(docs/(?!TODO\\.md$)|README\\.md$|CLAUDE\\.md$|AGENTS\\.md$|CHANGELOG\\.md$)",
+    "task": "^tasks/(?!README\\.md$)[^/_][^/]*\\.md$",
+    "shared": "^$",
+    "retired": "^docs/TODO\\.md$"
+  },
+  "required": ["doc", "task"],
+  "base": "main",
+  "releaseFiles": "^$",
+  "run": "deno run --allow-run=git --allow-read"
+}

@@ -59,6 +59,7 @@ const TOOLBAR_MENUS = [
     // Library in Firefox, and nobody has measured whether either lets it go.
     { action: "open-file-tab", label: "Open in new tab\u2026", variants: ["app"] },
     { action: "reload-file", label: "Reload from disk", variants: ["app"] },
+    { action: "reload-all-files", label: "Reload all from disk", variants: ["app"] },
     { id: "uploadBtn", action: "upload-md", label: "Open\u2026", shortcut: "Ctrl+O", variants: ["export"] },
     { separator: true, variants: ALL },
     { id: "saveBtn", action: "save-file", label: "Save", shortcut: "Ctrl+S", variants: ["app"] },

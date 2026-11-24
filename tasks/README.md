@@ -54,8 +54,10 @@ an outcome rather than a check, and the gate refuses it: say it as the promise,
 or as a `Milestone:` line in a decision.
 
 **Status is derived, and the plan shows it.** No `## What was done` means open;
-sections without the closing line mean in progress; a last section carrying a
-`Status: done` line means done. [docs/PLAN.md](../docs/PLAN.md) lists every task
+a record and an open box anywhere in the file means `recorded, N boxes open`;
+a record and no open box means done. So a task that gathers sections stage by
+stage keeps a box open for each stage still owed. A closing `Status: done` line
+is still written, but the plan does not read it. [docs/PLAN.md](../docs/PLAN.md) lists every task
 file in file-name order with that status, compiled, so nothing keeps it by
 hand. The italic markers the items brought with
 them — *(needs 3.1)*, *(undecided)*, *(fixed, unverified)* — stay in their

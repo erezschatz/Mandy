@@ -613,6 +613,52 @@ async function requestCloseTab(id) {
   return closeTab(id);
 }
 
+// Reload from disk, once per tab that has a file, done the way a person would
+// do it by hand: switch to the tab, reload it. Nothing here reads or writes
+// another tab's document. reloadFile only ever acts on the document on screen,
+// so an edited tab gets Reload's own question about a document you can see,
+// which is the same reason requestCloseTab switches before it asks. Cancel on
+// one tab keeps that tab as it is and goes on to the next. Each reload is
+// awaited before the next switch, so the switch lock has been released by then.
+// A switch that is still refused means something else is in flight, and the
+// run stops there instead of reloading a tab that is not on screen. It still
+// tries to go back to where it started, which the same lock may refuse too.
+//
+// The switching is real, and watching it go round every tab looks like the app
+// has lost its mind, so a busy() cover hides it. It goes up before the first
+// switch, so the first paint already has it. It comes down for an edited tab's
+// question, because the question is about the tab behind it, and goes back up
+// after the answer. The finally is what keeps a throw from leaving the app
+// covered.
+async function reloadAllTabs() {
+  if (activeTabId === null) return reloadFile();
+
+  const start = activeTabId;
+  const targets = openTabs.filter((tab) => tabDescriptor(tab).path).map((tab) => tab.id);
+  if (!targets.length) return;
+
+  const label = (n) => `Reloading ${n} of ${targets.length}\u2026`;
+  let cover = busy(label(1));
+  try {
+    for (const [index, id] of targets.entries()) {
+      if (!findTab(id)) continue;
+      if (!cover) cover = busy(label(index + 1));
+      cover.update(label(index + 1));
+      if (!switchToTab(id)) break;
+      if (documentIsDirty()) {
+        cover.done();
+        cover = null;
+      }
+      await reloadFile();
+    }
+    if (findTab(start)) switchToTab(start);
+  } finally {
+    if (cover) cover.done();
+  }
+}
+
+onToolbarAction("reload-all-files", reloadAllTabs);
+
 // One listener for the whole strip rather than one per tab, so a redraw does
 // not have to rebind anything. Deliberately not routed through
 // onToolbarAction: a tab is not an action, and that dispatcher's contract is

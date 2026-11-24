@@ -879,7 +879,7 @@ function setServerAvailable(available) {
   serverAvailable = available;
 
   const buttons = [
-    ...["open-file", "open-file-tab", "save-file", "reload-file", "save-as-file"].map((a) =>
+    ...["open-file", "open-file-tab", "save-file", "reload-file", "reload-all-files", "save-as-file"].map((a) =>
       document.querySelector(`.toolbar [data-action="${a}"]`)
     ),
     ...["open-file", "save-file"].map((a) =>

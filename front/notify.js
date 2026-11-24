@@ -15,7 +15,8 @@
 //     the mechanism exists because the dialogs were abused — but it means a
 //     page cannot rely on alert() reaching anyone.
 //
-// Two functions, and the split between them is the point:
+// Two functions, and the split between them is the point (busy(), below
+// notify(), is a third for one narrow case: hiding an operation's steps):
 //
 //   notify(message, opts)  a toast. Non-blocking, corner of the screen, does
 //                          not interrupt. Returns nothing. This is for "that
@@ -172,6 +173,64 @@ function notify(message, { severity = "info", actions = [], timeout } = {}) {
   arm();
 
   return () => notifyRemove(toast);
+}
+
+/**
+ * A cover over the whole window while an operation works through steps that
+ * are visible and are not the point: Reload all switching through every tab
+ * is the one caller. It is opaque, so nothing behind it shows. It sits above
+ * the file dialog and below ask()'s dialogs and the toasts, so a toast raised
+ * during the run is still read over it.
+ *
+ * Returns `{ update(message), done() }`. done() removes the cover at once,
+ * with no exit fade, because the caller may raise a question right after it
+ * and that question must not appear under a cover on its way out. Calling it
+ * twice is harmless, so a `finally` can always call it.
+ *
+ * The cover stops the mouse by being on top, and the keyboard by swallowing
+ * every keydown at the window, in the capture phase, before the document-level
+ * shortcut listeners or the editor see it. Without that, Ctrl+O opened the file
+ * dialog under the cover, Ctrl+S could raise a question about a tab nobody
+ * could see, and typing went into the hidden editor only to be replaced by the
+ * reload. A cancelled keydown also raises no beforeinput, so nothing is typed.
+ */
+function busy(message) {
+  const cover = document.createElement("div");
+  cover.className = "notify-busy";
+  cover.setAttribute("role", "status");
+  cover.setAttribute("aria-live", "polite");
+
+  const panel = document.createElement("div");
+  panel.className = "notify-busy-panel";
+
+  const spinner = document.createElement("span");
+  spinner.className = "notify-spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  panel.appendChild(spinner);
+
+  const text = document.createElement("p");
+  text.className = "notify-busy-message";
+  text.textContent = message;
+  panel.appendChild(text);
+
+  cover.appendChild(panel);
+  document.body.appendChild(cover);
+
+  const swallow = (event) => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  window.addEventListener("keydown", swallow, true);
+
+  return {
+    update(next) {
+      text.textContent = next;
+    },
+    done() {
+      cover.remove();
+      window.removeEventListener("keydown", swallow, true);
+    },
+  };
 }
 
 const NOTIFY_CONFIRM = [

@@ -11281,7 +11281,7 @@ app's parser global. `front/sw.js`'s `VERSION` goes to `v1.103`. `npm test`
 passes, 2257 checks; Playwright is 380 passed with the one recorded Firefox
 failure. Also fills `d065d86` into the previous entry's header.
 
-## 2026-11-21 — Task 1.12's stage 5, part c: a paste keeps the gaps copied out of Mandy
+## 2026-11-21 — `e0307d7` — Task 1.12's stage 5, part c: a paste keeps the gaps copied out of Mandy
 
 Copying a song out of Mandy and pasting it back into Mandy lost its gaps: the
 copy writes a gap into its HTML as a paragraph holding a `<br>`, which is also
@@ -11317,3 +11317,106 @@ marked paragraph and still drops an unmarked one. `front/sw.js`'s `VERSION`
 goes to `v1.104`. `npm test` passes, 2259 checks; Playwright is 392 passed with
 the one recorded Firefox failure, and the copy spec 48 passed after the
 review's fixes. Also fills `01cd2ad` into the previous entry's header.
+
+## 2026-11-23 — `44baa8f` — The Unities brought up to 0.6.8: the scripts are the plugin's
+
+docs/UNITIES.md is replaced with the procedure's 0.6.8 master over the 0.5.5
+copy. What 0.6.x changes is where the rules live. **The gate, its tests and both
+compilers are now the plugin's files**, copied in unchanged and checked against
+`.claude/hooks/unities.manifest.json`. Mandy's own values (roles, staging,
+base, the retired TODO) moved into `.claude/hooks/unities.json`, and the gate
+refuses a commit carrying an edited copy. So the local changes Mandy's copies
+held were each kept through the configuration, dropped, or asked of the plugin.
+Five decisions in tasks/adopt-unities.md record which.
+
+- **Kept:** CHANGELOG.md stays hand-written and counts as a doc line
+  (`shared` matches nothing). `scripts/compile-changelog.mjs` is copied in
+  because the manifest lists it, and nothing runs it.
+- **No longer needed:** the compiler's search for the `D9.` spelling. D10
+  onwards are compiled, so it numbers from those, and docs/DECISIONS.md
+  compiles to the same text.
+- **Changed:** the end-of-turn check now sends a turn back once and lets the
+  second pass end with a note, where it used to report and never send back.
+  **A task with a record is done once no box in its file is open**, where it
+  used to take a `Status: done` line. The new rule would have read 1.1, 1.12,
+  3.1 and 6.8 as done, so each gained a dated **Acceptance** block with a box
+  for each piece still owed.
+- **Asked of the plugin**, in tasks/unities-plugin-asks.md: a strict end-of-turn
+  check that only reports; a way to fix a compiled file's hand-written head,
+  since docs/PLAN.md's still describes the `Status: done` rule and the gate
+  refuses any edit to it; and a fix for the procedure's Deno invocation. As
+  written it does not run: Deno's `child_process` needs the whole environment
+  and runs `git` through `/bin/sh`. So the hooks here run with
+  `--allow-run=git,deno,/bin/sh --allow-env`, which is close to unscoped.
+
+The gate also refuses a commit that changes source and touches a task file
+without adding a `## What was done` section, and it no longer prints a note
+when source changes without a test, a drop recorded as a decision.
+`deno task hooks:test` now runs under Node, because the plugin's tests spawn
+`node` for every case: 90 pass, 1 skipped. docs/SPEC.md's Deno row says so. The
+old and new gates were run on the same staged sets and agree: a lone source
+file and a CHANGELOG edit with the record unstaged are refused, and a complete
+change passes. A probe edit to a planted script is refused as edited. Also fills
+`d138818` into the previous entry's header.
+
+## 2026-11-24 — `38ad4ce` — Reload all from disk
+
+File → **Reload all from disk** reloads every open tab that has a file (task
+4.14). It is the existing *Reload from disk* run once per tab, the way you would
+do it by hand: `reloadAllTabs()` in `tabs.js` switches to each tab in bar order,
+calls `reloadFile()`, and at the end switches back to the tab it started on.
+Nothing in it reads or writes another tab's document. A tab with no file is
+skipped. An edited tab gets Reload's usual question, on screen and by name, and
+Cancel keeps that document and moves on to the next tab. A switch the lock
+refuses ends the run, which then still tries to switch back to where it
+started. If the run starts on a tab with a file that is first in the bar, that
+tab is reloaded even under the lock, as a plain Reload would be, because
+switching to the tab already on screen does not ask the lock. Each reloaded tab shows its own "Reloaded … from disk."
+toast. The item is app-only and is disabled with the other file items when the
+server is unavailable. sw.js VERSION v1.98. The `tabs` suite gains fourteen
+checks, and the `toolbar` suite covers the new action. Also fills `44baa8f` into the
+previous entry's header.
+
+## 2026-11-24 — `9bbca98` — Reload all runs under a cover
+
+Reload all from disk no longer shows itself switching through every tab (task
+4.14, stage 2). With five tabs that looked odd, and with ten it would look like
+the computer had gone wrong. **`busy(message)` in `notify.js`** puts an opaque
+cover over the whole window, with a spinner and a message, and returns
+`{ update, done }`. It sits above the file dialog and below `ask()`'s dialogs
+and the toasts, so each "Reloaded … from disk." toast still shows over it.
+`done()` removes it at once, with no fade, and is harmless to call twice.
+**While it is up it takes the keyboard too**: every keydown is swallowed at the
+window in the capture phase, before any shortcut or the editor sees it. Without
+that, Ctrl+O opened the file dialog hidden under the cover and typing went into
+the hidden editor.
+
+`reloadAllTabs()` puts the cover up before the first switch, counts "Reloading
+*n* of *m*…", and takes it down in a `finally`, so a reload that throws cannot
+leave the app covered. **An edited tab lifts it**: once the switch lands, if
+the document is edited the cover comes down so its question is asked about a
+tab you can see, and goes back up for the next tab. With no tab holding a file,
+no cover goes up. The run underneath is unchanged. sw.js VERSION v1.99. The
+`notify` suite gains eight checks and the `tabs` suite six. Also fills `38ad4ce`
+into the previous entry's header.
+
+## 2026-11-24 — `main` and `origin/main` merged: task 1.12's stage 4 and 5 beside the Unities 0.6.8 and task 4.14
+
+`main` had task 1.12's stages 4 and 5 and the CRLF merge, nine commits not yet
+pushed; `origin/main` had three: the Unities brought up to 0.6.8 and task 4.14's
+two stages, Reload all from disk. They met in four files. `CHANGELOG.md` keeps
+every entry from both, ours first since all are dated earlier, and fills
+`e0307d7` and `9bbca98` into the two headers that were waiting for them.
+`front/sw.js`'s `VERSION` goes to `v1.105`, since the two sides had bumped it to
+`v1.104` and `v1.99`. `docs/DECISIONS.md` and `docs/PLAN.md` are compiled again
+by the plugin's compiler, which keeps the numbers already published and appends
+the rest in file order: the remote's D22 to D28 stand as they were pushed, and
+this side's, numbered D22 to D36 here but never pushed, become D29 to D43 —
+D22–D27 as D29–D34, D28 as D39, D29–D32 as D35–D38 and D33–D36 as D40–D43. The
+live references move with them — task 1.12's plan and its Blockquote decision,
+which now supersedes D32, `front/model.js`, `front/markdown-style.js` and task
+1.14 — and the committed CHANGELOG entries above keep the numbers they were
+written with. Apart from `sw.js`'s one line, no code met: the two sides changed
+different files. Task 1.12's Acceptance block, which the remote added when only
+its stage 1 had landed, has stages 2, 3 and 5 ticked; stage 4's waits on the
+hand run.
