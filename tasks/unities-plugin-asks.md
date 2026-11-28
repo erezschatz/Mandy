@@ -43,7 +43,33 @@ has to be asked of the plugin and arrives with a later version.
 
 **Acceptance**
 
-- [ ] All three asks filed as tasks in the plugin's repository, by Erez
-- [ ] Once a version carrying any of them ships: Mandy re-runs the procedure, sets the
+- [x] All three asks filed as tasks in the plugin's repository, by Erez
+- [x] Once a version carrying any of them ships: Mandy re-runs the procedure, sets the
   value, fixes docs/PLAN.md's head or narrows the Deno permissions, and records
   it in tasks/adopt-unities.md
+
+## What was done
+
+2026-11-28: **all three asks shipped in 0.7.0, and Mandy took them.** Both boxes
+are ticked from what the plugin's repository and this commit hold.
+
+- **Filed.** The plugin's `tasks/` holds one task for each, each restating its
+  ask as the first, second or third of three raised on 2026-11-23:
+  `a-turn-may-stop-to-discuss.md`,
+  `an-upgrade-may-rewrite-the-head.md` and
+  `the-gate-runs-under-deno-without-a-shell.md`.
+- **A strict `Stop` that only reports.** It arrived as the gate's behaviour in
+  both stagings, not as a value, so nothing is set in
+  `.claude/hooks/unities.json`. The decision that takes it is in
+  tasks/adopt-unities.md.
+- **A door for the head.** An upgrade may change the head, so docs/PLAN.md's
+  head now states the open-box rule in place of `Status: done`.
+- **The Deno line.** The scripts start git without a shell, so the hooks dropped
+  `/bin/sh` and run with `--allow-run=git,deno --allow-read --allow-env`.
+  `--allow-env` stays whole, which the procedure now says and explains.
+
+The record of the upgrade, with what was run, is tasks/adopt-unities.md's
+section of the same date.
+
+Status: done
+Reviewed by: a read-only subagent that had not seen the work, carrying out docs/reviewer.md against the staged diff. It found both boxes to hold and one fault: this record said the plugin's three tasks quote this file, and they restate the asks without naming it. That was fixed before the commit.

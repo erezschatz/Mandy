@@ -11,5 +11,5 @@
   "required": ["doc", "task"],
   "base": "main",
   "releaseFiles": "^$",
-  "run": "deno run --allow-run=git --allow-read"
+  "run": "deno run --allow-run=git --allow-read --allow-env"
 }

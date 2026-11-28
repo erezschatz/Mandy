@@ -571,12 +571,13 @@ two compilers are the plugin's files, copied in unchanged and checked against
   checked. **Stage in a separate call from the commit**: the hook reads the
   index before the command runs, so `git add … && git commit` is judged on what
   was staged before the `add`. `deno task hooks:test` is its own suite, and runs under Node.
-- **At the end of a turn** — the `Stop` hook sends a turn back once when the
-  uncommitted tree is missing something, then lets the second pass end with a
-  note. A turn that stops mid-change on purpose, to ask a design question or
-  hand over a browser recipe, says so and ends on that second pass. Reporting
-  without sending back is what this repo wants and the plugin does not offer
-  yet ([tasks/unities-plugin-asks.md](tasks/unities-plugin-asks.md)).
+- **At the end of a turn** — the `Stop` hook says what the uncommitted tree is
+  still missing and never refuses the turn. A scene ends at its commit, not at
+  the end of a turn: a turn that stops mid-change, to ask a design question or
+  hand over a browser recipe, leaves the change uncommitted until it is
+  finished, and a change that is abandoned is reverted rather than left for
+  later. This is the plugin's behaviour since 0.7.0, which Mandy asked for
+  ([tasks/unities-plugin-asks.md](tasks/unities-plugin-asks.md)).
 
 Code, test, document and review are one unit, and the review is part of the
 commit, not something after it. Before committing, give the staged diff and the

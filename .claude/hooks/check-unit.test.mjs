@@ -5,7 +5,7 @@
 // roles of the repository they happen to run in.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execSync, spawnSync } from "node:child_process";
+import { execSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -173,6 +173,43 @@ test("a release pull request whose changelog equals the compiler's output passes
   assert.match(bad.stderr, /does not equal the compiler's output/);
 });
 
+test("a release pull request with no tag at its base is compared from the first commit", () => {
+  const { dir, git, write, commit } = repo();
+  git("tag -d v0");
+  git("checkout -q -b feature");
+  write(SOURCE, "changed\n");
+  complete(write);
+  commit("feature");
+  git("checkout -q main");
+  git("merge -q --no-ff -m merge feature");
+  git("checkout -q -b release");
+  execSync("node scripts/compile-changelog.mjs 1.0.0", { cwd: dir, stdio: "ignore" });
+  commit("release");
+  const ok = run(dir, ["--pr", "main"]);
+  assert.equal(ok.status, 0, ok.stderr);
+});
+
+test("a record compiler that cannot be run is refused, naming run; one that answers is not", () => {
+  const { dir, git, write, commit } = repo();
+  git("checkout -q -b feature");
+  write(SOURCE, "changed\n");
+  complete(write);
+  write(CONFIG, JSON.stringify({ ...FIXTURE, run: "no-such-runtime-for-the-unities" }));
+  commit("feature");
+  const missing = run(dir, ["--pr", "main"]);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /record compiler could not be run \(`no-such-runtime-for-the-unities scripts\/compile-record\.mjs --check` did not start: ENOENT\); check "run" in \.claude\/hooks\/unities\.json/);
+  // Any exit that is not one of the compiler's answers is refused the same way.
+  write(CONFIG, JSON.stringify({ ...FIXTURE, run: "node -e process.exit(9)" }));
+  commit("nine");
+  assert.match(run(dir, ["--pr", "main"]).stderr, /record compiler could not be run \(.* exited 9\)/);
+  // "node" spelled out answers as the default does.
+  write(CONFIG, JSON.stringify({ ...FIXTURE, run: "node" }));
+  commit("node");
+  const ok = run(dir, ["--pr", "main"]);
+  assert.equal(ok.status, 0, ok.stderr);
+});
+
 test("a pull request into a target that has not adopted the hook is not checked", () => {
   const { dir, git, write, commit } = repo({ adopted: false });
   git("checkout -q -b feature");
@@ -253,6 +290,61 @@ test("strict: an outcome acceptance box is refused at the commit, not only at me
   assert.match(result.stderr, /names an outcome/);
 });
 
+test("a rule made after a task closed does not reach its boxes; an open task is held to today's rule", () => {
+  // A box today's rule refuses, written before the rule was: committed on main directly,
+  // as if the pattern had been narrower then.
+  const old = "- [x] the user uninstalled the old app";
+  const closed = `# t\n\n## Context\n\n**Acceptance**\n\n${old}\n\n## What was done\n\ndone\n\nReviewed by: a reader\n`;
+  const open = `# t\n\n## Context\n\n**Acceptance**\n\n${old}\n- [ ] a check still to do\n\n## What was done\n\ndone\n\nReviewed by: a reader\n`;
+  const unrecorded = `# t\n\n## Context\n\n**Acceptance**\n\n${old}\n`;
+  const added = "\n## What was done\n\nmore\n\nReviewed by: a reader\n";
+  const scene = (atBase, now) => {
+    const { dir, git, write, commit } = repo();
+    write(TASK, atBase);
+    commit("before-the-rule");
+    git("checkout -q -b feature");
+    write(SOURCE, "changed\n");
+    write(TEST, "test\n");
+    write(DOC, "documented\n");
+    write(TASK, now);
+    commit("feature");
+    const pr = run(dir, ["--pr", "main"]);
+    git("checkout -q main");
+    git("merge -q --squash feature");
+    const staged = run(dir, ["--staged"]);
+    return [pr, staged];
+  };
+  for (const result of scene(closed, closed + added))
+    assert.doesNotMatch(result.stderr, /names an outcome/, "closed task, its old box left alone");
+  for (const result of scene(closed, closed.replace(old, `${old}, every one`) + added))
+    assert.match(result.stderr, /names an outcome/, "closed task, its old box edited");
+  for (const result of scene(closed, closed.replace("## What was done", "- [ ] new schema is running in production\n\n## What was done") + added))
+    assert.match(result.stderr, /running in production/, "closed task, a box added");
+  for (const result of scene(open, open.replace("- [ ] a check still to do", "- [x] a check still to do") + added))
+    assert.match(result.stderr, /uninstalled the old app/, "open task: today's rule");
+  for (const result of scene(unrecorded, unrecorded + added))
+    assert.match(result.stderr, /uninstalled the old app/, "a task with no record: open");
+  // Each acceptance box the base held passes once, anywhere outside a review; a second
+  // copy of it is the scene's.
+  for (const result of scene(closed, closed.replace(old, `${old}\n${old}`) + added))
+    assert.match(result.stderr, /uninstalled the old app/, "closed task, the old box copied");
+  for (const result of scene(closed, closed.replace(old, `  ${old}`) + added))
+    assert.doesNotMatch(result.stderr, /names an outcome/, "closed task, the old box re-indented");
+  for (const result of scene(closed, closed.replace("[x]", "[X]") + added))
+    assert.match(result.stderr, /uninstalled the old app/, "closed task, the old box edited to [X]");
+  const reviewed = `${closed}\n## Review · 2026-01-01\n\n### an item\n\n**Found** — here\n\n**Done when**\n\n- [x] the user sees the message → shown\n\n**Not asked** — more\n`;
+  for (const result of scene(reviewed, reviewed.replace(old, `${old}\n- [x] the user sees the message → shown`) + added))
+    assert.match(result.stderr, /the user sees the message/, "closed task, a review line copied into Acceptance");
+  // A scene that reopens the task is held to today's rule, as an open task is.
+  for (const result of scene(closed, closed.replace(old, `${old}\n- [ ] a new check`) + added))
+    assert.match(result.stderr, /uninstalled the old app/, "closed task reopened by the scene");
+  // Closed is a record and no open box outside a fenced block: a box quoted in a fence is
+  // not open.
+  const quoted = closed.replace("## What was done", "```\n- [ ] a quoted box\n```\n\n## What was done");
+  for (const result of scene(quoted, quoted + added))
+    assert.doesNotMatch(result.stderr, /names an outcome/, "closed task, an open box only in a fence");
+});
+
 // ---- the reader (both stagings, every mode) ----
 
 test("a record without a Reviewed by line is refused; the one with it passes", () => {
@@ -286,6 +378,21 @@ test("only records this scene adds are asked for a reader; earlier and migrated 
   assert.equal(ok.status, 0, ok.stderr);
 });
 
+test("the compiler writes a changelog whose history since the release is longer than 1 MiB", () => {
+  const { dir, write, commit, read } = repo();
+  // About 1.06 MiB of record, and 1.1 MiB of git log -p: past Node's default buffer of 1 MiB.
+  const body = Array.from({ length: 40_000 }, (_, i) => `line ${i} of a long record`).join("\n");
+  write(SOURCE, "changed\n");
+  write(TEST, "test\n");
+  write(DOC, "documented\n");
+  write(TASK, `# t\n\n## What was done\n\n${body}\n\nReviewed by: a reader\n`);
+  commit("long");
+  const result = spawnSync("node", ["scripts/compile-changelog.mjs", "1.0.0", "--since", "v0"], { cwd: dir, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(read(SHARED), /^## 1\.0\.0 — /m);
+  assert.match(read(SHARED), /line 39999 of a long record/);
+});
+
 test("the compiler leaves the Reviewed by line out of the changelog", () => {
   const { dir, git, write, commit } = repo();
   write(SOURCE, "changed\n");
@@ -294,6 +401,112 @@ test("the compiler leaves the Reviewed by line out of the changelog", () => {
   const out = execSync("node scripts/compile-changelog.mjs --dry-run --since v0", { cwd: dir, encoding: "utf8" });
   assert.match(out, /done/);
   assert.doesNotMatch(out, /Reviewed by/);
+});
+
+test("the release check and the compiler decide the same under the developer's git configuration", () => {
+  // Each setting changes the text git diff and git log -p print; the repository's own
+  // configuration stands in for the developer's, since it outranks the global one.
+  const settings = [
+    [],
+    ["color.ui", "always"],
+    ["color.diff", "always"],
+    ["diff.noprefix", "true"],
+    ["diff.mnemonicPrefix", "true"],
+    ["diff.external", "node ext.mjs"],
+    ["diff.context", "10"],
+    ["diff.interHunkContext", "10"],
+    ["diff.renames", "false"],
+    ["diff.algorithm", "patience"],
+    ["core.quotePath", "true"],
+  ];
+  // An older release whose entry has a list line beginning "+"; a task file, already
+  // released, that the scene renames to a name git quotes, adds a record to above its
+  // review and ticks the review's box well below it.
+  const released = "# t\n\n## What was done\n\nold work\n\nReviewed by: a reader\n";
+  const review = "\n## Review · 2026-01-01\n\n### an item\n\n**Found** — here\n\n**Done when**\n\n- [ ] a case → an outcome\n\n**Not asked** — more\n";
+  const renamed = "tasks/1-renamed-café.md";
+  for (const setting of settings) {
+    const { dir, git, write, commit, read } = repo();
+    const label = setting.join("=") || "no setting";
+    write("ext.mjs", 'console.log("an external diff tool printed this");\n');
+    if (setting.length) git(`config ${setting[0]} "${setting[1]}"`);
+    write(SHARED, read(SHARED) + "\n## 0.9.0 — 2026-01-01\n\n### t\n\n+ first item\n+ second item\n\nRecorded in `0000000`.\n");
+    write(TASK, released + review);
+    commit("released");
+    git("tag v1");
+    git("checkout -q -b feature");
+    write(SOURCE, "changed\n");
+    write(TEST, "test\n");
+    write(DOC, "documented\n");
+    git(`mv ${TASK} ${renamed}`);
+    write(renamed, released + "\n## What was done\n\nnew work\n++ a line that begins with two plus signs\n\nReviewed by: a reader\n" + review.replace("- [ ]", "- [x]"));
+    commit("feature");
+    git("checkout -q main");
+    git("merge -q --no-ff -m merge feature");
+    git("checkout -q -b release");
+    const compiled = spawnSync("node", ["scripts/compile-changelog.mjs", "1.0.0", "--since", "v1"], { cwd: dir, encoding: "utf8" });
+    assert.equal(compiled.status, 0, `${label}: ${compiled.stderr}`);
+    const entry = read(SHARED).split("## 0.9.0")[0];
+    assert.match(entry, /^new work\n\+\+ a line that begins with two plus signs\n\nRecorded in/m, label);
+    assert.doesNotMatch(entry, /old work|Reviewed by|\[x\]/, label);
+    commit("release");
+    const ok = run(dir, ["--pr", "main"]);
+    assert.equal(ok.status, 0, `${label}: ${ok.stderr}`);
+    // A line added by hand to the compiled section, even one that begins "++", is refused.
+    write(SHARED, read(SHARED).replace("++ a line", "++ a hand-added line\n++ a line"));
+    commit("tamper");
+    assert.match(run(dir, ["--pr", "main"]).stderr, /does not equal the compiler's output/, label);
+  }
+});
+
+test("a record is compiled with its text wherever in the task file it was written; a correction is not a record", () => {
+  const record = text => `## What was done\n\n${text}\n\nReviewed by: a reader\n`;
+  const compile = (before, after) => {
+    const { dir, write, commit } = repo();
+    write(TASK, before);
+    commit("before");
+    write(TASK, after);
+    commit("after");
+    return execSync("node scripts/compile-changelog.mjs --dry-run --since HEAD~1", { cwd: dir, encoding: "utf8" });
+  };
+  const old = `# t\n\n${record("old work")}`;
+  const above = compile(old, `# t\n\n${record("new work")}\n${record("old work")}`);
+  assert.match(above, /^new work\n\nRecorded in/m, "inserted above an older record");
+  assert.doesNotMatch(above, /old work/);
+  const below = compile(old, `${old}\n${record("new work")}`);
+  assert.match(below, /^new work\n\nRecorded in/m, "appended after an older record");
+  assert.doesNotMatch(below, /old work/);
+  const both = compile(old, `# t\n\n${record("new work")}\n${record("old work, corrected")}`);
+  assert.match(both, /^new work\n\nRecorded in/m, "inserted above an older record that is corrected at once");
+  assert.doesNotMatch(both, /old work/);
+  const corrected = compile(old, `# t\n\n${record("old work, corrected")}`);
+  assert.match(corrected, /no task records since/, "a correction alone");
+  // An appended record whose words the last one already has, or that has none of its own,
+  // is still the new one: the last record is not changed by what comes after it.
+  const shared = compile(`# t\n\n${record("Recompiled the record and the plan.")}`, `# t\n\n${record("Recompiled the record and the plan.")}\n${record("Recompiled the plan.")}`);
+  assert.match(shared, /^Recompiled the plan\.\n\nRecorded in/m, "appended, its words all in the last record");
+  assert.doesNotMatch(shared, /record and the plan/);
+  const wordless = compile(old, `${old}\n${record("--")}`);
+  assert.match(wordless, /^--\n\nRecorded in/m, "appended, with no words");
+  const blank = compile(`${old}\n\n`, `${old}\n\n${record("old work")}`);
+  assert.match(blank, /^old work\n\nRecorded in/m, "appended after a file that ended in blank lines");
+  assert.equal(blank.match(/old work/g).length, 1);
+  const spaced = compile(old, old.replace("old work", "old work   ") + "\n\n");
+  assert.match(spaced, /no task records since/, "only trailing blanks changed");
+  // The same appended record, when the commit also touches the record above it.
+  const last = `# t\n\n${record("Recompiled the record and the plan.")}`;
+  for (const [touch, label] of [
+    [last.replace("the plan.", "the plan.   "), "the last record given trailing spaces"],
+    [last.replace("and the plan", "and plan"), "the last record corrected, losing a word"],
+    [last.replace("the plan.", "the plan and the notes."), "the last record corrected, gaining words"],
+  ]) {
+    const out = compile(last, `${touch}\n${record("Recompiled the plan.")}`);
+    assert.match(out, /^Recompiled the plan\.\n\nRecorded in/m, label);
+    assert.doesNotMatch(out, /record and|the notes/, label);
+  }
+  // Compared without trailing spaces, compiled with them: two of them are a line break.
+  const broken = compile(old, `${old}\n${record("First line with a hard break  \nsecond line")}`);
+  assert.match(broken, /^First line with a hard break  \nsecond line$/m, "a Markdown line break kept");
 });
 
 // ---- adapted staging: commits and turns warn ----
@@ -344,7 +557,8 @@ test("strict: a commit with an incomplete scene is refused", () => {
   git("add -A");
   const result = run(dir, ["--staged"], { scene: "commit" });
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /revert it/);
+  assert.match(result.stderr, /Complete the record in this same change before committing it/);
+  assert.doesNotMatch(result.stderr, /revert/);
 });
 
 test("strict: deleting a retired file is a complete scene on its own", () => {
@@ -362,12 +576,17 @@ test("strict: PreToolUse ignores shell commands that are not a git commit", () =
   assert.equal(run(dir, ["--staged"], { scene: "commit", stdin: pre("git commit -m \"$(cat <<'EOF'\nwip\nEOF\n)\"") }).status, 2);
 });
 
-test("strict: the Stop hook sends the agent back once, then lets go and tells the person", () => {
+// A scene ends at its commit; a turn may end to ask or discuss (runbook §1).
+test("strict: the Stop hook never sends the agent back; it tells it once what is missing, then tells the person", () => {
   const { dir, write, compile } = repo();
   write(SOURCE, "wip\n");
   const stop = (active) => JSON.stringify({ hook_event_name: "Stop", cwd: dir, stop_hook_active: active });
   const first = run(dir, ["--branch"], { scene: "commit", stdin: stop(false) });
-  assert.equal(first.status, 2);
+  assert.equal(first.status, 0);
+  const advice = JSON.parse(first.stdout).hookSpecificOutput.additionalContext;
+  assert.match(advice, /no \w+ change/);
+  assert.match(advice, /If you stopped to ask or to discuss, that is fine/);
+  assert.doesNotMatch(advice, /revert/);
   const second = run(dir, ["--branch"], { scene: "commit", stdin: stop(true) });
   assert.equal(second.status, 0);
   assert.match(JSON.parse(second.stdout).systemMessage, /no \w+ change/);
@@ -411,13 +630,15 @@ test("codex: the flag is not read as the base, wherever it stands", () => {
   }
 });
 
-test("codex, strict: Stop and PreToolUse refuse as they do under Claude Code", () => {
+test("codex, strict: Stop continues the turn once with the note, as in adapted; PreToolUse refuses the commit", () => {
   const { dir, write, git } = repo();
   write(SOURCE, "wip\n");
   const stop = (active) => JSON.stringify({ hook_event_name: "Stop", cwd: dir, turn_id: "t1", stop_hook_active: active });
   const first = run(dir, ["--branch", "--codex"], { scene: "commit", stdin: stop(false) });
-  assert.equal(first.status, 2);
-  assert.match(first.stderr, /no \w+ change/);
+  assert.equal(first.status, 0);
+  const cont = JSON.parse(first.stdout);
+  assert.equal(cont.decision, "block");
+  assert.match(cont.reason, /no \w+ change.*If you stopped to ask or to discuss, that is fine/s);
   const second = run(dir, ["--branch", "--codex"], { scene: "commit", stdin: stop(true) });
   assert.equal(second.status, 0);
   assert.match(JSON.parse(second.stdout).systemMessage, /no \w+ change/);
@@ -777,6 +998,109 @@ test("an upgrade copies a script and the manifest together, and passes", () => {
   assert.equal(run(dir, ["--staged"], { scene: "commit" }).status, 0);
 });
 
+// An upgrade is told by the planted manifest's version (tasks/an-upgrade-may-rewrite-the-head.md).
+const upgradeManifest = r => {
+  const manifest = JSON.parse(r.read(MANIFEST));
+  manifest.version = "next";
+  r.write(MANIFEST, JSON.stringify(manifest, null, 2) + "\n");
+};
+const STALE = "An introduction the next version makes wrong.";
+const OLD = "## D1 · 2026-01-01 · Decided before adoption\n\nKept as it was.\n";
+// A planted repository whose DECISIONS.md head holds an introduction and a decision from before adoption.
+function withOldHead() {
+  const r = planted();
+  const text = r.read(DECISIONS);
+  r.write(DECISIONS, `# Decisions\n\n${STALE}\n\n${OLD}\n${text.slice(text.indexOf("<!-- Compiled"))}`);
+  r.compile();
+  r.commit("old-head");
+  return r;
+}
+const rewriteIntro = r => r.write(DECISIONS, r.read(DECISIONS).replace(STALE, "An introduction for the next version."));
+
+test("strict: an upgrade may rewrite a compiled file's head above its old decisions; no other scene may", () => {
+  const r = withOldHead();
+  rewriteIntro(r);
+  r.git("add -A");
+  const plain = run(r.dir, ["--staged"], { scene: "commit" });
+  assert.equal(plain.status, 2);
+  assert.match(plain.stderr, /the hand-written head of docs\/DECISIONS\.md was edited/);
+  upgradeManifest(r);
+  r.git("add -A");
+  const upgrade = run(r.dir, ["--staged"], { scene: "commit" });
+  assert.equal(upgrade.status, 0, upgrade.stderr);
+  // The decision recorded before adoption stays closed, upgrade or not.
+  r.write(DECISIONS, r.read(DECISIONS).replace("Kept as it was.", "Rewritten."));
+  r.git("add -A");
+  const old = run(r.dir, ["--staged"], { scene: "commit" });
+  assert.equal(old.status, 2);
+  assert.match(old.stderr, /the decisions in the hand-written head of docs\/DECISIONS\.md, recorded before adoption, were edited/);
+});
+
+test("an upgrade keeps old decisions closed from their first D<n> · line or heading, and only them", () => {
+  const variants = [
+    ["## D1 — Decided before adoption\n\nKept as it was.\n", "refused"],
+    ["### 2026-01-01 · Decided before adoption\n\nKept as it was.\n", "refused"],
+  ];
+  for (const [entry] of variants) {
+    const r = planted();
+    const text = r.read(DECISIONS);
+    r.write(DECISIONS, `# Decisions\n\n${STALE}\n\n${entry}\n${text.slice(text.indexOf("<!-- Compiled"))}`);
+    r.compile();
+    r.commit("old-head");
+    upgradeManifest(r);
+    r.write(DECISIONS, r.read(DECISIONS).replace("Kept as it was.", "Rewritten."));
+    r.git("add -A");
+    assert.equal(run(r.dir, ["--staged"], { scene: "commit" }).status, 2, entry);
+  }
+  // A blank line added between the introduction and the first decision is the introduction's.
+  let r = withOldHead();
+  upgradeManifest(r);
+  r.write(DECISIONS, r.read(DECISIONS).replace(`${STALE}\n\n`, `${STALE}\n\n\n`));
+  r.git("add -A");
+  const blank = run(r.dir, ["--staged"], { scene: "commit" });
+  assert.equal(blank.status, 0, blank.stderr);
+  // A head with no decisions is the upgrade's throughout; so is a PLAN.md head, headings and all.
+  r = planted();
+  const plan = r.read(PLAN);
+  r.write(PLAN, `# Plan\n\n## Phases\n\n${STALE}\n\n${plan.slice(plan.indexOf("<!-- Compiled"))}`);
+  r.compile();
+  r.commit("plan-head");
+  upgradeManifest(r);
+  r.write(PLAN, r.read(PLAN).replace(STALE, "Phases for the next version."));
+  r.git("add -A");
+  const planUp = run(r.dir, ["--staged"], { scene: "commit" });
+  assert.equal(planUp.status, 0, planUp.stderr);
+});
+
+test("adapted: an upgrade's pull request may rewrite the head and nothing below the marker", () => {
+  const r = withOldHead();
+  r.git("checkout -q -b upgrade");
+  rewriteIntro(r);
+  upgradeManifest(r);
+  r.commit("upgrade");
+  const up = run(r.dir, ["--pr", "main"]);
+  assert.equal(up.status, 0, up.stderr);
+  // Without the version, the same head edit is refused: a pull request of the compiled files
+  // alone is the compile, held to the head as strict is.
+  r.git("checkout -q main");
+  r.git("checkout -q -b plain");
+  rewriteIntro(r);
+  r.commit("plain");
+  assert.match(run(r.dir, ["--pr", "main"]).stderr, /the hand-written head of docs\/DECISIONS\.md was edited/);
+  // With anything else beside it, it is a compiled file edited in the scene.
+  r.write(DOC, "documented\n");
+  r.commit("plain-and-doc");
+  assert.match(run(r.dir, ["--pr", "main"]).stderr, /compiled record edited in this scene: docs\/DECISIONS\.md/);
+  // An upgrade that also changes what the compiler wrote is refused the same way.
+  r.git("checkout -q main");
+  r.git("checkout -q -b below");
+  rewriteIntro(r);
+  upgradeManifest(r);
+  r.write(DECISIONS, r.read(DECISIONS) + "\nWritten by hand below the marker.\n");
+  r.commit("below");
+  assert.match(run(r.dir, ["--pr", "main"]).stderr, /compiled record edited in this scene: docs\/DECISIONS\.md/);
+});
+
 test("a checkout that writes CRLF has not edited a planted script", () => {
   const { dir, git, write, read } = planted();
   write("scripts/compile-record.mjs", read("scripts/compile-record.mjs").replace(/\n/g, "\r\n"));
@@ -1073,13 +1397,13 @@ test("a review round inserted above an older one with the same heading is judged
   assert.equal(out.pr.status, 0, out.pr.stderr);
 });
 
-test("an older record the scene edits becomes the scene's: refused until it names its reader", () => {
+test("an older record the scene corrects is not refused, with or without a reader line", () => {
   const pre = "# t\n\n## What was done\n\nan old record, before the rule\n";
   let r = onBranch(pre);
   r.write(TASK, "# t\n\n## What was done\n\nan old record, before the rule\nwith a line added\n");
   let out = everyMode(r);
-  for (const mode of ["branch", "staged"]) { assert.equal(out[mode].status, 2, mode); assert.match(out[mode].stderr, unreadIn(TASK)); }
-  assert.equal(out.pr.status, 1);
+  for (const mode of ["branch", "staged"]) assert.equal(out[mode].status, 0, `${mode}: ${out[mode].stderr}`);
+  assert.equal(out.pr.status, 0, out.pr.stderr);
   r = onBranch(pre);
   r.write(TASK, "# t\n\n## What was done\n\nan old record, before the rule\n\nReviewed by: a reader, at last\n");
   out = everyMode(r);
@@ -1220,19 +1544,90 @@ test("a task file that is new in the scene is judged throughout", () => {
   refusedEverywhere(everyMode(r), "new file");
 });
 
-test("edited older records without a reader are each refused; after a rename too", () => {
+test("corrected older records are not asked for a reader, only the new one is; after a rename too", () => {
   const two = "# t\n\n## What was done\n\nfirst, before the rule\n\n## What was done\n\nsecond, before the rule\n";
   let r = onBranch(two);
   r.write(TASK, `${two.replace("first,", "first, fixed,").replace("second,", "second, fixed,")}\n${RECORD_NEW_UNREAD}`);
   let out = everyMode(r);
   assert.equal(out.staged.status, 2);
-  assert.equal(out.staged.stderr.match(/has no "Reviewed by:" line/g).length, 3);
+  assert.equal(out.staged.stderr.match(/has no "Reviewed by:" line/g).length, 1);
   r = onBranch("# t\n\n## What was done\n\nan old record, before the rule\n", "tasks/t.md");
   r.git(`mv tasks/t.md ${TASK}`);
   r.write(TASK, `# t\n\n## What was done\n\nan old record, before the rule, fixed\n\n${RECORD_NEW_READ}`);
   out = everyMode(r);
-  assert.equal(out.staged.status, 2);
-  assert.equal(out.staged.stderr.match(/has no "Reviewed by:" line/g).length, 1);
+  for (const mode of ["branch", "staged"]) assert.equal(out[mode].status, 0, `${mode}: ${out[mode].stderr}`);
+});
+
+// The base as several task files, then a branch, as onBranch does for one.
+function onBranchWith(tasks) {
+  const r = repo();
+  for (const [file, text] of Object.entries(tasks)) r.write(file, text);
+  r.compile();
+  r.commit("base-tasks");
+  r.git("update-ref refs/remotes/origin/main HEAD");
+  r.git("checkout -q -b feature");
+  return r;
+}
+
+test("a correction passes when its record is also in another file, is one of two alike, or has a close new record beside it", () => {
+  const shared = "# t\n\n## What was done\n\nshared record, before the rule\n";
+  let r = onBranchWith({ [TASK]: shared, "tasks/2-u.md": shared });
+  r.write(TASK, shared.replace("before the rule", "before the rule, fixed"));
+  passesEverywhere(everyMode(r), "also in another file");
+  const twice = "# t\n\n## What was done\n\nthe same record, before the rule\n\n## What was done\n\nthe same record, before the rule\n";
+  r = onBranchWith({ [TASK]: twice });
+  r.write(TASK, twice.replace(/before the rule\n$/, "before the rule, fixed\n"));
+  passesEverywhere(everyMode(r), "one of two alike");
+  // A new read record in an earlier file, close to the corrected one: the correction is
+  // still the correction, in every mode, whatever order the files are read in.
+  const old = "# t\n\n## What was done\n\na record about the parser and its tests, before the rule\n";
+  r = onBranchWith({ "tasks/5-t.md": old });
+  r.write("tasks/5-t.md", old.replace("before the rule", "before the rule, fixed"));
+  r.write("tasks/0-a.md", "# a\n\n## What was done\n\na record about the parser and its tests\n\nReviewed by: a reader\n");
+  passesEverywhere(everyMode(r), "close new record");
+  // Two records corrected, where the closest pair first would leave the second with none.
+  const words = (from, to, tag) => Array.from({ length: to - from + 1 }, (_, k) => `${tag}${from + k}`).join(" ");
+  const a = words(1, 10, "a"), b = `${words(1, 5, "a")} ${words(6, 10, "b")}`;
+  const both = `# t\n\n## What was done\n\n${a}\n\n## What was done\n\n${b}\n`;
+  r = onBranchWith({ [TASK]: both });
+  // The first: a with one word changed (0.9 to a, 0.5 to b). The second: 0.8 to a, 0.4 to b.
+  const first = a.replace("a10", "x10");
+  const second = `${words(1, 4, "a")} ${words(6, 9, "a")} y9 y10`;
+  r.write(TASK, `# t\n\n## What was done\n\n${first}\n\n## What was done\n\n${second}\n`);
+  passesEverywhere(everyMode(r), "two corrections");
+});
+
+// A correction is allowed and is not a record (runbook 4.7): with source, a box ticked or a
+// line added inside a merged record does not answer "no record"; a new record still does.
+test("source with a corrected merged record and no new one is refused as no record", () => {
+  const merged = "## What was done\n\ndone, with a box:\n\n- [ ] a check → an outcome\n\nReviewed by: a reader\n";
+  const sourced = r => { r.write(SOURCE, "changed\n"); r.write(TEST, "test\n"); r.write(DOC, "documented\n"); };
+  const noRecord = /no record: a task file changed but no "## What was done" section was added/;
+  for (const [label, corrected] of [
+    ["box ticked", merged.replace("- [ ]", "- [x]")],
+    ["line added", merged.replace("Reviewed by:", "one more line\n\nReviewed by:")],
+  ]) {
+    let r = onBranch(`# t\n\n${merged}`);
+    sourced(r);
+    r.write(TASK, `# t\n\n${corrected}`);
+    let out = everyMode(r);
+    for (const mode of ["branch", "staged"]) { assert.equal(out[mode].status, 2, `${label} ${mode}`); assert.match(out[mode].stderr, noRecord); }
+    assert.equal(out.pr.status, 1, label);
+    assert.match(out.pr.stderr, noRecord);
+    // The same correction with a new, read record passes.
+    r = onBranch(`# t\n\n${merged}`);
+    sourced(r);
+    r.write(TASK, `# t\n\n${corrected}\n${RECORD_NEW_READ}`);
+    out = everyMode(r);
+    for (const mode of ["branch", "staged"]) assert.equal(out[mode].status, 0, `${label} + new ${mode}: ${out[mode].stderr}`);
+    // A ticked box changes the compiled plan, which an adapted pull request does not carry;
+    // only the record messages are this test's business there.
+    assert.doesNotMatch(out.pr.stderr, /no record|Reviewed by/, `${label} + new pr`);
+    // The correction alone, with no source change, passes.
+    r = onBranch(`# t\n\n${merged}`);
+    r.write(TASK, `# t\n\n${corrected}`);
+    passesEverywhere(everyMode(r), `${label} alone`);
+  }
 });
 
 test("trailing spaces or tabs, removed or added, do not make an older record the scene's", () => {
@@ -1242,10 +1637,11 @@ test("trailing spaces or tabs, removed or added, do not make an older record the
   let out = everyMode(r);
   for (const mode of ["branch", "staged"]) assert.equal(out[mode].status, 0, `${mode}: ${out[mode].stderr}`);
   assert.equal(out.pr.status, 0, out.pr.stderr);
+  // A tab inside a line is a change, and a change to an older record is a correction.
   r = onBranch(pre);
   r.write(TASK, `${pre.replace("second line", "second\tline")}\n${RECORD_NEW_READ}`);
   out = everyMode(r);
-  assert.equal(out.staged.status, 2);   // a changed word, or a tab inside a line, is a change
+  for (const mode of ["branch", "staged"]) assert.equal(out[mode].status, 0, `${mode}: ${out[mode].stderr}`);
 });
 
 // ---- a repository that keeps no plan ("plan": false in the configuration) ----
@@ -1322,6 +1718,175 @@ test("a plan setting that is not true or false stops the gate, naming the config
   write(CONFIG, "{ not json");
   assert.equal(compiler().status, 3);
   assert.match(compiler().stderr, /unities\.json: not valid JSON/);
+});
+
+test("a configuration that is not an object, or whose rules are not a map, is refused by name", () => {
+  const { dir, write } = repo();
+  const cases = [
+    ["null", /unities\.json must hold a JSON object/],
+    ["[]", /unities\.json must hold a JSON object/],
+    ["5", /unities\.json must hold a JSON object/],
+    [JSON.stringify({ ...FIXTURE, rules: null }), /unities\.json: rules must be a map from role to regular expression/],
+    [JSON.stringify({ ...FIXTURE, rules: ["^src/"] }), /unities\.json: rules must be a map/],
+    [JSON.stringify({ ...FIXTURE, rules: "^src/" }), /unities\.json: rules must be a map/],
+  ];
+  for (const [text, message] of cases) {
+    write(CONFIG, text);
+    const result = run(dir, ["--staged"], { scene: "commit" });
+    assert.equal(result.status, 2, text);
+    assert.match(result.stderr, message);
+    assert.doesNotMatch(result.stderr, /TypeError|at readConfig/);
+  }
+});
+
+test("a rule or releaseFiles that will not compile is refused by name, and a Stop lets go on its second pass", () => {
+  const { dir, write } = repo();
+  const stop = (active) => JSON.stringify({ hook_event_name: "Stop", cwd: dir, stop_hook_active: active });
+  write(CONFIG, JSON.stringify({ ...FIXTURE, rules: { ...FIXTURE.rules, source: "(" } }));
+  const first = run(dir, ["--branch"], { scene: "commit", stdin: stop(false) });
+  assert.equal(first.status, 2);
+  assert.match(first.stderr, /unities\.json: rules\.source is not a valid regular expression: /);
+  assert.doesNotMatch(first.stderr, /SyntaxError: Invalid regular expression: \/\(\/: Unterminated group\n\s+at /);
+  const second = run(dir, ["--branch"], { scene: "commit", stdin: stop(true) });
+  assert.equal(second.status, 0);
+  assert.match(JSON.parse(second.stdout).systemMessage, /rules\.source is not a valid regular expression/);
+  // A role of the repository's own is held to the same.
+  write(CONFIG, JSON.stringify({ ...FIXTURE, rules: { ...FIXTURE.rules, procedure: "[" } }));
+  assert.match(run(dir, ["--pr", "main"]).stderr, /rules\.procedure is not a valid regular expression/);
+  for (const [releaseFiles, message] of [
+    [null, /releaseFiles must be a regular expression, as a string/],
+    [3, /releaseFiles must be a regular expression, as a string/],
+    ["(", /releaseFiles is not a valid regular expression/],
+  ]) {
+    write(CONFIG, JSON.stringify({ ...FIXTURE, releaseFiles }));
+    const result = run(dir, ["--staged"], { scene: "commit" });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, message);
+  }
+});
+
+test("a run setting that is not a non-empty string is refused by name", () => {
+  const { dir, write } = repo();
+  for (const value of [5, "", "  ", null, ["deno"]]) {
+    write(CONFIG, JSON.stringify({ ...FIXTURE, run: value }));
+    const result = run(dir, ["--staged"], { scene: "commit" });
+    assert.equal(result.status, 2, JSON.stringify(value));
+    assert.match(result.stderr, /unities\.json: run must be the command that replaces "node", as a non-empty string/);
+  }
+});
+
+test("the compilers stop on a configuration that is not an object, naming it", () => {
+  const { dir, write } = repo();
+  const record = () => spawnSync("node", ["scripts/compile-record.mjs", "--check"], { cwd: dir, encoding: "utf8" });
+  const changelog = () => spawnSync("node", ["scripts/compile-changelog.mjs", "--dry-run"], { cwd: dir, encoding: "utf8" });
+  for (const text of ["null", "[]", "7"]) {
+    write(CONFIG, text);
+    assert.equal(record().status, 3, text);
+    assert.match(record().stderr, /unities\.json: must hold a JSON object/);
+    assert.equal(changelog().status, 1, text);
+    assert.match(changelog().stderr, /unities\.json: must hold a JSON object/);
+  }
+  write(CONFIG, "{ not json");
+  assert.equal(changelog().status, 1);
+  assert.match(changelog().stderr, /unities\.json: not valid JSON/);
+  assert.doesNotMatch(changelog().stderr, /SyntaxError[^\n]*\n\s+at /);
+  for (const recorded of [5, null, { text: "x" }]) {
+    write(CONFIG, JSON.stringify({ ...FIXTURE, changelog: { recorded } }));
+    assert.equal(changelog().status, 1, JSON.stringify(recorded));
+    assert.match(changelog().stderr, /unities\.json: changelog\.recorded must be a string/);
+  }
+});
+
+test("no planted script starts a program through a shell", () => {
+  for (const file of [hook, compiler, recordCompiler]) {
+    const text = readFileSync(file, "utf8");
+    // child_process's exec, execSync and a shell option; a regular expression's .exec is not one.
+    assert.doesNotMatch(text, /\bexecSync\b|(?<!\.)\bexec\(|shell:\s*true/, file);
+  }
+});
+
+// Appendix H's Deno line for the gate. Under Deno a program the gate starts must be
+// allowed by name, and the environment is read whole because a child is given all of it.
+const DENO_GATE = ["run", "--allow-run=git,deno", "--allow-read", "--allow-env"];
+const deno = spawnSync("deno", ["--version"], { encoding: "utf8" });
+test("under Deno, with Appendix H's permissions, the gate refuses an incomplete scene and passes a complete one",
+  { skip: deno.error ? "Deno is not installed here" : false }, () => {
+  const { dir, git, write, compile } = repo({ config: { ...FIXTURE, run: "deno run --allow-read --allow-write=docs" } });
+  const gate = args => spawnSync("deno", [...DENO_GATE, join(dir, ".claude/hooks/check-unit.mjs"), ...args],
+    { cwd: dir, input: "", encoding: "utf8", env: { ...process.env, UNITIES_SCENE: "commit" } });
+  write(SOURCE, "changed\n");
+  git("add -A");
+  const incomplete = gate(["--staged"]);
+  assert.equal(incomplete.status, 2, incomplete.stderr);
+  assert.match(incomplete.stderr, /Incomplete scene: no test change/);
+  assert.doesNotMatch(incomplete.stderr, /NotCapable|Requires|Command failed/);
+  complete(write);
+  compile();
+  git("add -A");
+  const ok = gate(["--staged"]);
+  assert.equal(ok.status, 0, ok.stderr);
+  // The record compiler runs under Deno, through "run": a decision not yet compiled is refused.
+  write(TASK, `${readFileSync(join(dir, TASK), "utf8")}\n## Decisions\n\n### 2026-11-24 · A choice\n\n**Decision** — this\n**Rejected** — that\n**Why** — because\n`);
+  git("add -A");
+  const stale = gate(["--staged"]);
+  assert.equal(stale.status, 2, stale.stderr);
+  assert.match(stale.stderr, /compiled record is out of date/);
+  // Without "run" the compilers would be started with node, which Deno does not allow:
+  // refused, naming run, not passed unchecked.
+  write(CONFIG, JSON.stringify(FIXTURE));
+  git("add -A");
+  const unset = gate(["--staged"]);
+  assert.equal(unset.status, 2, unset.stderr);
+  assert.match(unset.stderr, /record compiler could not be run \(`node scripts\/compile-record\.mjs --check` was not allowed to start \(under Deno, --allow-run must name it\)\); check "run"/);
+});
+
+// The gate run by hand from a script or an agent's shell, whose stdin is a pipe held open
+// and never written to. Killed after ten seconds, so a gate that waits shows as a failure.
+function runWithOpenStdin(dir, args, { scene = "pr", written = "" } = {}) {
+  return new Promise(resolve => {
+    const child = spawn("node", [hook, ...args], { cwd: dir, env: { ...process.env, UNITIES_SCENE: scene } });
+    if (written) child.stdin.write(written);
+    let stdout = "", stderr = "";
+    child.stdout.on("data", d => stdout += d);
+    child.stderr.on("data", d => stderr += d);
+    const killer = setTimeout(() => child.kill(), 10_000);
+    child.on("close", (status, signal) => {
+      clearTimeout(killer);
+      child.stdin.destroy();
+      resolve({ status, signal, stdout, stderr });
+    });
+  });
+}
+
+test("with stdin held open and never written, every mode answers instead of waiting", async () => {
+  const { dir, git, write } = repo();
+  for (const [args, scene] of [[["--branch"], "commit"], [["--staged"], "commit"], [["--branch", "main"], "pr"], [["--pr", "main"], "pr"]]) {
+    const result = await runWithOpenStdin(dir, args, { scene });
+    assert.equal(result.signal, null, `${args.join(" ")} (${scene}) was killed waiting on stdin`);
+    assert.equal(result.status, 0, result.stderr);
+    // --pr never reads stdin, so it has nothing to say about it.
+    if (args[0] === "--pr") assert.doesNotMatch(result.stderr, /stdin stayed open/);
+    else assert.match(result.stderr, /stdin stayed open with no hook input/);
+  }
+  // Part of a hook's JSON, then silence: the gate does not wait for the rest, and says so.
+  const partial = await runWithOpenStdin(dir, ["--branch"], { scene: "commit", written: '{"hook_event_name":' });
+  assert.equal(partial.signal, null, "partial input held open was killed waiting on stdin");
+  assert.equal(partial.status, 0, partial.stderr);
+  assert.match(partial.stderr, /stdin stayed open with an unfinished hook input/);
+  // A whole hook input with stdin left open is read: the second Stop pass lets go, as it does with stdin closed.
+  write(SOURCE, "changed\n");
+  const whole = await runWithOpenStdin(dir, ["--branch"], { scene: "commit", written: JSON.stringify({ hook_event_name: "Stop", cwd: dir, stop_hook_active: true }) });
+  assert.equal(whole.signal, null);
+  assert.equal(whole.status, 0, whole.stderr);
+  assert.match(JSON.parse(whole.stdout).systemMessage, /Incomplete scene/);
+  assert.doesNotMatch(whole.stderr, /stdin stayed open/);
+  // Without a hook's JSON the gate goes on as a run by hand: an incomplete scene is still refused.
+  write(SOURCE, "changed\n");
+  git("add -A");
+  const staged = await runWithOpenStdin(dir, ["--staged"], { scene: "commit" });
+  assert.equal(staged.signal, null);
+  assert.equal(staged.status, 2);
+  assert.match(staged.stderr, /Incomplete scene/);
 });
 
 // ---- CRLF line endings and a byte-order mark are not content ----

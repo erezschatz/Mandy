@@ -30,6 +30,7 @@ const CONFIG = ".claude/hooks/unities.json";
 const unreadable = message => { console.error(`${CONFIG}: ${message}`); process.exit(3); };
 let config = {};
 if (existsSync(CONFIG)) try { config = JSON.parse(read(CONFIG)); } catch (e) { unreadable(`not valid JSON: ${e.message}`); }
+if (typeof config !== "object" || config === null || Array.isArray(config)) unreadable("must hold a JSON object");
 if (config.plan !== undefined && typeof config.plan !== "boolean") unreadable("plan must be true or false");
 const PLAN = config.plan === false ? null : "docs/PLAN.md";
 const natural = (a, b) => a.localeCompare(b, "en", { numeric: true });

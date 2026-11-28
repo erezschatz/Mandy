@@ -15,7 +15,8 @@ A task file has:
   before the work starts: what is about to change, the stages, what each one
   entails (CLAUDE.md, "Making a change");
 - `## What was done` — appended in the same commit as the change it describes,
-  once, and not edited afterwards. A task gathers one per landing, each saying
+  once. Once committed it may be corrected, a mistake fixed, but a correction
+  is not a record: new work gets a new section. A task gathers one per landing, each saying
   where its stage stands: *done and tested*, *done, untested*, *not started*.
   Two sentences and a pointer is enough, since the CHANGELOG entry for the same
   commit carries the prose. Its last line is `Reviewed by: <who>`: the reader
@@ -51,7 +52,11 @@ A task file has:
 An acceptance box in `## Context`, if a task has one, is a check its assignee
 performs before the task closes. A box about users, adoption or production is
 an outcome rather than a check, and the gate refuses it: say it as the promise,
-or as a `Milestone:` line in a decision.
+or as a `Milestone:` line in a decision. So is a box that waits on anything
+that is not this project, such as another repository taking a new version,
+though the gate does not catch every wording of it. A box that runs what the
+project ships somewhere else, in another browser or on a clean machine, is a
+check.
 
 **Status is derived, and the plan shows it.** No `## What was done` means open;
 a record and an open box anywhere in the file means `recorded, N boxes open`;

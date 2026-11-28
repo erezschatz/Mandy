@@ -8,7 +8,7 @@
             "type": "command",
             "if": "Bash(git commit *)",
             "command": "deno",
-            "args": ["run", "--quiet", "--allow-run=git,deno,/bin/sh", "--allow-read", "--allow-env",
+            "args": ["run", "--quiet", "--allow-run=git,deno", "--allow-read", "--allow-env",
                      "${CLAUDE_PROJECT_DIR}/.claude/hooks/check-unit.mjs", "--staged"],
             "onFailure": "block"
           }
@@ -21,7 +21,7 @@
           {
             "type": "command",
             "command": "deno",
-            "args": ["run", "--quiet", "--allow-run=git,deno,/bin/sh", "--allow-read", "--allow-env",
+            "args": ["run", "--quiet", "--allow-run=git,deno", "--allow-read", "--allow-env",
                      "${CLAUDE_PROJECT_DIR}/.claude/hooks/check-unit.mjs", "--branch"]
           }
         ]

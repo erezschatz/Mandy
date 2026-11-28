@@ -7,8 +7,9 @@ place in it. Milestones and what is not in scope are set by decisions. Everythin
 below the marker is compiled from `tasks/` by `deno task record`, and a commit
 that changes a task file carries its output.
 
-Status is derived from each task file: no `## What was done` is open, one or
-more is in progress, and a last one carrying `Status: done` is done.
+Status is derived from each task file: no `## What was done` is open, a record
+with a box still open anywhere in the file is `recorded, N boxes open`, and a
+record with no open box is done.
 
 Two things this list does not hold. **3.1, the editing-core rewrite, is the
 spine of 1.0** and its stages are tracked in "Where each stage stands" in
@@ -53,4 +54,4 @@ up yet rather than tasks.
 - [6.8-check-pages-under-machine](../tasks/6.8-check-pages-under-machine.md) — 6.8 — The check pages run under a machine · recorded, 3 boxes open
 - [adopt-unities](../tasks/adopt-unities.md) — Adopt the Unities · done
 - [export-equations](../tasks/export-equations.md) — Equations in the PDF and Word exports · done
-- [unities-plugin-asks](../tasks/unities-plugin-asks.md) — Unities plugin: three asks from Mandy's 0.6.8 upgrade
+- [unities-plugin-asks](../tasks/unities-plugin-asks.md) — Unities plugin: three asks from Mandy's 0.6.8 upgrade · done

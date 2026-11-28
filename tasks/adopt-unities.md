@@ -273,6 +273,20 @@ asks what a change did that nothing records.
 **Why** — The plugin's gate has no advisory output, and the note never refused
 anything.
 
+### 2026-11-28 · The end-of-turn check only reports, as the plugin's does
+
+**Decision** — From 0.7.0 the plugin's strict `Stop` tells the agent what the
+uncommitted tree is still missing and never refuses the turn. Mandy takes it as
+it comes, with no value set: a scene ends at its commit, a turn may end to ask,
+and a change that is abandoned is reverted. This is the 2026-11-14 decision
+again, now held by the plugin's gate and not by a mode of Mandy's own.
+**Rejected** — Staying on 0.6.8 to keep the turn that is sent back once. D23
+chose that only because reporting was not on offer, and said so.
+**Why** — It is the first of the three asks in tasks/unities-plugin-asks.md,
+answered. The commit still refuses, through the `PreToolUse` hook and
+`.githooks/pre-commit`.
+Supersedes: D23
+
 ## What was done
 
 2026-11-14: **brought up to the procedure dated 2026-11-11 (0.4.0).** The
@@ -419,3 +433,61 @@ that is not `git commit` exits 0. `compile-record.mjs --check` exits 0.
 
 Status: done
 Reviewed by: a read-only subagent that had not seen the work, carrying out docs/reviewer.md against the staged diff. It confirmed the planted files equal the 0.6.8 masters, the configuration's values, the backfill and the compiled record. It found five things. D22 claimed the procedure's Deno line works, contradicting this record. docs/SPEC.md still said the hooks need no Node. The dropped test note had no decision. 1.12's stage 2 and stage 5 boxes were narrower than its plan. 6.8's box left out item 1 and the `input-check` half of item 3. All were fixed before the commit. It did not rerun the hooks suite.
+
+## What was done
+
+2026-11-28: **brought up to the procedure dated 2026-11-26 (0.7.0).** The
+planted docs/UNITIES.md was 0.6.8 of 2026-11-22 and was replaced with the
+master, taken from the plugin's marketplace clone at `7e45113`. The copy of the
+plugin that the session loaded was an older one, 0.6.5, and nothing was taken
+from it.
+
+- **The files**: the gate, its tests, both compilers and the manifest were
+  copied from the plugin unchanged, and the manifest now reads 0.7.0.
+- **The end of a turn**: the plugin's strict `Stop` now reports and never
+  refuses the turn. Nothing in `.claude/settings.json` changes for it; the
+  decision above supersedes D23, and CLAUDE.md's Unities section says what the
+  hook does now.
+- **The Deno invocation**: the scripts start git by name with no shell, so
+  `/bin/sh` left `--allow-run` in `.claude/settings.json` and
+  `.githooks/pre-commit`, which are now the procedure's Appendix H line with
+  `--quiet`. `run` in `.claude/hooks/unities.json` gained `--allow-env`, as the
+  procedure's example for Deno now has it.
+- **The heads**, read against 0.7.0 as its 5.3 asks: docs/PLAN.md's said a task
+  is done when its last record carries `Status: done`, and now states the
+  open-box rule. docs/DECISIONS.md's head needed no change.
+- **tasks/README.md**: a committed record may be corrected but a correction is
+  not a record, and a box that waits on anything outside the project is an
+  outcome. tasks/_template.md and docs/reviewer.md needed no change, since the
+  procedure's text for them did not move.
+- **Not installed**: 0.7.0 moved the Azure DevOps listing out of the procedure
+  and leaves what runs the gate at a pull request to the person. Mandy has no
+  pull-request gate (D15), and `.github/workflows/ci.yml` is as it was.
+- **The asks**: all three in tasks/unities-plugin-asks.md are answered, and
+  that task closes in this commit. This commit also fills `e95ff48` into the
+  CHANGELOG header of the merge before it.
+
+**Verification**, under Deno 2.9.8 with the narrowed permissions, the probes in
+a temporary index:
+
+- `deno task hooks:test`, under Node 26.13.1: 108 passed, 1 skipped, none
+  failed.
+- `--branch HEAD` prints nothing and exits 0.
+- A lone file staged in `front/` is refused with exit 2, naming no doc change
+  and no task change, by `--staged`, by `.githooks/pre-commit` run on the same
+  index, and by a `PreToolUse` payload whose command is `git commit`. A
+  `PreToolUse` payload for another command exits 0.
+- `Stop` on the uncommitted tree exits 0 on both passes: the first hands the
+  agent the missing parts through `additionalContext`, the second tells Erez
+  through `systemMessage`. Neither sends the turn back.
+- The manifest probe is refused, naming `scripts/compile-record.mjs` as edited,
+  and the file was put back and matches the manifest's hash.
+- `compile-record.mjs --check` exits 0 on the committed tree.
+
+Not run: a real `git commit` of the probe, since the agent's own hook would
+refuse it before git's hook ran, so the git hook's line was run directly
+instead. The fresh-session test was not repeated; nothing it reads changed
+beyond the lines named here.
+
+Status: done
+Reviewed by: a read-only subagent that had not seen the work, carrying out docs/reviewer.md against the staged diff. It confirmed by command that the planted files equal the 0.7.0 masters and the manifest's hashes, the two commit hashes, the compiled record, and that no standing file still describes a turn sent back or `/bin/sh`. It found this record accurate and one fault in tasks/unities-plugin-asks.md's, fixed before the commit. It did not rerun the hooks suite or the probes.

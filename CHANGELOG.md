@@ -11400,7 +11400,7 @@ no cover goes up. The run underneath is unchanged. sw.js VERSION v1.99. The
 `notify` suite gains eight checks and the `tabs` suite six. Also fills `38ad4ce`
 into the previous entry's header.
 
-## 2026-11-24 — `main` and `origin/main` merged: task 1.12's stage 4 and 5 beside the Unities 0.6.8 and task 4.14
+## 2026-11-24 — `e95ff48` — `main` and `origin/main` merged: task 1.12's stage 4 and 5 beside the Unities 0.6.8 and task 4.14
 
 `main` had task 1.12's stages 4 and 5 and the CRLF merge, nine commits not yet
 pushed; `origin/main` had three: the Unities brought up to 0.6.8 and task 4.14's
@@ -11420,3 +11420,34 @@ written with. Apart from `sw.js`'s one line, no code met: the two sides changed
 different files. Task 1.12's Acceptance block, which the remote added when only
 its stage 1 had landed, has stages 2, 3 and 5 ticked; stage 4's waits on the
 hand run.
+
+## 2026-11-28 — The Unities brought up to 0.7.0: the end of a turn only reports
+
+`docs/UNITIES.md` is the 0.7.0 master of 2026-11-26, and the gate, its tests,
+both compilers and the manifest are the plugin's 0.7.0 files, copied unchanged.
+The version answers the three things Mandy asked of the plugin at 0.6.8, and
+tasks/unities-plugin-asks.md closes with it.
+
+- **The `Stop` hook no longer sends a turn back.** It says what the uncommitted
+  tree is still missing, to the agent first and then on screen, and the turn
+  ends. A scene ends at its commit, so a turn that stops to ask a design
+  question or hand over a browser recipe leaves the change uncommitted until it
+  is finished. `git commit` still refuses an incomplete scene. This supersedes
+  D23 and is what D10 wanted.
+- **The hooks run without a shell.** The scripts start git by name, so
+  `/bin/sh` is gone from `--allow-run` in `.claude/settings.json` and
+  `.githooks/pre-commit`: `--allow-run=git,deno --allow-read --allow-env`.
+  `run` in `.claude/hooks/unities.json` gained `--allow-env`.
+- **docs/PLAN.md's head is right again.** It still said a task is done when its
+  last record carries `Status: done`. An upgrade may now change the head, so it
+  states the rule the plan has followed since 0.6.8: a record with a box still
+  open is `recorded, N boxes open`, and one with none is done.
+- **tasks/README.md** says a committed record may be corrected but that a
+  correction is not a record, and that a box which waits on anything outside
+  the project is an outcome, not a check.
+
+CLAUDE.md's Unities section describes the new end-of-turn behaviour. The gate's
+own suite passes under Node, 108 of 109 with one skipped, and the commit, `Stop`
+and manifest probes behave as the procedure says under Deno 2.9.8. No code in
+`front/` or `server/` changed. Also fills `e95ff48` into the previous entry's
+header.

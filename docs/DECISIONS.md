@@ -1130,3 +1130,19 @@ Turndown, as the table rules' marks already rely on, and parsed HTML cannot hold
 one, so it can only ever be the mark.
 
 Source: [tasks/1.12-blank-lines-kept.md](../tasks/1.12-blank-lines-kept.md)
+
+## D44 · 2026-11-28 · The end-of-turn check only reports, as the plugin's does
+
+**Decision** — From 0.7.0 the plugin's strict `Stop` tells the agent what the
+uncommitted tree is still missing and never refuses the turn. Mandy takes it as
+it comes, with no value set: a scene ends at its commit, a turn may end to ask,
+and a change that is abandoned is reverted. This is the 2026-11-14 decision
+again, now held by the plugin's gate and not by a mode of Mandy's own.
+**Rejected** — Staying on 0.6.8 to keep the turn that is sent back once. D23
+chose that only because reporting was not on offer, and said so.
+**Why** — It is the first of the three asks in tasks/unities-plugin-asks.md,
+answered. The commit still refuses, through the `PreToolUse` hook and
+`.githooks/pre-commit`.
+Supersedes: D23
+
+Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
