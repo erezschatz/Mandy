@@ -88,3 +88,22 @@ test("one undo takes a list back", async ({ page }) => {
   await page.keyboard.press("ControlOrMeta+z");
   expect(await markdown(page)).toBe("One\n");
 });
+
+// A heading that opens a list item (TODO 1.17). Mandy offers no way to make
+// one, but a file can hold one, and until 2026-11-28 typing into it left a
+// document the emitter refused to write. The model page fails the test on any
+// console error, which is how the refusal used to show.
+test("typing into a heading that opens a list item still saves", async ({ page }) => {
+  await open(page, "- # Title\n- b\n");
+  await page.locator("#editor li h1").click();
+  await page.keyboard.press(LINE_END);
+  await page.keyboard.type("!");
+  expect(await markdown(page)).toBe("- # Title!\n- b\n");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("next");
+  const written = await markdown(page);
+  expect(written).toBe("- # Title!\n- next\n- b\n");
+  await open(page, written);
+  await expect(page.locator("#editor li")).toHaveCount(3);
+  await expect(page.locator("#editor li h1")).toHaveCount(1);
+});

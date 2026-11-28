@@ -860,8 +860,14 @@ export default function run(check) {
       headings.length > 50 && headings.every((b) => b.headingShape !== null),
     );
 
+    // A heading directly inside an item is read with the item's prefix taken
+    // off (TODO 1.17), so that prefix goes back on here as the emitter puts it:
+    // the marker on a line that opens the item, the indent on every other.
     const rebuild = (b) => {
-      const at = (i) => (b.quotePrefixes ? b.quotePrefixes[i] : "");
+      const item = b.parent && b.parent.kind === "item" && !b.headingShape.absolute ? b.parent : null;
+      const opens = item && item.leading === "" && item.children[0] === b;
+      const at = (i) => (b.quotePrefixes ? b.quotePrefixes[i] : "") +
+        (item ? (i === 0 && opens ? item.marker : item.contentIndent) : "");
       const { open, close, underline } = b.headingShape;
       if (underline === null) return at(0) + open + b.inline.content + close;
       const body = (open + b.inline.content).split("\n");
@@ -1820,8 +1826,135 @@ export default function run(check) {
     );
     check(
       "a heading whose shape did not line up refuses rather than inventing a spelling",
-      throwsOn("- # Heading on an item's own first line\n", kind("heading")),
+      // A heading opening a quote that opens an item: the quote stands between
+      // it and the item, so the marker on its line is nobody's to write. Until
+      // 2026-11-28 the case here was `- # Heading`, which TODO 1.17 gave a
+      // shape, since refusing it made a file with one unsaveable at a keystroke.
+      throwsOn("- > # A heading opening a quote that opens an item\n", kind("heading")) &&
+        // And one opening an item that opens an item: the inner item's marker
+        // is not the first thing on the line, and a paragraph there keeps the
+        // other in a leading affix that goes stale. Refused, as before.
+        throwsOn("- - # h\n", kind("heading")),
     );
+    // **A heading that opens a list item is written behind the item's marker**
+    // (TODO 1.17), and so is every other heading that recorded no shape until
+    // then. Each is thrown away and emitted from its tree, and comes back as
+    // its own bytes.
+    for (const [label, src] of [
+      ["a heading that opens an item", "- # Heading on an item's own first line\n"],
+      ["with a closing run, in a numbered item", "1. ## h ##\n"],
+      ["an empty one", "- #\n"],
+      ["behind a tab-padded marker", "-\t# h\n"],
+      ["the setext spelling", "- h\n  ===\n"],
+      ["in the second item of a list", "- a\n- # h\n  text\n"],
+      ["in an indented list", "  - # h\n"],
+      ["opening an item inside a quote", "> - # h\n"],
+      ["four columns in, under a nested item", "- a\n  - b\n\n    # h\n"],
+      ["further down its item", "- a\n\n  ## h ##\n"],
+      ["two lines of setext under an item", "- a\n\n  h1\n  h2\n  ---\n"],
+      ["two lines of setext opening one, the second indented further", "- h1\n    h2\n  ---\n"],
+      ["setext whose underline is indented past its item", "- h\n   ===\n"],
+      ["under a tab-marked item", "-\ta\n\n\t# h\n"],
+      // A tab under an item that continues with spaces is not that item's
+      // prefix: the heading keeps its own bytes, as it did before.
+      ["tab-indented under a space-marked item", "- a\n\n\t# h\n"],
+      ["and under a numbered one", "1. a\n\n\t# h\n"],
+      ["and in an item inside a quote", "> - a\n>\n> \t# h\n"],
+      // The shapes the first draft's looser comparison stopped recording,
+      // which the reader found: a setext heading with a line indented.
+      ["setext with its second line indented, at the margin", "h1\n  h2\n---\n"],
+      ["setext indented whole", "  h1\n  h2\n  ---\n"],
+      ["setext with a tab on its second line", "h1\n\th2\n---\n"],
+      ["setext behind a quote and a space", ">  h1\n>  h2\n>  ---\n"],
+      ["setext in a quote, its second line indented", "> h1\n>   h2\n> ---\n"],
+    ]) {
+      check(`${label} emits its own bytes (${JSON.stringify(src)})`, roundTrips(src, kind("heading")));
+    }
+    {
+      // The marker is the item's and is read from it when the heading is
+      // written, so a list switched to numbers takes the heading with it.
+      const doc = parse("- # h\n- b\n");
+      modelSwitchList(doc, doc.blocks[0], true, md);
+      const got = modelSerialise(doc, (block) => modelEmitLeaf(block, md, doc));
+      check(`a heading opening an item follows its list to numbers (${JSON.stringify(got)})`, got === "1. # h\n2. b\n");
+
+      // Two spellings the emitter got wrong at the margin too, which a
+      // heading in an item can now reach: content typed into `# #`, and a
+      // setext heading emptied by Enter at its start.
+      for (const [label, src, want] of [
+        ["typing into an empty heading with a closing run", "# #\n", "# Z #\n"],
+        ["the same opening an item", "- ## ##\n", "- ## Z ##\n"],
+        ["an empty heading with no closing run", "- #\n", "- # Z\n"],
+      ]) {
+        const d = parse(src);
+        modelInlineSplice(modelFlatten(d).find((block) => block.kind === "heading"), 0, 0, "Z");
+        const wrote = modelSerialise(d, (block) => modelEmitLeaf(block, md, d));
+        check(`${label} (${JSON.stringify(wrote)})`, wrote === want);
+      }
+      for (const [label, src] of [["at the margin", "hh\n===\n"], ["opening an item", "- hh\n  ---\n- b\n"]]) {
+        const d = parse(src);
+        modelInsertParagraph(d, modelFlatten(d).find((block) => block.kind === "heading"), 0, md);
+        const wrote = modelSerialise(d, (block) => modelEmitLeaf(block, md, d));
+        const again = modelFlatten(parse(wrote));
+        check(`Enter at the start of a setext heading ${label} writes no underline as text (${JSON.stringify(wrote)})`,
+          again.filter((block) => block.kind === "heading").length === 2 &&
+          !again.some((block) => block.inlines && /^[=-]+$/.test(modelInlineText(block.inlines))));
+      }
+
+      // **Whatever moves the item moves the heading**, which is what reading
+      // it positionally buys and what the reader found a marker-only version
+      // got wrong: a setext underline or a heading further down the item kept
+      // an indent nothing moved. Each is checked against a parse of what it
+      // wrote, since the bytes are only right if they are the same document.
+      const outline = (document) => JSON.stringify(modelFlatten(document).map((block) => {
+        let depth = 0;
+        for (let node = block.parent; node; node = node.parent) depth += 1;
+        return [depth, block.kind, block.inlines ? modelInlineText(block.inlines) : ""];
+      }));
+      const lists = (document) => modelFlatten(document).filter((block) => block.kind === "list");
+      const items = (document) => modelFlatten(document).filter((block) => block.kind === "item");
+      const headingOf = (document) => modelFlatten(document).find((block) => block.kind === "heading");
+      for (const [label, src, act] of [
+        ["a setext heading opening an item, its list switched to numbers", "- hh\n  ===\n- b\n", (d) => modelSwitchList(d, lists(d)[0], true, md)],
+        ["one in the second item", "- a\n- hh\n  ===\n", (d) => modelSwitchList(d, lists(d)[0], true, md)],
+        ["its item indented", "- a\n- hh\n  ===\n", (d) => modelIndentItem(d, items(d)[1])],
+        ["under a list whose outer list is switched", "- a\n  - hh\n    ===\n", (d) => modelSwitchList(d, lists(d)[0], true, md)],
+        ["its item outdented", "- a\n  - hh\n    ===\n", (d) => modelOutdentItem(d, items(d)[1])],
+        ["a heading further down an item whose list is switched", "- a\n\n  # hh\n", (d) => modelSwitchList(d, lists(d)[0], true, md)],
+        ["a deep heading whose outer list is switched", "- a\n  - b\n\n    # hh\n", (d) => modelSwitchList(d, lists(d)[0], true, md)],
+        ["a deep heading whose lists are both unwrapped", "- a\n  - b\n\n    # hh\n", (d) => {
+          modelUnwrapItems(d, lists(d)[1], items(d).slice(1), md);
+          modelUnwrapItems(d, lists(d)[0], items(d), md);
+        }],
+        ["two headings in one item, switched", "- # hh\n\n  ## ii\n", (d) => modelSwitchList(d, lists(d)[0], true, md)],
+        ["a setext heading opening an item, unwrapped", "- hh\n  ===\n", (d) => modelUnwrapItems(d, lists(d)[0], items(d), md)],
+        ["Enter in a heading further down its item", "- a\n\n  # one two\n", (d) => modelInsertParagraph(d, headingOf(d), 3, md)],
+        ["Enter at the start of one", "- a\n\n  # one two\n", (d) => modelInsertParagraph(d, headingOf(d), 0, md)],
+        ["Enter in a deep one", "- a\n  - b\n\n    # hh\n", (d) => modelInsertParagraph(d, headingOf(d), 1, md)],
+        ["Enter in one that opens its item", "- # one two\n", (d) => modelInsertParagraph(d, headingOf(d), 3, md)],
+        // The second half opens a new item, where an indent of its own would
+        // be the marker's pad and leave the underline short of the content.
+        ["Enter in a setext heading indented past its item", "- a\n\n   hh hh\n  ===\n", (d) => modelInsertParagraph(d, headingOf(d), 2, md)],
+        ["Enter at its start", "- a\n\n   hh hh\n  ===\n", (d) => modelInsertParagraph(d, headingOf(d), 0, md)],
+        ["the same with a dashed underline, three past the item", "- a\n\n     hh hh\n  ---\n", (d) => modelInsertParagraph(d, headingOf(d), 2, md)],
+        ["Enter in one whose underline alone is indented", "- a\n\n  hh hh\n   ===\n", (d) => modelInsertParagraph(d, headingOf(d), 2, md)],
+        ["Enter in an indented ATX heading under an item", "- a\n\n   # hh hh\n", (d) => modelInsertParagraph(d, headingOf(d), 2, md)],
+      ]) {
+        const d = parse(src);
+        act(d);
+        const wrote = modelSerialise(d, (block) => modelEmitLeaf(block, md, d));
+        const same = outline(parse(wrote)) === outline(d);
+        check(`${label}: the file is the document (${JSON.stringify(wrote)})`, same && wrote !== src);
+      }
+
+      // Enter in the middle of one makes a second item, as it does for a
+      // paragraph, and each half opens its own.
+      const split = parse("- # one two\n");
+      modelInsertParagraph(split, modelFlatten(split).find((block) => block.kind === "heading"), 3, md);
+      const halves = modelSerialise(split, (block) => modelEmitLeaf(block, md, split));
+      check(`Enter in a heading that opens an item writes two items, each opening with its half (${JSON.stringify(halves)})`,
+        halves === "- # one\n- # two\n");
+    }
     check(
       "a block inside an item with no recorded marker refuses the same way",
       (() => {
@@ -4156,7 +4289,8 @@ export default function run(check) {
     const cases = [
       ["an ATX heading pasted into a bullet", "- one two\n", "A\n\n# h\n\nB", "- oneA\n\n  # h\n\n  B two\n", "item<list"],
       ["a setext heading, on both its lines", "- one two\n", "A\n\nh\n===\n\nB", "- oneA\n\n  h\n  ===\n\n  B two\n", "item<list"],
-      ["a setext heading of two lines, whose second is lazy", "- one two\n", "A\n\nh1\nh2\n---\n\nB", "- oneA\n\n  h1\nh2\n  ---\n\n  B two\n", "item<list"],
+      ["a setext heading of two lines, on all three", "- one two\n", "A\n\nh1\nh2\n---\n\nB", "- oneA\n\n  h1\n  h2\n  ---\n\n  B two\n", "item<list"],
+      ["under a tab-marked item it takes the indent the item's other lines get", "-\tone two\n", "A\n\n# h\n\nB", "-\toneA\n\n \t# h\n\n \tB two\n", "item<list"],
       ["a closing run comes with it", "- one two\n", "A\n\n## h ##\n\nB", "- oneA\n\n  ## h ##\n\n  B two\n", "item<list"],
       ["into a nested bullet", "- a\n  - one two\n", "A\n\n# h\n\nB", "- a\n  - oneA\n\n    # h\n\n    B two\n", "item<list<item<list", 1],
       ["into an item inside a quote", "> - one two\n", "A\n\n# h\n\nB", "> - oneA\n>\n>   # h\n>\n>   B two\n", "item<list<quote"],
@@ -4184,6 +4318,40 @@ export default function run(check) {
       const top = paste("one two\n", pasted).markdown;
       check(`and at the top level its bytes are as pasted (${JSON.stringify(top)})`, top === "oneA\n\n-\ti\n\n" + heading + "\n\nB two\n");
     }
+
+    // An item that itself opens with a heading (TODO 1.17): until that task
+    // the heading had no shape and a paste holding one could not be saved.
+    for (const [label, src, pasted, want, where] of [
+      ["at the top level", "one two\n", "A\n\n- # h\n\nB", "oneA\n\n- # h\n\nB two\n", "item<list"],
+      ["into a bullet", "- one two\n", "A\n\n- # h\n\nB", "- oneA\n\n  - # h\n\n  B two\n", "item<list<item<list"],
+      ["in the setext spelling, into a bullet", "- one two\n", "A\n\n- h\n  ===\n\nB", "- oneA\n\n  - h\n    ===\n\n  B two\n", "item<list<item<list"],
+      ["into a quote", "> one two\n", "A\n\n- # h\n\nB", "> oneA\n>\n> - # h\n>\n> B two\n", "item<list<quote"],
+    ]) {
+      const got = paste(src, pasted).markdown;
+      check(`a pasted item that opens with a heading, ${label} (${JSON.stringify(got)})`, got === want && headingIn(got) === where);
+    }
+    // A tab-marked item pasted into a bullet inside a quote: the chain moves
+    // the tab stops, so what is under the item moves where at the margin it
+    // would not. The reader found the first measure of that ignored the chain.
+    // Where every block sits and what it says, with a quote's blank `>` lines
+    // left out: a parse holds them as blocks and a paste as separators.
+    const placed = (document) => JSON.stringify(modelFlatten(document).filter((block) => block.kind !== "gap").map((block) => {
+      let depth = 0;
+      for (let node = block.parent; node; node = node.parent) depth += 1;
+      return [depth, block.kind, block.inlines ? modelInlineText(block.inlines) : ""];
+    }));
+    for (const landing of ["> - one two\n", "> > - one two\n", "   > - one two\n", "- one two\n", "1. one two\n", "- a\n  - one two\n"]) {
+      for (const [what, under] of [["a paragraph", "\n\tp"], ["an item", "\t-\tj"], ["a fence", "\n\t```\n\tc\n\t```"], ["a quote", "\n\t> q"], ["a heading", "\n\t# h"]]) {
+        const doc = parse(landing);
+        const leaf = textLeaves(doc)[textLeaves(doc).length - 1];
+        modelInsertBlocks(doc, leaf, 3, parse("x\n\n-\ti\n" + under + "\n\ny").blocks);
+        const got = emit(doc);
+        check(`${what} under a tab-marked item pasted into ${JSON.stringify(landing)} stays under it (${JSON.stringify(got)})`, placed(parse(got)) === placed(doc));
+      }
+    }
+
+    const into = paste("- # one two\n", "X").markdown;
+    check(`a paste into a heading that opens an item (${JSON.stringify(into)})`, into === "- # oneX two\n");
 
     const typed = paste("- one two\n", "A\n\nh\n===\n\nB");
     modelInlineSplice(modelFlatten(typed.doc).find((block) => block.kind === "heading"), 0, 0, "Z");

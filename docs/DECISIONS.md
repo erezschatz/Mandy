@@ -1259,3 +1259,126 @@ such a heading into a code block. Spaces after the indent add exactly the
 columns asked for, where a tab after them would swallow some.
 
 Source: [tasks/1.16-pasted-heading.md](../tasks/1.16-pasted-heading.md)
+
+## D53 · 2026-11-28 · A heading that opens a list item is given a shape
+
+**Decision** — A heading directly inside a list item has its shape read with
+the item's prefix taken off, so one that opens its item records a shape.
+**Rejected** — The refusal stage 1 chose and pinned with a `model` check: a
+heading whose line does not start as a heading records `null`, and the emitter
+throws on it.
+**Why** — The refusal was written as "a spelling the model does not have
+rather than one it could guess at". For this shape nothing is guessed: the
+marker is the item's, already recorded, and the rest reads as a heading. And
+the cost of refusing was not a block left alone but a document that could not
+be saved after one keystroke in it.
+
+Source: [tasks/1.17-heading-opening-an-item.md](../tasks/1.17-heading-opening-an-item.md)
+
+## D54 · 2026-11-28 · A heading in a list item is written from where it sits
+
+**Decision** — The emitter gives a heading its item's marker or continuation
+indent on every line, as it gives a paragraph, and the shape holds only what
+is past that.
+**Rejected** — The first draft: a `marked` flag for a heading behind a marker,
+with every other heading's `open` and every underline still holding an
+absolute indent. And task 1.16's choice to leave the emitter alone and move
+the shape.
+**Why** — An indent recorded as bytes goes stale whenever the item moves, and
+nothing told the heading. The reader found the draft wrote a setext heading
+opening an item as a paragraph after a list switch, and a deep heading as a
+code block after an unwrap; a heading further down an item was already
+written outside a list switched to numbers, before any of this. Read from the
+item at the moment of writing, none of that can happen.
+Supersedes: D50
+
+Source: [tasks/1.17-heading-opening-an-item.md](../tasks/1.17-heading-opening-an-item.md)
+
+## D55 · 2026-11-28 · A heading the item's prefix does not fit stays absolute
+
+**Decision** — A heading in an item whose lines do not start with the item's
+marker or indent keeps the shape read from its own column 0, marked
+`absolute`, and the emitter adds nothing to it.
+**Rejected** — Recording no shape for it, which refuses the document. Reading
+it positionally anyway.
+**Why** — That is how every heading in an item was written until now, so such
+a heading is no worse off, and no oracle heading is one. It is a narrow case:
+a line indented short of its item's column, or to the same column in other
+bytes, a tab under an item that continues with spaces. Reading the second as
+the item's prefix would write the heading back in the item's bytes on any
+edit, where it kept its own before.
+
+Source: [tasks/1.17-heading-opening-an-item.md](../tasks/1.17-heading-opening-an-item.md)
+
+## D56 · 2026-11-28 · A two-line setext heading under an item keeps its indent on every line
+
+**Decision** — Every line of a heading in an item takes the item's indent, so
+a setext heading of two lines is written indented on both and on its
+underline, pasted or edited.
+**Rejected** — Task 1.16's lazy second line.
+**Why** — That decision followed from the shape having one indent to record.
+Positional, every line gets the item's, and the heading is written the way it
+would have been typed.
+Supersedes: D51
+
+Source: [tasks/1.17-heading-opening-an-item.md](../tasks/1.17-heading-opening-an-item.md)
+
+## D57 · 2026-11-28 · What is under a pasted item moves as far as its content did
+
+**Decision** — On adoption an item's continuation indent, the items, fences
+and quote chains under it move by the columns its content moved, measured off
+its marker before and after.
+**Rejected** — The landing column for all of them, as before.
+**Why** — A positional heading is written at its item's continuation indent,
+so that indent has to be right. For a tab-marked item pasted two columns in
+it was not: the marker's tab swallows the move, the content stays at column
+4, and the indent was moved to column 8, which also wrote a paragraph there
+as a code block. Task 1.16's reader named that fault and left it for a task;
+it is fixed here because this change stands on it. With spaces the two
+measures are the same number. The measure is taken only where the landing has
+no quote chain: behind a `>` the parser places a line's tab stops in a way
+this file's column count does not predict, and the second reader found the
+measure moved what was under a tab-marked item out of it there, where the
+landing column had been right.
+
+Source: [tasks/1.17-heading-opening-an-item.md](../tasks/1.17-heading-opening-an-item.md)
+
+## D58 · 2026-11-28 · An empty setext heading is written as hashes
+
+**Decision** — A setext heading with no text is written as its level's `#`
+run, and content typed in front of a closing run with no space before it gets
+one.
+**Rejected** — Leaving both, which are wrong at the margin too and older than
+this task.
+**Why** — Both were unreachable inside an item while such a heading threw,
+and reachable there now: Enter at the start of a setext heading wrote `===`
+as a paragraph. An underline with nothing over it is not a heading in
+markdown, so there is no setext spelling to keep.
+
+Source: [tasks/1.17-heading-opening-an-item.md](../tasks/1.17-heading-opening-an-item.md)
+
+## D59 · 2026-11-28 · A heading that opens its item writes no indent of its own
+
+**Decision** — The emitter drops the leading whitespace of a positional
+heading's `open` when the heading is its item's first child.
+**Rejected** — Writing it after the marker, as recorded.
+**Why** — After a marker a space is the item's pad. It moves the item's
+content column out from under a setext underline written at the item's
+indent, and the heading comes back as a paragraph holding `===`; four are a
+code block. A parsed heading never has such an indent, the marker having taken
+the pad; Enter in a heading indented past its item makes one.
+
+Source: [tasks/1.17-heading-opening-an-item.md](../tasks/1.17-heading-opening-an-item.md)
+
+## D60 · 2026-11-28 · Two shapes stay refused
+
+**Decision** — `- > # h` and `- - # h` record no shape and the emitter still
+throws on an edit to one.
+**Rejected** — Keeping the marker, and the `>`, in the heading's `open`.
+**Why** — Recorded marker bytes are what the second decision exists to avoid.
+A paragraph in either place carries them in its leading affix and has the
+faults that follow: task 1.15 lists the first, and the reader measured the
+second (`- - pp`, Enter, writes two outer items for one inner list). A loud
+refusal is better than joining them.
+
+Source: [tasks/1.17-heading-opening-an-item.md](../tasks/1.17-heading-opening-an-item.md)

@@ -11502,7 +11502,7 @@ either side of it out of a web page, paste it into a document outside any
 quote, Save As to a scratch file and reopen it: the quote should still be a
 quote. Then the same with a quote copied out of Mandy itself.
 
-## 2026-11-28 — Task 1.16: a heading pasted into a list item stays in it
+## 2026-11-28 — `be5f749` — Task 1.16: a heading pasted into a list item stays in it
 
 A heading pasted or dropped as a whole block into a list item was drawn inside
 the item and written at column 0, so the file ended the list there. Measured by
@@ -11537,3 +11537,70 @@ and is older than both tasks.
 **What no suite reaches**: a real clipboard. Copy a heading with a paragraph
 either side out of a web page, paste it into the middle of a bullet, Save As to
 a scratch file and reopen it: the heading should still be inside the bullet.
+
+## 2026-11-28 — Task 1.17: a heading in a list item is written from where it sits
+
+Typing one letter into a heading that opens a list item, `- # h`, made the
+emitter throw, so Save reported the document could not be written and the
+autosave stopped at the last version that could. Found as a pasted `- # h` by
+the reader of task 1.16, and measured to need no paste: a file holding one was
+a keystroke from unsaveable. A heading four columns in under a nested item and
+a two-line setext heading under an item failed the same way.
+
+`modelHeadingShape` read a heading off its lines from their column 0. For a
+heading that opens its item that line starts with the item's marker, so no
+shape was recorded and the emitter refuses a heading without one; a `model`
+check had pinned that refusal since stage 1. A heading further down an item did
+record a shape, with the item's indent inside it as bytes that nothing moved
+when the item did, so a list switched to numbers wrote such a heading outside
+itself.
+
+**A heading directly inside a list item is now read with the item's prefix
+taken off, and written positionally, as a paragraph is.**
+`modelItemHeadingShape` in `front/model.js` takes the marker off a line that
+opens the item and the continuation indent off every other, and
+`modelEmitLeaf` puts them back from wherever the heading sits when it is
+written. So a list switch, an indent, an outdent, an unwrap and Enter all
+carry the heading, a setext underline included. A heading whose lines do not
+fit its item's prefix keeps its old shape, marked `absolute`.
+
+A first draft only marked a heading read behind a marker. The reader found it
+wrote a setext heading as a paragraph after a list switch and a deep heading
+as a code block after an unwrap, where the old code had refused loudly, and
+that its looser setext comparison stopped recording seven shapes. The task
+file has the six findings and the plan as rewritten.
+
+With it:
+
+- **What is under a pasted item moves as far as that item's content did**,
+  where it moved by the landing column. The same for spaces; for a tab-marked
+  item pasted two columns in, a paragraph under it was written as a code
+  block, which task 1.16's reader had measured. Only where the landing has no
+  quote chain: a second reader found the measure wrong behind a `>`, where the
+  landing column is kept.
+- **A heading that opens its item writes no indent of its own after the
+  marker**, which Enter in a heading indented past its item could produce.
+- **A two-line setext heading pasted into a bullet is indented on every
+  line**, which supersedes task 1.16's lazy second line, as this entry's
+  decision on the emitter supersedes its choice to leave the emitter alone.
+- **Two spellings wrong at the margin too**: content typed into `# #` ran into
+  the closing run, and a setext heading emptied by Enter at its start wrote
+  its underline as text. It is written as its level's hashes.
+
+**Still refused**: `- > # h` and `- - # h`, a heading opening a quote or an
+item that itself opens an item, and one opening its item with a lazy second
+line. The pinned check uses the first two. Format → Blockquote over `- # h`
+now makes the first of them, where the command itself failed before.
+
+The `model` suite gained 85 checks: 22 shapes emitted from their trees back
+to their own bytes, nineteen operations each compared with a parse of what it
+wrote, thirty pastes of a tab-marked item, the other pasted cases and the two
+spellings. Against the code before,
+the suite throws at the first of them. `tests/browser/lists.spec.mjs` opens
+`- # Title`, types into it, presses Enter and reads the markdown a save writes.
+`npm test` passes; Playwright is 410 passed with the one recorded Firefox
+failure. `sw.js` goes to `v1.108`.
+
+**What no suite reaches**: a document in daily use. Open a file with a heading
+on a bullet's own line, type into the heading, Save As to a scratch file and
+diff it against the original: the typed letters should be the only difference.

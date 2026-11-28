@@ -33,6 +33,7 @@ up yet rather than tasks.
 - [1.14-crlf-wrap-width](../tasks/1.14-crlf-wrap-width.md) — 1.14 — A CRLF file's wrap width is sniffed a column wide · done
 - [1.15-pasted-quote](../tasks/1.15-pasted-quote.md) — 1.15 — A pasted quote loses its `>` · recorded, 1 box open
 - [1.16-pasted-heading](../tasks/1.16-pasted-heading.md) — 1.16 — A heading pasted into a list item is written outside the list · done
+- [1.17-heading-opening-an-item](../tasks/1.17-heading-opening-an-item.md) — 1.17 — A heading that opens a list item cannot be saved once edited · done
 - [2.1-table-reemission](../tasks/2.1-table-reemission.md) — 2.1 — An edited table is re-emitted in house style · done
 - [2.3-minority-spellings](../tasks/2.3-minority-spellings.md) — 2.3 — Minority break and emphasis spellings · done
 - [3.1-editing-core-rewrite](../tasks/3.1-editing-core-rewrite.md) — 3.1 — Replace the editing core · recorded, 3 boxes open

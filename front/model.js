@@ -1244,6 +1244,60 @@ function modelItemPrefix(firstLine, continuationLine) {
 }
 
 /**
+ * A heading directly inside a list item, read the way the item's other
+ * children are: with the item's own prefix taken off every line first. TODO
+ * 1.17.
+ *
+ * `modelHeadingShape` reads a heading off its lines from their column 0, which
+ * inside an item is the wrong place to start: the first line of a heading that
+ * opens its item begins with the item's marker (`- # h`), so it read as no
+ * heading at all and recorded `null`, and until 2026-11-28 one keystroke in
+ * such a heading left a document the emitter refused to write. A heading
+ * further down an item did record a shape, with the item's indent inside its
+ * `open` — bytes that nothing moved when the item did, so a list switched to
+ * numbers wrote the heading outside it.
+ *
+ * So the item's prefix comes off, the marker on a line that opens the item and
+ * the continuation indent on every other, and the shape is read from what is
+ * left. That is what markdown-it did to reach the heading's content, and it
+ * makes a heading **positional, as a paragraph is**: `modelEmitLeaf` puts the
+ * item's marker or indent back from wherever the heading now sits.
+ *
+ * A heading whose lines do not carry the prefix keeps the shape it had and is
+ * marked `absolute`, which tells the emitter its `open` holds the indent and
+ * the item adds nothing — the rule every heading in an item had before this.
+ */
+function modelItemHeadingShape(item, heading, first) {
+  if (heading.kind !== "heading" || !heading.inline || heading.source === null) return;
+  const keep = () => {
+    if (heading.headingShape) heading.headingShape.absolute = true;
+  };
+  if (item.marker === null || item.contentIndent === null) return keep();
+  const chain = heading.quotePrefixes;
+  const lines = heading.source.split("\n").map((line, i) => line.slice((chain && chain[i] ? chain[i] : "").length));
+  const stripped = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (i === 0 && first) {
+      if (!line.startsWith(item.marker)) return keep();
+      stripped.push(line.slice(item.marker.length));
+      continue;
+    }
+    if (line.startsWith(item.contentIndent)) {
+      stripped.push(line.slice(item.contentIndent.length));
+      continue;
+    }
+    // The same column in other bytes — a tab under an item that continues
+    // with spaces — is not the item's prefix, and reading it as one would
+    // write the heading back in the item's bytes and not its own.
+    return keep();
+  }
+  const shape = modelHeadingShape(stripped, heading.inline.content, heading.tokens[0].markup);
+  if (!shape) return keep();
+  heading.headingShape = shape;
+}
+
+/**
  * Tile one line range with the spans at one level: the blocks in it, each
  * carrying its exact bytes and the exact bytes that followed it, plus the text
  * before the first of them.
@@ -1417,6 +1471,9 @@ function modelTileRange(ctx, spans, from, to, quoteDepth = 0) {
         );
         piece.block.leading = tiled.leading;
         piece.block.children = tiled.blocks;
+        if (piece.block.kind === "item") {
+          tiled.blocks.forEach((child, at) => modelItemHeadingShape(piece.block, child, at === 0 && tiled.leading === ""));
+        }
         // Upwards as well as downwards, which is what `modelTouch` walks. It
         // makes the model cyclic and so not `JSON.stringify`-able — see that
         // function for why that is the cheaper of the two costs.
@@ -2008,7 +2065,15 @@ function modelEmitLeaf(block, md, doc, width = 0) {
 
   if (block.kind === "heading") {
     if (!block.headingShape) throw new Error("edited heading with no recorded shape");
-    const { open, close, underline } = block.headingShape;
+    const { close, underline } = block.headingShape;
+    // **A heading that opens its item writes no indent of its own**: after a
+    // marker a space is the item's pad, so it moves the item's content column
+    // out from under the underline, and four are an indented code block. A
+    // parsed heading never has one there, the marker having taken the pad; one
+    // that Enter or a paste has just made the first in an item can.
+    const open = item && item.first && !block.headingShape.absolute
+      ? block.headingShape.open.replace(/^[ \t]+/, "")
+      : block.headingShape.open;
     // **The one place a recorded spelling is not enough on its own.** An ATX
     // heading's `open` is the hashes plus whatever followed them, and an *empty*
     // heading is written `#` with nothing after it — so re-emitting it with
@@ -2021,7 +2086,11 @@ function modelEmitLeaf(block, md, doc, width = 0) {
     // setext heading, whose `open` is an indent and whose marker is underneath.
     const atx = underline === null && /#$/.test(open);
     const opened = atx && content ? open + " " : open;
-    const closed = atx && !content ? close.replace(/^[ \t]+/, "") : close;
+    // The same in the other direction: an empty heading with a closing run is
+    // `# #`, whose close has no space before it, so content written in front of
+    // it ran into the run and `# Z#` is the heading `Z#`.
+    const closed = atx && !content ? close.replace(/^[ \t]+/, "")
+      : underline === null && content && /^#/.test(close) ? " " + close : close;
     // **Content ending in ` #` is a closing sequence to the parser**, so
     // `# T #` comes back as the heading `T`. Judged by parsing the line as it
     // will be written; when the parser's content is not the model's, the final
@@ -2035,10 +2104,18 @@ function modelEmitLeaf(block, md, doc, width = 0) {
         content = content.slice(0, run.index) + "\\" + content.slice(run.index);
       }
     }
+    // **An empty setext heading cannot be written**: an underline with nothing
+    // over it is a paragraph holding `===`, or a rule. So a setext heading left
+    // empty, by Enter at its start above all, is written as its level's hashes
+    // until it has text again.
     content = underline === null
       ? (content ? opened + content + closed : (opened + closed).replace(/[ \t]+$/, ""))
-      : open + content + "\n" + underline;
-    item = null;
+      : content ? open + content + "\n" + underline : open + "#".repeat(block.level || 1);
+    // A heading takes its item's marker or indent as a paragraph does (TODO
+    // 1.17), since its shape was read with those taken off. The one that does
+    // not is marked `absolute`: its `open` holds the indent, and the item
+    // adds nothing. See modelItemHeadingShape.
+    if (block.headingShape.absolute) item = null;
   }
 
   if (item && item.marker === null) {
@@ -7372,12 +7449,17 @@ function modelAdoptBlocks(doc, blocks, like) {
   const column = item && item.contentIndent !== null ? modelIndentColumn(item.contentIndent) : 0;
 
   const bare = quote.replace(/[ \t]+$/, "");
-  const moved = (prefix) => quote + modelShiftSource(prefix, column);
+  // Whether the landing item is one the emitter will give these blocks as
+  // their own. Not across a quote, which is the two unrecorded landings above.
+  const lands = !!modelItemAffix(like);
 
-  // `shift` is how many columns a heading at this depth moves: the landing
+  // `shift` is how many columns everything at this depth moves: the landing
   // column at the top of what was pasted, and under a pasted item however far
-  // that item's content moved, which a tab in its marker can make nothing.
+  // that item's content moved, which is measured off its marker before and
+  // after. A tab in the marker can make that nothing: `-\t` pasted two columns
+  // in still starts its content at column 4, and what is under it stays put.
   const walk = (list, parent, nested, shift) => {
+    const moved = (prefix) => quote + modelShiftSource(prefix, shift);
     for (const block of list) {
       const bytes = block.source;
       let inner = shift;
@@ -7404,35 +7486,39 @@ function modelAdoptBlocks(doc, blocks, like) {
       // An item's marker is absolute in this model (slice 4), so a list pasted
       // into an indented context has every marker beneath it moved by the same
       // number of columns — the shift `modelMoveItem` does, arriving at the one
-      // other place a block changes container.
-      if (block.kind === "item" && column && !own) {
+      // other place a block changes container. Its continuation indent moves
+      // as far as its content did, which is not always as far as its marker.
+      if (block.kind === "item" && shift && !own) {
         const was = block.marker;
-        block.marker = modelReindentMarker(block.marker, column);
-        if (block.contentIndent !== null) block.contentIndent = modelShiftIndent(block.contentIndent, column);
-        if (was !== null) inner = modelIndentColumn(block.marker) - modelIndentColumn(was);
+        block.marker = modelReindentMarker(block.marker, shift);
+        // Measured only at a landing with no quote chain. Behind a `>` the
+        // line's tab stops are the parser's to place and it does not place
+        // them by this file's column count, so there everything under the
+        // item moves by the landing column, which is what it did before this
+        // measure existed and is what parses.
+        if (was !== null && !quote) inner = modelIndentColumn(block.marker) - modelIndentColumn(was);
+        if (block.contentIndent !== null) block.contentIndent = modelShiftIndent(block.contentIndent, inner);
       }
-      // **A heading's shape is absolute too** (TODO 1.16). The emitter gives a
-      // heading no item affix, because its `open` was read from its own line's
-      // column 0 and holds the indent already, and a setext `underline` the
-      // same. So a heading that lands in an item has to have that indent put
-      // into its shape, or it is drawn in the item and written outside the
-      // list. Not inside a pasted quote, where the chain carries the column.
-      // Under a pasted item it moves as far as that item's content did, read
-      // off the marker before and after: a tab-marked item pasted two columns
-      // in still starts its content at column 4, and its heading stays put.
-      if (block.kind === "heading" && block.headingShape && shift > 0 && !own) {
-        // Spaces after whatever indent it had, which is the one way to add
-        // columns that a tab in that indent cannot swallow.
+      // **A heading is positional** (TODO 1.17): the emitter gives it its
+      // item's marker or indent from where it sits, so one that lands in an
+      // item needs nothing done. Two do. One marked `absolute`, whose `open`
+      // holds its indent, has the columns put into its shape, as spaces after
+      // the indent it had, which a tab there cannot swallow (TODO 1.16). And
+      // at a landing whose item the emitter will not give it, the indent is
+      // all that keeps it in the list, so it is made absolute and given it.
+      // Not inside a pasted quote, where the chain carries the column.
+      if (block.kind === "heading" && block.headingShape && shift > 0 && !own &&
+          (block.headingShape.absolute || (!nested && !lands))) {
         const indent = (text) => {
           const lead = /^[ \t]*/.exec(text)[0];
           return lead + " ".repeat(shift) + text.slice(lead.length);
         };
         const shape = block.headingShape;
-        block.headingShape = {
+        block.headingShape = Object.assign({}, shape, {
           open: indent(shape.open),
-          close: shape.close,
           underline: shape.underline === null ? null : indent(shape.underline),
-        };
+          absolute: true,
+        });
       }
       if (block.children) {
         walk(block.children, block, true, inner);
@@ -7440,7 +7526,7 @@ function modelAdoptBlocks(doc, blocks, like) {
         // Kept as recorded. The one piece that moves is an affix running from
         // the line's own column 0, which is a quote opening a pasted item:
         // `- > a` records the chain `""` and the affix `"- > "`.
-        if (own[0] === "" && block.leadingAffix) block.leadingAffix = modelShiftSource(block.leadingAffix, column);
+        if (own[0] === "" && block.leadingAffix) block.leadingAffix = modelShiftSource(block.leadingAffix, shift);
       } else if (block.inlines) {
         modelSetLeadingAffix(block, "");
       } else {
@@ -7451,8 +7537,8 @@ function modelAdoptBlocks(doc, blocks, like) {
         // shifted to its new column and given the quote chain it now sits
         // behind.
         block.source = quote
-          ? modelShiftSource(bytes, column).split("\n").map((line) => (line === "" ? quote.replace(/[ \t]+$/, "") : quote + line)).join("\n")
-          : modelShiftSource(bytes, column);
+          ? modelShiftSource(bytes, shift).split("\n").map((line) => (line === "" ? quote.replace(/[ \t]+$/, "") : quote + line)).join("\n")
+          : modelShiftSource(bytes, shift);
         // A quote's blank line arrives from Turndown as `> `, and a line that
         // is nothing but a chain is written without the space after it, as the
         // emitter writes one (D3).

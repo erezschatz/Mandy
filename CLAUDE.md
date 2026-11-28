@@ -877,7 +877,12 @@ Twelve things that are decisions rather than details:
   headings. The branch is taken on the parser's own `markup` rather than on a
   line count, and the result is checked against `inline.content` rather than
   trusted: a shape that does not line up is null, so the emitter has nothing to
-  work from instead of the model inventing a spelling. 1b's step 5 left it open between that and re-applying the
+  work from instead of the model inventing a spelling. **A heading directly
+  inside a list item is read with the item's prefix taken off**
+  (`modelItemHeadingShape`, TODO 1.17), and the emitter writes its marker or
+  indent from the item, as it does a paragraph's — so whatever moves the item
+  moves the heading. One whose lines do not fit the prefix keeps a shape
+  marked `absolute`. `- > # h` and `- - # h` are still null. 1b's step 5 left it open between that and re-applying the
   chain at emit time, for want of anything to measure — this repo has no
   blockquote in any of its nine markdown files. `tests/fixtures/torture.md` is
   the measurement, and it decides it: `modelItemPrefix` returns null for every
@@ -1294,9 +1299,10 @@ What is worth knowing:
   marker shifted to the column its new container starts at. **A block inside
   a pasted quote keeps the chain it recorded, with the landing quote's prefix
   and column put in front** (TODO 1.15): a quote writes nothing itself, so that
-  chain is the only record of its `>`. **A pasted heading's `open` and
-  `underline` are moved to the landing column** (TODO 1.16), since the emitter
-  gives a heading no item affix.
+  chain is the only record of its `>`. **A pasted heading needs nothing
+  done**, being positional (TODO 1.17); only one marked `absolute` has the
+  landing column put into its shape (TODO 1.16). What is under a pasted item
+  moves as far as that item's content did.
 - **Except a leaf with no inline tree, which keeps its bytes and has them
   moved.** Slice 4's inversion again: a fence's content *is* source and the
   emitter refuses it outright, so clearing it would leave nothing able to write
