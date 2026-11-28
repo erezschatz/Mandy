@@ -7374,9 +7374,13 @@ function modelAdoptBlocks(doc, blocks, like) {
   const bare = quote.replace(/[ \t]+$/, "");
   const moved = (prefix) => quote + modelShiftSource(prefix, column);
 
-  const walk = (list, parent, nested) => {
+  // `shift` is how many columns a heading at this depth moves: the landing
+  // column at the top of what was pasted, and under a pasted item however far
+  // that item's content moved, which a tab in its marker can make nothing.
+  const walk = (list, parent, nested, shift) => {
     for (const block of list) {
       const bytes = block.source;
+      let inner = shift;
       // The chain this block recorded where it was parsed: null unless it is
       // inside a quote that was pasted with it.
       const own = block.quotePrefixes;
@@ -7402,11 +7406,36 @@ function modelAdoptBlocks(doc, blocks, like) {
       // number of columns — the shift `modelMoveItem` does, arriving at the one
       // other place a block changes container.
       if (block.kind === "item" && column && !own) {
+        const was = block.marker;
         block.marker = modelReindentMarker(block.marker, column);
         if (block.contentIndent !== null) block.contentIndent = modelShiftIndent(block.contentIndent, column);
+        if (was !== null) inner = modelIndentColumn(block.marker) - modelIndentColumn(was);
+      }
+      // **A heading's shape is absolute too** (TODO 1.16). The emitter gives a
+      // heading no item affix, because its `open` was read from its own line's
+      // column 0 and holds the indent already, and a setext `underline` the
+      // same. So a heading that lands in an item has to have that indent put
+      // into its shape, or it is drawn in the item and written outside the
+      // list. Not inside a pasted quote, where the chain carries the column.
+      // Under a pasted item it moves as far as that item's content did, read
+      // off the marker before and after: a tab-marked item pasted two columns
+      // in still starts its content at column 4, and its heading stays put.
+      if (block.kind === "heading" && block.headingShape && shift > 0 && !own) {
+        // Spaces after whatever indent it had, which is the one way to add
+        // columns that a tab in that indent cannot swallow.
+        const indent = (text) => {
+          const lead = /^[ \t]*/.exec(text)[0];
+          return lead + " ".repeat(shift) + text.slice(lead.length);
+        };
+        const shape = block.headingShape;
+        block.headingShape = {
+          open: indent(shape.open),
+          close: shape.close,
+          underline: shape.underline === null ? null : indent(shape.underline),
+        };
       }
       if (block.children) {
-        walk(block.children, block, true);
+        walk(block.children, block, true, inner);
       } else if (block.inlines && own) {
         // Kept as recorded. The one piece that moves is an affix running from
         // the line's own column 0, which is a quote opening a pasted item:
@@ -7431,7 +7460,7 @@ function modelAdoptBlocks(doc, blocks, like) {
       }
     }
   };
-  walk(blocks, like.parent, false);
+  walk(blocks, like.parent, false, column);
   return blocks;
 }
 

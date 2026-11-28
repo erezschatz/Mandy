@@ -11452,7 +11452,7 @@ and manifest probes behave as the procedure says under Deno 2.9.8. No code in
 `front/` or `server/` changed. Also fills `e95ff48` into the previous entry's
 header.
 
-## 2026-11-28 — Task 1.15: a pasted quote keeps its `>`
+## 2026-11-28 — `b21cb44` — Task 1.15: a pasted quote keeps its `>`
 
 A blockquote pasted or dropped anywhere outside a quote was drawn as a quote
 and written without one: every line went into the file with no `>`, and under a
@@ -11501,3 +11501,39 @@ with the quote beside the list.
 either side of it out of a web page, paste it into a document outside any
 quote, Save As to a scratch file and reopen it: the quote should still be a
 quote. Then the same with a quote copied out of Mandy itself.
+
+## 2026-11-28 — Task 1.16: a heading pasted into a list item stays in it
+
+A heading pasted or dropped as a whole block into a list item was drawn inside
+the item and written at column 0, so the file ended the list there. Measured by
+task 1.15 and left for this one.
+
+The emitter gives a heading no item affix: its `open` was read off its own line
+from column 0 and holds whatever indent it sat under, and a setext heading's
+`underline` the same. `modelAdoptBlocks` in `front/model.js` already moved an
+item's marker, a fence's bytes and a quote's chain to the landing column, and
+now moves a heading's `open` and `underline` by it too. A heading inside a
+pasted quote is left alone, since task 1.15 put the column in its chain. Under
+a pasted item a heading moves as far as that item's content did, measured off
+its marker, and the columns are added as spaces after its own indent: the
+reader found that a first draft, moving every heading by the landing column,
+turned a tab-indented heading in a tab-marked item into a code block. The
+second line of a two-line setext heading is written flush left, which is a lazy
+line and reopens as the same heading.
+
+The `model` suite has eleven cases, each checked for its bytes and for where
+the heading is when the file is parsed again, eight for the tab-marked item,
+and one that types into a pasted heading: 20 of the 31 checks fail against the
+old adoption, and the rest are landings that must not move. `tests/browser/copy-gap.spec.mjs` pastes a heading
+as HTML into a list item and reopens what was written. `npm test` passes;
+Playwright is 407 passed with the one recorded Firefox failure. `sw.js` goes to
+`v1.107`.
+
+Two things it does not reach, both in the task file: a landing whose quote
+opens its list item on the marker's line, which task 1.15 lists, and a pasted
+item that itself opens with a heading (`- # h`), which makes the save throw
+and is older than both tasks.
+
+**What no suite reaches**: a real clipboard. Copy a heading with a paragraph
+either side out of a web page, paste it into the middle of a bullet, Save As to
+a scratch file and reopen it: the heading should still be inside the bullet.

@@ -4135,6 +4135,63 @@ export default function run(check) {
   }
 
   {
+    // **A heading pasted into a list item is written in the item** (TODO
+    // 1.16). The emitter gives a heading no item affix — its `open` holds the
+    // indent it was parsed under — so until 2026-11-28 a heading that landed
+    // in an item was drawn there and written at column 0, ending the list.
+    const paste = (src, markdown, index = 0) => {
+      const doc = parse(src);
+      modelInsertBlocks(doc, textLeaves(doc)[index], 3, parse(markdown).blocks);
+      return { doc, markdown: emit(doc) };
+    };
+    // Where the heading is when the written file is opened again: the kinds of
+    // its containers, innermost first.
+    const headingIn = (markdown) => {
+      const heading = modelFlatten(parse(markdown)).find((block) => block.kind === "heading");
+      if (!heading) return "none";
+      const kinds = [];
+      for (let node = heading.parent; node; node = node.parent) kinds.push(node.kind);
+      return kinds.join("<") || "top";
+    };
+    const cases = [
+      ["an ATX heading pasted into a bullet", "- one two\n", "A\n\n# h\n\nB", "- oneA\n\n  # h\n\n  B two\n", "item<list"],
+      ["a setext heading, on both its lines", "- one two\n", "A\n\nh\n===\n\nB", "- oneA\n\n  h\n  ===\n\n  B two\n", "item<list"],
+      ["a setext heading of two lines, whose second is lazy", "- one two\n", "A\n\nh1\nh2\n---\n\nB", "- oneA\n\n  h1\nh2\n  ---\n\n  B two\n", "item<list"],
+      ["a closing run comes with it", "- one two\n", "A\n\n## h ##\n\nB", "- oneA\n\n  ## h ##\n\n  B two\n", "item<list"],
+      ["into a nested bullet", "- a\n  - one two\n", "A\n\n# h\n\nB", "- a\n  - oneA\n\n    # h\n\n    B two\n", "item<list<item<list", 1],
+      ["into an item inside a quote", "> - one two\n", "A\n\n# h\n\nB", "> - oneA\n>\n>   # h\n>\n>   B two\n", "item<list<quote"],
+      ["a heading's own indent is kept on top of the item's", "1. one two\n", "A\n\n   # h\n\nB", "1. oneA\n\n      # h\n\n   B two\n", "item<list"],
+      ["a heading inside a pasted item moves with that item", "- one two\n", "A\n\n- i\n\n  #### h\n\nB", "- oneA\n\n  - i\n\n    #### h\n\n  B two\n", "item<list<item<list"],
+      ["a heading inside a pasted quote is moved by the chain alone", "- one two\n", "A\n\n> # h\n\nB", "- oneA\n\n  > # h\n\n  B two\n", "quote<item<list"],
+      ["at the top level nothing moves", "one two\n", "A\n\n# h\n\nB", "oneA\n\n# h\n\nB two\n", "top"],
+      ["nor in a quote", "> one two\n", "A\n\n# h\n\nB", "> oneA\n>\n> # h\n>\n> B two\n", "quote"],
+    ];
+    for (const [label, src, markdown, want, where, index] of cases) {
+      const got = paste(src, markdown, index).markdown;
+      check(`${label} (${JSON.stringify(got)})`, got === want);
+      check(`and reopens with the heading there (${headingIn(got)})`, headingIn(got) === where);
+    }
+    // A tab-marked pasted item, which the reader found: its content starts at
+    // column 4 wherever a two-column landing puts its marker, so its heading
+    // must not move there, and must move by four where the content does.
+    for (const [spelling, heading] of [["ATX", "\t# h"], ["setext", "\th\n\t==="]]) {
+      const pasted = "A\n\n-\ti\n\n" + heading + "\n\nB";
+      for (const src of ["- one two\n", "1. one two\n", "-\tone two\n"]) {
+        const got = paste(src, pasted).markdown;
+        check(`a tab-indented ${spelling} heading in a pasted tab-marked item, into ${JSON.stringify(src)}, reopens in that item (${JSON.stringify(got)})`,
+          headingIn(got) === "item<list<item<list");
+      }
+      const top = paste("one two\n", pasted).markdown;
+      check(`and at the top level its bytes are as pasted (${JSON.stringify(top)})`, top === "oneA\n\n-\ti\n\n" + heading + "\n\nB two\n");
+    }
+
+    const typed = paste("- one two\n", "A\n\nh\n===\n\nB");
+    modelInlineSplice(modelFlatten(typed.doc).find((block) => block.kind === "heading"), 0, 0, "Z");
+    check(`typing into a pasted heading writes it in the item still (${JSON.stringify(emit(typed.doc))})`,
+      emit(typed.doc) === "- oneA\n\n  Zh\n  ===\n\n  B two\n");
+  }
+
+  {
     // **Ids are re-minted, and that is not housekeeping.** `modelParse` mints
     // from 1, so every pasted block wears an id the target is already using,
     // and `modelElementFor` is a `querySelector` — it would answer with

@@ -1217,3 +1217,45 @@ line would have to live in the chain as a prefix with no `>` in it, which
 Flush left it is still a lazy continuation and parses to the same quote.
 
 Source: [tasks/1.15-pasted-quote.md](../tasks/1.15-pasted-quote.md)
+
+## D50 · 2026-11-28 · A pasted heading's shape is moved, and the emitter is left alone
+
+**Decision** — `modelAdoptBlocks` adds the landing column to a pasted heading's
+`open` and `underline`.
+**Rejected** — Having `modelEmitLeaf` give a heading its item's indent like any
+other leaf, with `open` recorded without it.
+**Why** — A parsed heading's `open` holds its indent already, and stage 1
+pinned that the shape plus the chain is the heading's own source. Changing the
+emitter would change what every heading in an item is written from, to fix the
+one path that puts a heading somewhere new.
+
+Source: [tasks/1.16-pasted-heading.md](../tasks/1.16-pasted-heading.md)
+
+## D51 · 2026-11-28 · A two-line setext heading's second line is written flush left
+
+**Decision** — Only `open` and `underline` move, so the second content line of
+a pasted setext heading of two lines carries no indent.
+**Rejected** — Indenting every content line, which needs the emitter to know a
+heading's continuation indent.
+**Why** — The shape has no field for it: a setext heading parsed inside an item
+with two indented lines records no shape at all and is refused on edit, an
+older limit. Flush left the line is a lazy continuation, and the file reopens
+with one heading inside the item.
+
+Source: [tasks/1.16-pasted-heading.md](../tasks/1.16-pasted-heading.md)
+
+## D52 · 2026-11-28 · A heading under a pasted item moves as far as that item's content did
+
+**Decision** — The columns added to a heading are the landing column at the
+top of what was pasted, and under a pasted item the difference between the
+column its marker ended at before and after the move. They are added as spaces
+after whatever indent the heading had.
+**Rejected** — Moving every heading by the landing column through
+`modelShiftIndent`, which the first draft did.
+**Why** — A tab-marked item pasted two columns in still starts its content at
+column 4, so its heading must not move, and `modelShiftIndent` rounds a move
+to whole tabs when the indent holds one; the reader found the draft turned
+such a heading into a code block. Spaces after the indent add exactly the
+columns asked for, where a tab after them would swallow some.
+
+Source: [tasks/1.16-pasted-heading.md](../tasks/1.16-pasted-heading.md)

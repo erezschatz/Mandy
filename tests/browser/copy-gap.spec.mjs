@@ -219,6 +219,20 @@ test("a quote pasted into a list item stays in the item, as a quote", async ({ p
   expect(await markdown(page)).toBe("- xone\n\n  > A\n\n  two\n- y\n");
 });
 
+// A heading pasted into a list item is written in the item (TODO 1.16). Until
+// 2026-11-28 it was drawn there and written at column 0, which ends the list.
+test("a heading pasted into a list item is written inside the item", async ({ page }) => {
+  const foreign = "<p>one</p><h2>H</h2><p>two</p>";
+  await open(page, "- x\n- y\n");
+  await page.locator("#editor li").first().click();
+  await page.keyboard.press(LINE_END);
+  await pasteHtml(page, foreign, "one\n\nH\n\ntwo");
+  const written = await markdown(page);
+  expect(written).toBe("- xone\n\n  ## H\n\n  two\n- y\n");
+  await open(page, written);
+  await expect(page.locator("#editor li h2")).toHaveCount(1);
+});
+
 test("a quote copied out of Mandy with what is around it pastes back as a quote", async ({ page }) => {
   await open(page, "before\n\n> q\n>\n>\n> r\n\nafter\n");
   await paragraph(page).click();
