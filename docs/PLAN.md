@@ -31,6 +31,7 @@ up yet rather than tasks.
 - [1.12-blank-lines-kept](../tasks/1.12-blank-lines-kept.md) — 1.12 — A blank line typed between paragraphs is lost on save · recorded, 1 box open
 - [1.13-crlf-files](../tasks/1.13-crlf-files.md) — 1.13 — Editing a CRLF file mixes its line endings, and can throw · done
 - [1.14-crlf-wrap-width](../tasks/1.14-crlf-wrap-width.md) — 1.14 — A CRLF file's wrap width is sniffed a column wide · done
+- [1.15-pasted-quote](../tasks/1.15-pasted-quote.md) — 1.15 — A pasted quote loses its `>` · recorded, 1 box open
 - [2.1-table-reemission](../tasks/2.1-table-reemission.md) — 2.1 — An edited table is re-emitted in house style · done
 - [2.3-minority-spellings](../tasks/2.3-minority-spellings.md) — 2.3 — Minority break and emphasis spellings · done
 - [3.1-editing-core-rewrite](../tasks/3.1-editing-core-rewrite.md) — 3.1 — Replace the editing core · recorded, 3 boxes open

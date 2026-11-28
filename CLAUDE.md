@@ -1291,7 +1291,10 @@ What is worth knowing:
   lines carrying no `> ` and no indent. `modelAdoptBlocks` re-mints every id and
   **clears every `source`**, letting the emitter compose the chain from the
   block it lands beside, the leading affix from its new position, and an item's
-  marker shifted to the column its new container starts at.
+  marker shifted to the column its new container starts at. **A block inside
+  a pasted quote keeps the chain it recorded, with the landing quote's prefix
+  and column put in front** (TODO 1.15): a quote writes nothing itself, so that
+  chain is the only record of its `>`.
 - **Except a leaf with no inline tree, which keeps its bytes and has them
   moved.** Slice 4's inversion again: a fence's content *is* source and the
   emitter refuses it outright, so clearing it would leave nothing able to write

@@ -1146,3 +1146,74 @@ answered. The commit still refuses, through the `PreToolUse` hook and
 Supersedes: D23
 
 Source: [tasks/adopt-unities.md](../tasks/adopt-unities.md)
+
+## D45 · 2026-11-28 · A pasted quote's chain is composed, not parsed again
+
+**Decision** — `modelAdoptBlocks` keeps the chain a block inside a pasted quote
+recorded and puts the landing quote's prefix and the landing column in front
+of each line of it.
+**Rejected** — Writing the pasted quote as text at its landing place and
+parsing it again, the way Format → Blockquote wraps and unwraps.
+**Why** — The toggle parses a top-level block it already holds; a paste would
+have to rebuild the landing block's containers as text to parse inside them,
+before the split and the merges the insertion still has to make. The affixes a
+pasted block recorded are right for its own bytes and only move, which the
+sweep over torture.md checks byte for byte.
+
+Source: [tasks/1.15-pasted-quote.md](../tasks/1.15-pasted-quote.md)
+
+## D46 · 2026-11-28 · The landing column is the emitter's
+
+**Decision** — When the landing block's chain holds a `>`, the column pasted
+items, fences and chains move by is read through `modelItemAffix`, which stops
+at a quote. When it holds none, it is the nearest item's, as before.
+**Rejected** — `modelItemAncestor` everywhere, as before, which finds an item
+above a quote too. `modelItemAffix` everywhere, which the first draft did.
+**Why** — A landing block in a quote inside an item has the item's indent in
+its chain already. Adding it again wrote `  >   - x` for a pasted list and
+would have written `  >   > q` for a pasted quote. This also moves what Format
+→ Code writes for a code block made in such a quote, to `  > ` and the fence.
+The two landings under "Found on the way" whose chain was never recorded have
+nothing carrying the indent, and the reader found that `modelItemAffix` alone
+moved a list or fence pasted there, and a code block made there, out of the
+list; they are wrong either way and keep the bytes they had.
+
+Source: [tasks/1.15-pasted-quote.md](../tasks/1.15-pasted-quote.md)
+
+## D47 · 2026-11-28 · Blank lines inside a pasted container take the landing quote
+
+**Decision** — A blank line between two blocks of a pasted container is written
+as the landing quote's bare `>`, and a `>` line there is moved as a chain is.
+**Rejected** — Leaving the separators as parsed and fixing only the chain.
+**Why** — A pasted item holding a quote, landing in a quote, would still end
+the landing quote at its blank line, so the chain fix alone leaves its own
+case broken. The same line fixes a loose list pasted into a quote, which had
+the fault with no pasted quote in it.
+
+Source: [tasks/1.15-pasted-quote.md](../tasks/1.15-pasted-quote.md)
+
+## D48 · 2026-11-28 · A bare `>` line is written without a space after it
+
+**Decision** — On adoption a line that is nothing but a quote chain loses its
+trailing whitespace, in a gap block's bytes and in a separator.
+**Rejected** — Keeping the pasted bytes, which is what a fence gets.
+**Why** — Turndown writes every blank line of a quote as `> `. Before this
+task those lines were the only ones of a pasted quote to keep their `>`; with
+the quote kept they would put trailing whitespace on each. The emitter already
+writes an empty quoted line as `>`, and D3 leaves invisible whitespace out of
+fidelity.
+
+Source: [tasks/1.15-pasted-quote.md](../tasks/1.15-pasted-quote.md)
+
+## D49 · 2026-11-28 · A lazy line is not indented under a bullet
+
+**Decision** — A line of a pasted quote that recorded no `>` gets the landing
+quote's prefix and nothing else, so under a bullet it is written flush left.
+**Rejected** — Giving it the item's indent, which is what its bytes would be
+if the quote had been typed there.
+**Why** — The emitter takes no item affix inside a quote, so an indent on that
+line would have to live in the chain as a prefix with no `>` in it, which
+`modelBlankSeparator` and the gap joiner both read as a line outside the quote.
+Flush left it is still a lazy continuation and parses to the same quote.
+
+Source: [tasks/1.15-pasted-quote.md](../tasks/1.15-pasted-quote.md)

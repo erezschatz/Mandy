@@ -180,9 +180,8 @@ test("a song copied out of Mandy and pasted back keeps its gaps", async ({ page 
   expect(await intoFresh(page, copied.html, copied.text)).toBe("xa\n\nb\n\n\nc\n\nd\n");
 });
 
-// Copied from inside one quote and pasted into another, which keeps the
-// quote: a quote pasted outside any loses its `>` on every line, gap or no gap,
-// which is older than this part and recorded in the task file.
+// Copied from inside one quote and pasted into another: what is copied is the
+// quote's paragraphs and not the quote, so they join the one they land in.
 test("a quote's gap copied out of Mandy and pasted into a quote is kept", async ({ page }) => {
   await open(page, "> q\n>\n>\n> r\n");
   const copied = await page.evaluate(() => {
@@ -198,6 +197,33 @@ test("a quote's gap copied out of Mandy and pasted into a quote is kept", async 
   await page.keyboard.press(LINE_END);
   await pasteHtml(page, copied.html, copied.text);
   expect(await markdown(page)).toBe("> aq\n>\n>\n> r\n>\n> b\n");
+});
+
+// A quote pasted outside any quote is written as one (TODO 1.15). Until
+// 2026-11-28 it was drawn as a quote and saved with no `>` on any line, so
+// each case reads the markdown a save writes and then reopens it.
+test("a quote pasted from another application is written as a quote", async ({ page }) => {
+  const foreign = "<p>one</p><blockquote><p>A</p><p>B</p></blockquote><p>two</p>";
+  const written = await intoFresh(page, foreign, "one\n\nA\n\nB\n\ntwo");
+  expect(written).toBe("xone\n\n> A\n>\n> B\n\ntwo\n");
+  await open(page, written);
+  await expect(page.locator("#editor blockquote p")).toHaveCount(2);
+});
+
+test("a quote pasted into a list item stays in the item, as a quote", async ({ page }) => {
+  const foreign = "<p>one</p><blockquote><p>A</p></blockquote><p>two</p>";
+  await open(page, "- x\n- y\n");
+  await page.locator("#editor li").first().click();
+  await page.keyboard.press(LINE_END);
+  await pasteHtml(page, foreign, "one\n\nA\n\ntwo");
+  expect(await markdown(page)).toBe("- xone\n\n  > A\n\n  two\n- y\n");
+});
+
+test("a quote copied out of Mandy with what is around it pastes back as a quote", async ({ page }) => {
+  await open(page, "before\n\n> q\n>\n>\n> r\n\nafter\n");
+  await paragraph(page).click();
+  const copied = await copyAll(page);
+  expect(await intoFresh(page, copied.html, copied.text)).toBe("xbefore\n\n> q\n>\n>\n> r\n\nafter\n");
 });
 
 test("blank paragraphs from another application are still dropped", async ({ page }) => {

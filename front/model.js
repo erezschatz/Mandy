@@ -7344,21 +7344,56 @@ function modelFillItem(doc, item, md) {
  * is how a paste into a blockquote stops being quoted. Cleared, the block goes
  * through `modelEmitLeaf`, which is what composes an affix from a position —
  * the one thing the emitter is for.
+ *
+ * **A block inside a pasted quote keeps the chain it recorded, moved to where
+ * it lands** (TODO 1.15). A quote is a container and writes nothing itself, so
+ * the `>` of a pasted quote is recorded on the blocks inside it and nowhere
+ * else; until 2026-11-28 this gave every block the landing block's chain
+ * instead, and a quote pasted outside a quote was drawn as one and written
+ * without a `>` on any line. Each line's prefix is the landing quote's, then
+ * the block's own with its indent moved to the landing column — the same move
+ * a fence's bytes get below. A lazy line recorded none and still has none.
+ * Such a block keeps its `leadingAffix` too, since its place inside what was
+ * pasted has not changed, and an item inside a pasted quote keeps its marker
+ * where it is: the chain in front of it carries the column now.
+ *
+ * **The column is the emitter's when the landing chain holds a `>`**, read
+ * through `modelItemAffix`: a landing block in a quote inside an item has that
+ * item's indent in its chain already, and adding it again after the `>` writes
+ * the same nesting in other bytes. A landing chain with no `>` in it carries
+ * nothing — no quote at all, or one of the two shapes whose chain was not
+ * recorded, a quote opening an item and one four columns in — and there the
+ * nearest item's indent is the only thing keeping what lands inside its list.
  */
 function modelAdoptBlocks(doc, blocks, like) {
   const chain = like.quotePrefixes;
-  const item = modelItemAncestor(like);
+  const quote = chain && chain.length ? chain[0] : "";
+  const item = quote.includes(">") ? modelItemAffix(like) : modelItemAncestor(like);
   const column = item && item.contentIndent !== null ? modelIndentColumn(item.contentIndent) : 0;
 
-  const quote = chain && chain.length ? chain[0] : "";
+  const bare = quote.replace(/[ \t]+$/, "");
+  const moved = (prefix) => quote + modelShiftSource(prefix, column);
 
-  const walk = (list, parent) => {
+  const walk = (list, parent, nested) => {
     for (const block of list) {
       const bytes = block.source;
+      // The chain this block recorded where it was parsed: null unless it is
+      // inside a quote that was pasted with it.
+      const own = block.quotePrefixes;
       block.id = modelMintId(doc);
       block.source = null;
       block.parent = parent;
-      block.quotePrefixes = chain ? chain.slice() : null;
+      block.quotePrefixes = own ? own.map(moved) : chain ? chain.slice() : null;
+      // The lines between two blocks of a pasted container move with it. A
+      // blank one, a loose list's above all, is inside the landing quote and
+      // has to say so, or the quote ends there; a `>` line, which is where a
+      // quote's gap keeps its blank line (TODO 1.12), is moved as a prefix is
+      // and written with no space after it, as the emitter writes one.
+      // The top level's separators are the caller's.
+      if (nested && block.separator) {
+        block.separator = block.separator.replace(/\n([^\r\n]*)(?=\r?\n)/g,
+          (all, line) => "\n" + (line.trim() ? moved(line).replace(/[ \t]+$/, "") : bare));
+      }
       // A table's recorded line prefixes were for the document it was parsed in;
       // here they are worked out from where it now sits. See modelTablePrefixes.
       if (block.kind === "table") block.tablePrefixes = null;
@@ -7366,12 +7401,17 @@ function modelAdoptBlocks(doc, blocks, like) {
       // into an indented context has every marker beneath it moved by the same
       // number of columns — the shift `modelMoveItem` does, arriving at the one
       // other place a block changes container.
-      if (block.kind === "item" && column) {
+      if (block.kind === "item" && column && !own) {
         block.marker = modelReindentMarker(block.marker, column);
         if (block.contentIndent !== null) block.contentIndent = modelShiftIndent(block.contentIndent, column);
       }
       if (block.children) {
-        walk(block.children, block);
+        walk(block.children, block, true);
+      } else if (block.inlines && own) {
+        // Kept as recorded. The one piece that moves is an affix running from
+        // the line's own column 0, which is a quote opening a pasted item:
+        // `- > a` records the chain `""` and the affix `"- > "`.
+        if (own[0] === "" && block.leadingAffix) block.leadingAffix = modelShiftSource(block.leadingAffix, column);
       } else if (block.inlines) {
         modelSetLeadingAffix(block, "");
       } else {
@@ -7384,10 +7424,14 @@ function modelAdoptBlocks(doc, blocks, like) {
         block.source = quote
           ? modelShiftSource(bytes, column).split("\n").map((line) => (line === "" ? quote.replace(/[ \t]+$/, "") : quote + line)).join("\n")
           : modelShiftSource(bytes, column);
+        // A quote's blank line arrives from Turndown as `> `, and a line that
+        // is nothing but a chain is written without the space after it, as the
+        // emitter writes one (D3).
+        if (block.kind === "gap") block.source = block.source.replace(/^([ \t>]*>)[ \t]+$/gm, "$1");
       }
     }
   };
-  walk(blocks, like.parent);
+  walk(blocks, like.parent, false);
   return blocks;
 }
 

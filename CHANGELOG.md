@@ -11421,7 +11421,7 @@ different files. Task 1.12's Acceptance block, which the remote added when only
 its stage 1 had landed, has stages 2, 3 and 5 ticked; stage 4's waits on the
 hand run.
 
-## 2026-11-28 — The Unities brought up to 0.7.0: the end of a turn only reports
+## 2026-11-28 — `a3425e3` — The Unities brought up to 0.7.0: the end of a turn only reports
 
 `docs/UNITIES.md` is the 0.7.0 master of 2026-11-26, and the gate, its tests,
 both compilers and the manifest are the plugin's 0.7.0 files, copied unchanged.
@@ -11451,3 +11451,53 @@ own suite passes under Node, 108 of 109 with one skipped, and the commit, `Stop`
 and manifest probes behave as the procedure says under Deno 2.9.8. No code in
 `front/` or `server/` changed. Also fills `e95ff48` into the previous entry's
 header.
+
+## 2026-11-28 — Task 1.15: a pasted quote keeps its `>`
+
+A blockquote pasted or dropped anywhere outside a quote was drawn as a quote
+and written without one: every line went into the file with no `>`, and under a
+bullet the lines also left the list. Found by task 1.12 on 2026-11-21 and the
+first fix of the rewrite's stage 5.
+
+A quote is a container and writes nothing itself, so its `>` is recorded on the
+blocks inside it. `modelAdoptBlocks` in `front/model.js` replaced that record
+with the quote chain of the block the paste lands beside. It now composes the
+two: each line's prefix is the landing quote's, then the block's own with its
+indent moved to the landing column. A block inside a pasted quote keeps the
+leading affix it recorded, and an item inside one keeps its marker where it
+was. Four things came with it, each a decision in the task file:
+
+- **The landing column is read through `modelItemAffix` when the landing chain
+  holds a `>`**, so a paste beside a block in a quote inside a list item adds
+  no indent after the `>` that already carries it. A list pasted there was
+  written `  >   - x` and is `  > - x`; a code block made there by Format →
+  Code moves the same way. A landing with no `>` in its chain reads the column
+  as it did.
+- **A blank line inside a pasted container takes the landing quote's `>`.** A
+  loose list pasted into a quote ended the quote at its first blank line.
+- **A bare `>` line is written with no space after it.** Turndown writes every
+  blank line of a quote as `> `, which went into the file as trailing
+  whitespace once the quote was kept.
+- **A lazy line stays lazy**: it recorded no `>` and gets no indent, so under a
+  bullet it is written flush left, which is the same quote.
+
+The `model` suite has a case for each shape at the top level, in a quote and in
+a bullet, a case that types into a pasted quote, and a sweep pasting every
+quote-bearing block of `tests/fixtures/torture.md` at the top level and into
+a quote; 25 of the 27 new checks fail against the old adoption, and the other
+two pin landings the reader found an earlier draft had moved. `tests/browser/copy-gap.spec.mjs` has three cases:
+a quote from another application, one landing in a list item, and one copied
+out of Mandy with a gap in it. `npm test` passes; Playwright is 404 passed
+with the one recorded Firefox failure. `sw.js` goes to `v1.106`.
+
+Four faults were measured on the way and are not fixed; the task file has
+them: several blocks pasted into a quote that opens a list item leave the list,
+a heading pasted into a bullet is written outside it, a quote indented four
+columns under a nested item loses its `>` on an edited second line, and an
+item holding a quote pasted into a quote written `>` with no space reopens
+with the quote beside the list.
+
+**What no suite reaches**: a real clipboard. Copy a quote with a paragraph
+either side of it out of a web page, paste it into a document outside any
+quote, Save As to a scratch file and reopen it: the quote should still be a
+quote. Then the same with a quote copied out of Mandy itself.

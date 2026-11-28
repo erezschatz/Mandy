@@ -4044,6 +4044,97 @@ export default function run(check) {
   }
 
   {
+    // **A pasted quote keeps its `>`** (TODO 1.15). A quote is a container and
+    // writes nothing itself, so its `>` is on the chain of the blocks inside
+    // it — and until 2026-11-28 the adoption replaced that chain with the
+    // landing block's, so the quote was drawn and not written. Each landing is
+    // its own case, because what goes in front of the pasted `>` differs:
+    // nothing, the landing quote's `>`, or the landing item's indent.
+    const paste = (src, markdown, index = 0) => {
+      const doc = parse(src);
+      modelInsertBlocks(doc, textLeaves(doc)[index], 3, parse(markdown).blocks);
+      return { doc, markdown: emit(doc) };
+    };
+    const cases = [
+      ["a pasted quote keeps its `>` at the top level", "one two\n", "x\n\n> A\n> B\n\ny", "onex\n\n> A\n> B\n\ny two\n"],
+      ["a quote pasted alone joins neither end and is still a quote", "one two\n", "> A", "one\n\n> A\n\ntwo\n"],
+      ["pasted into a quote it is a quote inside that one", "> one two\n", "x\n\n> A\n\ny", "> onex\n>\n> > A\n>\n> y two\n"],
+      ["pasted into a bullet it sits under the item's indent", "- one two\n", "x\n\n> A\n> B\n\ny", "- onex\n\n  > A\n  > B\n\n  y two\n"],
+      ["a quote two deep keeps both levels", "one two\n", "x\n\n> > deep\n> back\n\ny", "onex\n\n> > deep\n> back\n\ny two\n"],
+      ["a lazy line stays lazy", "one two\n", "x\n\n> a\nlazy\n\ny", "onex\n\n> a\nlazy\n\ny two\n"],
+      ["and takes the landing quote's `>` and no more", "> one two\n", "x\n\n> a\nlazy\n\ny", "> onex\n>\n> > a\n> lazy\n>\n> y two\n"],
+      ["a quote's own indent comes with it", "one two\n", "x\n\n   > in\n   > dent\n\ny", "onex\n\n   > in\n   > dent\n\ny two\n"],
+      ["a heading and a fence in one pasted quote both stay in it", "one two\n", "x\n\n> # h\n>\n> ```\n> code\n> ```\n\ny", "onex\n\n> # h\n>\n> ```\n> code\n> ```\n\ny two\n"],
+      ["and under a bullet", "- one two\n", "x\n\n> # h\n>\n> ```\n> code\n> ```\n\ny", "- onex\n\n  > # h\n  >\n  > ```\n  > code\n  > ```\n\n  y two\n"],
+      ["a list in a pasted quote keeps its markers where they were", "- one two\n", "x\n\n> - a\n>   b\n> - c\n\ny", "- onex\n\n  > - a\n  >   b\n  > - c\n\n  y two\n"],
+      ["a table in a pasted quote", "one two\n", "x\n\n> |a|b|\n> |-|-|\n> |1|2|\n\ny", "onex\n\n> |a|b|\n> |-|-|\n> |1|2|\n\ny two\n"],
+      ["a quote inside a pasted item, at the top level", "one two\n", "x\n\n- i\n\n  > q\n  > r\n\ny", "onex\n\n- i\n\n  > q\n  > r\n\ny two\n"],
+      ["and under a bullet, moved with its item", "- one two\n", "x\n\n- i\n\n  > q\n  > r\n\ny", "- onex\n\n  - i\n\n    > q\n    > r\n\n  y two\n"],
+      ["and in a quote, where the blank lines between take the `>`", "> one two\n", "x\n\n- i\n\n  > q\n\n- j\n\ny", "> onex\n>\n> - i\n>\n>   > q\n>\n> - j\n>\n> y two\n"],
+      ["a quote opening a pasted item", "- one two\n", "x\n\n- > q\n  > r\n\ny", "- onex\n\n  - > q\n    > r\n\n  y two\n"],
+      ["a gap in a pasted quote is kept", "one two\n", "x\n\n> a\n>\n>\n> b\n\ny", "onex\n\n> a\n>\n>\n> b\n\ny two\n"],
+      ["and stays inside it when the quote lands in a quote", "> one two\n", "x\n\n> a\n>\n>\n> b\n\ny", "> onex\n>\n> > a\n> >\n> >\n> > b\n>\n> y two\n"],
+      ["and under a bullet", "- one two\n", "x\n\n> a\n>\n>\n> b\n\ny", "- onex\n\n  > a\n  >\n  >\n  > b\n\n  y two\n"],
+      ["a blank quote line is written with no space after the `>`", "one two\n", "x\n\n> a\n> \n> b\n\ny", "onex\n\n> a\n>\n> b\n\ny two\n"],
+      ["a loose list pasted into a quote does not end the quote", "> one two\n", "p\n\n- x\n\n- y\n\nq", "> onep\n>\n> - x\n>\n> - y\n>\n> q two\n"],
+      ["a list pasted into a quote inside an item adds no indent after the `>`", "- a\n\n  > one two\n", "A\n\n- x\n- y\n\nC", "- a\n\n  > oneA\n  >\n  > - x\n  > - y\n  >\n  > C two\n", 1],
+    ];
+    for (const [label, src, markdown, want, index] of cases) {
+      const got = paste(src, markdown, index).markdown;
+      check(`${label} (${JSON.stringify(got)})`, got === want);
+    }
+
+    // Two landings whose chain was never recorded, a quote four columns in and
+    // a quote opening an item. Both are older faults this does not fix, and
+    // what is pinned is that it does not move them: with no `>` in the landing
+    // chain the item's indent is all that keeps a pasted list or fence in the
+    // list, so it is still applied.
+    const deep = paste("- a\n  - b\n\n    > one two\n", "x\n\n- p\n- q\n\ny", 2).markdown;
+    check(`a list pasted beside a quote with no recorded chain stays in its item (${JSON.stringify(deep)})`,
+      deep === "- a\n  - b\n\n    > onex\n\n    - p\n    - q\n\ny two\n");
+    const opening = paste("- > one two\n", "A\n\n```\nf\n```\n\nC").markdown;
+    check(`and a fence pasted into a quote opening an item (${JSON.stringify(opening)})`,
+      opening === "- > oneA\n\n  ```\n  f\n  ```\n\nC two\n");
+
+    // What is written has to be what is drawn: the pasted blocks are rendered
+    // from their tokens, which never lost the quote, so the file is checked
+    // against a parse of itself holding the same quote.
+    const again = parse(paste("one two\n", "x\n\n> A\n\ny").markdown);
+    check("and the file reopens with the quote in it", again.blocks.some((block) => block.kind === "quote"));
+
+    // The chain is what a later edit is written from, so typing into the
+    // pasted quote must keep the `>` on every line it writes.
+    const typed = paste("- one two\n", "x\n\n> A\n> B\n\ny");
+    const inner = modelFlatten(typed.doc).find((block) => block.inlines && block.parent && block.parent.kind === "quote");
+    modelInlineSplice(inner, 0, 0, "Z");
+    check(`typing into a pasted quote writes it as one (${JSON.stringify(emit(typed.doc))})`,
+      emit(typed.doc) === "- onex\n\n  > ZA\n  > B\n\n  y two\n");
+
+    // The sweep: every top-level block of torture.md that holds a quote
+    // anywhere, pasted between two paragraphs, comes back as its own bytes —
+    // at the top level as they are, and in a quote behind one more `>`. A
+    // bullet landing is the hand-written cases' above: a lazy line is written
+    // flush left there, which is the same quote in other bytes. One thing is
+    // not the fixture's bytes, on purpose: a bare `>` line is written with no
+    // space after it, since that is what Turndown puts on every blank line of
+    // a quote, and torture.md has one written `>  `.
+    const holdsQuote = (block) => block.kind === "quote" || (block.children || []).some(holdsQuote);
+    const behind = (text, prefix) => text.split("\n").map((line) => (line === "" ? prefix.trimEnd() : prefix + line)).join("\n");
+    const bearing = parse(repoFile("tests/fixtures/torture.md")).blocks.filter(holdsQuote).map((block) => block.source);
+    const landings = [["one two\n", ""], ["> one two\n", "> "]];
+    const missed = [];
+    for (const bytes of bearing) {
+      for (const [src, prefix] of landings) {
+        const got = paste(src, "x\n\n" + bytes + "\n\ny").markdown;
+        const want = behind("onex\n\n" + bytes + "\n\ny two", prefix).replace(/^([ \t>]*>)[ \t]+$/gm, "$1") + "\n";
+        if (got !== want) missed.push(JSON.stringify(got));
+      }
+    }
+    check(`every quote-bearing block of torture.md pastes back as its own bytes, bare and in a quote (${bearing.length} blocks, ${bearing.length * landings.length} pastes)` +
+      (missed.length ? ` — ${missed[0]}` : ""), bearing.length > 0 && missed.length === 0);
+  }
+
+  {
     // **Ids are re-minted, and that is not housekeeping.** `modelParse` mints
     // from 1, so every pasted block wears an id the target is already using,
     // and `modelElementFor` is a `querySelector` — it would answer with
